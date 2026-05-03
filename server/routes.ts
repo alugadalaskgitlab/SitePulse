@@ -570,7 +570,17 @@ export async function registerRoutes(
     if (!assertView(req, res, "user_management")) return;
     try {
       const subs = await storage.getAllPushSubscriptions();
-      res.json(subs.map((s) => ({ userId: s.userId })));
+      const counts: Record<number, number> = {};
+      for (const s of subs) {
+        if (s.userId != null) {
+          counts[s.userId] = (counts[s.userId] ?? 0) + 1;
+        }
+      }
+      const result = Object.entries(counts).map(([userId, count]) => ({
+        userId: Number(userId),
+        count,
+      }));
+      res.json(result);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch subscriptions" });
     }

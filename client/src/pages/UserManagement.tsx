@@ -94,7 +94,7 @@ export default function UserManagement() {
 
   const usersQ = useQuery<SafeUser[]>({ queryKey: ["/api/auth/users"] });
 
-  const subsQ = useQuery<{ userId: number | null }[]>({
+  const subsQ = useQuery<{ userId: number; count: number }[]>({
     queryKey: ["/api/push/subscriptions"],
     enabled: canView,
   });
@@ -102,9 +102,7 @@ export default function UserManagement() {
   const subCountByUser = useMemo<Record<number, number>>(() => {
     const counts: Record<number, number> = {};
     for (const s of subsQ.data ?? []) {
-      if (s.userId != null) {
-        counts[s.userId] = (counts[s.userId] ?? 0) + 1;
-      }
+      counts[s.userId] = s.count;
     }
     return counts;
   }, [subsQ.data]);
@@ -309,7 +307,7 @@ function UserRow({
               {deviceCount} device{deviceCount !== 1 ? "s" : ""}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground" data-testid={`badge-devices-${user.id}`}>—</span>
+            <span className="text-xs text-muted-foreground" data-testid={`badge-devices-${user.id}`}>0 devices</span>
           )}
         </div>
       </td>
