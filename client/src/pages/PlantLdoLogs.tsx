@@ -72,7 +72,7 @@ export default function PlantLdoLogs() {
     setAutoFilledFields(new Set());
 
     fetch(`/api/plant-module/ldo-logs/daily-summary?date=${date}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() as Promise<DailySummary> : Promise.reject())
+      .then(r => r.ok ? r.json() as Promise<DailySummary> : Promise.reject(new Error("non-ok")))
       .then((s: DailySummary) => {
         const dirty = dirtyWhileFetchingRef.current;
         const filled = new Set<'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced'>();
@@ -85,15 +85,17 @@ export default function PlantLdoLogs() {
             filled.add('openingStock');
           } else { setOpeningStock(""); }
         }
+        // Show "0" (not blank) for received/consumed when flow readings exist
+        // so a valid zero-consumption day is distinguishable from "no data".
         if (!dirty.has('ldoReceived')) {
-          if (s.hasFlowReadings && s.ldoReceivedL > 0) {
-            setLdoReceived(String(Math.round(s.ldoReceivedL * 10) / 10));
+          if (s.hasFlowReadings) {
+            setLdoReceived(s.ldoReceivedL > 0 ? String(Math.round(s.ldoReceivedL * 10) / 10) : "0");
             filled.add('ldoReceived');
           } else { setLdoReceived(""); }
         }
         if (!dirty.has('ldoConsumed')) {
-          if (s.hasFlowReadings && s.ldoConsumedL > 0) {
-            setLdoConsumed(String(Math.round(s.ldoConsumedL * 10) / 10));
+          if (s.hasFlowReadings) {
+            setLdoConsumed(s.ldoConsumedL > 0 ? String(Math.round(s.ldoConsumedL * 10) / 10) : "0");
             filled.add('ldoConsumed');
           } else { setLdoConsumed(""); }
         }
@@ -103,17 +105,22 @@ export default function PlantLdoLogs() {
             filled.add('closingStock');
           } else { setClosingStock(""); }
         }
-        // Tons produced: clear to "" when zero so stale positive doesn't linger
+        // Tons produced: show "0" when flow readings exist so zero-production
+        // shifts are clearly marked as checked (not "unknown").
         if (!dirty.has('tonsProduced')) {
-          if (s.tonsProducedMT > 0) {
-            setTonsProduced(String(Math.round(s.tonsProducedMT * 1000) / 1000));
+          if (s.hasFlowReadings || s.tonsProducedMT > 0) {
+            setTonsProduced(s.tonsProducedMT > 0 ? String(Math.round(s.tonsProducedMT * 1000) / 1000) : "0");
             filled.add('tonsProduced');
           } else { setTonsProduced(""); }
         }
         setAutoFilledFields(filled);
         setSummaryLoading(false);
       })
-      .catch(() => setSummaryLoading(false));
+      // Don't clear the loading spinner for AbortErrors — those mean a newer
+      // request is in-flight and will clear it when it resolves.
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name !== 'AbortError') setSummaryLoading(false);
+      });
 
     return () => controller.abort();
   }, [dialogOpen, date]);
