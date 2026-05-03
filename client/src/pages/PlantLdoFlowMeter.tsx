@@ -330,15 +330,24 @@ export default function PlantLdoFlowMeter() {
 
   const dailySummary = useMemo(() => {
     if (!readings) return [];
+    // Apply only the date filters here. Tank / source / dryer-src filters are
+    // intentionally excluded — the Daily Summary combines both meters per day
+    // and scoping it by tank or source would produce misleading totals.
+    const dateFiltered = readings.filter(r => {
+      if (filterDateFrom && r.date < filterDateFrom) return false;
+      if (filterDateTo && r.date > filterDateTo) return false;
+      return true;
+    });
     const grouped: Record<string, { date: string; entries: LdoFlowReading[] }> = {};
-    for (const r of readings) {
+    for (const r of dateFiltered) {
       if (!grouped[r.date]) grouped[r.date] = { date: r.date, entries: [] };
       grouped[r.date].entries.push(r);
     }
-    return Object.values(grouped)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 15)
-      .map(day => {
+    const sorted = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
+    // When no date filter is active limit to the 15 most-recent days so the
+    // UI table stays manageable; when a date range is active show all days.
+    const limited = (filterDateFrom || filterDateTo) ? sorted : sorted.slice(0, 15);
+    return limited.map(day => {
         // Per-meter daily report: this section is intentionally still
         // grouped by physical meter (tank 1 = boiler-meter, tank 2 =
         // dryer-meter). The per-meter consumption numbers feed the
@@ -381,7 +390,7 @@ export default function PlantLdoFlowMeter() {
           totalConsumptionKg: totalL > 0 ? Math.round(totalL * LDO_DENSITY_KG_PER_LITER) : null,
         };
       });
-  }, [readings, ldoReceiptsByDate]);
+  }, [readings, filterDateFrom, filterDateTo, ldoReceiptsByDate]);
 
   const totalConsumptionBothTanks = dailySummary.reduce((s, d) => s + d.totalConsumption, 0);
 
