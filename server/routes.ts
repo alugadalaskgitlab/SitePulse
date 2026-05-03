@@ -1570,7 +1570,7 @@ export async function registerRoutes(
   app.put("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { adjustedBy, ...dispatchData } = req.body;
+      const { adjustedBy, overrideTolerance, ...dispatchData } = req.body;
       
       // Server-side tolerance validation for actual consumption values.
       //
@@ -1583,11 +1583,22 @@ export async function registerRoutes(
       // Fix: use `!= null` (loose equality) so both `null` and `undefined`
       // correctly skip the tolerance block when no actual value was entered.
       const TOLERANCE_PERCENT = 10;
-      if (dispatchData.actualBitumenPercent != null || dispatchData.actualLdoQty != null) {
-        const dispatches = await storage.getTruckDispatches({});
-        const currentDispatch = dispatches.find(d => d.id === id);
+      // Admin/manager override: if the client sends overrideTolerance=true and
+      // the authenticated user is an admin, skip the tolerance block entirely
+      // and annotate the record so the deviation is auditable.
+      const isAdminOverride = overrideTolerance === true && req.authUser?.isAdmin;
+      if (overrideTolerance === true && !req.authUser?.isAdmin) {
+        return res.status(403).json({ message: "Only admins can override the tolerance limit." });
+      }
+
+      // Fetch the current dispatch once — used both for tolerance validation
+      // and for preserving existing shortageWarning data when logging an override.
+      const allDispatches = await storage.getTruckDispatches({});
+      const currentDispatch = allDispatches.find(d => d.id === id);
+      const templates = await storage.getMixTemplates();
+
+      if (!isAdminOverride && (dispatchData.actualBitumenPercent != null || dispatchData.actualLdoQty != null)) {
         if (currentDispatch) {
-          const templates = await storage.getMixTemplates();
           // Prefer the incoming mixTemplateId so an edit that simultaneously
           // changes the template is validated against the NEW template's
           // theoretical values, not the old saved one.
@@ -1620,7 +1631,53 @@ export async function registerRoutes(
           }
         }
       }
-      
+
+      // When an admin overrides the tolerance, stamp an audit note into
+      // shortageWarning so the out-of-tolerance save is always traceable.
+      // IMPORTANT: always read existing shortageWarning from the persisted
+      // dispatch record, NOT from the incoming client payload (which does not
+      // carry shortageWarning), so existing shortage metadata is preserved.
+      //
+      // Only write the audit entry when at least one submitted value actually
+      // exceeds the tolerance band — prevents misleading entries when the flag
+      // is sent via direct API with in-tolerance values.
+      if (isAdminOverride && currentDispatch) {
+        const templateId = dispatchData.mixTemplateId ?? currentDispatch.mixTemplateId;
+        const template = templates.find(t => t.id === templateId);
+        const loadWeight = dispatchData.loadWeight ?? currentDispatch.loadWeight;
+        const overrideNote: Record<string, unknown> = {
+          type: "tolerance_override",
+          overriddenBy: req.authUser?.email ?? "admin",
+          overriddenAt: new Date().toISOString(),
+        };
+        let actuallyOutOfTolerance = false;
+        if (template) {
+          const theoreticalBitumenPercent = template.bitumenPercent || 0;
+          const theoreticalLdoQty = loadWeight * (template.ldoNorm || 6);
+          if (dispatchData.actualBitumenPercent != null && theoreticalBitumenPercent > 0) {
+            const bv = ((dispatchData.actualBitumenPercent - theoreticalBitumenPercent) / theoreticalBitumenPercent) * 100;
+            overrideNote.bitumenActual = dispatchData.actualBitumenPercent;
+            overrideNote.bitumenTheoretical = theoreticalBitumenPercent;
+            overrideNote.bitumenVariancePct = Number(bv.toFixed(2));
+            if (Math.abs(bv) > TOLERANCE_PERCENT) actuallyOutOfTolerance = true;
+          }
+          if (dispatchData.actualLdoQty != null && theoreticalLdoQty > 0) {
+            const lv = ((dispatchData.actualLdoQty - theoreticalLdoQty) / theoreticalLdoQty) * 100;
+            overrideNote.ldoActual = dispatchData.actualLdoQty;
+            overrideNote.ldoTheoretical = theoreticalLdoQty;
+            overrideNote.ldoVariancePct = Number(lv.toFixed(2));
+            if (Math.abs(lv) > TOLERANCE_PERCENT) actuallyOutOfTolerance = true;
+          }
+        }
+        if (actuallyOutOfTolerance) {
+          const existingWarning: unknown[] = (() => {
+            try { return JSON.parse(currentDispatch.shortageWarning || "[]"); } catch { return []; }
+          })();
+          existingWarning.push(overrideNote);
+          dispatchData.shortageWarning = JSON.stringify(existingWarning);
+        }
+      }
+
       const updated = await storage.updateTruckDispatch(id, dispatchData, adjustedBy || "operator");
       if (!updated) {
         return res.status(404).json({ message: "Dispatch not found" });

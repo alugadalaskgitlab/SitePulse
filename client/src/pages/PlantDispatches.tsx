@@ -28,7 +28,7 @@ import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterT
 export default function PlantDispatches() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan } = useAuth();
+  const { sectionCan, isAdmin } = useAuth();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
   const canExport = sectionCan("plant_production", "view_reports");
@@ -87,6 +87,7 @@ export default function PlantDispatches() {
   const [ldoTankNumber, setLdoTankNumber] = useState("2");
   const [transportEquipmentId, setTransportEquipmentId] = useState<number | null>(null);
   const [truckComboOpen, setTruckComboOpen] = useState(false);
+  const [overrideTolerance, setOverrideTolerance] = useState(false);
   
   // Tolerance constant (±10%)
   const TOLERANCE_PERCENT = 10;
@@ -268,6 +269,7 @@ export default function PlantDispatches() {
     setLdoTankNumber("2");
     setTransportEquipmentId(null);
     setEditingDispatch(null);
+    setOverrideTolerance(false);
   };
 
   const openEditDialog = (dispatch: TruckDispatch) => {
@@ -291,6 +293,7 @@ export default function PlantDispatches() {
     setBitumenTankNumber(dispatch.bitumenTankNumber ? String(dispatch.bitumenTankNumber) : "1");
     setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "2");
     setTransportEquipmentId(dispatch.transportEquipmentId || null);
+    setOverrideTolerance(false);
     setDialogOpen(true);
   };
 
@@ -348,8 +351,17 @@ export default function PlantDispatches() {
     return result;
   }, [theoreticalValues, actualBitumenPercent, actualLdoPerTon, TOLERANCE_PERCENT]);
   
-  // Check if values exceed tolerance (block submission)
-  const hasToleranceError = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
+  // Check if values exceed tolerance (block submission unless admin override is active)
+  const hasToleranceViolation = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
+  const hasToleranceError = hasToleranceViolation && !overrideTolerance;
+
+  // Auto-clear the override checkbox when values drift back within tolerance so
+  // no false override audit entry is stamped on a compliant save.
+  useEffect(() => {
+    if (!hasToleranceViolation && overrideTolerance) {
+      setOverrideTolerance(false);
+    }
+  }, [hasToleranceViolation, overrideTolerance]);
 
   const handleSubmit = () => {
     if (!partyId || !mixTemplateId || !truckNumber || !loadWeight) return;
@@ -386,6 +398,7 @@ export default function PlantDispatches() {
           bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
           ldoTankNumber: parseInt(ldoTankNumber) || 2,
           transportEquipmentId: transportEquipmentId || null,
+          overrideTolerance: overrideTolerance || undefined,
         }
       });
     } else {
@@ -1013,6 +1026,26 @@ export default function PlantDispatches() {
                   <p className="text-sm text-muted-foreground mt-2">
                     Tolerance: ±{TOLERANCE_PERCENT}% from theoretical. Stock deduction uses theoretical values. Adjustments are logged for audit.
                   </p>
+
+                  {hasToleranceViolation && isAdmin && (
+                    <div className="mt-3 p-2 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={overrideTolerance}
+                          onChange={(e) => setOverrideTolerance(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-orange-600"
+                          data-testid="checkbox-override-tolerance"
+                        />
+                        <span className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                          Admin Override — record this out-of-tolerance value
+                          <span className="block text-xs font-normal text-orange-600 dark:text-orange-400 mt-0.5">
+                            The deviation will be flagged in the audit log for traceability.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               )}
 
