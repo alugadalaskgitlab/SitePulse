@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 /**
  * useFormDraft — lightweight localStorage-based form draft hook.
@@ -17,37 +17,43 @@ import { useEffect, useRef, useCallback, useState } from "react";
  *                             load before saving starts (e.g. pass `!isLoading`). Defaults to true.
  *
  * Returns:
- *   clearDraft  — call this on successful submit to remove the stored draft
- *   wasRestored — true if a draft was found and `onRestore` was called for the CURRENT key;
- *                 automatically reset to false when enabled/key changes (e.g. on navigation)
+ *   clearDraft     — call on successful submit to remove the stored draft
+ *   wasRestoredRef — ref whose .current is synchronously true if a draft was restored for
+ *                    the current key; automatically reset when enabled/key changes so that
+ *                    dependent effects (e.g. server-data population) always read the correct
+ *                    value even when React Query has already cached data (isLoading=false).
+ *                    Using a ref (not state) is intentional: it must be readable synchronously
+ *                    by other effects in the same render flush, which state cannot guarantee.
  */
 export function useFormDraft<T>(
   key: string,
   data: T,
   onRestore: (data: T) => void,
   options: { enabled?: boolean; initialized?: boolean } = {}
-): { clearDraft: () => void; wasRestored: boolean } {
+): { clearDraft: () => void; wasRestoredRef: React.MutableRefObject<boolean> } {
   const { enabled = true, initialized = true } = options;
-  const [wasRestored, setWasRestored] = useState(false);
 
-  // selfInitializedRef: true once the restore check has finished for the current key.
+  // wasRestoredRef: persistent across renders until clearDraft or enabled/key change.
+  // Read synchronously by dependent effects (e.g. server-data population).
+  const wasRestoredRef = useRef(false);
+  // selfInitializedRef: true once the restore check has completed for the current key.
   const selfInitializedRef = useRef(false);
-  // justRestoredRef: true during the same effect flush that called onRestore.
-  // Prevents the autosave effect from writing the pre-restore (stale) `data`
-  // snapshot back to localStorage in the same commit.
+  // justRestoredRef: transient — set true by the restore effect, cleared by the autosave
+  // effect on its first run after restore. Prevents writing pre-restore stale `data`
+  // (state updates from onRestore are not yet applied) over a valid draft.
   const justRestoredRef = useRef(false);
 
   const onRestoreRef = useRef(onRestore);
   onRestoreRef.current = onRestore;
 
   // Restore on mount, and whenever key or enabled changes.
-  // Always resets wasRestored first so stale true values never carry across
-  // navigation to a different date/record/key.
+  // Declared BEFORE the autosave effect so it runs first in the same flush,
+  // meaning wasRestoredRef.current is synchronously correct when other effects read it.
   useEffect(() => {
-    // Reset everything for the new key / disabled state.
+    // Reset all flags for the new key / disabled state.
+    wasRestoredRef.current = false;
     justRestoredRef.current = false;
     selfInitializedRef.current = false;
-    setWasRestored(false);
 
     if (!enabled || !key) return;
 
@@ -56,8 +62,8 @@ export function useFormDraft<T>(
       if (raw) {
         const parsed = JSON.parse(raw) as T;
         onRestoreRef.current(parsed);
+        wasRestoredRef.current = true;
         justRestoredRef.current = true;
-        setWasRestored(true);
       }
     } catch {}
     selfInitializedRef.current = true;
@@ -65,15 +71,15 @@ export function useFormDraft<T>(
   }, [enabled, key]);
 
   // Auto-save whenever `data` changes. Guarded until:
-  //   • the restore check has run (selfInitializedRef)
+  //   • restore check has run (selfInitializedRef)
   //   • any external initialization gate has cleared (initialized prop)
-  //   • this is not the same render flush that just called onRestore
-  //     (justRestoredRef prevents writing pre-restore stale data back over a good draft)
+  //   • not the same render cycle that just called onRestore (justRestoredRef),
+  //     because `data` still reflects the pre-restore state at that point
   useEffect(() => {
     if (!enabled || !key || !selfInitializedRef.current || !initialized) return;
     if (justRestoredRef.current) {
-      // Same flush as restore — skip. Clear the flag so the next render
-      // (which will carry the restored data) saves correctly.
+      // Same commit as restore — pre-restore data is still in `data`. Skip this
+      // write and clear the flag so the next render (which carries restored data) saves.
       justRestoredRef.current = false;
       return;
     }
@@ -85,10 +91,10 @@ export function useFormDraft<T>(
   const clearDraft = useCallback(() => {
     if (!key) return;
     try { localStorage.removeItem(key); } catch {}
+    wasRestoredRef.current = false;
     selfInitializedRef.current = false;
     justRestoredRef.current = false;
-    setWasRestored(false);
   }, [key]);
 
-  return { clearDraft, wasRestored };
+  return { clearDraft, wasRestoredRef };
 }

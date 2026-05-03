@@ -400,7 +400,7 @@ export default function PlantShiftLog() {
     dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
     manpower, idleEvents]);
 
-  const { clearDraft, wasRestored } = useFormDraft<ShiftLogFormData>(
+  const { clearDraft, wasRestoredRef } = useFormDraft<ShiftLogFormData>(
     `sl-draft:${date}:${plantName}`,
     formData,
     onRestoreDraft,
@@ -451,7 +451,7 @@ export default function PlantShiftLog() {
       setIsFinalized(0);
       return;
     }
-    if (wasRestored) {
+    if (wasRestoredRef.current) {
       // Draft from localStorage takes priority over server data. Sync only
       // the identity/finalization fields that the draft doesn't carry.
       setSavedId(existing.id);
@@ -459,7 +459,7 @@ export default function PlantShiftLog() {
       return;
     }
     populateFormFromLog(existing);
-  }, [existing, isLoading, wasRestored, populateFormFromLog]);
+  }, [existing, isLoading, populateFormFromLog]);
 
 
   // Scroll + briefly highlight the "Which tank feeds the dryer?" section when
