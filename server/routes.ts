@@ -1273,7 +1273,8 @@ export async function registerRoutes(
       sendPushToAll("Material Receipt", `${receipt.quantity} ${receipt.uom} received on ${receipt.date}`, "/plant").catch(() => {});
       
       res.status(201).json(receipt);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       console.error("Error creating material receipt:", err);
       res.status(500).json({ message: "Failed to create material receipt" });
     }
@@ -1290,7 +1291,8 @@ export async function registerRoutes(
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
       sendPushToAll("Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       console.error("Error updating material receipt:", err);
       res.status(500).json({ message: "Failed to update material receipt" });
     }
