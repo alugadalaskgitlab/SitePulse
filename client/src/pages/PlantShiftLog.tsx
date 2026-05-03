@@ -86,6 +86,7 @@ export default function PlantShiftLog() {
   const [boilerRunsDuringProduction, setBoilerRunsDuringProduction] = useState(false);
   const [noMainPlantOps, setNoMainPlantOps] = useState(false);
   const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
+  const [postSaveWarnings, setPostSaveWarnings] = useState<string[]>([]);
   // Step 2 — detect ?focus=dryerFedFrom in URL so we can scroll and highlight
   // the "Which tank feeds the dryer?" field when navigated from a mismatch link.
   const focusDryerParam = useMemo(() => {
@@ -631,6 +632,8 @@ export default function PlantShiftLog() {
       clearDraft();
       setSavedId(data.id);
       setIsFinalized(1);
+      // Task #434 — surface any LDO dip vs meter divergence warnings
+      setPostSaveWarnings(Array.isArray(data.divergenceWarnings) ? data.divergenceWarnings : []);
       toast({ title: "Shift log saved" });
       // Auto-finalize so the operator doesn't need a second click — server no
       // longer requires a PIN. Then return to the list view.
@@ -1032,6 +1035,27 @@ export default function PlantShiftLog() {
     return (
       <>
       <div className="space-y-6">
+        {postSaveWarnings.length > 0 && (
+          <div className="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-600 p-4 flex gap-3 items-start" data-testid="banner-divergence-warnings">
+            <span className="text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0">⚠</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm mb-1">LDO Reading Discrepancy Detected</p>
+              <ul className="space-y-1">
+                {postSaveWarnings.map((w, i) => (
+                  <li key={i} className="text-yellow-700 dark:text-yellow-400 text-sm" data-testid={`text-divergence-warning-${i}`}>{w}</li>
+                ))}
+              </ul>
+            </div>
+            <button
+              onClick={() => setPostSaveWarnings([])}
+              className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 shrink-0"
+              aria-label="Dismiss warnings"
+              data-testid="button-dismiss-warnings"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Link href={backLink}>

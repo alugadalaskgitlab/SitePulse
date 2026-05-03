@@ -181,6 +181,12 @@ import {
   HEATING_TRENDS_MISMATCH_THRESHOLD_L,
 } from "@shared/heating-trends-constants";
 
+// Task #434 — Maximum acceptable divergence between LDO flow-meter consumption
+// and dip-stick-derived consumption within a single shift before the operator is
+// warned. Expressed in litres. Adjust via this single constant if the threshold
+// needs to be tuned without touching the comparison logic.
+const LDO_DIVERGENCE_THRESHOLD_LITERS = 300;
+
 export interface IStorage {
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
@@ -716,7 +722,7 @@ export interface IStorage {
   getPlantShiftLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<PlantShiftLog[]>;
   getPlantShiftLog(id: number): Promise<PlantShiftLogWithDetails | undefined>;
   getPlantShiftLogByDate(date: string, _shiftCodeIgnored?: string, plantName?: string): Promise<PlantShiftLogWithDetails | undefined>;
-  upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails>;
+  upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails & { divergenceWarnings: string[] }>;
   finalizePlantShiftLog(id: number, finalizedBy: string): Promise<PlantShiftLog | undefined>;
   deletePlantShiftLog(id: number): Promise<boolean>;
   getDailyPlantSummary(date: string, plantName?: string): Promise<unknown>;
@@ -10961,7 +10967,7 @@ export class DatabaseStorage implements IStorage {
 
   // Idempotent write-through. Deletes all readings tagged sourceShiftLogId=log.id
   // and re-inserts only those entries with non-null values from the shift log.
-  private async _syncShiftLogReadings(tx: typeof db, log: PlantShiftLog): Promise<void> {
+  private async _syncShiftLogReadings(tx: typeof db, log: PlantShiftLog): Promise<string[]> {
     await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, log.id));
     await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, log.id));
     await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, log.id));
@@ -11038,9 +11044,69 @@ export class DatabaseStorage implements IStorage {
     pushLdoDip(2, "opening", log.ldoTank2OpeningDip, log.plantStartTime);
     pushLdoDip(2, "closing", log.ldoTank2ClosingDip, log.plantStopTime);
     if (ldoDipRows.length) await tx.insert(ldoDipReadings).values(ldoDipRows);
+
+    // Task #434 — Divergence check: compare dip-derived stock change vs meter-
+    // reported consumption for each physical tank where both are available.
+    //
+    // Stock routing determines which physical tank each meter draws from:
+    //   dryerFedFrom === "TANK_1"  → both boiler-meter (tank-1) AND dryer-meter
+    //                                 (tank-2) draw from Tank 1 stock; Tank 2 dip
+    //                                 is unaffected so no Tank-2 check is done.
+    //   dryerFedFrom === "TANK_2"  → boiler-meter draws from Tank 1, dryer-meter
+    //                                 draws from Tank 2; compare each independently.
+    const divergenceWarnings: string[] = [];
+
+    const meterDeltaT1 =
+      log.ldoTank1OpeningMeter != null && log.ldoTank1ClosingMeter != null
+        ? log.ldoTank1ClosingMeter - log.ldoTank1OpeningMeter
+        : null;
+    const meterDeltaT2 =
+      log.ldoTank2OpeningMeter != null && log.ldoTank2ClosingMeter != null
+        ? log.ldoTank2ClosingMeter - log.ldoTank2OpeningMeter
+        : null;
+    const dipDeltaT1 =
+      log.ldoTank1OpeningDip != null && log.ldoTank1ClosingDip != null
+        ? getLdoVolumeAtDepth(1, log.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, log.ldoTank1ClosingDip)
+        : null;
+    const dipDeltaT2 =
+      log.ldoTank2OpeningDip != null && log.ldoTank2ClosingDip != null
+        ? getLdoVolumeAtDepth(2, log.ldoTank2OpeningDip) - getLdoVolumeAtDepth(2, log.ldoTank2ClosingDip)
+        : null;
+
+    const pushDivergenceWarning = (label: string, meterConsumed: number, dipConsumed: number) => {
+      const diff = Math.abs(meterConsumed - dipConsumed);
+      if (diff > LDO_DIVERGENCE_THRESHOLD_LITERS) {
+        console.warn(
+          `[ShiftLog #${log.id}] LDO ${label} divergence: meter=${meterConsumed.toFixed(0)} L, dip=${dipConsumed.toFixed(0)} L, diff=${diff.toFixed(0)} L`
+        );
+        divergenceWarnings.push(
+          `LDO ${label}: meter shows ${Math.round(meterConsumed)} L consumed but dip-stick shows ${Math.round(dipConsumed)} L — difference of ${Math.round(diff)} L exceeds threshold. Check for a measurement error or meter fault.`
+        );
+      }
+    };
+
+    if (log.dryerFedFrom === "TANK_1") {
+      // Both meters draw from Tank 1. The combined meter consumption should
+      // match the Tank 1 dip stock loss. Require both meter pairs — if either
+      // is absent we cannot compute the full combined consumption and would risk
+      // a false-positive warning from the missing half.
+      if (meterDeltaT1 != null && meterDeltaT2 != null && dipDeltaT1 != null) {
+        pushDivergenceWarning("Tank 1 (Boiler+Dryer combined, fed from Tank 1)", meterDeltaT1 + meterDeltaT2, dipDeltaT1);
+      }
+    } else {
+      // dryerFedFrom === "TANK_2" (default): each meter draws from its own tank.
+      if (meterDeltaT1 != null && dipDeltaT1 != null) {
+        pushDivergenceWarning("Tank 1 (Boiler)", meterDeltaT1, dipDeltaT1);
+      }
+      if (meterDeltaT2 != null && dipDeltaT2 != null) {
+        pushDivergenceWarning("Tank 2 (Dryer)", meterDeltaT2, dipDeltaT2);
+      }
+    }
+
+    return divergenceWarnings;
   }
 
-  async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails> {
+  async upsertPlantShiftLog(input: UpsertPlantShiftLogInput, editedBy?: string, authorizedRole?: "admin" | "manager" | null): Promise<PlantShiftLogWithDetails & { divergenceWarnings: string[] }> {
     const { manpower = [], idleEvents = [], editedBy: _ignore, pin: _pin, ...header } = input as any;
     const shiftCode = header.shiftCode || "DAY";
     const plantName = header.plantName || "Main Plant";
@@ -11104,11 +11170,11 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      await this._syncShiftLogReadings(tx, saved);
+      const divergenceWarnings = await this._syncShiftLogReadings(tx, saved);
 
       const mp = await tx.select().from(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, saved.id));
       const ie = await tx.select().from(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, saved.id));
-      return { ...saved, manpower: mp, idleEvents: ie };
+      return { ...saved, manpower: mp, idleEvents: ie, divergenceWarnings };
     });
   }
 
