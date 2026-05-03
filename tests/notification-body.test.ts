@@ -4,9 +4,11 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 
-const { sendPushToAllSpy, createBitumenSpy, createLdoSpy, updateBitumenSpy, updateLdoSpy } = vi.hoisted(() => {
+const { sendPushToAllSpy, createBitumenSpy, createLdoSpy, updateBitumenSpy, updateLdoSpy, deleteBitumenSpy, deleteLdoSpy } = vi.hoisted(() => {
   return {
     sendPushToAllSpy: vi.fn().mockResolvedValue(undefined),
+    deleteBitumenSpy: vi.fn().mockResolvedValue({ id: 1 }),
+    deleteLdoSpy: vi.fn().mockResolvedValue({ id: 2 }),
     createBitumenSpy: vi.fn().mockResolvedValue({
       id: 1,
       date: "2024-01-15",
@@ -72,6 +74,8 @@ vi.mock("../server/storage", () => {
     createLdoDipReading: createLdoSpy,
     updateBitumenDipReading: updateBitumenSpy,
     updateLdoDipReading: updateLdoSpy,
+    deleteBitumenDipReading: deleteBitumenSpy,
+    deleteLdoDipReading: deleteLdoSpy,
   };
 
   const storageProxy = new Proxy(methods, {
@@ -247,5 +251,39 @@ describe("Dip reading push notification body", () => {
     expect(title).toBe("LDO Dip Updated");
     expect(body).not.toContain("undefined");
     expect(body).toBe("LDO dip reading #2 updated");
+  });
+
+  it("bitumen DELETE sends notification body without 'undefined' and includes reading id", async () => {
+    sendPushToAllSpy.mockClear();
+
+    const res = await request(app)
+      .delete("/api/plant-module/bitumen-dip-readings/1");
+
+    expect(res.status).toBe(200);
+
+    const calls = sendPushToAllSpy.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+
+    const [title, body] = calls[0];
+    expect(title).toBe("Bitumen Dip Deleted");
+    expect(body).not.toContain("undefined");
+    expect(body).toBe("Bitumen dip reading #1 deleted");
+  });
+
+  it("LDO DELETE sends notification body without 'undefined' and includes reading id", async () => {
+    sendPushToAllSpy.mockClear();
+
+    const res = await request(app)
+      .delete("/api/plant-module/ldo-dip-readings/2");
+
+    expect(res.status).toBe(200);
+
+    const calls = sendPushToAllSpy.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+
+    const [title, body] = calls[0];
+    expect(title).toBe("LDO Dip Deleted");
+    expect(body).not.toContain("undefined");
+    expect(body).toBe("LDO dip reading #2 deleted");
   });
 });
