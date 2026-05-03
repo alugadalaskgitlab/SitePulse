@@ -3475,6 +3475,62 @@ export async function registerRoutes(
         }
       }
 
+      // ── Consumption Summary — fetches the same index row used by the
+      // on-screen PlantDailyReports page so displayed numbers align closely.
+      {
+        const [idxRow] = await storage.getDailyPlantReportIndex({
+          from: date, to: date, plant: summary.plantName,
+        });
+
+        section("Consumption Summary");
+
+        const fmtL = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)} L`);
+
+        // LDO breakdown: heating sessions / boiler meter / dryer meter
+        const ldoHeatingL: number | null = idxRow?.ldoHeatingSessionLitres ?? null;
+        const sessionsCount: number = idxRow?.sessionsCount ?? 0;
+        const ldoBoilerL: number | null = idxRow?.ldoBoilerLitres ?? null;
+        const ldoDryerL: number | null = idxRow?.ldoDryerLitres ?? null;
+
+        doc.fontSize(10).font("Helvetica-Bold").text("LDO:", { continued: false });
+        doc.fontSize(10).font("Helvetica").text(
+          `  Heating: ${ldoHeatingL != null ? `${ldoHeatingL.toFixed(1)} L${sessionsCount > 0 ? ` (${sessionsCount}x)` : ""}` : "\u2014"}    Boiler: ${fmtL(ldoBoilerL)}    Dryer: ${fmtL(ldoDryerL)}`
+        );
+
+        // DG diesel from heating sessions (same source as index); show session count when available
+        const dgDieselL: number | null = idxRow?.dgDieselLitres ?? null;
+        const dgSessionStr = sessionsCount > 0 ? ` (${sessionsCount}x)` : "";
+        doc.fontSize(10).font("Helvetica-Bold").text("DG Diesel:", { continued: true });
+        doc.font("Helvetica").text(`  ${dgDieselL != null ? `${dgDieselL.toFixed(1)} L${dgSessionStr}` : "\u2014"}`);
+
+        // Bitumen: template vs actual (from shift-log dip readings, same as index)
+        const dipToMt = (dip: number | null | undefined): number =>
+          dip == null ? 0 : getVolumeAtDepth(dip) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+        const t1Opening = idxRow?.bitumenTank1OpeningDip ?? null;
+        const t1Closing = idxRow?.bitumenTank1ClosingDip ?? null;
+        const t2Opening = idxRow?.bitumenTank2OpeningDip ?? null;
+        const t2Closing = idxRow?.bitumenTank2ClosingDip ?? null;
+        const t1HasBoth = t1Opening != null && t1Closing != null;
+        const t2HasBoth = t2Opening != null && t2Closing != null;
+        let bitumenActualMt: number | null = null;
+        if (t1HasBoth || t2HasBoth) {
+          bitumenActualMt = 0;
+          if (t1HasBoth) bitumenActualMt += Math.max(0, dipToMt(t1Opening) - dipToMt(t1Closing));
+          if (t2HasBoth) bitumenActualMt += Math.max(0, dipToMt(t2Opening) - dipToMt(t2Closing));
+        }
+        const templateMt: number | null = idxRow?.bitumenTemplateMt ?? null;
+        const bitVarPct = (bitumenActualMt != null && templateMt != null && templateMt > 0)
+          ? (bitumenActualMt - templateMt) / templateMt * 100
+          : null;
+        const templateStr = templateMt != null ? `${templateMt.toFixed(2)} MT` : "\u2014";
+        const actualStr = bitumenActualMt != null ? `${bitumenActualMt.toFixed(2)} MT` : "\u2014";
+        const varStr = bitVarPct != null
+          ? ` (${bitVarPct > 0 ? "+" : ""}${bitVarPct.toFixed(1)}%)`
+          : "";
+        doc.fontSize(10).font("Helvetica-Bold").text("Bitumen:", { continued: true });
+        doc.font("Helvetica").text(`  Tmpl ${templateStr}  /  Actual ${actualStr}${varStr}`);
+      }
+
       section(`LDO Consumption (Shift Meters / Source: ${summary.ldo.source})`);
       line("Boiler Meter (L)", summary.ldo.consumedT1L?.toFixed(1) ?? "—");
       line("Dryer Meter (L)", summary.ldo.consumedT2L?.toFixed(1) ?? "—");
