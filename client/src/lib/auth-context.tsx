@@ -35,6 +35,8 @@ type AuthContextType = {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  // true when a non-admin user is authenticated (all non-admin session users are managers)
+  isManager: boolean;
   // Permission helpers — admin always returns true.
   sectionCan: (section: SectionKey, action: Action) => boolean;
   sectionVisible: (section: SectionKey) => boolean;
@@ -133,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading: meQuery.isLoading,
       isAuthenticated: !!u,
       isAdmin: !!u?.isAdmin,
+      isManager: !!u && !u.isAdmin,
       sectionCan,
       sectionVisible,
       refresh: async () => {

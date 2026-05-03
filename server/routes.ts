@@ -668,9 +668,11 @@ export async function registerRoutes(
     }
   });
 
-  // Admin & Manager guide — PDF download (admin only)
+  // Admin & Manager guide — PDF download (admin and manager).
+  // All authenticated session users are either admin or manager; assertAuthed
+  // is the correct gate here — see the role derivation in push subscribe route.
   app.get('/api/admin/admin-guide.pdf', async (req, res) => {
-    if (!assertAdmin(req, res)) return;
+    if (!assertAuthed(req, res)) return;
     const plantName = typeof req.query.plant === 'string' ? req.query.plant.trim() : undefined;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="plant-admin-guide.pdf"');

@@ -30,7 +30,7 @@ export default function Plant() {
   const tabParam = params.get("tab");
 
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
-  const { sectionVisible, isAdmin } = useAuth();
+  const { sectionVisible, isAdmin, isManager } = useAuth();
 
   const { data: allPlantSettings } = useQuery<PlantSettings[]>({
     queryKey: ['/api/plant-module/plant-settings'],
@@ -93,20 +93,22 @@ export default function Plant() {
             <p className="text-muted-foreground mt-1">Hot-mix plant operations and material tracking</p>
           </div>
         </div>
-        {isAdmin && (
+        {(isAdmin || isManager) && (
           <div className="flex gap-2">
-            <a
-              href={primaryPlantName
-                ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
-                : '/api/admin/operator-manual.pdf'}
-              download="plant-operator-guide.pdf"
-              data-testid="link-operator-manual"
-            >
-              <Button variant="outline" size="sm" className="gap-2">
-                <Download className="w-4 h-4" />
-                Operator Guide (PDF)
-              </Button>
-            </a>
+            {isAdmin && (
+              <a
+                href={primaryPlantName
+                  ? `/api/admin/operator-manual.pdf?plant=${encodeURIComponent(primaryPlantName)}`
+                  : '/api/admin/operator-manual.pdf'}
+                download="plant-operator-guide.pdf"
+                data-testid="link-operator-manual"
+              >
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Download className="w-4 h-4" />
+                  Operator Guide (PDF)
+                </Button>
+              </a>
+            )}
             <a
               href={primaryPlantName
                 ? `/api/admin/admin-guide.pdf?plant=${encodeURIComponent(primaryPlantName)}`
