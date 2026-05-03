@@ -18,8 +18,8 @@ import { useEffect, useRef, useCallback, useState } from "react";
  *
  * Returns:
  *   clearDraft  — call this on successful submit to remove the stored draft
- *   wasRestored — true if a draft was found and `onRestore` was called; lets the component
- *                 know it should not overwrite the restored state with fresh server data
+ *   wasRestored — true if a draft was found and `onRestore` was called for the CURRENT key;
+ *                 automatically reset to false when enabled/key changes (e.g. on navigation)
  */
 export function useFormDraft<T>(
   key: string,
@@ -29,24 +29,34 @@ export function useFormDraft<T>(
 ): { clearDraft: () => void; wasRestored: boolean } {
   const { enabled = true, initialized = true } = options;
   const [wasRestored, setWasRestored] = useState(false);
+
+  // selfInitializedRef: true once the restore check has finished for the current key.
   const selfInitializedRef = useRef(false);
+  // justRestoredRef: true during the same effect flush that called onRestore.
+  // Prevents the autosave effect from writing the pre-restore (stale) `data`
+  // snapshot back to localStorage in the same commit.
+  const justRestoredRef = useRef(false);
 
   const onRestoreRef = useRef(onRestore);
   onRestoreRef.current = onRestore;
 
   // Restore on mount, and whenever key or enabled changes.
-  // Runs before the auto-save effect (declared first = earlier in the commit).
+  // Always resets wasRestored first so stale true values never carry across
+  // navigation to a different date/record/key.
   useEffect(() => {
-    if (!enabled || !key) {
-      selfInitializedRef.current = false;
-      return;
-    }
+    // Reset everything for the new key / disabled state.
+    justRestoredRef.current = false;
     selfInitializedRef.current = false;
+    setWasRestored(false);
+
+    if (!enabled || !key) return;
+
     try {
       const raw = localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as T;
         onRestoreRef.current(parsed);
+        justRestoredRef.current = true;
         setWasRestored(true);
       }
     } catch {}
@@ -57,8 +67,16 @@ export function useFormDraft<T>(
   // Auto-save whenever `data` changes. Guarded until:
   //   • the restore check has run (selfInitializedRef)
   //   • any external initialization gate has cleared (initialized prop)
+  //   • this is not the same render flush that just called onRestore
+  //     (justRestoredRef prevents writing pre-restore stale data back over a good draft)
   useEffect(() => {
     if (!enabled || !key || !selfInitializedRef.current || !initialized) return;
+    if (justRestoredRef.current) {
+      // Same flush as restore — skip. Clear the flag so the next render
+      // (which will carry the restored data) saves correctly.
+      justRestoredRef.current = false;
+      return;
+    }
     try {
       localStorage.setItem(key, JSON.stringify(data));
     } catch {}
@@ -68,6 +86,7 @@ export function useFormDraft<T>(
     if (!key) return;
     try { localStorage.removeItem(key); } catch {}
     selfInitializedRef.current = false;
+    justRestoredRef.current = false;
     setWasRestored(false);
   }, [key]);
 
