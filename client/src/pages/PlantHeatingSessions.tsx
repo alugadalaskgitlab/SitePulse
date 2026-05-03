@@ -777,7 +777,7 @@ export default function PlantHeatingSessions() {
                     <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-lg">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
-                        <span className="text-sm text-muted-foreground">(no sessions logged)</span>
+                        <span className="text-sm font-medium text-foreground/60">(no sessions logged)</span>
                       {(reconByDate.get(date) || []).map(rec => (
                         <Link
                           key={rec.plantName}
