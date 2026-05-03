@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -5,6 +6,7 @@ import { format } from "date-fns";
 import { ChevronLeft, Factory, Package, Trash2, Loader2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +17,7 @@ export default function PlantDetails() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const canEdit = sectionCan("plant_daily_reports", "edit");
   const canDelete = isAdmin;
   const { appendOrigin, getPlantBackLink } = useOrigin();
@@ -78,9 +81,7 @@ export default function PlantDetails() {
   };
 
   const handleDeleteClick = () => {
-    if (confirm("Are you sure you want to delete this plant report? This cannot be undone.")) {
-      deleteMutation.mutate();
-    }
+    setShowDeleteConfirm(true);
   };
 
   if (isLoading) {
@@ -225,6 +226,27 @@ export default function PlantDetails() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Plant Report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this plant report? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteMutation.mutate()}
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

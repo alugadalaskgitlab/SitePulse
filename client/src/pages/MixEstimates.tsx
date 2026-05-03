@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ChevronLeft, ChevronRight, Trash2, ExternalLink, Calculator, Calendar, Plus, Building2, ChevronDown, ChevronUp, Pencil, Check, X, FlaskConical, LogOut, Power } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ export default function MixEstimates({ embedded = false }: Props) {
   const [editingContractor, setEditingContractor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [showComparison, setShowComparison] = useState(false);
+  const [confirmDeleteEst, setConfirmDeleteEst] = useState<MixEstimate | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const role = readEstimatorRole();
@@ -96,8 +98,7 @@ export default function MixEstimates({ embedded = false }: Props) {
   });
 
   function handleDelete(est: MixEstimate) {
-    if (!confirm(`Delete "${est.name}"?`)) return;
-    deleteMutation.mutate(est.id);
+    setConfirmDeleteEst(est);
   }
 
   function loadInCalculator(est: MixEstimate) {
@@ -517,6 +518,27 @@ export default function MixEstimates({ embedded = false }: Props) {
           <MixComparisonContent data={comparisonData} />
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDeleteEst !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteEst(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDeleteEst ? `Delete "${confirmDeleteEst.name}"? This cannot be undone.` : "Are you sure you want to delete this estimate?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-estimate">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (confirmDeleteEst) { deleteMutation.mutate(confirmDeleteEst.id); setConfirmDeleteEst(null); } }}
+              data-testid="button-confirm-delete-estimate"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

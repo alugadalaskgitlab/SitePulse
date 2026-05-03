@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import { ChevronLeft, Users, Loader2, ShieldAlert, Search, Wand2, Combine, Sparkles, X, Undo2, History, Download } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
@@ -605,6 +606,7 @@ export default function PlantShiftLogManpowerReview() {
   const [selectedDismissedIds, setSelectedDismissedIds] = useState<Record<number, boolean>>({});
   const [bulkRestoring, setBulkRestoring] = useState(false);
   const [purgeOlderDays, setPurgeOlderDays] = useState<string>("90");
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const { data: vendorNames } = useQuery<string[]>({
     queryKey: ["/api/vendor-bills/vendor-names"],
@@ -936,49 +938,56 @@ export default function PlantShiftLogManpowerReview() {
     if (ids.length === 0) return;
     const activities = filteredAliasActivity.filter(a => ids.includes(a.id));
     if (activities.length === 0) return;
-    const ok = window.confirm(
-      `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}?\n\nThis will undo every checked add/remove in one step. Continue?`
-    );
-    if (!ok) return;
-    setBulkRevertingAlias(true);
-    try {
-      const payload = activities.map(a => ({
-        action: a.action,
-        kind: a.kind,
-        tokenA: a.tokenA,
-        tokenB: a.tokenB,
-      }));
-      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          actor: actor.trim(),
-          activities: payload,
-        }),
-      });
-      if (res.status === 401) { window.location.assign("/login"); return; }
-      if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
-      const actorSnapshot = actor.trim();
-      toast({
-        title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
-        description: result.reverted > 0
-          ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
-          : "All selected entries were already undone.",
-        action: result.reverted > 0 ? (
-          <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
-            Undo
-          </ToastAction>
-        ) : undefined,
-      });
-      setSelectedAliasActivityIds({});
-      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
-    } catch (err) {
-      toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
-    } finally {
-      setBulkRevertingAlias(false);
-    }
+    setConfirmDialog({
+      open: true,
+      title: "Revert Alias Changes",
+      description: `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}? This will undo every checked add/remove in one step.`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        void (async () => {
+          setBulkRevertingAlias(true);
+          try {
+            const payload = activities.map(a => ({
+              action: a.action,
+              kind: a.kind,
+              tokenA: a.tokenA,
+              tokenB: a.tokenB,
+            }));
+            const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                actor: actor.trim(),
+                activities: payload,
+              }),
+            });
+            if (res.status === 401) { window.location.assign("/login"); return; }
+            if (!res.ok) throw new Error(await res.text());
+            const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
+            const actorSnapshot = actor.trim();
+            toast({
+              title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
+              description: result.reverted > 0
+                ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
+                : "All selected entries were already undone.",
+              action: result.reverted > 0 ? (
+                <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
+                  Undo
+                </ToastAction>
+              ) : undefined,
+            });
+            setSelectedAliasActivityIds({});
+            await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+          } catch (err) {
+            toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
+          } finally {
+            setBulkRevertingAlias(false);
+          }
+        })();
+      },
+    });
+    return;
   };
 
   const bulkRevertFromFeed = async () => {
@@ -995,49 +1004,56 @@ export default function PlantShiftLogManpowerReview() {
     if (ids.length === 0) return;
     const activities = (recentAliasActivity || []).filter(a => ids.includes(a.id));
     if (activities.length === 0) return;
-    const ok = window.confirm(
-      `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}?\n\nThis will undo every checked add/remove in one step. Continue?`
-    );
-    if (!ok) return;
-    setBulkRevertingAlias(true);
-    try {
-      const payload = activities.map(a => ({
-        action: a.action,
-        kind: a.kind,
-        tokenA: a.tokenA,
-        tokenB: a.tokenB,
-      }));
-      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          actor: actor.trim(),
-          activities: payload,
-        }),
-      });
-      if (res.status === 401) { window.location.assign("/login"); return; }
-      if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
-      const actorSnapshot = actor.trim();
-      toast({
-        title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
-        description: result.reverted > 0
-          ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
-          : "All selected entries were already undone.",
-        action: result.reverted > 0 ? (
-          <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
-            Undo
-          </ToastAction>
-        ) : undefined,
-      });
-      setSelectedAliasActivityIds({});
-      await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
-    } catch (err) {
-      toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
-    } finally {
-      setBulkRevertingAlias(false);
-    }
+    setConfirmDialog({
+      open: true,
+      title: "Revert Alias Changes",
+      description: `Revert ${activities.length} alias change${activities.length === 1 ? "" : "s"}? This will undo every checked add/remove in one step.`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        void (async () => {
+          setBulkRevertingAlias(true);
+          try {
+            const payload = activities.map(a => ({
+              action: a.action,
+              kind: a.kind,
+              tokenA: a.tokenA,
+              tokenB: a.tokenB,
+            }));
+            const res = await fetch("/api/plant-module/shift-log-manpower/bulk-revert-alias-activity", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                actor: actor.trim(),
+                activities: payload,
+              }),
+            });
+            if (res.status === 401) { window.location.assign("/login"); return; }
+            if (!res.ok) throw new Error(await res.text());
+            const result = (await res.json()) as { reverted: number; skipped: number; appliedActivities: Array<{ action: "add" | "remove"; kind: "alias" | "suppress_learned" | "suppress_learned_pair"; tokenA: string; tokenB: string }> };
+            const actorSnapshot = actor.trim();
+            toast({
+              title: result.reverted > 0 ? "Bulk revert complete" : "Nothing to revert",
+              description: result.reverted > 0
+                ? `${result.reverted} change${result.reverted === 1 ? "" : "s"} reverted${result.skipped > 0 ? `, ${result.skipped} already undone` : ""}.`
+                : "All selected entries were already undone.",
+              action: result.reverted > 0 ? (
+                <ToastAction altText="Undo bulk revert" onClick={() => undoBulkRevert(result.appliedActivities, actorSnapshot)}>
+                  Undo
+                </ToastAction>
+              ) : undefined,
+            });
+            setSelectedAliasActivityIds({});
+            await Promise.all([fetchCustomAliases(), fetchRecentMerges()]);
+          } catch (err) {
+            toast({ title: "Bulk revert failed", description: getErrorMessage(err), variant: "destructive" });
+          } finally {
+            setBulkRevertingAlias(false);
+          }
+        })();
+      },
+    });
+    return;
   };
 
   const suppressLearnedFullPair = async (a: string, b: string) => {
@@ -1149,36 +1165,38 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
     }
-    if (typeof window !== "undefined") {
-      const fromList = m.fromNames.join(", ");
-      const ok = window.confirm(
-        `Undo this merge?\n\n` +
-        `${fromList} → ${m.toName}\n` +
-        `${m.rowCount} shift-log row(s) will be reverted to their original worker name, contractor, category and gender.`
-      );
-      if (!ok) return;
-    }
-    setUndoingId(m.id);
-    try {
-      const res = await fetch("/api/plant-module/shift-log-manpower/undo-merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ actor: actor.trim(), batchId: m.id }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { restored: number };
-      toast({
-        title: "Merge undone",
-        description: `Restored ${result.restored} shift-log row(s) to their original worker info.`,
-      });
-      await Promise.all([fetchRecentMerges(), fetchRows(), fetchLearnedAliases()]);
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
-    } catch (err) {
-      toast({ title: "Undo failed", description: getErrorMessage(err), variant: "destructive" });
-    } finally {
-      setUndoingId(null);
-    }
+    const fromList = m.fromNames.join(", ");
+    setConfirmDialog({
+      open: true,
+      title: "Undo Merge",
+      description: `Undo this merge? ${fromList} → ${m.toName}. ${m.rowCount} shift-log row(s) will be reverted to their original worker name, contractor, category and gender.`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        void (async () => {
+          setUndoingId(m.id);
+          try {
+            const res = await fetch("/api/plant-module/shift-log-manpower/undo-merge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ actor: actor.trim(), batchId: m.id }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const result = (await res.json()) as { restored: number };
+            toast({
+              title: "Merge undone",
+              description: `Restored ${result.restored} shift-log row(s) to their original worker info.`,
+            });
+            await Promise.all([fetchRecentMerges(), fetchRows(), fetchLearnedAliases()]);
+            queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
+          } catch (err) {
+            toast({ title: "Undo failed", description: getErrorMessage(err), variant: "destructive" });
+          } finally {
+            setUndoingId(null);
+          }
+        })();
+      },
+    });
   };
 
   const fetchRows = async () => {
@@ -1431,40 +1449,45 @@ export default function PlantShiftLogManpowerReview() {
       toast({ title: "Enter your name (operator) for the audit log", variant: "destructive" });
       return;
     }
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(`${opts.description}\n\nThese name-pairs will be allowed to suggest themselves again. Continue?`);
-      if (!ok) return;
-    }
-    setBulkRestoring(true);
-    try {
-      const res = await fetch("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-
-          actor: actor.trim(),
-          plantName: dismissalsScopeKey,
-          ids: opts.ids,
-          olderThanDays: opts.olderThanDays,
-        }),
-      });
-      if (res.status === 401) { window.location.assign("/login"); return; }
-      if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { removed: number };
-      toast({
-        title: result.removed > 0 ? "Dismissals restored" : "No dismissals matched",
-        description: result.removed > 0
-          ? `${result.removed} name-pair${result.removed === 1 ? "" : "s"} can suggest themselves again.`
-          : "Nothing matched the selected criteria.",
-      });
-      setSelectedDismissedIds({});
-      await fetchDismissedPairs();
-    } catch (err) {
-      toast({ title: "Bulk restore failed", description: getErrorMessage(err), variant: "destructive" });
-    } finally {
-      setBulkRestoring(false);
-    }
+    setConfirmDialog({
+      open: true,
+      title: "Restore Dismissals",
+      description: `${opts.description} These name-pairs will be allowed to suggest themselves again.`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        void (async () => {
+          setBulkRestoring(true);
+          try {
+            const res = await fetch("/api/plant-module/shift-log-manpower/bulk-restore-dismissed-pairs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                actor: actor.trim(),
+                plantName: dismissalsScopeKey,
+                ids: opts.ids,
+                olderThanDays: opts.olderThanDays,
+              }),
+            });
+            if (res.status === 401) { window.location.assign("/login"); return; }
+            if (!res.ok) throw new Error(await res.text());
+            const result = (await res.json()) as { removed: number };
+            toast({
+              title: result.removed > 0 ? "Dismissals restored" : "No dismissals matched",
+              description: result.removed > 0
+                ? `${result.removed} name-pair${result.removed === 1 ? "" : "s"} can suggest themselves again.`
+                : "Nothing matched the selected criteria.",
+            });
+            setSelectedDismissedIds({});
+            await fetchDismissedPairs();
+          } catch (err) {
+            toast({ title: "Bulk restore failed", description: getErrorMessage(err), variant: "destructive" });
+          } finally {
+            setBulkRestoring(false);
+          }
+        })();
+      },
+    });
   };
 
   const restoreDismissedPair = async (p: DismissedPair) => {
@@ -3070,6 +3093,24 @@ export default function PlantShiftLogManpowerReview() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => { if (!open) setConfirmDialog(prev => ({ ...prev, open: false })); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-confirm">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDialog.onConfirm}
+              data-testid="button-confirm-action"
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

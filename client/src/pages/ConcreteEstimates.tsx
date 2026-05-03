@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ChevronLeft, Trash2, Calendar, Plus, Building2, ChevronDown, ChevronUp, Copy, ExternalLink, Search, LogOut } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +37,7 @@ export default function ConcreteEstimates() {
   const [search, setSearch] = useState("");
   const [structureFilter, setStructureFilter] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const role = readEstimatorRole();
   const canEdit = role === "admin";
@@ -323,7 +325,7 @@ export default function ConcreteEstimates() {
                                       variant="ghost"
                                       size="sm"
                                       className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2"
-                                      onClick={() => { if (!confirm(`Delete "${est.name}"?`)) return; deleteMutation.mutate(est.id); }}
+                                      onClick={() => setConfirmDeleteId(est.id)}
                                       data-testid={`btn-delete-${est.id}`}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -343,6 +345,27 @@ export default function ConcreteEstimates() {
           })}
         </div>
       )}
+
+      <AlertDialog open={confirmDeleteId !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this estimate? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-estimate">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (confirmDeleteId !== null) { deleteMutation.mutate(confirmDeleteId); setConfirmDeleteId(null); } }}
+              data-testid="button-confirm-delete-estimate"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
