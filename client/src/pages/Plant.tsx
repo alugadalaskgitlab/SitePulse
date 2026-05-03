@@ -429,6 +429,7 @@ function StockDetailsTab() {
   const [dieselCorrDate, setDieselCorrDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dieselCorrNotes, setDieselCorrNotes] = useState("");
   const [showDieselCorrForm, setShowDieselCorrForm] = useState(false);
+  const [dispatchNotesBackfillResult, setDispatchNotesBackfillResult] = useState<{ updated: number; skipped: number; errors: number } | null>(null);
 
   const appendRoleAndTab = (path: string) => {
     const base = appendOrigin(path);
@@ -472,6 +473,23 @@ function StockDetailsTab() {
     const b = dieselPartyBalances.find(b => String(b.partyId) === dieselCorrPartyId);
     return b ? dieselBalToL(b.balance, b.uom) : 0;
   })();
+
+  const dispatchNotesBackfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/backfill-dispatch-notes", {});
+      return res.json();
+    },
+    onSuccess: (result: { updated: number; skipped: number; errors: number }) => {
+      setDispatchNotesBackfillResult(result);
+      toast({
+        title: "Dispatch notes backfill complete",
+        description: `Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Backfill failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const dieselCorrectionMutation = useMutation({
     mutationFn: async (data: { materialId: number; partyId: number; physicalQty: number; uom: string; date: string; notes: string; correctedBy: string }) => {
@@ -842,6 +860,32 @@ function StockDetailsTab() {
                 </CardContent>
               </Card>
             </Link>
+
+            <Card className="h-full" data-testid="card-dispatch-notes-backfill">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-lg">Backfill Dispatch Notes</h3>
+                  <p className="text-sm text-muted-foreground">Update old ledger notes to "Mix — Site" format</p>
+                  {dispatchNotesBackfillResult && (
+                    <p className="text-xs text-green-700 dark:text-green-400 mt-1" data-testid="text-dispatch-notes-backfill-result">
+                      Updated: {dispatchNotesBackfillResult.updated} · Skipped: {dispatchNotesBackfillResult.skipped} · Errors: {dispatchNotesBackfillResult.errors}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={dispatchNotesBackfillMutation.isPending}
+                  onClick={() => dispatchNotesBackfillMutation.mutate()}
+                  data-testid="button-run-dispatch-notes-backfill"
+                >
+                  {dispatchNotesBackfillMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Run"}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </>
       )}

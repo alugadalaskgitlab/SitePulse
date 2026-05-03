@@ -310,6 +310,10 @@ export interface IStorage {
   // and correct the over-counted HLC borrow entries (Task #427).
   applyLedgerGapFix427(): Promise<{ alreadyApplied: boolean; markersInserted: number; hlcEntriesUpdated: number; reconciled: { updated: number; created: number; errors: number } }>;
 
+  // Backfill historical dispatch ledger notes from old patterns (e.g. "Aggregate dispatch (Party)")
+  // to the new "MixName — DeliveryLocation" format introduced in Task #406.
+  backfillDispatchNotes(): Promise<{ updated: number; skipped: number; errors: number }>;
+
   // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
   rebuildDispatchLedgerForTemplate(opts: {
     templateId: number;
@@ -12694,6 +12698,82 @@ export class DatabaseStorage implements IStorage {
       .where(eq(plantShiftLogs.id, id))
       .returning({ id: plantShiftLogs.id });
     return result.length > 0;
+  }
+
+  // Task #409 — Backfill historical dispatch ledger notes from old patterns like
+  // "Aggregate dispatch (Party)", "Bitumen dispatch", "LDO dispatch" to the new
+  // "MixName — DeliveryLocation" format introduced in Task #406.
+  // Idempotent: rows that already carry the new format are left untouched because
+  // they won't match the old LIKE patterns.
+  async backfillDispatchNotes(): Promise<{ updated: number; skipped: number; errors: number }> {
+    const oldStyleRows = await db
+      .select({
+        id: stockLedger.id,
+        referenceId: stockLedger.referenceId,
+        notes: stockLedger.notes,
+      })
+      .from(stockLedger)
+      .where(
+        and(
+          eq(stockLedger.transactionType, 'dispatch'),
+          isNotNull(stockLedger.referenceId),
+          or(
+            sql`${stockLedger.notes} LIKE 'Aggregate dispatch%'`,
+            sql`${stockLedger.notes} LIKE 'Bitumen dispatch%'`,
+            sql`${stockLedger.notes} LIKE 'LDO dispatch%'`,
+          ),
+        ),
+      );
+
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const row of oldStyleRows) {
+      try {
+        const [dispatch] = await db
+          .select({
+            mixTemplateId: truckDispatches.mixTemplateId,
+            deliveryLocation: truckDispatches.deliveryLocation,
+          })
+          .from(truckDispatches)
+          .where(eq(truckDispatches.id, row.referenceId!))
+          .limit(1);
+
+        if (!dispatch) {
+          skipped++;
+          continue;
+        }
+
+        const [template] = await db
+          .select({ name: mixTemplates.name })
+          .from(mixTemplates)
+          .where(eq(mixTemplates.id, dispatch.mixTemplateId))
+          .limit(1);
+
+        if (!template) {
+          skipped++;
+          continue;
+        }
+
+        const newNotes = [template.name, dispatch.deliveryLocation?.trim() || null]
+          .filter(Boolean)
+          .join(' — ');
+
+        await db
+          .update(stockLedger)
+          .set({ notes: newNotes })
+          .where(eq(stockLedger.id, row.id));
+
+        updated++;
+      } catch (err) {
+        console.error(`[backfillDispatchNotes] Error updating ledger row ${row.id}:`, err);
+        errors++;
+      }
+    }
+
+    console.info(`[backfillDispatchNotes] done — updated: ${updated}, skipped: ${skipped}, errors: ${errors}`);
+    return { updated, skipped, errors };
   }
 
   // One-time idempotent migration: fix the 6MM Down opening stock that was originally

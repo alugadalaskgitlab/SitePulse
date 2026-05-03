@@ -3055,6 +3055,22 @@ export async function registerRoutes(
     rows: z.array(ldoDipBackfillRowSchema).min(1),
   });
 
+  app.post("/api/admin/backfill-dispatch-notes", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const actor = currentUserName(req);
+      const result = await storage.backfillDispatchNotes();
+      console.info(
+        `[backfillDispatchNotes] actor="${actor.trim()}" at=${new Date().toISOString()} ` +
+        `updated=${result.updated} skipped=${result.skipped} errors=${result.errors}`
+      );
+      res.json({ message: "Dispatch notes backfill complete", ...result });
+    } catch (err: any) {
+      console.error("Failed to backfill dispatch notes", err);
+      res.status(500).json({ message: err?.message || "Failed to backfill dispatch notes" });
+    }
+  });
+
   app.get("/api/plant-module/ldo-dip-backfill", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
