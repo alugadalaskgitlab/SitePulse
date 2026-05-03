@@ -76,29 +76,39 @@ export default function PlantLdoLogs() {
       .then((s: DailySummary) => {
         const dirty = dirtyWhileFetchingRef.current;
         const filled = new Set<'openingStock' | 'ldoReceived' | 'ldoConsumed' | 'closingStock' | 'tonsProduced'>();
-        // LDO fields are only meter-derived when the date has actual flow readings
-        if (s.hasFlowReadings) {
-          if (s.openingStockL !== null && !dirty.has('openingStock')) {
+        // Always write all managed fields (or clear them) so switching dates
+        // never leaves stale values from a previous date. Fields the user
+        // typed while the fetch was in-flight (dirty) are left as-is.
+        if (!dirty.has('openingStock')) {
+          if (s.hasFlowReadings && s.openingStockL !== null) {
             setOpeningStock(String(Math.round(s.openingStockL * 10) / 10));
             filled.add('openingStock');
-          }
-          if (s.ldoReceivedL > 0 && !dirty.has('ldoReceived')) {
+          } else { setOpeningStock(""); }
+        }
+        if (!dirty.has('ldoReceived')) {
+          if (s.hasFlowReadings && s.ldoReceivedL > 0) {
             setLdoReceived(String(Math.round(s.ldoReceivedL * 10) / 10));
             filled.add('ldoReceived');
-          }
-          if (s.ldoConsumedL > 0 && !dirty.has('ldoConsumed')) {
+          } else { setLdoReceived(""); }
+        }
+        if (!dirty.has('ldoConsumed')) {
+          if (s.hasFlowReadings && s.ldoConsumedL > 0) {
             setLdoConsumed(String(Math.round(s.ldoConsumedL * 10) / 10));
             filled.add('ldoConsumed');
-          }
-          if (s.closingStockL !== null && !dirty.has('closingStock')) {
+          } else { setLdoConsumed(""); }
+        }
+        if (!dirty.has('closingStock')) {
+          if (s.hasFlowReadings && s.closingStockL !== null) {
             setClosingStock(String(Math.round(s.closingStockL * 10) / 10));
             filled.add('closingStock');
-          }
+          } else { setClosingStock(""); }
         }
-        // Tons produced comes from dispatches (independent of flow readings)
-        if (s.tonsProducedMT > 0 && !dirty.has('tonsProduced')) {
-          setTonsProduced(String(Math.round(s.tonsProducedMT * 1000) / 1000));
-          filled.add('tonsProduced');
+        // Tons produced: clear to "" when zero so stale positive doesn't linger
+        if (!dirty.has('tonsProduced')) {
+          if (s.tonsProducedMT > 0) {
+            setTonsProduced(String(Math.round(s.tonsProducedMT * 1000) / 1000));
+            filled.add('tonsProduced');
+          } else { setTonsProduced(""); }
         }
         setAutoFilledFields(filled);
         setSummaryLoading(false);
