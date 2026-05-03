@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useRoute } from "wouter";
+import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,6 +78,7 @@ export default function PlantHeatingSessions() {
   const { toast } = useToast();
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
+  const [, setLocation] = useLocation();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const today = format(new Date(), "yyyy-MM-dd");
@@ -98,6 +99,13 @@ export default function PlantHeatingSessions() {
     if (!raw) return null;
     const n = parseInt(raw, 10);
     return Number.isFinite(n) ? n : null;
+  }, []);
+  // When opened from a shift log's "Add/Edit Sessions" button, a returnTo URL
+  // is passed so we can navigate back to that shift log after saving.
+  const returnToFromUrl = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("returnTo") || null;
   }, []);
   const autoOpenedRef = useRef(false);
 
@@ -535,6 +543,11 @@ export default function PlantHeatingSessions() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/daily-reports"] });
       toast({ title: "Heating session saved" });
       setDialogOpen(false);
+      // If opened from a shift log, return there so the user lands back on
+      // their in-progress log rather than staying on the sessions list.
+      if (returnToFromUrl) {
+        setLocation(returnToFromUrl);
+      }
     },
     onError: (err: any) => {
       toast({ title: "Save failed", description: err.message, variant: "destructive" });
@@ -673,9 +686,18 @@ export default function PlantHeatingSessions() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href={backLink}>
-            <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
-          </Link>
+          {returnToFromUrl ? (
+            <Link href={returnToFromUrl}>
+              <Button variant="ghost" size="sm" className="gap-1 pl-1" data-testid="button-back-to-shift-log">
+                <ChevronLeft className="w-5 h-5" />
+                Back to Shift Log{dateParam ? ` — ${format(parseISO(dateParam), "d MMM yyyy")}` : ""}
+              </Button>
+            </Link>
+          ) : (
+            <Link href={backLink}>
+              <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
+            </Link>
+          )}
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2"><Flame className="w-6 h-6 text-orange-600" />Bitumen Heating Sessions</h1>
             <p className="text-sm text-muted-foreground">Per-session boiler runs — night pre-heating + day-time maintenance</p>

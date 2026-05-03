@@ -90,6 +90,10 @@ export default function PlantShiftLog() {
   }, []);
   const [dryerHighlighted, setDryerHighlighted] = useState(false);
   const dryerFocusRef = useRef<HTMLDivElement | null>(null);
+  // Draft persistence refs — allow restoring form state after navigating away
+  // (e.g. to heating sessions) and returning without data loss.
+  const draftAppliedRef = useRef(false);
+  const formInitializedRef = useRef(false);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
   const [idleEvents, setIdleEvents] = useState<IdleRow[]>([]);
@@ -331,6 +335,49 @@ export default function PlantShiftLog() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Restore draft: runs once on mount. If a draft exists for this date+plant
+  // (e.g. the user navigated away to heating sessions without saving), apply
+  // it so no typed data is lost. The draft takes priority over server data.
+  useEffect(() => {
+    if (viewMode !== "edit" || !date) return;
+    const key = `sl-draft:${date}:${plantName}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d.shiftCode !== undefined) setShiftCode(d.shiftCode);
+      if (d.plantStartTime !== undefined) setPlantStartTime(d.plantStartTime);
+      if (d.plantStopTime !== undefined) setPlantStopTime(d.plantStopTime);
+      if (d.weather !== undefined) setWeather(d.weather);
+      if (d.ambientTemp !== undefined) setAmbientTemp(d.ambientTemp);
+      if (d.operatorName !== undefined) setOperatorName(d.operatorName);
+      if (d.supervisorName !== undefined) setSupervisorName(d.supervisorName);
+      if (d.remarks !== undefined) setRemarks(d.remarks);
+      if (d.bitumenTank1Temp !== undefined) setBitumenTank1Temp(d.bitumenTank1Temp);
+      if (d.bitumenTank2Temp !== undefined) setBitumenTank2Temp(d.bitumenTank2Temp);
+      if (d.bitumenTank1OpeningDip !== undefined) setBitumenTank1OpeningDip(d.bitumenTank1OpeningDip);
+      if (d.bitumenTank1ClosingDip !== undefined) setBitumenTank1ClosingDip(d.bitumenTank1ClosingDip);
+      if (d.bitumenTank2OpeningDip !== undefined) setBitumenTank2OpeningDip(d.bitumenTank2OpeningDip);
+      if (d.bitumenTank2ClosingDip !== undefined) setBitumenTank2ClosingDip(d.bitumenTank2ClosingDip);
+      if (d.ldoTank1OpeningMeter !== undefined) setLdoTank1OpeningMeter(d.ldoTank1OpeningMeter);
+      if (d.ldoTank1ClosingMeter !== undefined) setLdoTank1ClosingMeter(d.ldoTank1ClosingMeter);
+      if (d.ldoTank2OpeningMeter !== undefined) setLdoTank2OpeningMeter(d.ldoTank2OpeningMeter);
+      if (d.ldoTank2ClosingMeter !== undefined) setLdoTank2ClosingMeter(d.ldoTank2ClosingMeter);
+      if (d.ldoTank1OpeningDip !== undefined) setLdoTank1OpeningDip(d.ldoTank1OpeningDip);
+      if (d.ldoTank1ClosingDip !== undefined) setLdoTank1ClosingDip(d.ldoTank1ClosingDip);
+      if (d.ldoTank2OpeningDip !== undefined) setLdoTank2OpeningDip(d.ldoTank2OpeningDip);
+      if (d.ldoTank2ClosingDip !== undefined) setLdoTank2ClosingDip(d.ldoTank2ClosingDip);
+      if (d.dryerFedFrom !== undefined) setDryerFedFrom(d.dryerFedFrom);
+      if (d.boilerRunsDuringProduction !== undefined) setBoilerRunsDuringProduction(d.boilerRunsDuringProduction);
+      if (d.noMainPlantOps !== undefined) setNoMainPlantOps(d.noMainPlantOps);
+      if (Array.isArray(d.manpower)) setManpower(d.manpower);
+      if (Array.isArray(d.idleEvents)) setIdleEvents(d.idleEvents);
+      draftAppliedRef.current = true;
+      formInitializedRef.current = true;
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount only
+
   const openEditForDate = (d: string, plant: string, row?: PlantShiftLogRow) => {
     setDate(d);
     const resolvedPlant = plant || "Main Plant";
@@ -369,13 +416,58 @@ export default function PlantShiftLog() {
   };
 
   useEffect(() => {
+    if (isLoading) return; // Wait until server data has resolved
     if (!existing) {
       setSavedId(null);
       setIsFinalized(0);
+      formInitializedRef.current = true; // New record — form is ready for input
+      return;
+    }
+    if (draftAppliedRef.current) {
+      // Draft from localStorage takes priority over server data. Sync only
+      // the identity/finalization fields that the draft doesn't carry.
+      setSavedId(existing.id);
+      setIsFinalized(existing.isFinalized || 0);
       return;
     }
     populateFormFromLog(existing);
-  }, [existing, populateFormFromLog]);
+    formInitializedRef.current = true;
+  }, [existing, isLoading, populateFormFromLog]);
+
+  // Auto-save draft: whenever the form changes while in edit mode, persist the
+  // entire field set to localStorage keyed by date+plant. The draft restore
+  // effect (above) will apply it on the next mount for the same date+plant.
+  useEffect(() => {
+    if (viewMode !== "edit" || !date || !formInitializedRef.current) return;
+    const key = `sl-draft:${date}:${plantName}`;
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        shiftCode, plantStartTime, plantStopTime, weather, ambientTemp,
+        operatorName, supervisorName, remarks,
+        bitumenTank1Temp, bitumenTank2Temp,
+        bitumenTank1OpeningDip, bitumenTank1ClosingDip,
+        bitumenTank2OpeningDip, bitumenTank2ClosingDip,
+        ldoTank1OpeningMeter, ldoTank1ClosingMeter,
+        ldoTank2OpeningMeter, ldoTank2ClosingMeter,
+        ldoTank1OpeningDip, ldoTank1ClosingDip,
+        ldoTank2OpeningDip, ldoTank2ClosingDip,
+        dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
+        manpower, idleEvents,
+      }));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, date, plantName,
+    shiftCode, plantStartTime, plantStopTime, weather, ambientTemp,
+    operatorName, supervisorName, remarks,
+    bitumenTank1Temp, bitumenTank2Temp,
+    bitumenTank1OpeningDip, bitumenTank1ClosingDip,
+    bitumenTank2OpeningDip, bitumenTank2ClosingDip,
+    ldoTank1OpeningMeter, ldoTank1ClosingMeter,
+    ldoTank2OpeningMeter, ldoTank2ClosingMeter,
+    ldoTank1OpeningDip, ldoTank1ClosingDip,
+    ldoTank2OpeningDip, ldoTank2ClosingDip,
+    dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
+    manpower, idleEvents]);
 
   // Scroll + briefly highlight the "Which tank feeds the dryer?" section when
   // navigated here via ?focus=dryerFedFrom (i.e. from a mismatch fix link).
@@ -523,6 +615,10 @@ export default function PlantShiftLog() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs/by-date", date, plantName] });
+      // Clear the draft now that data is safely on the server.
+      try { localStorage.removeItem(`sl-draft:${date}:${plantName}`); } catch {}
+      draftAppliedRef.current = false;
+      formInitializedRef.current = false;
       setSavedId(data.id);
       setIsFinalized(1);
       toast({ title: "Shift log saved" });
@@ -1354,11 +1450,18 @@ export default function PlantShiftLog() {
                 {filteredHeatingSessionsForShiftLog.length}
               </Badge>
             </CardTitle>
-            <Link href={appendPlantContext(`/plant/heating-sessions/${date}`, { defaultTab: "operations" })}>
-              <Button size="sm" variant="outline" data-testid="button-open-heating-sessions">
-                <Plus className="w-4 h-4 mr-1" />Add / Edit Sessions
-              </Button>
-            </Link>
+            {(() => {
+              const base = appendPlantContext(`/plant/heating-sessions/${date}`, { defaultTab: "operations" });
+              const sep = base.includes("?") ? "&" : "?";
+              const returnTo = `/plant/shift-log/${date}?plant=${encodeURIComponent(plantName)}`;
+              return (
+                <Link href={`${base}${sep}returnTo=${encodeURIComponent(returnTo)}`}>
+                  <Button size="sm" variant="outline" data-testid="button-open-heating-sessions">
+                    <Plus className="w-4 h-4 mr-1" />Add / Edit Sessions
+                  </Button>
+                </Link>
+              );
+            })()}
           </div>
           {/* Task #254 — make the attribution rule visible to operators. */}
           <p className="text-xs text-muted-foreground">
