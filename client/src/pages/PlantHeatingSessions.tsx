@@ -623,10 +623,11 @@ export default function PlantHeatingSessions() {
   });
 
   const openNew = () => {
-    // When arriving from a shift log, seed the new session with the originating
-    // date and plant so it is immediately attributed to the right production day.
-    const seedDate = dateParam || today;
-    const seedPlant = originPlantFromUrl || "Main Plant";
+    // When arriving from a shift log (returnToFromUrl is set), seed the new session
+    // with the originating date and plant so it is immediately attributed to the
+    // right production day. Direct access keeps the original today/Main Plant defaults.
+    const seedDate = returnToFromUrl ? (dateParam || today) : today;
+    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : "Main Plant";
     setForm({ ...emptyForm(seedDate), plantName: seedPlant });
     setDialogOpen(true);
   };
