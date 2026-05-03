@@ -256,6 +256,13 @@ export interface IStorage {
   
   getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
   createLdoLog(log: InsertLdoLog): Promise<LdoLog>;
+  getLdoDailySummary(date: string, plantName?: string): Promise<{
+    openingStockL: number | null;
+    ldoReceivedL: number;
+    ldoConsumedL: number;
+    closingStockL: number | null;
+    tonsProducedMT: number;
+  }>;
   
   getStockBalances(partyId?: number): Promise<StockBalance[]>;
   updateStockBalance(partyId: number | null, materialId: number, quantity: number, uom: string): Promise<StockBalance>;
@@ -2995,6 +3002,134 @@ export class DatabaseStorage implements IStorage {
     }).returning();
     
     return result;
+  }
+
+  async getLdoDailySummary(date: string, plantName?: string): Promise<{
+    openingStockL: number | null;
+    ldoReceivedL: number;
+    ldoConsumedL: number;
+    closingStockL: number | null;
+    tonsProducedMT: number;
+  }> {
+    // Fetch all flow readings (no date cap) so computeTankStock works correctly
+    const conds: any[] = [];
+    if (plantName) conds.push(eq(ldoFlowReadings.plantName, plantName));
+    const allReadings = await db.select().from(ldoFlowReadings)
+      .where(conds.length ? and(...conds) : undefined);
+
+    // Helper: effective stock tank (mirrors ldoStock.ts)
+    const effectiveTank = (r: LdoFlowReading) => {
+      if (r.tankNumber === 2 && r.dryerFedFrom === "TANK_1") return 1;
+      return r.tankNumber;
+    };
+
+    // Port of computeTankStock — applied to a given slice of readings
+    const computeTank = (readings: LdoFlowReading[], tankNum: number): number | null => {
+      const physicalTank = readings.filter(r => r.tankNumber === tankNum);
+      const stockEntries = physicalTank
+        .filter(r => r.readingType === "stock")
+        .sort((a, b) => {
+          const dc = b.date.localeCompare(a.date);
+          return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+        });
+      if (stockEntries.length === 0) return null;
+
+      const latest = stockEntries[0];
+      const baseL = latest.quantityLiters || 0;
+      const baseDT = `${latest.date}T${latest.time || "00:00"}`;
+
+      const receiptsSince = physicalTank
+        .filter(r => r.readingType === "receipt" && `${r.date}T${r.time || "00:00"}` > baseDT)
+        .reduce((s, r) => s + (r.quantityLiters || 0), 0);
+
+      type Pair = { openings: LdoFlowReading[]; closings: LdoFlowReading[] };
+      const pairs = new Map<string, Pair>();
+      for (const r of readings) {
+        if (effectiveTank(r) !== tankNum) continue;
+        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
+        if (r.date < latest.date) continue;
+        if (r.date === latest.date && `${r.date}T${r.time || "00:00"}` <= baseDT) continue;
+        const key = r.sourceShiftLogId != null
+          ? `S${r.sourceShiftLogId}::${r.tankNumber}`
+          : r.sourceHeatingSessionId != null
+            ? `H${r.sourceHeatingSessionId}::${r.tankNumber}`
+            : `D${r.date}::${r.tankNumber}`;
+        let p = pairs.get(key);
+        if (!p) { p = { openings: [], closings: [] }; pairs.set(key, p); }
+        if (r.readingType === "opening") p.openings.push(r);
+        else p.closings.push(r);
+      }
+
+      let consumed = 0;
+      pairs.forEach(p => {
+        if (!p.openings.length || !p.closings.length) return;
+        const openVal = [...p.openings].sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0].meterReading;
+        const closeVal = [...p.closings].sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0].meterReading;
+        const diff = closeVal - openVal;
+        if (diff > 0) consumed += diff;
+      });
+
+      return baseL + receiptsSince - consumed;
+    };
+
+    // Opening stock = tank balance at END of the day before `date`
+    const beforeDate = allReadings.filter(r => r.date < date);
+    const t1Open = computeTank(beforeDate, 1);
+    const t2Open = computeTank(beforeDate, 2);
+    const openingStockL = (t1Open === null && t2Open === null)
+      ? null
+      : (t1Open || 0) + (t2Open || 0);
+
+    // Readings for the target date only
+    const dayReadings = allReadings.filter(r => r.date === date);
+
+    // LDO received = sum of receipt rows for the date (both tanks)
+    const ldoReceivedL = dayReadings
+      .filter(r => r.readingType === "receipt")
+      .reduce((s, r) => s + (r.quantityLiters || 0), 0);
+
+    // LDO consumed = meter-pair diffs across both tanks for the date
+    const computeDayConsumption = (readings: LdoFlowReading[]): number => {
+      type Pair = { openings: LdoFlowReading[]; closings: LdoFlowReading[] };
+      const pairs = new Map<string, Pair>();
+      for (const r of readings) {
+        if (r.readingType !== "opening" && r.readingType !== "closing") continue;
+        const et = effectiveTank(r);
+        const key = r.sourceShiftLogId != null
+          ? `S${r.sourceShiftLogId}::${et}`
+          : r.sourceHeatingSessionId != null
+            ? `H${r.sourceHeatingSessionId}::${et}`
+            : `D${r.date}::${et}`;
+        let p = pairs.get(key);
+        if (!p) { p = { openings: [], closings: [] }; pairs.set(key, p); }
+        if (r.readingType === "opening") p.openings.push(r);
+        else p.closings.push(r);
+      }
+      let consumed = 0;
+      pairs.forEach(p => {
+        if (!p.openings.length || !p.closings.length) return;
+        const openVal = [...p.openings].sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0].meterReading;
+        const closeVal = [...p.closings].sort((a, b) => (b.time || "").localeCompare(a.time || ""))[0].meterReading;
+        const diff = closeVal - openVal;
+        if (diff > 0) consumed += diff;
+      });
+      return consumed;
+    };
+    const ldoConsumedL = computeDayConsumption(dayReadings);
+
+    const closingStockL = openingStockL !== null
+      ? openingStockL + ldoReceivedL - ldoConsumedL
+      : null;
+
+    // Tons produced = sum of loadWeight from dispatches for the date
+    const dispConds: any[] = [eq(truckDispatches.date, date)];
+    if (plantName) dispConds.push(eq(truckDispatches.plantName, plantName));
+    const dispatches = await db.select({ loadWeight: truckDispatches.loadWeight })
+      .from(truckDispatches)
+      .where(and(...dispConds));
+    const tonsProducedMT = dispatches.reduce((s, d) => s + (d.loadWeight || 0), 0);
+
+    return { openingStockL, ldoReceivedL, ldoConsumedL, closingStockL, tonsProducedMT };
   }
 
   // Stock Balances

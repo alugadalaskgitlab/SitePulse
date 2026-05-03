@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -20,6 +20,14 @@ import type { LdoLog, LdoFlowReading } from "@shared/schema";
 import { DEFAULT_LDO_NORM } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
+
+type DailySummary = {
+  openingStockL: number | null;
+  ldoReceivedL: number;
+  ldoConsumedL: number;
+  closingStockL: number | null;
+  tonsProducedMT: number;
+};
 
 export default function PlantLdoLogs() {
   const { toast } = useToast();
@@ -35,6 +43,40 @@ export default function PlantLdoLogs() {
   const [ldoConsumed, setLdoConsumed] = useState("");
   const [closingStock, setClosingStock] = useState("");
   const [tonsProduced, setTonsProduced] = useState("");
+  const [autoFilled, setAutoFilled] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Task #479 — Auto-fill from meter readings when dialog opens or date changes
+  useEffect(() => {
+    if (!dialogOpen) return;
+    if (!date) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setSummaryLoading(true);
+    setAutoFilled(false);
+
+    fetch(`/api/plant-module/ldo-logs/daily-summary?date=${date}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<DailySummary> : Promise.reject())
+      .then((s: DailySummary) => {
+        const hasAnyData = s.openingStockL !== null || s.ldoReceivedL > 0 || s.ldoConsumedL > 0 || s.tonsProducedMT > 0;
+        if (hasAnyData) {
+          setOpeningStock(s.openingStockL !== null ? String(Math.round(s.openingStockL * 10) / 10) : "");
+          setLdoReceived(s.ldoReceivedL > 0 ? String(Math.round(s.ldoReceivedL * 10) / 10) : "");
+          setLdoConsumed(s.ldoConsumedL > 0 ? String(Math.round(s.ldoConsumedL * 10) / 10) : "");
+          setClosingStock(s.closingStockL !== null ? String(Math.round(s.closingStockL * 10) / 10) : "");
+          setTonsProduced(s.tonsProducedMT > 0 ? String(Math.round(s.tonsProducedMT * 1000) / 1000) : "");
+          setAutoFilled(true);
+        }
+        setSummaryLoading(false);
+      })
+      .catch(() => setSummaryLoading(false));
+
+    return () => controller.abort();
+  }, [dialogOpen, date]);
 
   // Task #255 — Pull the LDO flow-meter ledger so the header strip can
   // show the live per-tank usable balance via `computeTankStock`. Same
@@ -69,6 +111,8 @@ export default function PlantLdoLogs() {
     setLdoConsumed("");
     setClosingStock("");
     setTonsProduced("");
+    setAutoFilled(false);
+    setSummaryLoading(false);
   };
 
   const handleSubmit = () => {
@@ -339,34 +383,83 @@ export default function PlantLdoLogs() {
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Date</Label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-ldo-date" />
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => { setDate(e.target.value); setAutoFilled(false); }}
+                  data-testid="input-ldo-date"
+                />
               </div>
+
+              {summaryLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Computing values from meter readings…
+                </div>
+              )}
+
+              {autoFilled && !summaryLoading && (
+                <div className="flex items-center gap-2 p-2.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-300" data-testid="banner-autofilled">
+                  <Zap className="w-3.5 h-3.5 shrink-0" />
+                  Auto-filled from meter readings — adjust any value before saving.
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Opening Stock (L)</Label>
-                  <Input type="number" step="0.1" value={openingStock} onChange={(e) => setOpeningStock(e.target.value)} placeholder="0" data-testid="input-ldo-opening" />
+                  <Input
+                    type="number" step="0.1"
+                    value={openingStock}
+                    onChange={(e) => { setOpeningStock(e.target.value); setAutoFilled(false); }}
+                    placeholder="0"
+                    data-testid="input-ldo-opening"
+                  />
                 </div>
                 <div>
                   <Label>LDO Received (L)</Label>
-                  <Input type="number" step="0.1" value={ldoReceived} onChange={(e) => setLdoReceived(e.target.value)} placeholder="0" data-testid="input-ldo-received" />
+                  <Input
+                    type="number" step="0.1"
+                    value={ldoReceived}
+                    onChange={(e) => { setLdoReceived(e.target.value); setAutoFilled(false); }}
+                    placeholder="0"
+                    data-testid="input-ldo-received"
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>LDO Consumed (L)</Label>
-                  <Input type="number" step="0.1" value={ldoConsumed} onChange={(e) => setLdoConsumed(e.target.value)} placeholder="0" data-testid="input-ldo-consumed" />
+                  <Input
+                    type="number" step="0.1"
+                    value={ldoConsumed}
+                    onChange={(e) => { setLdoConsumed(e.target.value); setAutoFilled(false); }}
+                    placeholder="0"
+                    data-testid="input-ldo-consumed"
+                  />
                 </div>
                 <div>
                   <Label>Closing Stock (L)</Label>
-                  <Input type="number" step="0.1" value={closingStock} onChange={(e) => setClosingStock(e.target.value)} placeholder="0" data-testid="input-ldo-closing" />
+                  <Input
+                    type="number" step="0.1"
+                    value={closingStock}
+                    onChange={(e) => { setClosingStock(e.target.value); setAutoFilled(false); }}
+                    placeholder="0"
+                    data-testid="input-ldo-closing"
+                  />
                 </div>
               </div>
 
               <div>
                 <Label>Tons Produced (MT)</Label>
-                <Input type="number" step="0.1" value={tonsProduced} onChange={(e) => setTonsProduced(e.target.value)} placeholder="Total production for the day" data-testid="input-tons-produced" />
+                <Input
+                  type="number" step="0.1"
+                  value={tonsProduced}
+                  onChange={(e) => { setTonsProduced(e.target.value); setAutoFilled(false); }}
+                  placeholder="Total production for the day"
+                  data-testid="input-tons-produced"
+                />
               </div>
 
               {tonsProduced && (
