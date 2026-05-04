@@ -9244,18 +9244,18 @@ export class DatabaseStorage implements IStorage {
   async backfillLdoReceiptsFromMaterialReceipts(): Promise<{ receiptsScanned: number; rowsInserted: number; rowsSkipped: number; errors: number }> {
     const result = { receiptsScanned: 0, rowsInserted: 0, rowsSkipped: 0, errors: 0 };
     try {
-      // Find the LDO material ID
-      const [ldoMaterial] = await db.select().from(plantMaterials)
-        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
-        .limit(1);
-      if (!ldoMaterial) {
+      // Find all LDO material IDs (guard against duplicate master rows)
+      const ldoMaterials = await db.select({ id: plantMaterials.id }).from(plantMaterials)
+        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`);
+      if (ldoMaterials.length === 0) {
         console.log("backfillLdoReceiptsFromMaterialReceipts: No LDO material found in plant_materials, skipping.");
         return result;
       }
+      const ldoMaterialIds = ldoMaterials.map(m => m.id);
 
-      // Fetch all LDO material receipts
+      // Fetch all LDO material receipts (across all matching material IDs)
       const ldoReceipts = await db.select().from(materialReceipts)
-        .where(eq(materialReceipts.materialId, ldoMaterial.id))
+        .where(inArray(materialReceipts.materialId, ldoMaterialIds))
         .orderBy(asc(materialReceipts.id));
       result.receiptsScanned = ldoReceipts.length;
 
