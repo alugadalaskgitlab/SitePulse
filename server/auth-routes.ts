@@ -453,14 +453,12 @@ export function registerAuthRoutes(app: Express) {
       const updated = await updateUserProfile(id, input);
       if (!updated) return res.status(404).json({ error: "not_found" });
 
-      // When notifications are explicitly turned off, delete all push
-      // subscriptions for this user so stale rows don't silently re-activate
-      // if the flag is later re-enabled. The user must subscribe again.
-      if (input.notificationsEnabled === false && current.notificationsEnabled === true) {
-        await storage.deletePushSubscriptionsByUserId(id).catch((e) =>
-          console.error("[PATCH /api/auth/users/:id] push cleanup error:", e),
-        );
-      }
+      // Subscriptions are intentionally kept in the DB when notifications are
+      // toggled off. getActivePushSubscriptions() already filters by
+      // notificationsEnabled at send-time, so no push will be delivered while
+      // the flag is off. Keeping subscriptions means toggling back on
+      // immediately restores delivery without requiring every device to
+      // re-subscribe.
 
       res.json(toSafeUser(updated));
     } catch (err) {
