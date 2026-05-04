@@ -651,6 +651,7 @@ export interface IStorage {
   updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined>;
   togglePersonnelActive(id: number): Promise<Personnel | undefined>;
   deletePersonnel(id: number): Promise<boolean>;
+  hasPersonnelUsageHistory(id: number): Promise<boolean>;
 
   // Activity Personnel
   saveActivityPersonnel(progressEntryId: number, personnelIds: number[]): Promise<void>;
@@ -7417,6 +7418,28 @@ export class DatabaseStorage implements IStorage {
   async deletePersonnel(id: number): Promise<boolean> {
     const [result] = await db.delete(personnel).where(eq(personnel.id, id)).returning();
     return !!result;
+  }
+
+  async hasPersonnelUsageHistory(id: number): Promise<boolean> {
+    // Check DPR / activity-personnel junction (FK reference)
+    const [dprRow] = await db.select({ id: activityPersonnel.id })
+      .from(activityPersonnel)
+      .where(eq(activityPersonnel.personnelId, id))
+      .limit(1);
+    if (dprRow) return true;
+
+    // Check shift-log manpower by name (shift logs store names as text, no FK)
+    const [person] = await db.select({ name: personnel.name })
+      .from(personnel)
+      .where(eq(personnel.id, id))
+      .limit(1);
+    if (!person) return false;
+
+    const [shiftRow] = await db.select({ id: plantShiftLogManpower.id })
+      .from(plantShiftLogManpower)
+      .where(sql`UPPER(TRIM(${plantShiftLogManpower.name})) = UPPER(TRIM(${person.name}))`)
+      .limit(1);
+    return !!shiftRow;
   }
 
   // Activity Personnel

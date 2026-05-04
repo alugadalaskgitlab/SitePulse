@@ -2709,6 +2709,8 @@ function PersonnelMasterSection() {
       setDeletePersonId(null);
       if (isForbiddenError(error)) {
         toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else if (error?.status === 409 || error?.message?.includes("409")) {
+        toast({ title: "Cannot delete personnel", description: "This person has shift-log or DPR history. Use the Deactivate option instead to hide them from active lists.", variant: "destructive" });
       } else if (error?.status === 404 || error?.message?.includes("404") || error?.message?.toLowerCase().includes("not found")) {
         queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string) === "/api/personnel" });
         toast({ title: "Not found", description: "This personnel record no longer exists.", variant: "destructive" });

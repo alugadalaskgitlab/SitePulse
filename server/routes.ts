@@ -388,7 +388,12 @@ export async function registerRoutes(
   app.delete("/api/personnel/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deletePersonnel(Number(req.params.id));
+      const id = Number(req.params.id);
+      const hasHistory = await storage.hasPersonnelUsageHistory(id);
+      if (hasHistory) {
+        return res.status(409).json({ message: "This personnel record has existing shift-log or DPR entries and cannot be deleted. Use the Deactivate option instead to hide them from active lists." });
+      }
+      const deleted = await storage.deletePersonnel(id);
       if (!deleted) return res.status(404).json({ message: "Personnel not found" });
       res.status(204).send();
     } catch (err) {
