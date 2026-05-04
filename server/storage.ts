@@ -6974,6 +6974,8 @@ export class DatabaseStorage implements IStorage {
 
         for (const rt of ["opening", "closing"] as const) {
           const value = rt === "opening" ? row.opening : row.closing;
+          // undefined means "leave this reading type untouched" (not the same as null = delete)
+          if (value === undefined) continue;
           const sameType = existing.filter(e => e.readingType === rt);
           const protectedRow = sameType.find(e =>
             e.sourceShiftLogId != null

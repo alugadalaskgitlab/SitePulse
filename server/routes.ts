@@ -2960,8 +2960,8 @@ export async function registerRoutes(
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
     plant: z.string().trim().min(1),
     tank: z.union([z.literal(1), z.literal(2)]),
-    opening: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
-    closing: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
+    opening: z.union([z.number().finite().nonnegative(), z.null()]).optional(),
+    closing: z.union([z.number().finite().nonnegative(), z.null()]).optional(),
     remarks: z.union([z.string(), z.null()]).optional().transform(v => (v && v.trim()) ? v.trim() : null),
     dryerFedFrom: z.enum(["TANK_1", "TANK_2"]).optional(),
   });

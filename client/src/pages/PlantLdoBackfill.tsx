@@ -52,8 +52,8 @@ interface BackfillPayloadRow {
   date: string;
   plant: string;
   tank: TankNumber;
-  opening: number | null;
-  closing: number | null;
+  opening?: number | null;
+  closing?: number | null;
   remarks: string;
   dryerFedFrom?: "TANK_1" | "TANK_2";
 }
@@ -376,23 +376,20 @@ export default function PlantLdoBackfill() {
         const t: TankCells = tank === 1 ? row.tank1 : row.tank2;
         const opening = t.opening.value === "" ? null : Number(t.opening.value);
         const closing = t.closing.value === "" ? null : Number(t.closing.value);
-        const openProtected = isProtected(t.opening);
-        const closeProtected = isProtected(t.closing);
-        // Push if there is any editable cell with a value to write OR a
-        // previously backfilled cell that may need clearing.
-        // Unedited "manual" cells (source is still "manual") are skipped —
-        // they only get written when explicitly changed by the user (source
-        // flips to "backfill" in updateCell when typed into).
-        const editableHadValue =
-          (!openProtected && (t.opening.source === "backfill" || (t.opening.source !== "manual" && opening !== null)))
-          || (!closeProtected && (t.closing.source === "backfill" || (t.closing.source !== "manual" && closing !== null)));
-        if (!editableHadValue) continue;
+        // Only include this tank if at least one cell was explicitly edited by
+        // the user. Cells where edited=true have their source flipped to
+        // "backfill" in updateCell, so the `edited` flag is the authoritative
+        // signal. Unedited manual cells are omitted (undefined → backend skips
+        // them), preventing silent conversion of manual rows to backfill.
+        const openEdited = t.opening.edited === true;
+        const closeEdited = t.closing.edited === true;
+        if (!openEdited && !closeEdited) continue;
         payload.push({
           date: row.date,
           plant,
           tank,
-          opening: openProtected ? null : opening,
-          closing: closeProtected ? null : closing,
+          ...(openEdited ? { opening } : {}),
+          ...(closeEdited ? { closing } : {}),
           remarks: row.remarks || "",
           ...(tank === 2 ? { dryerFedFrom: row.dryerFedFrom2 } : {}),
         });
@@ -596,9 +593,9 @@ export default function PlantLdoBackfill() {
                     ];
                     const canDelete = rowHasDeletable(row);
                     const isPendingDelete = pendingDeletes.has(row.date);
-                    const allProtected = [row.tank1.opening, row.tank1.closing, row.tank2.opening, row.tank2.closing]
-                      .filter(c => c.source !== "empty")
-                      .every(c => isProtected(c));
+                    const nonEmptyCells = [row.tank1.opening, row.tank1.closing, row.tank2.opening, row.tank2.closing]
+                      .filter(c => c.source !== "empty");
+                    const allProtected = nonEmptyCells.length > 0 && nonEmptyCells.every(c => isProtected(c));
                     const tooltipMsg = allProtected
                       ? "Readings are from shift logs or heating sessions — correct them there instead"
                       : "No readings on this date to delete";
