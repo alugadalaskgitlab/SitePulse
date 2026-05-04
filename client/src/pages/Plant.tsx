@@ -2348,6 +2348,12 @@ function EquipmentMasterSection() {
       setDeleteEquipmentId(null);
       if (isForbiddenError(error)) {
         toast({ title: "Permission denied", description: NO_PERMISSION_DESCRIPTION, variant: "destructive" });
+      } else if (error?.status === 409 || error?.message?.includes("409")) {
+        toast({
+          title: "Cannot delete — usage history exists",
+          description: "This equipment has existing usage records. Use the Deactivate toggle instead to hide it from active lists.",
+          variant: "destructive",
+        });
       } else if (error?.status === 404 || error?.message?.includes("404") || error?.message?.toLowerCase().includes("not found")) {
         queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment"] });
         toast({ title: "Not found", description: "This equipment record no longer exists.", variant: "destructive" });

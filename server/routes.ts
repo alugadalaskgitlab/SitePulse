@@ -1226,7 +1226,12 @@ export async function registerRoutes(
   app.delete("/api/plant-module/equipment/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deleteEquipment(Number(req.params.id));
+      const id = Number(req.params.id);
+      const hasHistory = await storage.hasEquipmentUsageHistory(id);
+      if (hasHistory) {
+        return res.status(409).json({ message: "This equipment has existing usage records and cannot be deleted. Use the Deactivate option instead to hide it from active lists." });
+      }
+      const deleted = await storage.deleteEquipment(id);
       if (!deleted) return res.status(404).json({ message: "Equipment not found" });
       res.status(204).send();
     } catch (err) {

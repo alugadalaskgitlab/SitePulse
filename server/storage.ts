@@ -250,6 +250,7 @@ export interface IStorage {
   createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType>;
   updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined>;
   deleteEquipment(id: number): Promise<boolean>;
+  hasEquipmentUsageHistory(id: number): Promise<boolean>;
   
   // Plant Module Phase-1 - Transactions
   getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]>;
@@ -2032,6 +2033,19 @@ export class DatabaseStorage implements IStorage {
   async deleteEquipment(id: number): Promise<boolean> {
     const [result] = await db.update(equipmentMaster).set({ isActive: 0 }).where(eq(equipmentMaster.id, id)).returning();
     return !!result;
+  }
+
+  async hasEquipmentUsageHistory(id: number): Promise<boolean> {
+    const [usageRow] = await db.select({ id: equipmentUsage.id })
+      .from(equipmentUsage)
+      .where(eq(equipmentUsage.equipmentId, id))
+      .limit(1);
+    if (usageRow) return true;
+    const [logRow] = await db.select({ id: equipmentLogs.id })
+      .from(equipmentLogs)
+      .where(eq(equipmentLogs.equipmentId, id))
+      .limit(1);
+    return !!logRow;
   }
 
   // ============================================
