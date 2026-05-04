@@ -909,7 +909,7 @@ export default function PlantLdoMismatch() {
     URL.revokeObjectURL(url);
   }
 
-  function handleExportPdf() {
+  async function handleExportPdf() {
     const fmtVal = (n: number | null | undefined, digits = 1) =>
       n == null || isNaN(n as number) ? "—" : Number(n).toFixed(digits);
     const fmtDelta = (d: number | null) => {
@@ -1018,6 +1018,24 @@ export default function PlantLdoMismatch() {
       : effectiveDateFrom;
     const filename = `LDO_Reconciliation_${safePlant}_${fileDateLabel}.pdf`;
     const blob = doc.output("blob");
+
+    if ("showSaveFilePicker" in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: "PDF Files", accept: { "application/pdf": [".pdf"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+        // Fall through to standard download
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1026,6 +1044,7 @@ export default function PlantLdoMismatch() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    toast({ title: "File download started", description: "Check your Downloads or Files app." });
   }
 
   const backLink = appendPlantContext(`/plant/heating-sessions/${routeDate}`, {
