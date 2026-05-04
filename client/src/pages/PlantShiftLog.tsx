@@ -1140,6 +1140,29 @@ export default function PlantShiftLog() {
                                   ? <Badge variant="default" className="bg-green-600 text-xs px-1.5 py-0">✓ Done</Badge>
                                   : <Badge variant="secondary" className="text-xs px-1.5 py-0">Draft</Badge>
                                 }
+                                {mismatch && mismatch.shiftLogValue && (mismatch.shiftLogId === null || mismatch.shiftLogId === r.id) && (() => {
+                                  const slValue = mismatch.shiftLogValue;
+                                  const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => setFixDialog({
+                                        open: true,
+                                        target: {
+                                          mode: "shift-log",
+                                          recordId: r.id,
+                                          date: r.date,
+                                          currentValue: slValue,
+                                          suggestedValue: oppValue,
+                                        },
+                                      })}
+                                      className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-xs font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
+                                      data-testid={`badge-dryer-mismatch-${r.id}`}
+                                    >
+                                      ⚠ Dryer source conflict
+                                    </button>
+                                  );
+                                })()}
                               </div>
                               {/* Line 2 — consumption metrics */}
                               <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1.5">
