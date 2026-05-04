@@ -88,6 +88,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.backfillLdoReceiptsFromMaterialReceipts();
+  } catch (e) {
+    console.error("Startup: Failed to backfill LDO flow readings from material receipts:", e);
+  }
+
+  try {
     const result = await storage.migrate6mmDownUomFix();
     console.log(`Startup: ${result.message}`);
   } catch (e) {

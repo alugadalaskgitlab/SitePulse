@@ -187,6 +187,16 @@ import {
 // needs to be tuned without touching the comparison logic.
 const LDO_DIVERGENCE_THRESHOLD_LITERS = 300;
 
+// Task #490 — Convert an LDO material receipt quantity to litres using the same
+// logic as convertLdoToL() on the frontend (PlantLdoFlowMeter.tsx).
+function convertLdoQtyToLiters(quantity: number, uom: string): number {
+  const u = uom.toLowerCase().trim();
+  if (u === "liters" || u === "litres" || u === "l") return quantity;
+  if (u === "kg") return quantity / LDO_DENSITY_KG_PER_LITER;
+  if (u === "mt" || u === "ton" || u === "tons" || u === "t") return (quantity * 1000) / LDO_DENSITY_KG_PER_LITER;
+  return quantity; // fallback: treat as litres
+}
+
 export interface IStorage {
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
@@ -407,6 +417,10 @@ export interface IStorage {
   // Backfill LDO Flow Meter ledger rows (tagged sourceHeatingSessionId) from historical bitumen heating sessions.
   // Idempotent: drops rows already tagged for each session, re-inserts opening/closing if values are present.
   backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }>;
+
+  // Backfill LDO Flow Meter ledger receipt rows from historical LDO material receipts that don't already
+  // have a linked flow reading (sourceMaterialReceiptId). Idempotent: skips already-linked rows.
+  backfillLdoReceiptsFromMaterialReceipts(): Promise<{ receiptsScanned: number; rowsInserted: number; rowsSkipped: number; errors: number }>;
 
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
   listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
@@ -2104,6 +2118,23 @@ export class DatabaseStorage implements IStorage {
         uom: stockUom,
         notes: conversionNote,
       });
+
+      // Task #490 — If this is an LDO receipt, insert a linked ldo_flow_readings
+      // receipt row so the flow-meter tracker balance reflects the delivery.
+      if (material && material.name.toUpperCase().trim() === "LDO") {
+        const qtyL = convertLdoQtyToLiters(receipt.quantity, receipt.uom);
+        await tx.insert(ldoFlowReadings).values({
+          date: receipt.date,
+          time: receipt.time || null,
+          tankNumber: receipt.tankNumber ?? 1,
+          meterReading: 0,
+          readingType: "receipt",
+          quantityLiters: qtyL,
+          notes: `AUTO FROM MATERIAL RECEIPT #${result.id}`,
+          plantName: receipt.plantName ?? "Main Plant",
+          sourceMaterialReceiptId: result.id,
+        });
+      }
       
       return result;
     });
@@ -2206,6 +2237,31 @@ export class DatabaseStorage implements IStorage {
         uom: newStockUom,
         notes: conversionNote,
       });
+
+      // Task #490 — Sync the linked ldo_flow_readings receipt row.
+      // Drop any existing linked row then re-insert if the (new) material is LDO.
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialReceiptId, id));
+
+      const [newMaterialForLdo] = await tx.select().from(plantMaterials)
+        .where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      if (newMaterialForLdo && newMaterialForLdo.name.toUpperCase().trim() === "LDO") {
+        const newDate = receipt.date ?? existing.date;
+        const newTime = receipt.time !== undefined ? receipt.time : existing.time;
+        const newTankNumber = receipt.tankNumber !== undefined ? (receipt.tankNumber ?? 1) : (existing.tankNumber ?? 1);
+        const newPlantName = receipt.plantName ?? existing.plantName ?? "Main Plant";
+        const qtyL = convertLdoQtyToLiters(newQuantity, newUom);
+        await tx.insert(ldoFlowReadings).values({
+          date: newDate,
+          time: newTime || null,
+          tankNumber: newTankNumber,
+          meterReading: 0,
+          readingType: "receipt",
+          quantityLiters: qtyL,
+          notes: `AUTO FROM MATERIAL RECEIPT #${id}`,
+          plantName: newPlantName,
+          sourceMaterialReceiptId: id,
+        });
+      }
       
       // Update the receipt record
       const [result] = await tx.update(materialReceipts).set(updates).where(eq(materialReceipts.id, id)).returning();
@@ -2248,6 +2304,9 @@ export class DatabaseStorage implements IStorage {
         eq(stockLedger.transactionType, "receipt"),
         eq(stockLedger.referenceId, id)
       ));
+
+      // Task #490 — Remove linked ldo_flow_readings receipt row if present.
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialReceiptId, id));
       
       // Delete the receipt
       await tx.delete(materialReceipts).where(eq(materialReceipts.id, id));
@@ -9177,6 +9236,63 @@ export class DatabaseStorage implements IStorage {
       console.log(`backfillLdoFlowReadingsFromHeatingSessions: scanned ${result.sessionsScanned}, sessions updated ${result.sessionsUpdated}, rows inserted ${result.rowsInserted}, skipped ${result.sessionsSkipped}, errors ${result.errors}`);
     } catch (err) {
       console.error('backfillLdoFlowReadingsFromHeatingSessions: Fatal error:', err);
+      result.errors++;
+    }
+    return result;
+  }
+
+  async backfillLdoReceiptsFromMaterialReceipts(): Promise<{ receiptsScanned: number; rowsInserted: number; rowsSkipped: number; errors: number }> {
+    const result = { receiptsScanned: 0, rowsInserted: 0, rowsSkipped: 0, errors: 0 };
+    try {
+      // Find the LDO material ID
+      const [ldoMaterial] = await db.select().from(plantMaterials)
+        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+        .limit(1);
+      if (!ldoMaterial) {
+        console.log("backfillLdoReceiptsFromMaterialReceipts: No LDO material found in plant_materials, skipping.");
+        return result;
+      }
+
+      // Fetch all LDO material receipts
+      const ldoReceipts = await db.select().from(materialReceipts)
+        .where(eq(materialReceipts.materialId, ldoMaterial.id))
+        .orderBy(asc(materialReceipts.id));
+      result.receiptsScanned = ldoReceipts.length;
+
+      // Collect already-linked material receipt IDs
+      const existingLinked = await db.select({ sourceMaterialReceiptId: ldoFlowReadings.sourceMaterialReceiptId })
+        .from(ldoFlowReadings)
+        .where(isNotNull(ldoFlowReadings.sourceMaterialReceiptId));
+      const linkedSet = new Set(existingLinked.map(r => r.sourceMaterialReceiptId));
+
+      for (const receipt of ldoReceipts) {
+        if (linkedSet.has(receipt.id)) {
+          result.rowsSkipped++;
+          continue;
+        }
+        try {
+          const qtyL = convertLdoQtyToLiters(receipt.quantity, receipt.uom);
+          await db.insert(ldoFlowReadings).values({
+            date: receipt.date,
+            time: receipt.time || null,
+            tankNumber: receipt.tankNumber ?? 1,
+            meterReading: 0,
+            readingType: "receipt",
+            quantityLiters: qtyL,
+            notes: `AUTO FROM MATERIAL RECEIPT #${receipt.id}`,
+            plantName: receipt.plantName ?? "Main Plant",
+            sourceMaterialReceiptId: receipt.id,
+          });
+          result.rowsInserted++;
+        } catch (err) {
+          console.error(`backfillLdoReceiptsFromMaterialReceipts: Error processing receipt ${receipt.id}:`, err);
+          result.errors++;
+        }
+      }
+
+      console.log(`backfillLdoReceiptsFromMaterialReceipts: scanned ${result.receiptsScanned}, inserted ${result.rowsInserted}, skipped ${result.rowsSkipped}, errors ${result.errors}`);
+    } catch (err) {
+      console.error("backfillLdoReceiptsFromMaterialReceipts: Fatal error:", err);
       result.errors++;
     }
     return result;

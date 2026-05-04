@@ -758,6 +758,10 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
   sourceHeatingSessionId: integer("source_heating_session_id").references(() => bitumenHeatingSessions.id, { onDelete: "cascade" }),
+  // Task #490 — Links a receipt-type flow reading back to the material_receipts
+  // row that created it. Set automatically when an LDO material receipt is
+  // created/updated; used to prevent double-counting and to cascade updates.
+  sourceMaterialReceiptId: integer("source_material_receipt_id"),
   // Task #255 — Denormalised dryer-source tag copied from the originating
   // shift log. Only set on tankNumber=2 (dryer-meter) rows. When present
   // and equal to "TANK_1", the litres recorded by this row are debited from

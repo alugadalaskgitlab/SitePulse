@@ -281,6 +281,22 @@ export default function PlantLdoFlowMeter() {
     return map;
   }, [ldoReceipts]);
 
+  // Task #490 — Detect whether a material-receipt-linked flow reading already
+  // exists for the date+tank the user is about to enter a manual receipt for,
+  // so we can warn them before they double-count the delivery.
+  const hasLinkedReceiptForDateTank = useMemo(() => {
+    if (!readings || readingType !== "receipt") return false;
+    const tank = parseInt(tankNumber);
+    return readings.some(
+      r =>
+        r.readingType === "receipt" &&
+        r.sourceMaterialReceiptId != null &&
+        r.date === readingDate &&
+        r.tankNumber === tank &&
+        r.id !== editingReading?.id,
+    );
+  }, [readings, readingType, readingDate, tankNumber, editingReading]);
+
   const filteredReadings = useMemo(() => {
     if (!readings) return [];
     return readings.filter(r => {
@@ -2229,6 +2245,12 @@ export default function PlantLdoFlowMeter() {
                     = {(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
                   </p>
                 )}
+              </div>
+            )}
+
+            {readingType === "receipt" && hasLinkedReceiptForDateTank && (
+              <div className="rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300" data-testid="warning-linked-receipt">
+                <strong>Possible double-count:</strong> A receipt for this date and tank was already auto-created from a Material Receipt entry. Adding another manual receipt row will count this delivery twice. Only proceed if this is a separate, additional delivery.
               </div>
             )}
 
