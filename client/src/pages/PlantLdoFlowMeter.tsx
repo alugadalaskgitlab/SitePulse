@@ -423,6 +423,8 @@ export default function PlantLdoFlowMeter() {
     if (!dispatches || dailySummary.length === 0) return [];
     const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
     for (const d of dispatches) {
+      if (filterDateFrom && d.date < filterDateFrom) continue;
+      if (filterDateTo && d.date > filterDateTo) continue;
       if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoreticalLdo: 0 };
       dispatchByDate[d.date].production += d.loadWeight || 0;
       dispatchByDate[d.date].theoreticalLdo += d.theoreticalLdoQty || 0;
@@ -457,7 +459,7 @@ export default function PlantLdoFlowMeter() {
       });
     }
     return result.slice(0, 10);
-  }, [dispatches, dailySummary]);
+  }, [dispatches, dailySummary, filterDateFrom, filterDateTo]);
 
   const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
     queryKey: ["/api/plant-module/ldo-dip-readings"],
