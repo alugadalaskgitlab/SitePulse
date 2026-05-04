@@ -699,6 +699,9 @@ export default function PlantShiftLog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-dip-readings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       toast({ title: "Shift log deleted" });
       goBackToList();
     },
