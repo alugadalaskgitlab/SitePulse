@@ -6978,26 +6978,25 @@ export class DatabaseStorage implements IStorage {
           const protectedRow = sameType.find(e =>
             e.sourceShiftLogId != null
             || e.sourceHeatingSessionId != null
-            || !this.isLdoBackfillRow(e.notes)
           );
 
           if (protectedRow) {
             if (value != null && value !== protectedRow.meterReading) {
               const owner = protectedRow.sourceShiftLogId != null
                 ? "shift-log"
-                : protectedRow.sourceHeatingSessionId != null
-                  ? "heating-session"
-                  : "manual";
+                : "heating-session";
               conflicts.push({ date: row.date, plant, tank, reason: `${rt} blocked by ${owner} reading` });
               skipped++;
             }
             continue;
           }
 
-          // Delete the existing backfill row (if any) for this plant/date/tank/type
-          // before re-inserting. Other plants' backfill rows are isolated by
-          // plant_name and not touched by this query.
-          const toDelete = sameType.filter(e => this.isLdoBackfillRow(e.notes));
+          // Delete the existing row (backfill or manual) for this plant/date/tank/type
+          // before re-inserting. Shift-log and heating-session rows are excluded above.
+          // Other plants' rows are isolated by plant_name and not touched.
+          const toDelete = sameType.filter(e =>
+            e.sourceShiftLogId == null && e.sourceHeatingSessionId == null
+          );
           for (const b of toDelete) {
             await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.id, b.id));
             deleted++;

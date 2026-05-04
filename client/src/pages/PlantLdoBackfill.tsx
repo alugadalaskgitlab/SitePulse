@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Wand2, Lock } from "lucide-react";
+import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Wand2, Lock, Trash2, Check, X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,7 @@ interface CellValue {
   value: string;
   source: RowSource;
   notes: string | null;
+  edited?: boolean;
 }
 
 interface TankCells {
@@ -158,6 +160,7 @@ export default function PlantLdoBackfill() {
   const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
 
   const [grid, setGrid] = useState<GridRow[]>([]);
 
@@ -187,9 +190,10 @@ export default function PlantLdoBackfill() {
       const row = { ...next[rowIdx] };
       const tankKey = tank === 1 ? "tank1" : "tank2";
       const tankObj = { ...row[tankKey] };
-      const cell = { ...tankObj[kind], value };
-      // Once edited, treat as backfill source unless protected
-      if (cell.source !== "shift-log" && cell.source !== "heating-session" && cell.source !== "manual") {
+      const cell = { ...tankObj[kind], value, edited: true };
+      // Once edited, treat as backfill source (keeping "manual" badge to show origin
+      // until saved, at which point the backend replaces it with a backfill row)
+      if (cell.source !== "shift-log" && cell.source !== "heating-session") {
         cell.source = "backfill";
       }
       tankObj[kind] = cell;
@@ -205,10 +209,9 @@ export default function PlantLdoBackfill() {
           const canFill =
             openCell.source !== "shift-log" &&
             openCell.source !== "heating-session" &&
-            openCell.source !== "manual" &&
-            (openCell.value === "" || openCell.source === "backfill" || openCell.source === "empty");
+            (openCell.value === "" || openCell.source === "backfill" || openCell.source === "empty" || openCell.source === "manual");
           if (canFill) {
-            nextTankObj.opening = { ...openCell, value, source: "backfill" };
+            nextTankObj.opening = { ...openCell, value, source: "backfill", edited: true };
             nextRow[tankKey] = nextTankObj;
             next[nextIdx] = nextRow;
           }
@@ -276,7 +279,7 @@ export default function PlantLdoBackfill() {
   const warnCount = validation.filter(v => v.severity === "warn").length;
 
   const isProtected = (c: CellValue): boolean =>
-    c.source === "shift-log" || c.source === "heating-session" || c.source === "manual";
+    c.source === "shift-log" || c.source === "heating-session";
 
   const errorMessage = (err: unknown): string => {
     if (err instanceof Error) return err.message;
@@ -375,11 +378,14 @@ export default function PlantLdoBackfill() {
         const closing = t.closing.value === "" ? null : Number(t.closing.value);
         const openProtected = isProtected(t.opening);
         const closeProtected = isProtected(t.closing);
-        // Push if there is any editable cell value to write OR a previously
-        // backfilled cell that may need clearing (delete-only payload row).
+        // Push if there is any editable cell with a value to write OR a
+        // previously backfilled cell that may need clearing.
+        // Unedited "manual" cells (source is still "manual") are skipped —
+        // they only get written when explicitly changed by the user (source
+        // flips to "backfill" in updateCell when typed into).
         const editableHadValue =
-          (!openProtected && (opening !== null || t.opening.source === "backfill"))
-          || (!closeProtected && (closing !== null || t.closing.source === "backfill"));
+          (!openProtected && (t.opening.source === "backfill" || (t.opening.source !== "manual" && opening !== null)))
+          || (!closeProtected && (t.closing.source === "backfill" || (t.closing.source !== "manual" && closing !== null)));
         if (!editableHadValue) continue;
         payload.push({
           date: row.date,
@@ -396,6 +402,34 @@ export default function PlantLdoBackfill() {
       toast({ title: "Nothing to save", description: "No editable cells were modified" });
       return;
     }
+    saveMutation.mutate({ plant, rows: payload });
+  };
+
+  const rowHasDeletable = (row: GridRow) =>
+    [row.tank1.opening, row.tank1.closing, row.tank2.opening, row.tank2.closing]
+      .some(c => c.source !== "empty" && !isProtected(c));
+
+  const handleDeleteRow = (rowIdx: number) => {
+    const row = grid[rowIdx];
+    const payload: BackfillPayloadRow[] = [];
+    for (const tank of [1, 2] as const) {
+      const t: TankCells = tank === 1 ? row.tank1 : row.tank2;
+      const hasDeletable =
+        (t.opening.source !== "empty" && !isProtected(t.opening)) ||
+        (t.closing.source !== "empty" && !isProtected(t.closing));
+      if (!hasDeletable) continue;
+      payload.push({
+        date: row.date,
+        plant,
+        tank,
+        opening: null,
+        closing: null,
+        remarks: "",
+        ...(tank === 2 ? { dryerFedFrom: row.dryerFedFrom2 } : {}),
+      });
+    }
+    if (payload.length === 0) return;
+    setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; });
     saveMutation.mutate({ plant, rows: payload });
   };
 
@@ -535,6 +569,7 @@ export default function PlantLdoBackfill() {
           )}
 
           {grid.length > 0 && (
+            <TooltipProvider>
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide">
@@ -547,6 +582,7 @@ export default function PlantLdoBackfill() {
                     <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[10px] normal-case text-muted-foreground">Dryer tank by default</span></th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
+                    <th className="text-left p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,6 +594,14 @@ export default function PlantLdoBackfill() {
                       { tankKey: "tank2", tankNum: 2, kind: "opening", cell: row.tank2.opening },
                       { tankKey: "tank2", tankNum: 2, kind: "closing", cell: row.tank2.closing },
                     ];
+                    const canDelete = rowHasDeletable(row);
+                    const isPendingDelete = pendingDeletes.has(row.date);
+                    const allProtected = [row.tank1.opening, row.tank1.closing, row.tank2.opening, row.tank2.closing]
+                      .filter(c => c.source !== "empty")
+                      .every(c => isProtected(c));
+                    const tooltipMsg = allProtected
+                      ? "Readings are from shift logs or heating sessions — correct them there instead"
+                      : "No readings on this date to delete";
                     return (
                       <tr key={row.date} className="border-t">
                         <td className="p-2 font-mono text-xs sticky left-0 bg-background">{row.date}</td>
@@ -620,12 +664,67 @@ export default function PlantLdoBackfill() {
                             </div>
                           ))}
                         </td>
+                        <td className="p-2 align-top whitespace-nowrap">
+                          {isPendingDelete ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleDeleteRow(idx)}
+                                disabled={saveMutation.isPending}
+                                data-testid={`button-confirm-delete-${row.date}`}
+                              >
+                                <Check className="w-3 h-3 mr-1" /> Delete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; })}
+                                data-testid={`button-cancel-delete-${row.date}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ) : canDelete ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setPendingDeletes(prev => new Set(prev).add(row.date))}
+                              data-testid={`button-delete-${row.date}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-muted-foreground opacity-40 cursor-not-allowed"
+                                    disabled
+                                    data-testid={`button-delete-disabled-${row.date}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-[200px] text-xs">
+                                {tooltipMsg}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>
