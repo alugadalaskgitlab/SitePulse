@@ -1098,11 +1098,19 @@ export default function PlantHeatingSessions() {
                                           variant="outline"
                                           size="sm"
                                           className="h-5 text-[10px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
-                                          disabled={fixShiftLogMutation.isPending}
-                                          onClick={() => fixShiftLogMutation.mutate({ shiftLogId: dm.shiftLogId!, dryerFedFrom: s.dryerFedFrom as "TANK_1" | "TANK_2" })}
+                                          onClick={() => {
+                                            const slCurrent = dm!.shiftLogValue ?? (s.dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1") as "TANK_1" | "TANK_2";
+                                            setDryerFixTarget({
+                                              mode: "shift-log",
+                                              recordId: dm!.shiftLogId!,
+                                              date: s.date,
+                                              currentValue: slCurrent,
+                                              suggestedValue: s.dryerFedFrom as "TANK_1" | "TANK_2",
+                                            });
+                                            setDryerFixDialogOpen(true);
+                                          }}
                                           data-testid={`button-fix-shiftlog-session-${s.id}`}
                                         >
-                                          {fixShiftLogMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Fix shift log
                                         </Button>
                                       )}
