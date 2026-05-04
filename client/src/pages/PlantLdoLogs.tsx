@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ export default function PlantLdoLogs() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [openingStock, setOpeningStock] = useState("");
   const [ldoReceived, setLdoReceived] = useState("");
@@ -162,7 +164,7 @@ export default function PlantLdoLogs() {
     setSummaryLoading(false);
   };
 
-  const handleSubmit = () => {
+  const doSave = () => {
     createMutation.mutate({
       date,
       openingStock: openingStock ? parseFloat(openingStock) : null,
@@ -171,6 +173,15 @@ export default function PlantLdoLogs() {
       closingStock: closingStock ? parseFloat(closingStock) : null,
       tonsProduced: tonsProduced ? parseFloat(tonsProduced) : null,
     });
+  };
+
+  const handleSubmit = () => {
+    const duplicate = logs?.some((log) => log.date === date);
+    if (duplicate) {
+      setDuplicateWarningOpen(true);
+    } else {
+      doSave();
+    }
   };
 
   const expectedLdo = tonsProduced ? parseFloat(tonsProduced) * DEFAULT_LDO_NORM : 0;
@@ -538,7 +549,7 @@ export default function PlantLdoLogs() {
                 </div>
               )}
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending} data-testid="button-save-ldo-log">
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || isLoading} data-testid="button-save-ldo-log">
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Entry"}
               </Button>
             </div>
@@ -561,6 +572,26 @@ export default function PlantLdoLogs() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={duplicateWarningOpen} onOpenChange={setDuplicateWarningOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate date</AlertDialogTitle>
+            <AlertDialogDescription>
+              A log for <strong>{date}</strong> already exists. Save another entry anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-duplicate-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setDuplicateWarningOpen(false); doSave(); }}
+              data-testid="button-duplicate-confirm"
+            >
+              Save anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card>
         <CardHeader>
