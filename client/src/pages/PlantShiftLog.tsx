@@ -711,59 +711,6 @@ export default function PlantShiftLog() {
     },
   });
 
-  // Task #332 — Bulk-align dryerFedFrom on conflicting sessions in one click.
-  const alignMutation = useMutation({
-    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
-      const res = await apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", { sessionIds, targetValue });
-      return res.json() as Promise<{ updatedCount: number }>;
-    },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
-      toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Align failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  // Task #353 — Fix shift log to match sessions (bidirectional quick-fix).
-  const fixShiftLogMutation = useMutation({
-    mutationFn: async ({ shiftLogId, dryerFedFrom }: { shiftLogId: number; dryerFedFrom: "TANK_1" | "TANK_2" }) => {
-      const res = await apiRequest("PATCH", `/api/plant-module/shift-logs/${shiftLogId}/dryer-source`, { dryerFedFrom });
-      return res.json() as Promise<{ success: boolean }>;
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-      toast({ title: `Shift log updated to ${label}` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Fix shift log failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const fixSessionMutation = useMutation({
-    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
-      await Promise.all(
-        sessionIds.map(id =>
-          apiRequest("PATCH", `/api/plant-module/heating-sessions/${id}`, { dryerFedFrom: targetValue })
-        )
-      );
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
-      const n = variables.sessionIds.length;
-      toast({ title: `${n} session${n !== 1 ? "s" : ""} updated to ${label}` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Fix session failed", description: err.message, variant: "destructive" });
-    },
-  });
 
   // Task #254 — Reactive query: roll up every heating session attributed to
   // this production day (i.e. all sessions since the prior production day,
@@ -1206,63 +1153,6 @@ export default function PlantShiftLog() {
                                 <span className="text-muted-foreground">Supervisor: {r.supervisorName || "—"}</span>
                                 <span className="text-muted-foreground">Weather: {r.weather || "—"}</span>
                               </div>
-                              {/* Dryer mismatch — guided one-click fix panel */}
-                              {mismatch && mismatch.shiftLogValue && (() => {
-                                const slValue = mismatch.shiftLogValue;
-                                const slLabel = slValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
-                                const oppValue = slValue === "TANK_1" ? "TANK_2" : "TANK_1";
-                                const oppLabel = slValue === "TANK_1" ? "Dryer tank" : "Boiler tank";
-                                const sessionIds = mismatch.conflictingSessions.map(s => s.id);
-                                const n = sessionIds.length;
-                                return (
-                                  <div
-                                    className="mt-2 rounded-md border border-red-300 bg-red-50/60 dark:border-red-800 dark:bg-red-950/20 px-3 py-2 text-xs space-y-1.5"
-                                    data-testid={`panel-dryer-mismatch-${r.id}`}
-                                  >
-                                    <p className="text-red-700 dark:text-red-300 leading-snug">
-                                      ⚠ <strong>Dryer source conflict:</strong> This shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
-                                    </p>
-                                    <p className="text-red-600 dark:text-red-400 font-medium" data-testid={`text-dryer-mismatch-summary-${r.id}`}>
-                                      Shift log: {slLabel} · {n} session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} {oppLabel}
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        className="h-7 text-xs"
-                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
-                                        onClick={() => alignMutation.mutate({ sessionIds, targetValue: slValue })}
-                                        data-testid={`button-fix-sessions-${r.id}`}
-                                      >
-                                        {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                        Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 text-xs border-red-400 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
-                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
-                                        onClick={() => fixSessionMutation.mutate({ sessionIds, targetValue: slValue })}
-                                        data-testid={`button-fix-session-${r.id}`}
-                                      >
-                                        {fixSessionMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                        Fix session{n !== 1 ? "s" : ""} via PATCH → {slLabel}
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 text-xs border-red-400 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
-                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
-                                        onClick={() => fixShiftLogMutation.mutate({ shiftLogId: r.id, dryerFedFrom: oppValue })}
-                                        data-testid={`button-fix-shiftlog-${r.id}`}
-                                      >
-                                        {fixShiftLogMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                        Fix shift log → {oppLabel}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <Link href={appendPlantContext(`/plant/daily-report/${r.date}`, { forceTab: "operations" })}>
