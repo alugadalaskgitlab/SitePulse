@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2, Filter } from "lucide-react";
+import { ChevronLeft, Loader2, Save, AlertTriangle, FileSpreadsheet, Lock, Wand2, Filter, Trash2, Check, X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,7 @@ interface CellValue {
   value: string;
   source: RowSource;
   notes: string | null;
+  edited?: boolean;
 }
 
 interface TankCells {
@@ -51,8 +53,8 @@ interface BackfillPayloadRow {
   date: string;
   plant: string;
   tank: TankNumber;
-  openingDepth: number | null;
-  closingDepth: number | null;
+  openingDepth?: number | null;
+  closingDepth?: number | null;
   remarks: string;
 }
 
@@ -163,6 +165,7 @@ export default function PlantLdoDipBackfill() {
   const [autoChain, setAutoChain] = useState(true);
   const [csvText, setCsvText] = useState("");
   const [csvOpen, setCsvOpen] = useState(false);
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
 
   const [grid, setGrid] = useState<GridRow[]>([]);
   const [showGapsOnly, setShowGapsOnly] = useState(false);
@@ -193,11 +196,7 @@ export default function PlantLdoDipBackfill() {
       const row = { ...next[rowIdx] };
       const tankKey = tank === 1 ? "tank1" : "tank2";
       const tankObj = { ...row[tankKey] };
-      const cell = { ...tankObj[kind], value };
-      // Once edited, treat as backfill source unless protected (manual)
-      if (cell.source !== "manual") {
-        cell.source = "backfill";
-      }
+      const cell = { ...tankObj[kind], value, edited: true, source: "backfill" as RowSource };
       tankObj[kind] = cell;
       row[tankKey] = tankObj;
       next[rowIdx] = row;
@@ -209,10 +208,9 @@ export default function PlantLdoDipBackfill() {
           const nextTankObj = { ...nextRow[tankKey] };
           const openCell = nextTankObj.opening;
           const canFill =
-            openCell.source !== "manual" &&
-            (openCell.value === "" || openCell.source === "backfill" || openCell.source === "empty");
+            openCell.value === "" || openCell.source === "backfill" || openCell.source === "empty";
           if (canFill) {
-            nextTankObj.opening = { ...openCell, value, source: "backfill" };
+            nextTankObj.opening = { ...openCell, value, source: "backfill", edited: true };
             nextRow[tankKey] = nextTankObj;
             next[nextIdx] = nextRow;
           }
@@ -267,8 +265,6 @@ export default function PlantLdoDipBackfill() {
   const errorCount = validation.filter(v => v.severity === "error").length;
   const warnCount = validation.filter(v => v.severity === "warn").length;
 
-  const isProtected = (c: CellValue): boolean => c.source === "manual";
-
   const isRowAllEmpty = (row: GridRow): boolean =>
     row.tank1.opening.source === "empty" &&
     row.tank1.closing.source === "empty" &&
@@ -276,10 +272,14 @@ export default function PlantLdoDipBackfill() {
     row.tank2.closing.source === "empty";
 
   const isRowHasAnyEmpty = (row: GridRow): boolean =>
-    (!isProtected(row.tank1.opening) && row.tank1.opening.source === "empty") ||
-    (!isProtected(row.tank1.closing) && row.tank1.closing.source === "empty") ||
-    (!isProtected(row.tank2.opening) && row.tank2.opening.source === "empty") ||
-    (!isProtected(row.tank2.closing) && row.tank2.closing.source === "empty");
+    row.tank1.opening.source === "empty" ||
+    row.tank1.closing.source === "empty" ||
+    row.tank2.opening.source === "empty" ||
+    row.tank2.closing.source === "empty";
+
+  const rowHasDeletable = (row: GridRow) =>
+    [row.tank1.opening, row.tank1.closing, row.tank2.opening, row.tank2.closing]
+      .some(c => c.source !== "empty");
 
   const missingCount = useMemo(() => grid.filter(isRowAllEmpty).length, [grid]);
 
@@ -327,13 +327,15 @@ export default function PlantLdoDipBackfill() {
       const t: TankCells = { ...row[tankKey] };
       const openCell: CellValue = { ...t.opening };
       const closeCell: CellValue = { ...t.closing };
-      if (openStr !== undefined && openStr !== "" && !isProtected(openCell)) {
+      if (openStr !== undefined && openStr !== "") {
         openCell.value = openStr;
         openCell.source = "backfill";
+        openCell.edited = true;
       }
-      if (closeStr !== undefined && closeStr !== "" && !isProtected(closeCell)) {
+      if (closeStr !== undefined && closeStr !== "") {
         closeCell.value = closeStr;
         closeCell.source = "backfill";
+        closeCell.edited = true;
       }
       t.opening = openCell;
       t.closing = closeCell;
@@ -381,20 +383,19 @@ export default function PlantLdoDipBackfill() {
         const t: TankCells = tank === 1 ? row.tank1 : row.tank2;
         const opening = t.opening.value === "" ? null : Number(t.opening.value);
         const closing = t.closing.value === "" ? null : Number(t.closing.value);
-        const openProtected = isProtected(t.opening);
-        const closeProtected = isProtected(t.closing);
-        // Push if there is any editable cell value to write OR a previously
-        // backfilled cell that may need clearing (delete-only payload row).
-        const editableHadValue =
-          (!openProtected && (opening !== null || t.opening.source === "backfill"))
-          || (!closeProtected && (closing !== null || t.closing.source === "backfill"));
-        if (!editableHadValue) continue;
+        const openEdited = t.opening.edited === true;
+        const closeEdited = t.closing.edited === true;
+        if (!openEdited && !closeEdited) continue;
+        // Only include depth fields for sides that were actually edited.
+        // Omitting a field (undefined) tells the backend to leave that
+        // reading type untouched — preventing accidental deletion of the
+        // counterpart when only one side of a day is changed.
         payload.push({
           date: row.date,
           plant,
           tank,
-          openingDepth: openProtected ? null : opening,
-          closingDepth: closeProtected ? null : closing,
+          ...(openEdited ? { openingDepth: opening } : {}),
+          ...(closeEdited ? { closingDepth: closing } : {}),
           remarks: row.remarks || "",
         });
       }
@@ -403,6 +404,28 @@ export default function PlantLdoDipBackfill() {
       toast({ title: "Nothing to save", description: "No editable cells were modified" });
       return;
     }
+    saveMutation.mutate({ plant, rows: payload });
+  };
+
+  const handleDeleteRow = (rowIdx: number) => {
+    const row = grid[rowIdx];
+    const payload: BackfillPayloadRow[] = [];
+    for (const tank of [1, 2] as const) {
+      const t: TankCells = tank === 1 ? row.tank1 : row.tank2;
+      const hasDeletable =
+        t.opening.source !== "empty" || t.closing.source !== "empty";
+      if (!hasDeletable) continue;
+      payload.push({
+        date: row.date,
+        plant,
+        tank,
+        openingDepth: null,
+        closingDepth: null,
+        remarks: "",
+      });
+    }
+    if (payload.length === 0) return;
+    setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; });
     saveMutation.mutate({ plant, rows: payload });
   };
 
@@ -447,8 +470,8 @@ export default function PlantLdoDipBackfill() {
           <p className="text-sm text-muted-foreground">
             Enter historical Tank-1 / Tank-2 dip-stick depth (cm) for past dates so book-vs-physical LDO
             stock reconciliation is complete for the same range as the meter backfill. Volume and weight
-            are auto-computed from the dip chart. Existing operator-entered manual rows are protected and
-            cannot be overwritten here.
+            are auto-computed from the dip chart. All readings (including operator-entered manual rows) can
+            be edited or deleted by admins here.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -573,6 +596,7 @@ export default function PlantLdoDipBackfill() {
                 </label>
               </div>
 
+              <TooltipProvider>
               <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide">
@@ -584,6 +608,7 @@ export default function PlantLdoDipBackfill() {
                     <th className="text-left p-2">T2 Close (cm)</th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
+                    <th className="text-left p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -591,6 +616,8 @@ export default function PlantLdoDipBackfill() {
                     const rowIssues = validation.filter(v => v.date === row.date);
                     const allEmpty = isRowAllEmpty(row);
                     const gridIdx = grid.findIndex(r => r.date === row.date);
+                    const canDelete = rowHasDeletable(row);
+                    const isPendingDelete = pendingDeletes.has(row.date);
                     const cellEntries: Array<{ tankKey: TankKey; tankNum: TankNumber; kind: ReadingKind; cell: CellValue }> = [
                       { tankKey: "tank1", tankNum: 1, kind: "opening", cell: row.tank1.opening },
                       { tankKey: "tank1", tankNum: 1, kind: "closing", cell: row.tank1.closing },
@@ -614,7 +641,6 @@ export default function PlantLdoDipBackfill() {
                           </div>
                         </td>
                         {cellEntries.map(({ tankKey, tankNum, kind, cell }) => {
-                          const protectedCell = isProtected(cell);
                           const issue = rowIssues.find(i => i.tank === tankNum);
                           const numeric = cell.value === "" ? null : Number(cell.value);
                           return (
@@ -624,7 +650,6 @@ export default function PlantLdoDipBackfill() {
                                 step="any"
                                 value={cell.value}
                                 onChange={e => updateCell(gridIdx, tankNum, kind, e.target.value)}
-                                disabled={protectedCell}
                                 className={`h-8 ${issue ? "border-red-500" : ""}`}
                                 data-testid={`input-${tankKey}-${kind}-${row.date}`}
                               />
@@ -659,12 +684,67 @@ export default function PlantLdoDipBackfill() {
                             </div>
                           ))}
                         </td>
+                        <td className="p-2 align-top whitespace-nowrap">
+                          {isPendingDelete ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleDeleteRow(gridIdx)}
+                                disabled={saveMutation.isPending}
+                                data-testid={`button-confirm-delete-${row.date}`}
+                              >
+                                <Check className="w-3 h-3 mr-1" /> Delete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; })}
+                                data-testid={`button-cancel-delete-${row.date}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ) : canDelete ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setPendingDeletes(prev => new Set(prev).add(row.date))}
+                              data-testid={`button-delete-${row.date}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-muted-foreground opacity-40 cursor-not-allowed"
+                                    disabled
+                                    data-testid={`button-delete-disabled-${row.date}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-[200px] text-xs">
+                                No readings on this date to delete
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            </TooltipProvider>
             </div>
           )}
         </CardContent>

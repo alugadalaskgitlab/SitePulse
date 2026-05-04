@@ -7103,7 +7103,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertLdoDipReadingsBackfill(
-    rows: Array<{ date: string; plant: string; tank: number; openingDepth: number | null; closingDepth: number | null; remarks: string | null }>,
+    rows: Array<{ date: string; plant: string; tank: number; openingDepth?: number | null; closingDepth?: number | null; remarks: string | null }>,
     actor: string,
   ): Promise<{ inserted: number; deleted: number; skipped: number; conflicts: Array<{ date: string; plant: string; tank: number; reason: string }> }> {
     let inserted = 0, deleted = 0, skipped = 0;
@@ -7134,22 +7134,14 @@ export class DatabaseStorage implements IStorage {
 
         for (const rt of ["opening", "closing"] as const) {
           const depth = rt === "opening" ? row.openingDepth : row.closingDepth;
+          // undefined means this reading type was not touched — leave it alone.
+          if (depth === undefined) continue;
           const sameType = existing.filter(e => e.readingType === rt);
-          const protectedRow = sameType.find(e => !this.isLdoDipBackfillRow(e.notes));
 
-          if (protectedRow) {
-            if (depth != null && depth !== protectedRow.depthCm) {
-              conflicts.push({ date: row.date, plant, tank, reason: `${rt} blocked by manual reading` });
-              skipped++;
-            }
-            continue;
-          }
-
-          // Delete existing backfill row(s) for this plant/date/tank/type
-          // before re-inserting. Other plants' backfill rows are isolated by
-          // plant_name and not touched by this query.
-          const toDelete = sameType.filter(e => this.isLdoDipBackfillRow(e.notes));
-          for (const b of toDelete) {
+          // Delete ALL existing rows for this plant/date/tank/type (both
+          // backfill and manual) before re-inserting. Admin backfill is
+          // authoritative and may overwrite operator-entered manual readings.
+          for (const b of sameType) {
             await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.id, b.id));
             deleted++;
           }

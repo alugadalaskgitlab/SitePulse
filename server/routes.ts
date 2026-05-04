@@ -3088,15 +3088,15 @@ export async function registerRoutes(
   // never an operator-entered manual row.
   // ============================================
 
-  // Rows may have both opening and closing as null — that's a valid "clear
-  // any existing backfill cells for this (date, plant, tank)" instruction
-  // (the storage layer will delete and not re-insert).
+  // openingDepth/closingDepth are optional: absent = leave that reading type
+  // unchanged; null = explicitly delete; number = upsert with new value.
   const ldoDipBackfillRowSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
     plant: z.string().trim().min(1),
     tank: z.union([z.literal(1), z.literal(2)]),
-    openingDepth: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
-    closingDepth: z.union([z.number().finite().nonnegative(), z.null()]).optional().transform(v => v ?? null),
+    // Optional: absent means "no change for this reading type"; null means "delete this reading type"
+    openingDepth: z.union([z.number().finite().nonnegative(), z.null()]).optional(),
+    closingDepth: z.union([z.number().finite().nonnegative(), z.null()]).optional(),
     remarks: z.union([z.string(), z.null()]).optional().transform(v => (v && v.trim()) ? v.trim() : null),
   });
 
