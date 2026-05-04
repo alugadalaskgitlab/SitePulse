@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -759,6 +759,17 @@ export default function PlantLdoMismatch() {
 
   const [cleanupPendingDate, setCleanupPendingDate] = useState<string | null>(null);
   const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const summaryTableRef = useRef<HTMLDivElement>(null);
+
+  function handleBadgeFilterClick() {
+    if (mismatchCount === 0) return;
+    setShowOnlyMismatches(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        summaryTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  }
 
   useEffect(() => {
     if (mismatchCount === 0) setShowOnlyMismatches(false);
@@ -1179,14 +1190,17 @@ export default function PlantLdoMismatch() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      tabIndex={0}
-                      className="self-end mb-1 outline-none rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+                      tabIndex={mismatchCount > 0 ? 0 : -1}
+                      role={mismatchCount > 0 ? "button" : undefined}
+                      className={`self-end mb-1 outline-none rounded-full focus-visible:ring-2 focus-visible:ring-ring${mismatchCount > 0 ? " cursor-pointer" : ""}`}
+                      onClick={handleBadgeFilterClick}
+                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleBadgeFilterClick(); } }}
                       data-testid="badge-mismatch-trigger"
                     >
                       <Badge
                         className={
                           mismatchCount > 0
-                            ? "bg-destructive text-destructive-foreground cursor-default"
+                            ? "bg-destructive text-destructive-foreground cursor-pointer"
                             : "bg-green-600 text-white cursor-default"
                         }
                         data-testid="badge-mismatch-count"
@@ -1197,13 +1211,16 @@ export default function PlantLdoMismatch() {
                       </Badge>
                     </span>
                   </TooltipTrigger>
-                  {mismatchCount > 0 && mismatchBreakdown.length > 0 && (
+                  {mismatchCount > 0 && (
                     <TooltipContent
                       side="bottom"
                       className="text-xs max-w-xs"
                       data-testid="tooltip-mismatch-breakdown"
                     >
-                      {mismatchBreakdown.join(" · ")}
+                      <p className="font-medium mb-0.5">Click to filter table to mismatch days</p>
+                      {mismatchBreakdown.length > 0 && (
+                        <p className="text-muted-foreground">{mismatchBreakdown.join(" · ")}</p>
+                      )}
                     </TooltipContent>
                   )}
                 </Tooltip>
@@ -1359,7 +1376,7 @@ export default function PlantLdoMismatch() {
             ))}
           </div>
 
-          <Card>
+          <Card ref={summaryTableRef}>
             <CardHeader>
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <CardTitle className="flex items-center gap-2">
