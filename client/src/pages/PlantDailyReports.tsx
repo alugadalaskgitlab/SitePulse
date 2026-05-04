@@ -305,6 +305,11 @@ export default function PlantDailyReports() {
     return Array.from(m.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [rows]);
 
+  const missingDryerRoutingCount = useMemo(
+    () => (rows || []).filter((r) => r.dryerFedFrom === null && r.hasShiftLog).length,
+    [rows],
+  );
+
   const setQuickRange = (days: number) => {
     updateFilters({ from: format(subDays(new Date(), days), "yyyy-MM-dd"), to: today });
   };
@@ -535,6 +540,19 @@ export default function PlantDailyReports() {
           )}
         </CardContent>
       </Card>
+
+      {!isLoading && missingDryerRoutingCount > 0 && (
+        <div
+          className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-800 dark:text-amber-300"
+          data-testid="banner-missing-dryer-routing"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+          <span>
+            <span className="font-semibold">{missingDryerRoutingCount} day{missingDryerRoutingCount === 1 ? "" : "s"}</span>
+            {missingDryerRoutingCount === 1 ? " is" : " are"} missing dryer routing in this view.
+          </span>
+        </div>
+      )}
 
       {bulkResult && (
         <Card data-testid="card-bulk-result" className={bulkResult.failed > 0 ? "border-destructive/50" : "border-green-600/40"}>
