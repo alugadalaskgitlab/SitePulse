@@ -80,7 +80,7 @@ export default function PlantHeatingSessions() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
   const [, setLocation] = useLocation();
-  const backLink = getPlantBackLink({ defaultTab: "operations" });
+  const backLink = getPlantBackLink({ forceTab: "operations" });
 
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultFrom = format(subDays(new Date(), 30), "yyyy-MM-dd");
@@ -754,7 +754,7 @@ export default function PlantHeatingSessions() {
               <SelectItem value="TANK_2">Dryer tank</SelectItem>
             </SelectContent>
           </Select>
-          <Link href={appendPlantContext("/plant/heating-trends", { defaultTab: "operations" })}>
+          <Link href={appendPlantContext("/plant/heating-trends", { forceTab: "operations" })}>
             <Button variant="outline" data-testid="button-view-trends">View Trends</Button>
           </Link>
           <Button onClick={openNew} data-testid="button-new-session"><Plus className="w-4 h-4 mr-1" />New Session</Button>
@@ -781,7 +781,7 @@ export default function PlantHeatingSessions() {
                       {(reconByDate.get(date) || []).map(rec => (
                         <Link
                           key={rec.plantName}
-                          href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}
+                          href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}
                         >
                           <Badge
                             variant="destructive"
@@ -804,7 +804,7 @@ export default function PlantHeatingSessions() {
                           <div className="font-semibold text-destructive">
                             {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                           </div>
-                          <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
+                          <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
                             <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
                               Review →
                             </Button>
@@ -849,7 +849,7 @@ export default function PlantHeatingSessions() {
                     {(reconByDate.get(date) || []).map(rec => (
                       <Link
                         key={rec.plantName}
-                        href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}
+                        href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}
                       >
                         <Badge
                           variant="destructive"
@@ -950,7 +950,7 @@ export default function PlantHeatingSessions() {
                                         <p className="text-orange-700 dark:text-orange-400 text-[11px]">
                                           No shift log exists for this date yet.{" "}
                                           <Link
-                                            href={appendPlantContext(`/plant/shift-log/${dm.date}?plant=${encodeURIComponent(dm.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
+                                            href={appendPlantContext(`/plant/shift-log/${dm.date}?plant=${encodeURIComponent(dm.plantName)}&focus=dryerFedFrom`, { forceTab: "operations" })}
                                             data-testid={`link-create-shiftlog-intra-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
                                           >
                                             <span className="underline underline-offset-2 cursor-pointer hover:opacity-80">Create a shift log to set the authoritative dryer source →</span>
@@ -987,7 +987,7 @@ export default function PlantHeatingSessions() {
                         <div className="font-semibold text-destructive">
                           {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                         </div>
-                        <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { defaultTab: "operations" })}>
+                        <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
                           <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
                             Review →
                           </Button>
@@ -1116,7 +1116,7 @@ export default function PlantHeatingSessions() {
                                       )}
                                       {isIntraConflict && !isShiftLogConflict && dm?.shiftLogId == null && (
                                         <Link
-                                          href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
+                                          href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { forceTab: "operations" })}
                                           data-testid={`link-create-shiftlog-session-${s.id}`}
                                         >
                                           <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Create shift log →</span>

@@ -29,13 +29,13 @@ export function useOrigin() {
   };
 
   const getPlantBackLink = (
-    opts: { defaultTab?: PlantTab; role?: string | null } = {},
+    opts: { defaultTab?: PlantTab; forceTab?: PlantTab; role?: string | null } = {},
   ): string => {
     if (isFromPortal) return "/";
-    const tab =
-      urlTab && PLANT_TAB_VALUES.has(urlTab)
+    const tab = opts.forceTab
+      ?? (urlTab && PLANT_TAB_VALUES.has(urlTab)
         ? urlTab
-        : opts.defaultTab || "operations";
+        : opts.defaultTab || "operations");
     const role = opts.role !== undefined ? opts.role : urlRole;
     const params = new URLSearchParams();
     params.set("tab", tab);
