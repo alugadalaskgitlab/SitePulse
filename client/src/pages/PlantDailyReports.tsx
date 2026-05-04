@@ -686,7 +686,7 @@ export default function PlantDailyReports() {
                     } else if (mismatch.conflictingSessions.length > 0) {
                       target = {
                         mode: "heating-session",
-                        recordId: mismatch.conflictingSessions[0].id,
+                        sessionIds: mismatch.conflictingSessions.map(s => s.id),
                         date: mismatch.date,
                         currentValue: mismatch.conflictingSessions[0].dryerFedFrom,
                         suggestedValue: mismatch.shiftLogValue ?? (mismatch.conflictingSessions[0].dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1"),

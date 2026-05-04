@@ -12,7 +12,7 @@ type DryerSource = "TANK_1" | "TANK_2";
 
 export type DryerSourceFixTarget =
   | { mode: "shift-log"; recordId: number; date: string; suggestedValue: DryerSource; currentValue: DryerSource }
-  | { mode: "heating-session"; recordId: number; date: string; suggestedValue: DryerSource; currentValue: DryerSource };
+  | { mode: "heating-session"; sessionIds: number[]; date: string; suggestedValue: DryerSource; currentValue: DryerSource };
 
 interface Props {
   open: boolean;
@@ -41,7 +41,7 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
         });
       } else {
         await apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", {
-          sessionIds: [target.recordId],
+          sessionIds: target.sessionIds,
           targetValue: value,
         });
       }
@@ -70,7 +70,11 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
 
   if (!target) return null;
 
-  const recordLabel = target.mode === "shift-log" ? "shift log" : "heating session";
+  const recordLabel = target.mode === "shift-log"
+    ? "shift log"
+    : target.sessionIds.length === 1
+    ? "heating session"
+    : `${target.sessionIds.length} heating sessions`;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -79,7 +83,9 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
           <DialogTitle>Fix dryer-source mismatch</DialogTitle>
           <DialogDescription>
             Update the {recordLabel} for <strong>{target.date}</strong> to the correct dryer source.
-            It currently says <strong>{LABEL[target.currentValue]}</strong>.
+            {target.mode === "shift-log" && <> It currently says <strong>{LABEL[target.currentValue]}</strong>.</>}
+            {target.mode === "heating-session" && target.sessionIds.length > 1 && <> All {target.sessionIds.length} conflicting sessions will be updated at once.</>}
+            {target.mode === "heating-session" && target.sessionIds.length === 1 && <> It currently says <strong>{LABEL[target.currentValue]}</strong>.</>}
           </DialogDescription>
         </DialogHeader>
 

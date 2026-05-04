@@ -1082,7 +1082,7 @@ export default function PlantHeatingSessions() {
                                             dm3?.shiftLogValue ?? (currentVal === "TANK_1" ? "TANK_2" : "TANK_1");
                                           setDryerFixTarget({
                                             mode: "heating-session",
-                                            recordId: s.id,
+                                            sessionIds: [s.id],
                                             date: s.date,
                                             currentValue: currentVal,
                                             suggestedValue: suggested,

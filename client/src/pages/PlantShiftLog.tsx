@@ -651,27 +651,30 @@ export default function PlantShiftLog() {
         if (!hsRes.ok) return;
         return hsRes.json().then((sessions: Array<{ id?: number; dryerFedFrom?: string }>) => {
           const savedDryerFedFrom: "TANK_1" | "TANK_2" = data.dryerFedFrom === "TANK_1" ? "TANK_1" : "TANK_2";
-          const mismatch = sessions.find(s => s.dryerFedFrom && s.dryerFedFrom !== savedDryerFedFrom);
-          if (mismatch && mismatch.id != null) {
+          const mismatches = sessions.filter(s => s.dryerFedFrom && s.dryerFedFrom !== savedDryerFedFrom && s.id != null);
+          if (mismatches.length > 0) {
+            const firstMismatch = mismatches[0];
             const slLabel = savedDryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-            const hsLabel = mismatch.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
+            const hsLabel = firstMismatch.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
             const fixTarget: DryerSourceFixTarget = {
               mode: "heating-session",
-              recordId: mismatch.id,
+              sessionIds: mismatches.map(s => s.id as number),
               date,
               suggestedValue: savedDryerFedFrom,
-              currentValue: mismatch.dryerFedFrom as "TANK_1" | "TANK_2",
+              currentValue: firstMismatch.dryerFedFrom as "TANK_1" | "TANK_2",
             };
+            const sessionWord = mismatches.length === 1 ? "a heating session" : `${mismatches.length} heating sessions`;
+            const fixLabel = mismatches.length === 1 ? "Fix heating session" : `Fix ${mismatches.length} heating sessions`;
             toast({
               title: "Dryer-source mismatch",
-              description: `This shift log says dryer fed from ${slLabel}, but a heating session for ${date} says ${hsLabel}.`,
+              description: `This shift log says dryer fed from ${slLabel}, but ${sessionWord} for ${date} says ${hsLabel}.`,
               variant: "destructive",
               action: (
                 <ToastAction
-                  altText="Fix heating session"
+                  altText={fixLabel}
                   onClick={() => setFixDialog({ open: true, target: fixTarget })}
                 >
-                  Fix heating session
+                  {fixLabel}
                 </ToastAction>
               ),
             });
