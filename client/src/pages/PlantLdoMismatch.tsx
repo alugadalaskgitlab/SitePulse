@@ -585,6 +585,7 @@ export default function PlantLdoMismatch() {
     const urlTo = sp.get("dateTo") || routeDate;
     setDateFrom(urlFrom);
     setDateTo(urlTo);
+    setShowOnlyMismatches(new URLSearchParams(searchString).get("mismatchOnly") === "1");
   }, [searchString, routeDate]);
 
   const [expandedDates, setExpandedDates] = useState<Set<string>>(
@@ -604,6 +605,7 @@ export default function PlantLdoMismatch() {
     const newSp = new URLSearchParams(searchString);
     newSp.set("dateFrom", dateFrom);
     newSp.set("dateTo", dateTo);
+    newSp.delete("mismatchOnly");
     const path = `/plant/ldo-mismatch/${dateFrom}?${newSp.toString()}`;
     setLocation(path);
     setExpandedDates(new Set());
@@ -758,12 +760,26 @@ export default function PlantLdoMismatch() {
   const isMultiDay = dates.length > 1;
 
   const [cleanupPendingDate, setCleanupPendingDate] = useState<string | null>(null);
-  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(
+    () => sp.get("mismatchOnly") === "1",
+  );
+
+  function setMismatchFilter(val: boolean) {
+    setShowOnlyMismatches(val);
+    const newSp = new URLSearchParams(searchString);
+    if (val) {
+      newSp.set("mismatchOnly", "1");
+    } else {
+      newSp.delete("mismatchOnly");
+    }
+    const seg = effectiveDateFrom || routeDate;
+    setLocation(`/plant/ldo-mismatch/${seg}?${newSp.toString()}`);
+  }
   const summaryTableRef = useRef<HTMLDivElement>(null);
 
   function handleBadgeFilterClick() {
     if (mismatchCount === 0) return;
-    setShowOnlyMismatches(true);
+    setMismatchFilter(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         summaryTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -772,7 +788,15 @@ export default function PlantLdoMismatch() {
   }
 
   useEffect(() => {
-    if (mismatchCount === 0) setShowOnlyMismatches(false);
+    if (mismatchCount === 0) {
+      setShowOnlyMismatches(false);
+      const curSp = new URLSearchParams(window.location.search);
+      if (curSp.get("mismatchOnly") === "1") {
+        curSp.delete("mismatchOnly");
+        const seg = curSp.get("dateFrom") || window.location.pathname.split("/").pop() || "";
+        setLocation(`/plant/ldo-mismatch/${seg}?${curSp.toString()}`);
+      }
+    }
   }, [mismatchCount]);
 
   const displayedDaySummaries = useMemo(
@@ -1393,7 +1417,7 @@ export default function PlantLdoMismatch() {
                     <input
                       type="checkbox"
                       checked={showOnlyMismatches}
-                      onChange={e => setShowOnlyMismatches(e.target.checked)}
+                      onChange={e => setMismatchFilter(e.target.checked)}
                       disabled={mismatchCount === 0}
                       className="h-4 w-4 rounded border-gray-300 accent-destructive cursor-pointer"
                       data-testid="checkbox-show-only-mismatches"
