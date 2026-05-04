@@ -568,7 +568,7 @@ export default function PlantLdoMismatch() {
   const { toast } = useToast();
   const [, params] = useRoute("/plant/ldo-mismatch/:date");
   const routeDate = params?.date || "";
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const searchString = useSearch();
   const sp = new URLSearchParams(searchString);
@@ -581,24 +581,35 @@ export default function PlantLdoMismatch() {
   const [dateTo, setDateTo] = useState(initialTo);
 
   useEffect(() => {
-    const urlFrom = sp.get("dateFrom") || routeDate;
-    const urlTo = sp.get("dateTo") || routeDate;
+    const newSp = new URLSearchParams(searchString);
+    const urlFrom = newSp.get("dateFrom") || routeDate;
+    const urlTo = newSp.get("dateTo") || routeDate;
     setDateFrom(urlFrom);
     setDateTo(urlTo);
-    setShowOnlyMismatches(new URLSearchParams(searchString).get("mismatchOnly") === "1");
+    setShowOnlyMismatches(newSp.get("mismatchOnly") === "1");
+    const openParam = newSp.get("open");
+    if (openParam !== null) {
+      setExpandedDates(new Set(openParam.split(",").filter(Boolean)));
+    } else {
+      setExpandedDates(new Set(routeDate ? [routeDate] : []));
+    }
   }, [searchString, routeDate]);
 
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(
-    () => new Set(routeDate ? [routeDate] : []),
-  );
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(() => {
+    const openParam = sp.get("open");
+    if (openParam) return new Set(openParam.split(",").filter(Boolean));
+    return new Set(routeDate ? [routeDate] : []);
+  });
 
   function toggleDate(d: string) {
-    setExpandedDates(prev => {
-      const next = new Set(prev);
-      if (next.has(d)) next.delete(d);
-      else next.add(d);
-      return next;
-    });
+    const next = new Set(expandedDates);
+    if (next.has(d)) next.delete(d);
+    else next.add(d);
+    setExpandedDates(next);
+    const newSp = new URLSearchParams(searchString);
+    newSp.set("open", [...next].sort().join(","));
+    const qs = newSp.toString();
+    setLocation(qs ? `${location}?${qs}` : location, { replace: true });
   }
 
   function applyRange() {
