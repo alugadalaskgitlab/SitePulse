@@ -917,16 +917,58 @@ export default function PlantLdoMismatch() {
       return (d > 0 ? "+" : "") + fmtVal(d);
     };
 
+    let logoDataUrl: string | null = null;
+    let logoAspect = 1.5;
+    try {
+      const resp = await fetch(`${window.location.origin}/hlc-logo.jpg`);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        logoDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        logoAspect = await new Promise<number>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+          img.onerror = () => resolve(1.5);
+          img.src = logoDataUrl!;
+        });
+      }
+    } catch {}
+
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
     const dateLabel = isMultiDay
       ? `${effectiveDateFrom} → ${effectiveDateTo}`
       : effectiveDateFrom;
 
+    let curY = 8;
+    const logoH = 12;
+    const logoW = logoH * logoAspect;
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "JPEG", (pageWidth - logoW) / 2, curY, logoW, logoH);
+      curY += logoH + 3;
+    }
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, curY + 5, { align: "center" });
+    curY += 9;
+    doc.setDrawColor(50, 50, 50);
+    doc.setLineWidth(0.5);
+    doc.line(14, curY, pageWidth - 14, curY);
+    curY += 7;
+
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(14);
-    doc.text("LDO Flow Ledger Reconciliation", 14, 14);
+    doc.text("LDO Flow Ledger Reconciliation", 14, curY);
+    curY += 7;
     doc.setFontSize(9);
-    doc.text(`${plant}  ·  Boiler tank  ·  ${dateLabel}`, 14, 21);
-    doc.text(`Mismatch threshold: ±${MISMATCH_THRESHOLD_L} L`, 14, 27);
+    doc.text(`${plant}  ·  Boiler tank  ·  ${dateLabel}`, 14, curY);
+    curY += 6;
+    doc.text(`Mismatch threshold: ±${MISMATCH_THRESHOLD_L} L`, 14, curY);
+    curY += 5;
 
     const summaryHead = [
       ["Date", "Sessions (L)", "Shift Meter (L)", "LDO Ledger (L)", "Sess vs Shift", "Sess vs Ledger", "Shift vs Ledger", "Mismatch"],
@@ -957,7 +999,7 @@ export default function PlantLdoMismatch() {
     }
 
     autoTable(doc, {
-      startY: 32,
+      startY: curY,
       head: summaryHead,
       body: summaryBody,
       styles: { fontSize: 8 },
