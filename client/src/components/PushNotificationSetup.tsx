@@ -44,17 +44,55 @@ export function PushNotificationSetup() {
     setIsIos(ios);
 
     if (supported) {
-      checkSubscriptionStatus();
+      checkSubscriptionStatus(ios);
     } else {
       setCheckingStatus(false);
     }
   }, []);
 
-  async function checkSubscriptionStatus() {
+  // Check whether the browser has a push subscription and ensure the server
+  // DB is in sync with it. This self-heals the common case where the server
+  // DB lost the subscription row (e.g. admin toggled notificationsEnabled off)
+  // while the browser still holds a valid subscription. Without this, the UI
+  // would show "Notifications Active" (green) but pushes would never arrive.
+  async function checkSubscriptionStatus(iosDevice: boolean) {
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      setIsSubscribed(!!subscription);
+
+      if (!subscription) {
+        setIsSubscribed(false);
+        return;
+      }
+
+      // Browser has a subscription — silently re-register it with the server.
+      // createPushSubscription uses ON CONFLICT DO UPDATE so this is idempotent.
+      try {
+        const subJson = subscription.toJSON();
+        const res = await apiRequest("POST", "/api/push/subscribe", {
+          subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+          label: iosDevice ? "iOS Device" : "Device",
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (body.message === "notifications_disabled") {
+            // Admin has disabled notifications for this account. Unsubscribe
+            // the browser-side registration too so state stays consistent.
+            await subscription.unsubscribe().catch(() => {});
+            setNotAllowed(true);
+            setIsSubscribed(false);
+            return;
+          }
+          // Any other server error: browser subscription is still valid so
+          // stay subscribed locally; server will recover on next load.
+        }
+      } catch {
+        // Network error — browser subscription is still valid; mark subscribed
+        // and the server will be synced on the next successful load.
+      }
+
+      setIsSubscribed(true);
     } catch (err) {
       console.error("Error checking push subscription:", err);
     } finally {
