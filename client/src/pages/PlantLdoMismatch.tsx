@@ -605,11 +605,14 @@ export default function PlantLdoMismatch() {
     const newSp = new URLSearchParams(searchString);
     newSp.set("dateFrom", dateFrom);
     newSp.set("dateTo", dateTo);
-    newSp.delete("mismatchOnly");
+    if (showOnlyMismatches) {
+      newSp.set("mismatchOnly", "1");
+    } else {
+      newSp.delete("mismatchOnly");
+    }
     const path = `/plant/ldo-mismatch/${dateFrom}?${newSp.toString()}`;
     setLocation(path);
     setExpandedDates(new Set());
-    setShowOnlyMismatches(false);
   }
 
   const effectiveDateFrom = sp.get("dateFrom") || routeDate;
