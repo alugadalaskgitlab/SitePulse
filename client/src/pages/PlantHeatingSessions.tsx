@@ -622,21 +622,6 @@ export default function PlantHeatingSessions() {
   });
 
   // Task #353 — Fix shift log to match sessions (bidirectional quick-fix).
-  const fixShiftLogMutation = useMutation({
-    mutationFn: async ({ shiftLogId, dryerFedFrom }: { shiftLogId: number; dryerFedFrom: "TANK_1" | "TANK_2" }) => {
-      const res = await apiRequest("PATCH", `/api/plant-module/shift-logs/${shiftLogId}/dryer-source`, { dryerFedFrom });
-      return res.json() as Promise<{ success: boolean }>;
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
-      const label = variables.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank";
-      toast({ title: `Shift log updated to ${label}` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Fix shift log failed", description: err.message, variant: "destructive" });
-    },
-  });
 
   const openNew = () => {
     // When arriving from a shift log (returnToFromUrl is set), seed the new session
@@ -910,7 +895,7 @@ export default function PlantHeatingSessions() {
                                           size="sm"
                                           variant="outline"
                                           className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
-                                          disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
+                                          disabled={alignMutation.isPending}
                                           onClick={() => alignMutation.mutate({ sessionIds: fixSessionIds, targetValue: slValue })}
                                           data-testid={`button-fix-sessions-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
                                         >
@@ -922,11 +907,19 @@ export default function PlantHeatingSessions() {
                                             size="sm"
                                             variant="outline"
                                             className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
-                                            disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
-                                            onClick={() => fixShiftLogMutation.mutate({ shiftLogId: dm.shiftLogId!, dryerFedFrom: oppValue })}
+                                            disabled={alignMutation.isPending}
+                                            onClick={() => {
+                                              setDryerFixTarget({
+                                                mode: "shift-log",
+                                                recordId: dm.shiftLogId!,
+                                                date: dm.date,
+                                                currentValue: slValue,
+                                                suggestedValue: oppValue,
+                                              });
+                                              setDryerFixDialogOpen(true);
+                                            }}
                                             data-testid={`button-fix-shiftlog-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
                                           >
-                                            {fixShiftLogMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                             Fix shift log → {oppLabel}
                                           </Button>
                                         )}
