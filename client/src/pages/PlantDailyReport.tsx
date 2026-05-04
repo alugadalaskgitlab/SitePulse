@@ -261,6 +261,25 @@ export default function PlantDailyReport() {
                 <div className="flex flex-wrap items-center gap-1">
                   {data.shift?.isFinalized ? <Badge className="bg-green-600">Finalized</Badge> : data.shift ? <Badge variant="secondary">Draft</Badge> : <Badge variant="outline">No log</Badge>}
                   {data.shift?.noMainPlantOps && <Badge variant="destructive" data-testid="badge-no-plant-ops">No Plant Operations</Badge>}
+                  {mismatch && mismatch.shiftLogId != null && mismatch.shiftLogValue != null && (
+                    <button
+                      type="button"
+                      onClick={() => setFixDialog({
+                        open: true,
+                        target: {
+                          mode: "shift-log",
+                          recordId: mismatch.shiftLogId!,
+                          date,
+                          currentValue: mismatch.shiftLogValue!,
+                          suggestedValue: mismatch.conflictingSessions[0]?.dryerFedFrom ?? (mismatch.shiftLogValue === "TANK_1" ? "TANK_2" : "TANK_1"),
+                        },
+                      })}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-xs font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
+                      data-testid="badge-dryer-mismatch"
+                    >
+                      ⚠ Dryer source conflict
+                    </button>
+                  )}
                 </div>
               </div>
               <div><div className="text-muted-foreground">{data.shift?.noMainPlantOps ? "Shift Start" : "Plant Start"}</div><div className="font-medium">{data.shift?.plantStartTime || "—"}</div></div>
