@@ -171,6 +171,7 @@ import {
   concreteEstimatesV2,
   type ConcreteEstimateV2,
   type InsertConcreteEstimateV2,
+  users,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
 import { format } from "date-fns";
