@@ -941,6 +941,11 @@ export default function PlantHeatingSessions() {
                                       <p className="text-orange-800 dark:text-orange-300 leading-snug">
                                         ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source{hasShiftLogConflict ? " (separate from shift-log conflict above)" : ""}. Choose which is correct:
                                       </p>
+                                      {!hasShiftLogConflict && (
+                                        <p className="text-orange-700 dark:text-orange-400 text-[11px] font-medium" data-testid={`text-intra-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                          {n} session{n !== 1 ? "s" : ""} disagree · choose one below
+                                        </p>
+                                      )}
                                       {!hasShiftLogConflict && dm.shiftLogId == null && (
                                         <p className="text-orange-700 dark:text-orange-400 text-[11px]">
                                           No shift log exists for this date yet.{" "}
