@@ -79,7 +79,7 @@ export default function PlantHeatingSessions() {
   const { toast } = useToast();
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/heating-sessions/:date");
-  const [, setLocation] = useLocation();
+  const [currentLocation, setLocation] = useLocation();
   const backLink = getPlantBackLink({ forceTab: "operations" });
 
   const today = format(new Date(), "yyyy-MM-dd");
@@ -93,6 +93,8 @@ export default function PlantHeatingSessions() {
   // Task #238 — when navigated from the heating-mismatch drill-in we accept
   // `?openSession=<id>` and auto-open the edit dialog for that session once
   // the row has loaded, so the operator lands directly on the offending row.
+  // currentLocation is included so this re-derives when the URL changes via
+  // client-side navigation (e.g. clicking a conflict session link on this page).
   const openSessionIdFromUrl = useMemo(() => {
     if (typeof window === "undefined") return null;
     const sp = new URLSearchParams(window.location.search);
@@ -100,7 +102,8 @@ export default function PlantHeatingSessions() {
     if (!raw) return null;
     const n = parseInt(raw, 10);
     return Number.isFinite(n) ? n : null;
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation]);
   // When opened from a shift log's "Add/Edit Sessions" button, a returnTo URL
   // is passed so we can navigate back to that shift log after saving.
   // Only internal /plant/shift-log/... paths are accepted to prevent open-redirect.
@@ -122,7 +125,7 @@ export default function PlantHeatingSessions() {
       return url.searchParams.get("plant");
     } catch { return null; }
   }, [returnToFromUrl]);
-  const autoOpenedRef = useRef(false);
+  const autoOpenedRef = useRef<number | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
@@ -701,15 +704,17 @@ export default function PlantHeatingSessions() {
   }, [sessions, filterDryerSource]);
   const groupedDates = Object.keys(grouped);
 
-  // Task #238 — auto-open the requested session once it loads. Guarded by a
-  // ref so it fires exactly once even if the sessions query refetches.
+  // Task #238 — auto-open the requested session once it loads. The ref tracks
+  // the last session ID that was auto-opened so re-clicking a different conflict
+  // link (which changes openSessionIdFromUrl) correctly re-triggers the open,
+  // while refetches of the same sessions data do not produce duplicate opens.
   useEffect(() => {
-    if (autoOpenedRef.current) return;
     if (openSessionIdFromUrl == null) return;
+    if (autoOpenedRef.current === openSessionIdFromUrl) return;
     if (!sessions) return;
     const target = sessions.find(s => s.id === openSessionIdFromUrl);
     if (!target) return;
-    autoOpenedRef.current = true;
+    autoOpenedRef.current = openSessionIdFromUrl;
     openEdit(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, openSessionIdFromUrl]);
@@ -957,6 +962,27 @@ export default function PlantHeatingSessions() {
                                           </Link>
                                         </p>
                                       )}
+                                      <ul className="space-y-0.5 pl-1">
+                                        {intraConflictSessions.map(s => {
+                                          const label = heatingSessionTypeLabel(s.sessionType);
+                                          const timeLabel = s.startTime ? ` · ${s.startTime}` : "";
+                                          const sourceLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : s.dryerFedFrom === "TANK_2" ? "Dryer tank" : s.dryerFedFrom;
+                                          const fullSession = (sessions || []).find(fs => fs.id === s.id);
+                                          return (
+                                            <li key={s.id}>
+                                              <button
+                                                type="button"
+                                                disabled={!fullSession}
+                                                onClick={() => { if (fullSession) openEdit(fullSession); }}
+                                                data-testid={`link-intra-conflict-session-${s.id}`}
+                                                className="underline underline-offset-2 cursor-pointer hover:opacity-80 text-orange-800 dark:text-orange-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                                              >
+                                                {label}{timeLabel} — {sourceLabel} →
+                                              </button>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
                                       <div className="flex flex-wrap gap-2">
                                         <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
