@@ -1088,13 +1088,18 @@ export default function PlantHeatingSessions() {
                                       >
                                         {badgeLabel}
                                       </Badge>
-                                      {isShiftLogConflict && (
-                                        <Link
-                                          href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { defaultTab: "operations" })}
-                                          data-testid={`link-fix-shiftlog-session-${s.id}`}
+                                      {isShiftLogConflict && dm?.shiftLogId != null && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-5 text-[10px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                          disabled={fixShiftLogMutation.isPending}
+                                          onClick={() => fixShiftLogMutation.mutate({ shiftLogId: dm.shiftLogId!, dryerFedFrom: s.dryerFedFrom as "TANK_1" | "TANK_2" })}
+                                          data-testid={`button-fix-shiftlog-session-${s.id}`}
                                         >
-                                          <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Fix shift log →</span>
-                                        </Link>
+                                          {fixShiftLogMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                          Fix shift log
+                                        </Button>
                                       )}
                                       {isIntraConflict && !isShiftLogConflict && dm?.shiftLogId == null && (
                                         <Link
