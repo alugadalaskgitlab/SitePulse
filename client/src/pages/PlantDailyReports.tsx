@@ -705,6 +705,11 @@ export default function PlantDailyReports() {
                       target = {
                         mode: "heating-session",
                         sessionIds: mismatch.conflictingSessions.map(s => s.id),
+                        sessionDetails: mismatch.conflictingSessions.map(s => ({
+                          id: s.id,
+                          startTime: s.startTime,
+                          dryerFedFrom: s.dryerFedFrom,
+                        })),
                         date: mismatch.date,
                         currentValue: mismatch.conflictingSessions[0].dryerFedFrom,
                         suggestedValue: mismatch.shiftLogValue ?? (mismatch.conflictingSessions[0].dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1"),

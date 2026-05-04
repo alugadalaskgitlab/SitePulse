@@ -5,14 +5,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 type DryerSource = "TANK_1" | "TANK_2";
 
+export type SessionDetail = { id: number; startTime: string | null; dryerFedFrom: DryerSource };
+
 export type DryerSourceFixTarget =
   | { mode: "shift-log"; recordId: number; date: string; suggestedValue: DryerSource; currentValue: DryerSource }
-  | { mode: "heating-session"; sessionIds: number[]; date: string; suggestedValue: DryerSource; currentValue: DryerSource };
+  | { mode: "heating-session"; sessionIds: number[]; sessionDetails?: SessionDetail[]; date: string; suggestedValue: DryerSource; currentValue: DryerSource };
 
 interface Props {
   open: boolean;
@@ -84,7 +87,28 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
           <DialogDescription>
             Update the {recordLabel} for <strong>{target.date}</strong> to the correct dryer source.
             {target.mode === "shift-log" && <> It currently says <strong>{LABEL[target.currentValue]}</strong>.</>}
-            {target.mode === "heating-session" && target.sessionIds.length > 1 && <> All {target.sessionIds.length} conflicting sessions will be updated at once.</>}
+            {target.mode === "heating-session" && target.sessionIds.length > 1 && (
+            <>
+              {" "}All {target.sessionIds.length} conflicting sessions will be updated at once.
+              {target.sessionDetails && target.sessionDetails.length > 0 && (
+                <ul
+                  className="mt-2 max-h-40 overflow-y-auto divide-y divide-border rounded border border-border text-xs"
+                  data-testid="list-conflicting-sessions"
+                >
+                  {target.sessionDetails.map((s) => (
+                    <li key={s.id} className="flex items-center justify-between px-2 py-1 gap-2">
+                      <span className="text-muted-foreground font-mono">
+                        {s.startTime ? format(parseISO(s.startTime), "HH:mm") : "—"}
+                      </span>
+                      <span className="font-medium" data-testid={`text-session-dryer-${s.id}`}>
+                        {LABEL[s.dryerFedFrom]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
             {target.mode === "heating-session" && target.sessionIds.length === 1 && <> It currently says <strong>{LABEL[target.currentValue]}</strong>.</>}
           </DialogDescription>
         </DialogHeader>
