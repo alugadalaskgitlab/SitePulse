@@ -610,12 +610,54 @@ export default function PlantBitumenStock() {
     XLSX.writeFile(wb, `bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.xlsx`);
   }
 
-  function exportPdf() {
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(16);
-    doc.text("Bitumen Dip Readings - HLC Plant", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 22);
+  async function exportPdf() {
+    let logoDataUrl: string | null = null;
+    let logoAspect = 1.5;
+    try {
+      const resp = await fetch(`${window.location.origin}/hlc-logo.jpg`);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        logoDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        logoAspect = await new Promise<number>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+          img.onerror = () => resolve(1.5);
+          img.src = logoDataUrl!;
+        });
+      }
+    } catch {}
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    let curY = 8;
+    const logoH = 12;
+    const logoW = logoH * logoAspect;
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "JPEG", (pageWidth - logoW) / 2, curY, logoW, logoH);
+      curY += logoH + 3;
+    }
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, curY + 5, { align: "center" });
+    curY += 9;
+    doc.setDrawColor(50, 50, 50);
+    doc.setLineWidth(0.5);
+    doc.line(14, curY, pageWidth - 14, curY);
+    curY += 7;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(14);
+    doc.text(`Bitumen Dip Readings — ${urlPlant}`, 14, curY);
+    curY += 7;
+    doc.setFontSize(9);
+    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, curY);
+    curY += 6;
 
     const tableData = filteredReadings.map(r => [
       r.date, r.time || "", `Tank ${r.tankNumber}`, r.depthCm.toString(),
@@ -628,8 +670,10 @@ export default function PlantBitumenStock() {
     autoTable(doc, {
       head: [["Date", "Time", "Tank", "Depth(cm)", "Volume(L)", "Weight(MT)", "Usable(MT)", "Type", "Source", "Notes"]],
       body: tableData,
-      startY: 28,
+      startY: curY,
       styles: { fontSize: 8 },
+      headStyles: { fillColor: [180, 120, 30] },
+      margin: { left: 14, right: 14 },
     });
     doc.save(`bitumen_dip_readings_${format(new Date(), "yyyyMMdd")}.pdf`);
   }
