@@ -136,7 +136,7 @@ export default function PlantHeatingTrends() {
   const hotOilThreshold = data?.hotOilEndTempMinC ?? 240;
   const hotOilDeltaFloor = data?.hotOilDeltaMinC ?? 15;
   const mismatchThreshold = data?.mismatchThresholdL ?? 5;
-  const backLink = getPlantBackLink({ defaultTab: "reports" });
+  const backLink = getPlantBackLink({ forceTab: "reports" });
 
   return (
     <div className="space-y-6">
@@ -448,7 +448,7 @@ export default function PlantHeatingTrends() {
                               <Link
                                 href={appendPlantContext(
                                   `/plant/heating-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
-                                  { defaultTab: "reports" },
+                                  { forceTab: "reports" },
                                 )}
                                 data-testid={`link-mismatch-${r.date}`}
                               >
@@ -467,7 +467,7 @@ export default function PlantHeatingTrends() {
                               <Link
                                 href={appendPlantContext(
                                   `/plant/ldo-mismatch/${r.date}?plant=${encodeURIComponent(plant)}`,
-                                  { defaultTab: "reports" },
+                                  { forceTab: "reports" },
                                 )}
                                 data-testid={`link-ldo-ledger-${r.date}`}
                               >
@@ -514,7 +514,7 @@ export default function PlantHeatingTrends() {
                             : `${fmt(r.hotOilEndMinC, 0)} / ${fmt(r.hotOilEndMaxC, 0)}`}
                         </td>
                         <td className="py-2 pr-3 text-right">
-                          <Link href={appendPlantContext(`/plant/heating-sessions/${r.date}`, { defaultTab: "reports" })}>
+                          <Link href={appendPlantContext(`/plant/heating-sessions/${r.date}`, { forceTab: "reports" })}>
                             <Button variant="ghost" size="sm" data-testid={`link-day-${r.date}`}>
                               <ArrowRight className="w-4 h-4" />
                             </Button>

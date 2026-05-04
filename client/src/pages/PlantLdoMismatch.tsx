@@ -192,7 +192,7 @@ function DeltaCell({ d }: { d: number | null }) {
 interface DayDetailProps {
   day: DaySummary;
   plant: string;
-  appendPlantContext: (path: string, opts?: { defaultTab?: string }) => string;
+  appendPlantContext: (path: string, opts?: { defaultTab?: string; forceTab?: string }) => string;
   ldoFlowMeterLink: string;
   isAdmin: boolean;
   onCleanupOrphaned: (date: string) => void;
@@ -203,14 +203,14 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
   const { date, sessions, shiftLogs, ledgerRows, orphanedLedgerRows } = day;
 
   const heatSessionsLink = appendPlantContext(`/plant/heating-sessions/${date}`, {
-    defaultTab: "operations",
+    forceTab: "operations",
   });
   const shiftLogLink = appendPlantContext(`/plant/shift-log/${date}`, {
-    defaultTab: "operations",
+    forceTab: "operations",
   });
   const editSessionLink = (sessionId: number) =>
     appendPlantContext(`/plant/heating-sessions/${date}?openSession=${sessionId}`, {
-      defaultTab: "operations",
+      forceTab: "operations",
     });
 
   return (
@@ -638,10 +638,10 @@ export default function PlantLdoMismatch() {
   const effectiveDateFrom = sp.get("dateFrom") || localStorage.getItem(LS_KEY_FROM) || routeDate;
   const effectiveDateTo = sp.get("dateTo") || localStorage.getItem(LS_KEY_TO) || routeDate;
 
-  const dashboardBackLink = getPlantBackLink({ defaultTab: "operations" });
+  const dashboardBackLink = getPlantBackLink({ forceTab: "operations" });
   const ldoFlowMeterLink = appendPlantContext(
     `/plant/ldo-flow-meter?plant=${encodeURIComponent(plant)}`,
-    { defaultTab: "stock" },
+    { forceTab: "stock" },
   );
 
   const rangeEnabled = !!(effectiveDateFrom && effectiveDateTo);
@@ -1174,7 +1174,7 @@ export default function PlantLdoMismatch() {
   }
 
   const backLink = appendPlantContext(`/plant/heating-sessions/${routeDate}`, {
-    defaultTab: "operations",
+    forceTab: "operations",
   });
 
   return (
