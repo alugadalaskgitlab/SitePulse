@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
 import { AuthProvider } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
 import type { SectionKey } from "@shared/permissions";
@@ -88,11 +89,14 @@ function Watermark() {
 
 function AppHeader() {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { toast } = useToast();
 
   function handleRefresh() {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    queryClient.invalidateQueries().finally(() => {
+    queryClient.invalidateQueries({}, { throwOnError: true }).then(() => {
+      toast({ description: "Data refreshed", duration: 2000 });
+    }).catch(() => {}).finally(() => {
       setTimeout(() => setIsRefreshing(false), 600);
     });
   }
