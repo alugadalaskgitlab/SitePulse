@@ -574,18 +574,25 @@ export default function PlantLdoMismatch() {
   const sp = new URLSearchParams(searchString);
   const plant = sp.get("plant") || "Main Plant";
 
-  const initialFrom = sp.get("dateFrom") || routeDate;
-  const initialTo = sp.get("dateTo") || routeDate;
+  const LS_KEY_FROM = "ldo-mismatch-dateFrom";
+  const LS_KEY_TO = "ldo-mismatch-dateTo";
+
+  const urlFrom = sp.get("dateFrom");
+  const urlTo = sp.get("dateTo");
+  const initialFrom = urlFrom || localStorage.getItem(LS_KEY_FROM) || routeDate;
+  const initialTo = urlTo || localStorage.getItem(LS_KEY_TO) || routeDate;
 
   const [dateFrom, setDateFrom] = useState(initialFrom);
   const [dateTo, setDateTo] = useState(initialTo);
 
   useEffect(() => {
     const newSp = new URLSearchParams(searchString);
-    const urlFrom = newSp.get("dateFrom") || routeDate;
-    const urlTo = newSp.get("dateTo") || routeDate;
-    setDateFrom(urlFrom);
-    setDateTo(urlTo);
+    const newUrlFrom = newSp.get("dateFrom");
+    const newUrlTo = newSp.get("dateTo");
+    const resolvedFrom = newUrlFrom || localStorage.getItem(LS_KEY_FROM) || routeDate;
+    const resolvedTo = newUrlTo || localStorage.getItem(LS_KEY_TO) || routeDate;
+    setDateFrom(resolvedFrom);
+    setDateTo(resolvedTo);
     setShowOnlyMismatches(newSp.get("mismatchOnly") === "1");
     const openParam = newSp.get("open");
     if (openParam !== null) {
@@ -613,6 +620,8 @@ export default function PlantLdoMismatch() {
   }
 
   function applyRange() {
+    localStorage.setItem(LS_KEY_FROM, dateFrom);
+    localStorage.setItem(LS_KEY_TO, dateTo);
     const newSp = new URLSearchParams(searchString);
     newSp.set("dateFrom", dateFrom);
     newSp.set("dateTo", dateTo);
@@ -626,8 +635,8 @@ export default function PlantLdoMismatch() {
     setExpandedDates(new Set());
   }
 
-  const effectiveDateFrom = sp.get("dateFrom") || routeDate;
-  const effectiveDateTo = sp.get("dateTo") || routeDate;
+  const effectiveDateFrom = sp.get("dateFrom") || localStorage.getItem(LS_KEY_FROM) || routeDate;
+  const effectiveDateTo = sp.get("dateTo") || localStorage.getItem(LS_KEY_TO) || routeDate;
 
   const dashboardBackLink = getPlantBackLink({ defaultTab: "operations" });
   const ldoFlowMeterLink = appendPlantContext(
