@@ -825,7 +825,7 @@ export default function PlantLdoMismatch() {
     cleanupMutation.mutate({ date });
   }
 
-  function handleExport() {
+  async function handleExport() {
     const fmtVal = (n: number | null | undefined, digits = 1) =>
       n == null || isNaN(n as number) ? "" : Number(n).toFixed(digits);
 
@@ -934,6 +934,31 @@ export default function PlantLdoMismatch() {
 
     const arrBuf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([arrBuf], { type: "application/octet-stream" });
+
+    if ("showSaveFilePicker" in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: "Excel Files",
+              accept: {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+              },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast({ title: "File saved successfully" });
+        return;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+        // Fall through to standard download
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -942,6 +967,7 @@ export default function PlantLdoMismatch() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    toast({ title: "File download started", description: "Check your Downloads or Files app." });
   }
 
   async function handleExportPdf() {
