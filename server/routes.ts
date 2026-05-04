@@ -4304,6 +4304,26 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/plant-module/heating-sessions/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_heating")) return;
+      const id = parseInt(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid session id" });
+      const bodySchema = z.object({
+        dryerFedFrom: z.enum(["TANK_1", "TANK_2"]),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const updatedCount = await storage.alignDryerSourceForSessions([id], parsed.data.dryerFedFrom);
+      if (updatedCount === 0) return res.status(404).json({ message: "Heating session not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to update heating session" });
+    }
+  });
+
   app.get("/api/plant-module/heating-sessions/:id", async (req, res) => {
     try {
       const row = await storage.getBitumenHeatingSession(parseInt(req.params.id));

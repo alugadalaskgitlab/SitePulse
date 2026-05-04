@@ -745,6 +745,26 @@ export default function PlantShiftLog() {
     },
   });
 
+  const fixSessionMutation = useMutation({
+    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
+      await Promise.all(
+        sessionIds.map(id =>
+          apiRequest("PATCH", `/api/plant-module/heating-sessions/${id}`, { dryerFedFrom: targetValue })
+        )
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+      const n = variables.sessionIds.length;
+      toast({ title: `${n} session${n !== 1 ? "s" : ""} updated to ${label}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Fix session failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Task #254 — Reactive query: roll up every heating session attributed to
   // this production day (i.e. all sessions since the prior production day,
   // overnight pre-heat included). Drives both the Boiler Meter auto-prefill
@@ -1210,7 +1230,7 @@ export default function PlantShiftLog() {
                                         size="sm"
                                         variant="destructive"
                                         className="h-7 text-xs"
-                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
+                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
                                         onClick={() => alignMutation.mutate({ sessionIds, targetValue: slValue })}
                                         data-testid={`button-fix-sessions-${r.id}`}
                                       >
@@ -1221,7 +1241,18 @@ export default function PlantShiftLog() {
                                         size="sm"
                                         variant="outline"
                                         className="h-7 text-xs border-red-400 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
-                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending}
+                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
+                                        onClick={() => fixSessionMutation.mutate({ sessionIds, targetValue: slValue })}
+                                        data-testid={`button-fix-session-${r.id}`}
+                                      >
+                                        {fixSessionMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                        Fix session{n !== 1 ? "s" : ""} via PATCH → {slLabel}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-red-400 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                                        disabled={alignMutation.isPending || fixShiftLogMutation.isPending || fixSessionMutation.isPending}
                                         onClick={() => fixShiftLogMutation.mutate({ shiftLogId: r.id, dryerFedFrom: oppValue })}
                                         data-testid={`button-fix-shiftlog-${r.id}`}
                                       >
