@@ -738,6 +738,17 @@ export default function PlantDailyReports() {
                               <span className="text-amber-600 dark:text-amber-400">Dryer-source mismatch</span>
                             </div>
                           )}
+                          {mismatch && mismatch.conflictingSessions.length > 0 && mismatch.shiftLogId == null && (
+                            <p className="text-orange-700 dark:text-orange-400 text-[11px]" data-testid={`text-intra-conflict-no-shiftlog-${rowKey}`}>
+                              No shift log exists for this date yet.{" "}
+                              <Link
+                                href={appendPlantContext(`/plant/shift-log/${mismatch.date}?plant=${encodeURIComponent(mismatch.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
+                                data-testid={`link-create-shiftlog-intra-${rowKey}`}
+                              >
+                                <span className="underline underline-offset-2 cursor-pointer hover:opacity-80">Create a shift log to set the authoritative dryer source →</span>
+                              </Link>
+                            </p>
+                          )}
                           {r.dryerFedFrom === null && r.hasShiftLog && (
                             <a
                               href={appendPlantContext(`/plant/shift-log/${r.date}?plant=${encodeURIComponent(r.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
