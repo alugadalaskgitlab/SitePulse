@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -219,6 +220,22 @@ export default function PlantDailyReports() {
     selectedMixTypes.length > 0;
   // Fix dialog state
   const [fixDialog, setFixDialog] = useState<{ open: boolean; target: DryerSourceFixTarget | null }>({ open: false, target: null });
+
+  const alignMutation = useMutation({
+    mutationFn: async ({ sessionIds, targetValue }: { sessionIds: number[]; targetValue: "TANK_1" | "TANK_2" }) => {
+      const res = await apiRequest("PATCH", "/api/plant-module/heating-sessions/align-dryer-source", { sessionIds, targetValue });
+      return res.json() as Promise<{ updatedCount: number }>;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
+      const label = variables.targetValue === "TANK_1" ? "Boiler tank" : "Dryer tank";
+      toast({ title: `${data.updatedCount} session${data.updatedCount !== 1 ? "s" : ""} aligned to ${label}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Align failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<string>("");
@@ -762,15 +779,41 @@ export default function PlantDailyReports() {
                             </div>
                           )}
                           {mismatch && mismatch.conflictingSessions.length > 0 && mismatch.shiftLogId == null && (
-                            <p className="text-orange-700 dark:text-orange-400 text-[11px]" data-testid={`text-intra-conflict-no-shiftlog-${rowKey}`}>
-                              No shift log exists for this date yet.{" "}
-                              <Link
-                                href={appendPlantContext(`/plant/shift-log/${mismatch.date}?plant=${encodeURIComponent(mismatch.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
-                                data-testid={`link-create-shiftlog-intra-${rowKey}`}
-                              >
-                                <span className="underline underline-offset-2 cursor-pointer hover:opacity-80">Create a shift log to set the authoritative dryer source →</span>
-                              </Link>
-                            </p>
+                            <>
+                              <p className="text-orange-700 dark:text-orange-400 text-[11px]" data-testid={`text-intra-conflict-no-shiftlog-${rowKey}`}>
+                                No shift log exists for this date yet.{" "}
+                                <Link
+                                  href={appendPlantContext(`/plant/shift-log/${mismatch.date}?plant=${encodeURIComponent(mismatch.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
+                                  data-testid={`link-create-shiftlog-intra-${rowKey}`}
+                                >
+                                  <span className="underline underline-offset-2 cursor-pointer hover:opacity-80">Create a shift log to set the authoritative dryer source →</span>
+                                </Link>
+                              </p>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                  disabled={alignMutation.isPending}
+                                  onClick={() => alignMutation.mutate({ sessionIds: mismatch.conflictingSessions.map(s => s.id), targetValue: "TANK_1" })}
+                                  data-testid={`button-align-intra-tank1-${rowKey}`}
+                                >
+                                  {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                  Set all → Boiler tank
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                  disabled={alignMutation.isPending}
+                                  onClick={() => alignMutation.mutate({ sessionIds: mismatch.conflictingSessions.map(s => s.id), targetValue: "TANK_2" })}
+                                  data-testid={`button-align-intra-tank2-${rowKey}`}
+                                >
+                                  {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                                  Set all → Dryer tank
+                                </Button>
+                              </div>
+                            </>
                           )}
                           {r.dryerFedFrom === null && r.hasShiftLog && (
                             <a
