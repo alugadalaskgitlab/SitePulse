@@ -50,11 +50,9 @@ export function PushNotificationSetup() {
     }
   }, []);
 
-  // Check whether the browser has a push subscription and ensure the server
-  // DB is in sync with it. This self-heals the common case where the server
-  // DB lost the subscription row (e.g. admin toggled notificationsEnabled off)
-  // while the browser still holds a valid subscription. Without this, the UI
-  // would show "Notifications Active" (green) but pushes would never arrive.
+  // Checks local browser subscription and silently re-registers it with the
+  // server so the DB stays in sync even if server rows were lost (e.g. after
+  // an admin toggle). The server endpoint is idempotent (upsert on endpoint).
   async function checkSubscriptionStatus(iosDevice: boolean) {
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -65,8 +63,6 @@ export function PushNotificationSetup() {
         return;
       }
 
-      // Browser has a subscription — silently re-register it with the server.
-      // createPushSubscription uses ON CONFLICT DO UPDATE so this is idempotent.
       try {
         const subJson = subscription.toJSON();
         const res = await apiRequest("POST", "/api/push/subscribe", {
@@ -77,19 +73,14 @@ export function PushNotificationSetup() {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           if (body.message === "notifications_disabled") {
-            // Admin has disabled notifications for this account. Unsubscribe
-            // the browser-side registration too so state stays consistent.
             await subscription.unsubscribe().catch(() => {});
             setNotAllowed(true);
             setIsSubscribed(false);
             return;
           }
-          // Any other server error: browser subscription is still valid so
-          // stay subscribed locally; server will recover on next load.
         }
       } catch {
-        // Network error — browser subscription is still valid; mark subscribed
-        // and the server will be synced on the next successful load.
+        // Network error — browser subscription still valid, retry on next load.
       }
 
       setIsSubscribed(true);
