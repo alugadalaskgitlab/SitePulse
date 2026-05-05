@@ -895,11 +895,19 @@ export default function PlantHeatingSessions() {
                                           size="sm"
                                           variant="outline"
                                           className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
-                                          disabled={alignMutation.isPending}
-                                          onClick={() => alignMutation.mutate({ sessionIds: fixSessionIds, targetValue: slValue })}
+                                          onClick={() => {
+                                            setDryerFixTarget({
+                                              mode: "heating-session",
+                                              sessionIds: fixSessionIds,
+                                              sessionDetails: shiftLogConflictSessions.map(s => ({ id: s.id, startTime: s.startTime, dryerFedFrom: s.dryerFedFrom })),
+                                              date: dm.date,
+                                              currentValue: oppValue,
+                                              suggestedValue: slValue,
+                                            });
+                                            setDryerFixDialogOpen(true);
+                                          }}
                                           data-testid={`button-fix-sessions-${date}-${dm.plantName.replace(/\s+/g, "-")}`}
                                         >
-                                          {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Fix {n} session{n !== 1 ? "s" : ""} → match shift log ({slLabel})
                                         </Button>
                                         {dm.shiftLogId != null && (
@@ -960,15 +968,24 @@ export default function PlantHeatingSessions() {
                                           const label = heatingSessionTypeLabel(s.sessionType);
                                           const timeLabel = s.startTime ? ` · ${s.startTime}` : "";
                                           const sourceLabel = s.dryerFedFrom === "TANK_1" ? "Boiler tank" : s.dryerFedFrom === "TANK_2" ? "Dryer tank" : s.dryerFedFrom;
-                                          const fullSession = (sessions || []).find(fs => fs.id === s.id);
                                           return (
                                             <li key={s.id}>
                                               <button
                                                 type="button"
-                                                disabled={!fullSession}
-                                                onClick={() => { if (fullSession) openEdit(fullSession); }}
+                                                onClick={() => {
+                                                  const suggested: "TANK_1" | "TANK_2" =
+                                                    dm.shiftLogValue ?? (s.dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1");
+                                                  setDryerFixTarget({
+                                                    mode: "heating-session",
+                                                    sessionIds: [s.id],
+                                                    date: dm.date,
+                                                    currentValue: s.dryerFedFrom,
+                                                    suggestedValue: suggested,
+                                                  });
+                                                  setDryerFixDialogOpen(true);
+                                                }}
                                                 data-testid={`link-intra-conflict-session-${s.id}`}
-                                                className="underline underline-offset-2 cursor-pointer hover:opacity-80 text-orange-800 dark:text-orange-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="underline underline-offset-2 cursor-pointer hover:opacity-80 text-orange-800 dark:text-orange-300"
                                               >
                                                 {label}{timeLabel} — {sourceLabel} →
                                               </button>

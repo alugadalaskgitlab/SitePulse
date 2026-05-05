@@ -5,7 +5,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
-import { format, parseISO } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -98,7 +97,7 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
                   {target.sessionDetails.map((s) => (
                     <li key={s.id} className="flex items-center justify-between px-2 py-1 gap-2">
                       <span className="text-muted-foreground font-mono">
-                        {s.startTime ? format(parseISO(s.startTime), "HH:mm") : "—"}
+                        {s.startTime ? s.startTime.slice(0, 5) : "—"}
                       </span>
                       <span className="font-medium" data-testid={`text-session-dryer-${s.id}`}>
                         {LABEL[s.dryerFedFrom]}
