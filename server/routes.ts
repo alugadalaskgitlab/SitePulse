@@ -2073,7 +2073,11 @@ export async function registerRoutes(
       const log = await storage.createLdoLog(req.body);
       sendPushToAll("LDO Log Added", `LDO log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
-    } catch (err) {
+    } catch (err: unknown) {
+      const e = err as { code?: string; constraint?: string };
+      if (e?.code === "DUPLICATE_LDO_DATE" || e?.constraint === "ldo_logs_date_uq") {
+        return res.status(409).json({ message: `An LDO log entry for ${req.body.date} already exists. Please edit the existing entry instead.` });
+      }
       res.status(500).json({ message: "Failed to create LDO log" });
     }
   });

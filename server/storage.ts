@@ -3070,6 +3070,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLdoLog(log: InsertLdoLog): Promise<LdoLog> {
+    // Check for an existing entry on the same date before inserting
+    const [existing] = await db.select({ id: ldoLogs.id })
+      .from(ldoLogs)
+      .where(eq(ldoLogs.date, String(log.date)))
+      .limit(1);
+    if (existing) {
+      const err = Object.assign(
+        new Error(`An LDO log entry for ${log.date} already exists.`),
+        { code: "DUPLICATE_LDO_DATE" as const }
+      );
+      throw err;
+    }
+
     // Calculate expected LDO based on tons produced
     const tonsProduced = log.tonsProduced || 0;
     const expectedLdo = tonsProduced * DEFAULT_LDO_NORM;

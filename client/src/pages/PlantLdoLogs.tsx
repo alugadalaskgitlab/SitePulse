@@ -151,6 +151,22 @@ export default function PlantLdoLogs() {
       resetForm();
       toast({ title: "LDO log recorded successfully" });
     },
+    onError: (err: any) => {
+      const message = err?.message || "";
+      if (message.startsWith("409:") || message.includes("already exists")) {
+        toast({
+          title: "Duplicate entry",
+          description: `An LDO log for ${date} already exists. Please edit the existing entry instead.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Failed to save LDO log",
+          description: "An unexpected error occurred. Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
   });
 
   const resetForm = () => {

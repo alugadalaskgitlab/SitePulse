@@ -432,6 +432,7 @@ export const ldoLogs = pgTable("ldo_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("ldo_logs_date_idx").on(table.date),
+  dateUniq: uniqueIndex("ldo_logs_date_uq").on(table.date),
 }));
 
 // Stock Balances (for real-time stock tracking)
