@@ -333,6 +333,7 @@ export interface IStorage {
   
   // Create missing ledger entries for equipment usage diesel and clean up orphaned reversals
   reconcileEquipmentUsageLedger(): Promise<{ created: number; skipped: number; errors: number; cleaned: number }>;
+  purgeOrphanedDeletionReversals(): Promise<{ removed: number }>;
   
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }>;
@@ -4693,6 +4694,27 @@ export class DatabaseStorage implements IStorage {
     return { created, skipped, errors, cleaned };
   }
 
+  async purgeOrphanedDeletionReversals(): Promise<{ removed: number }> {
+    let removed = 0;
+    try {
+      const orphans = await db.select({ id: stockLedger.id }).from(stockLedger)
+        .where(and(
+          eq(stockLedger.transactionType, 'adjustment'),
+          sql`${stockLedger.notes} ~ 'Deleted (opening stock|issue|return) #[0-9]+ reversal'`
+        ));
+      for (const row of orphans) {
+        await db.delete(stockLedger).where(eq(stockLedger.id, row.id));
+        removed++;
+      }
+      if (removed > 0) {
+        console.log(`purgeOrphanedDeletionReversals: removed ${removed} erroneous reversal ledger entries`);
+      }
+    } catch (err) {
+      console.error('purgeOrphanedDeletionReversals failed:', err);
+    }
+    return { removed };
+  }
+
   // Reconcile stock balances from ledger entries (excludes legacy equipment_issue)
   async previewLedgerForReassignment(opts: {
     materialId: number;
@@ -5865,18 +5887,6 @@ export class DatabaseStorage implements IStorage {
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
-        
-        await tx.insert(stockLedger).values({
-          date: format(new Date(), "yyyy-MM-dd"),
-          partyId: stockPartyId,
-          materialId: issue.materialId,
-          transactionType: "adjustment",
-          referenceId: id,
-          quantityIn: stockQuantity,
-          balanceAfter: newBalance,
-          uom: stockUom,
-          notes: `Deleted issue #${id} reversal`,
-        });
       }
       
       await tx.delete(stockLedger).where(
@@ -6138,18 +6148,6 @@ export class DatabaseStorage implements IStorage {
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
-
-        await tx.insert(stockLedger).values({
-          date: format(new Date(), "yyyy-MM-dd"),
-          partyId: stockPartyId,
-          materialId: ret.materialId,
-          transactionType: "adjustment",
-          referenceId: id,
-          quantityOut: stockQuantity,
-          balanceAfter: newBalance,
-          uom: stockUom,
-          notes: `Deleted return #${id} reversal`,
-        });
       }
 
       await tx.delete(stockLedger).where(
@@ -6393,19 +6391,6 @@ export class DatabaseStorage implements IStorage {
         await tx.update(stockBalances)
           .set({ balance: newBalance, lastUpdated: new Date() })
           .where(eq(stockBalances.id, existing.id));
-        
-        // Add reversal ledger entry in the stock UOM (post-conversion)
-        await tx.insert(stockLedger).values({
-          date: format(new Date(), "yyyy-MM-dd"),
-          partyId: stockPartyId,
-          materialId: stock.materialId,
-          transactionType: "adjustment",
-          referenceId: id,
-          quantityOut: reverseQuantity,
-          balanceAfter: newBalance,
-          uom: reverseUom,
-          notes: `Deleted opening stock #${id} reversal`,
-        });
       }
       
       // Delete ledger entries for this opening stock

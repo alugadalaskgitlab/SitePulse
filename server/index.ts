@@ -124,6 +124,12 @@ app.use((req, res, next) => {
     console.error("Startup: ensureBootstrapAdmin failed:", e);
   }
 
+  try {
+    await storage.purgeOrphanedDeletionReversals();
+  } catch (e) {
+    console.error("Startup: purgeOrphanedDeletionReversals failed:", e);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
