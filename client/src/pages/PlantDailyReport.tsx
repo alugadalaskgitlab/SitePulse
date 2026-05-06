@@ -272,7 +272,7 @@ export default function PlantDailyReport() {
 
         return (
           <>
-            {/* 1. SHIFT DETAIL */}
+
             <Card>
               <CardHeader><CardTitle>Shift Detail</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -312,8 +312,6 @@ export default function PlantDailyReport() {
                 <div><div className="text-muted-foreground">Ambient Temp °C</div><div className="font-medium">{fmt(data.shift?.ambientTemp, 1)}</div></div>
               </CardContent>
             </Card>
-
-            {/* 2. PRODUCTION — summary + by-mix table + actual bitumen + LDO stats */}
             <Card>
               <CardHeader><CardTitle>Production</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -386,8 +384,6 @@ export default function PlantDailyReport() {
                 );
               })()}
             </Card>
-
-            {/* 3. DISPATCH LIST */}
             {data.dispatches?.length > 0 && (
               <Card>
                 <CardHeader className="flex-row items-center justify-between">
@@ -420,8 +416,6 @@ export default function PlantDailyReport() {
                 )}
               </Card>
             )}
-
-            {/* 4. BITUMEN TANK STATUS — compact text */}
             {!data.shift?.noMainPlantOps && (
             <Card>
               <CardHeader><CardTitle>Bitumen Tank Status (from Shift Log)</CardTitle></CardHeader>
@@ -472,8 +466,6 @@ export default function PlantDailyReport() {
               </CardContent>
             </Card>
             )}
-
-            {/* 5. LDO DETAIL + HEATING SESSIONS — combined card */}
             {!data.shift?.noMainPlantOps && (
             <Card>
               <CardHeader>
@@ -665,8 +657,6 @@ export default function PlantDailyReport() {
               )}
             </Card>
             )}
-
-            {/* 6. MATERIAL RECEIPTS */}
             {data.receipts?.byMaterial?.length > 0 && (
               <Card>
                 <CardHeader><CardTitle>Material Receipts ({data.receipts.totalLines} lines)</CardTitle></CardHeader>
@@ -689,8 +679,6 @@ export default function PlantDailyReport() {
                 </CardContent>
               </Card>
             )}
-
-            {/* 7. GENERATOR LOGS */}
             {data.generators?.items?.length > 0 && (
               <Card>
                 <CardHeader><CardTitle>Generator Logs (Total Diesel: {data.generators.totalDieselConsumedL?.toFixed(1)} L)</CardTitle></CardHeader>
@@ -736,8 +724,6 @@ export default function PlantDailyReport() {
                 </CardContent>
               </Card>
             )}
-
-            {/* 8. EQUIPMENT USAGE */}
             <Card>
               <CardHeader><CardTitle>Equipment Usage (Total Diesel Issued: {fmt(data.totalDieselIssued, 1)} L)</CardTitle></CardHeader>
               <CardContent>
@@ -773,8 +759,6 @@ export default function PlantDailyReport() {
                 )}
               </CardContent>
             </Card>
-
-            {/* 9. MANPOWER BY CONTRACTOR */}
             {data.manpowerByContractor?.length > 0 && (
               <Card>
                 <CardHeader><CardTitle>Manpower by Contractor / Category</CardTitle></CardHeader>
@@ -806,8 +790,6 @@ export default function PlantDailyReport() {
                 </CardContent>
               </Card>
             )}
-
-            {/* 10. MANPOWER */}
             <Card>
               <CardHeader><CardTitle>Manpower ({data.manpower.length})</CardTitle></CardHeader>
               <CardContent>
@@ -822,8 +804,6 @@ export default function PlantDailyReport() {
                 )}
               </CardContent>
             </Card>
-
-            {/* 11. IDLE EVENTS */}
             <Card>
               <CardHeader><CardTitle>Idle Events ({data.idle.totalMinutes} min)</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -854,8 +834,6 @@ export default function PlantDailyReport() {
                 )}
               </CardContent>
             </Card>
-
-            {/* 12. REMARKS */}
             {data.shift?.remarks && (
               <Card>
                 <CardHeader><CardTitle>Remarks</CardTitle></CardHeader>
