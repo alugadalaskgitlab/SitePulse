@@ -274,6 +274,7 @@ export interface IStorage {
   
   getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
   createLdoLog(log: InsertLdoLog): Promise<LdoLog>;
+  updateLdoLog(id: number, updates: Partial<InsertLdoLog>): Promise<LdoLog | undefined>;
   getLdoDailySummary(date: string, plantName?: string): Promise<{
     openingStockL: number | null;
     ldoReceivedL: number;
@@ -3097,6 +3098,33 @@ export class DatabaseStorage implements IStorage {
       efficiency,
     }).returning();
     
+    return result;
+  }
+
+  async updateLdoLog(id: number, updates: Partial<InsertLdoLog>): Promise<LdoLog | undefined> {
+    // Recompute derived fields from updated values
+    const tonsProduced = updates.tonsProduced !== undefined ? (updates.tonsProduced || 0) : undefined;
+    const ldoConsumed = updates.ldoConsumed !== undefined ? (updates.ldoConsumed || 0) : undefined;
+
+    let derivedFields: Partial<typeof ldoLogs.$inferInsert> = {};
+    if (tonsProduced !== undefined || ldoConsumed !== undefined) {
+      // Fetch current row to fill any missing value
+      const [current] = await db.select().from(ldoLogs).where(eq(ldoLogs.id, id)).limit(1);
+      if (!current) return undefined;
+      const resolvedTons = tonsProduced !== undefined ? tonsProduced : (current.tonsProduced || 0);
+      const resolvedConsumed = ldoConsumed !== undefined ? ldoConsumed : (current.ldoConsumed || 0);
+      const expectedLdo = resolvedTons * DEFAULT_LDO_NORM;
+      derivedFields = {
+        expectedLdo,
+        variance: expectedLdo - resolvedConsumed,
+        efficiency: resolvedTons > 0 ? resolvedConsumed / resolvedTons : 0,
+      };
+    }
+
+    const [result] = await db.update(ldoLogs)
+      .set({ ...updates, ...derivedFields })
+      .where(eq(ldoLogs.id, id))
+      .returning();
     return result;
   }
 

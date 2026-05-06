@@ -2082,6 +2082,23 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/plant-module/ldo-logs/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_stock")) return;
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ message: "Invalid id" });
+      const updated = await storage.updateLdoLog(id, req.body);
+      if (!updated) return res.status(404).json({ message: "LDO log not found" });
+      res.json(updated);
+    } catch (err: unknown) {
+      const e = err as { code?: string; constraint?: string };
+      if (e?.code === "DUPLICATE_LDO_DATE" || e?.constraint === "ldo_logs_date_uq") {
+        return res.status(409).json({ message: `An LDO log entry for ${req.body.date} already exists.` });
+      }
+      res.status(500).json({ message: "Failed to update LDO log" });
+    }
+  });
+
   // Stock Balances
   app.get("/api/plant-module/stock-balances", async (req, res) => {
     try {

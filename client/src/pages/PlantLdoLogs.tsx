@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap } from "lucide-react";
+import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap, Pencil } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -37,10 +37,12 @@ export default function PlantLdoLogs() {
   const { toast } = useToast();
   const { sectionCan } = useAuth();
   const canCreate = sectionCan("plant_stock", "create");
+  const canEdit = sectionCan("plant_stock", "edit");
   const canExport = sectionCan("plant_stock", "view_reports");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<LdoLog | null>(null);
   const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [openingStock, setOpeningStock] = useState("");
@@ -61,9 +63,11 @@ export default function PlantLdoLogs() {
   };
 
   // Task #479 — Auto-fill from meter readings when dialog opens or date changes
+  // Skip auto-fill when editing an existing entry (fields are pre-populated)
   useEffect(() => {
     if (!dialogOpen) return;
     if (!date) return;
+    if (editingLog) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -169,6 +173,33 @@ export default function PlantLdoLogs() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { date: string; openingStock: number | null; ldoReceived: number | null; ldoConsumed: number | null; closingStock: number | null; tonsProduced: number | null } }) =>
+      apiRequest("PATCH", `/api/plant-module/ldo-logs/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-logs"] });
+      setDialogOpen(false);
+      resetForm();
+      toast({ title: "LDO log updated successfully" });
+    },
+    onError: (err: any) => {
+      const message = err?.message || "";
+      if (message.startsWith("409:") || message.includes("already exists")) {
+        toast({
+          title: "Duplicate entry",
+          description: `An LDO log for ${date} already exists.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Failed to update LDO log",
+          description: "An unexpected error occurred. Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
+  });
+
   const resetForm = () => {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setOpeningStock("");
@@ -178,20 +209,42 @@ export default function PlantLdoLogs() {
     setTonsProduced("");
     setAutoFilledFields(new Set());
     setSummaryLoading(false);
+    setEditingLog(null);
+  };
+
+  const openEditDialog = (log: LdoLog) => {
+    setEditingLog(log);
+    setDate(log.date);
+    setOpeningStock(log.openingStock != null ? String(log.openingStock) : "");
+    setLdoReceived(log.ldoReceived != null ? String(log.ldoReceived) : "");
+    setLdoConsumed(log.ldoConsumed != null ? String(log.ldoConsumed) : "");
+    setClosingStock(log.closingStock != null ? String(log.closingStock) : "");
+    setTonsProduced(log.tonsProduced != null ? String(log.tonsProduced) : "");
+    setAutoFilledFields(new Set());
+    setDialogOpen(true);
   };
 
   const doSave = () => {
-    createMutation.mutate({
+    const payload = {
       date,
       openingStock: openingStock ? parseFloat(openingStock) : null,
       ldoReceived: ldoReceived ? parseFloat(ldoReceived) : null,
       ldoConsumed: ldoConsumed ? parseFloat(ldoConsumed) : null,
       closingStock: closingStock ? parseFloat(closingStock) : null,
       tonsProduced: tonsProduced ? parseFloat(tonsProduced) : null,
-    });
+    };
+    if (editingLog) {
+      editMutation.mutate({ id: editingLog.id, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleSubmit = () => {
+    if (editingLog) {
+      doSave();
+      return;
+    }
     const duplicate = logs?.some((log) => log.date === date);
     if (duplicate) {
       setDuplicateWarningOpen(true);
@@ -442,7 +495,7 @@ export default function PlantLdoLogs() {
             tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.date, time: tankStock.tank2.time } : undefined}
           />
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           {canCreate && (
             <DialogTrigger asChild>
               <Button className="gap-2" data-testid="button-add-ldo-log">
@@ -452,7 +505,7 @@ export default function PlantLdoLogs() {
           )}
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Record LDO Consumption</DialogTitle>
+              <DialogTitle>{editingLog ? "Edit LDO Entry" : "Record LDO Consumption"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -460,7 +513,9 @@ export default function PlantLdoLogs() {
                 <Input
                   type="date"
                   value={date}
-                  onChange={(e) => { setDate(e.target.value); setAutoFilledFields(new Set()); }}
+                  onChange={(e) => { if (!editingLog) { setDate(e.target.value); setAutoFilledFields(new Set()); } }}
+                  readOnly={!!editingLog}
+                  className={editingLog ? "opacity-60 cursor-not-allowed" : ""}
                   data-testid="input-ldo-date"
                 />
               </div>
@@ -565,8 +620,8 @@ export default function PlantLdoLogs() {
                 </div>
               )}
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || isLoading} data-testid="button-save-ldo-log">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Entry"}
+              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || editMutation.isPending || isLoading} data-testid="button-save-ldo-log">
+                {(createMutation.isPending || editMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingLog ? "Update Entry" : "Save Entry"}
               </Button>
             </div>
           </DialogContent>
@@ -629,8 +684,8 @@ export default function PlantLdoLogs() {
                 const variance = log.variance || 0;
                 const isExcess = variance < 0;
                 return (
-                  <div key={log.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
+                  <div key={log.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 gap-3">
+                    <div className="flex-1 min-w-0">
                       <p className="font-medium">{log.date}</p>
                       <p className="text-sm text-muted-foreground">
                         Production: {log.tonsProduced?.toFixed(3)} MT | Consumed: {log.ldoConsumed?.toFixed(3)} L
@@ -642,12 +697,23 @@ export default function PlantLdoLogs() {
                         Expected: {log.expectedLdo?.toFixed(3)} L (@ {DEFAULT_LDO_NORM} L/ton)
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex flex-col items-end gap-2 shrink-0">
                       <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/ton</p>
-                      <Badge variant="secondary" className="gap-1 mt-1">
+                      <Badge variant="secondary" className="gap-1">
                         {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {Math.abs(variance).toFixed(3)} L {isExcess ? "excess" : "saved"}
                       </Badge>
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 gap-1 text-xs"
+                          onClick={() => openEditDialog(log)}
+                          data-testid={`button-edit-ldo-log-${log.id}`}
+                        >
+                          <Pencil className="w-3 h-3" /> Edit
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
