@@ -82,6 +82,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.deduplicateLdoFlowSlotReadings();
+  } catch (e) {
+    console.error("Startup: deduplicateLdoFlowSlotReadings failed:", e);
+  }
+
+  try {
     await storage.backfillLdoFlowReadingsFromHeatingSessions();
   } catch (e) {
     console.error("Startup: Failed to backfill LDO flow readings from heating sessions:", e);

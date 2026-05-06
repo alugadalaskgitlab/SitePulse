@@ -419,6 +419,10 @@ export interface IStorage {
   migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
 
   // Backfill LDO Flow Meter ledger rows (tagged sourceHeatingSessionId) from historical bitumen heating sessions.
+  // Removes duplicate slot (opening/closing) rows from ldo_flow_readings before the unique
+  // index is applied, keeping the lowest id per (date, tank_number, reading_type, plant_name).
+  deduplicateLdoFlowSlotReadings(): Promise<{ removed: number }>;
+
   // Idempotent: drops rows already tagged for each session, re-inserts opening/closing if values are present.
   backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }>;
 
@@ -9296,9 +9300,9 @@ export class DatabaseStorage implements IStorage {
               });
             }
             if (ldoRows.length > 0) {
-              await tx.insert(ldoFlowReadings).values(ldoRows);
-              result.rowsInserted += ldoRows.length;
-              result.sessionsUpdated++;
+              const inserted = await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing().returning({ id: ldoFlowReadings.id });
+              result.rowsInserted += inserted.length;
+              if (inserted.length > 0) result.sessionsUpdated++;
             }
           });
         } catch (err) {
@@ -9313,6 +9317,24 @@ export class DatabaseStorage implements IStorage {
       result.errors++;
     }
     return result;
+  }
+
+  async deduplicateLdoFlowSlotReadings(): Promise<{ removed: number }> {
+    const result = await db.execute(sql`
+      DELETE FROM ldo_flow_readings
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM ldo_flow_readings
+        WHERE reading_type NOT IN ('receipt')
+        GROUP BY date, tank_number, reading_type, plant_name
+      )
+      AND reading_type NOT IN ('receipt')
+    `);
+    const removed = (result as { rowCount?: number }).rowCount ?? 0;
+    if (removed > 0) {
+      console.log(`deduplicateLdoFlowSlotReadings: removed ${removed} duplicate slot row(s)`);
+    }
+    return { removed };
   }
 
   async backfillLdoReceiptsFromMaterialReceipts(): Promise<{ receiptsScanned: number; rowsInserted: number; rowsSkipped: number; errors: number }> {
@@ -11184,7 +11206,7 @@ export class DatabaseStorage implements IStorage {
     pushLdo(1, "closing", log.ldoTank1ClosingMeter, log.plantStopTime);
     pushLdo(2, "opening", log.ldoTank2OpeningMeter, log.plantStartTime);
     pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime);
-    if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows);
+    if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
 
     const bitumenRows: any[] = [];
     const pushBitumen = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
@@ -12400,7 +12422,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
       if (ldoRows.length > 0) {
-        await tx.insert(ldoFlowReadings).values(ldoRows);
+        await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
       }
 
       return saved;

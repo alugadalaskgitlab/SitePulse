@@ -1,7 +1,7 @@
 import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // === TABLE DEFINITIONS ===
 
@@ -776,7 +776,11 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   // (tank=1) rows which always debit Tank-1.
   dryerFedFrom: text("dryer_fed_from"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  uniqSlotReadings: uniqueIndex("ldo_flow_readings_slot_uq").on(
+    table.date, table.tankNumber, table.readingType, table.plantName
+  ).where(sql`reading_type NOT IN ('receipt')`),
+}));
 
 export const ldoDipReadings = pgTable("ldo_dip_readings", {
   id: serial("id").primaryKey(),
