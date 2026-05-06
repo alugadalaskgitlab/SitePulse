@@ -96,6 +96,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.deduplicateLdoDipReadings();
+  } catch (e) {
+    console.error("Startup: deduplicateLdoDipReadings failed:", e);
+  }
+
+  try {
     await storage.deduplicateLdoFlowSlotReadings();
   } catch (e) {
     console.error("Startup: deduplicateLdoFlowSlotReadings failed:", e);

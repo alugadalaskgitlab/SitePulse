@@ -422,6 +422,10 @@ export interface IStorage {
   // keeping the lowest id per (date, tank_number, reading_type, plant_name).
   deduplicateBitumenDipReadings(): Promise<{ removed: number }>;
 
+  // Removes duplicate dip rows from ldo_dip_readings before the unique index is enforced,
+  // keeping the lowest id per (date, tank_number, reading_type, plant_name).
+  deduplicateLdoDipReadings(): Promise<{ removed: number }>;
+
   // Backfill LDO Flow Meter ledger rows (tagged sourceHeatingSessionId) from historical bitumen heating sessions.
   // Removes duplicate slot (opening/closing) rows from ldo_flow_readings before the unique
   // index is applied, keeping the lowest id per (date, tank_number, reading_type, plant_name).
@@ -9335,6 +9339,22 @@ export class DatabaseStorage implements IStorage {
     const removed = (result as { rowCount?: number }).rowCount ?? 0;
     if (removed > 0) {
       console.log(`deduplicateBitumenDipReadings: removed ${removed} duplicate dip row(s)`);
+    }
+    return { removed };
+  }
+
+  async deduplicateLdoDipReadings(): Promise<{ removed: number }> {
+    const result = await db.execute(sql`
+      DELETE FROM ldo_dip_readings
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM ldo_dip_readings
+        GROUP BY date, tank_number, reading_type, plant_name
+      )
+    `);
+    const removed = (result as { rowCount?: number }).rowCount ?? 0;
+    if (removed > 0) {
+      console.log(`deduplicateLdoDipReadings: removed ${removed} duplicate dip row(s)`);
     }
     return { removed };
   }
