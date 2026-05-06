@@ -181,13 +181,13 @@ export default function PlantDailyReport() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center">
-            <Button variant="outline" size="icon" className="rounded-r-none border-r-0 h-9 w-8" data-testid="button-prev-date"
+          <div className="flex items-center border rounded-md overflow-hidden h-9">
+            <Button variant="ghost" size="icon" className="h-9 w-8 rounded-none border-r shrink-0" data-testid="button-prev-date"
               onClick={() => setDate(format(subDays(parseISO(date), 1), "yyyy-MM-dd"))}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40 rounded-none border-x-0 h-9 text-center" data-testid="input-date" />
-            <Button variant="outline" size="icon" className="rounded-l-none border-l-0 h-9 w-8" data-testid="button-next-date"
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40 rounded-none border-0 h-9 text-center focus-visible:ring-0 focus-visible:ring-offset-0" data-testid="input-date" />
+            <Button variant="ghost" size="icon" className="h-9 w-8 rounded-none border-l shrink-0" data-testid="button-next-date"
               onClick={() => setDate(format(addDays(parseISO(date), 1), "yyyy-MM-dd"))}>
               <ChevronRight className="w-4 h-4" />
             </Button>
