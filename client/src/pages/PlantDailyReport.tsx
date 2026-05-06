@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, ChevronLeft, Download, Edit, Loader2, History } from "lucide-react";
-import { format } from "date-fns";
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, Edit, Loader2, History } from "lucide-react";
+import { format, addDays, subDays, parseISO } from "date-fns";
 import { heatingSessionTypeLabel } from "@shared/schema";
 import type { PlantShiftLogWithDetails } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -114,7 +114,7 @@ export default function PlantDailyReport() {
   const { appendOrigin, getPlantBackLink, appendPlantContext } = useOrigin();
   const { toast } = useToast();
   const [, params] = useRoute("/plant/daily-report/:date");
-  const backHref = getPlantBackLink({ defaultTab: "reports" });
+  const backHref = appendPlantContext("/plant/daily-reports", { defaultTab: "reports" });
   const [date, setDate] = useState(params?.date || format(new Date(), "yyyy-MM-dd"));
   const [plantName, setPlantName] = useState("Main Plant");
   const [showAllDispatches, setShowAllDispatches] = useState(false);
@@ -181,7 +181,17 @@ export default function PlantDailyReport() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" data-testid="input-date" />
+          <div className="flex items-center">
+            <Button variant="outline" size="icon" className="rounded-r-none border-r-0 h-9 w-8" data-testid="button-prev-date"
+              onClick={() => setDate(format(subDays(parseISO(date), 1), "yyyy-MM-dd"))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40 rounded-none border-x-0 h-9 text-center" data-testid="input-date" />
+            <Button variant="outline" size="icon" className="rounded-l-none border-l-0 h-9 w-8" data-testid="button-next-date"
+              onClick={() => setDate(format(addDays(parseISO(date), 1), "yyyy-MM-dd"))}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
           <select value={plantName} onChange={e => setPlantName(e.target.value)} className="border rounded px-2 py-1 text-sm" data-testid="select-plant">
             {(plantsList && plantsList.length ? plantsList : ["Main Plant"]).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
