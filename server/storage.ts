@@ -11208,7 +11208,7 @@ export class DatabaseStorage implements IStorage {
     pushBitumen(1, "closing", log.bitumenTank1ClosingDip, log.plantStopTime);
     pushBitumen(2, "opening", log.bitumenTank2OpeningDip, log.plantStartTime);
     pushBitumen(2, "closing", log.bitumenTank2ClosingDip, log.plantStopTime);
-    if (bitumenRows.length) await tx.insert(bitumenDipReadings).values(bitumenRows);
+    if (bitumenRows.length) await tx.insert(bitumenDipReadings).values(bitumenRows).onConflictDoNothing();
 
     // Task #344 — LDO dip readings auto-created from shift log dip fields.
     const ldoDipRows: any[] = [];
