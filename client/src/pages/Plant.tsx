@@ -1584,6 +1584,7 @@ function MixTemplateMaster() {
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
   const [aggregateMoistureContent, setAggregateMoistureContent] = useState<Record<number, string>>({});
   const [aggregateWastageFactors, setAggregateWastageFactors] = useState<Record<number, string>>({});
+  const [selectedPartyId, setSelectedPartyId] = useState<string>("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
   const [newMixTypeName, setNewMixTypeName] = useState("");
@@ -1617,6 +1618,10 @@ function MixTemplateMaster() {
 
   const { data: mixTypes } = useQuery<MixType[]>({
     queryKey: ["/api/plant-module/mix-types"],
+  });
+
+  const { data: parties } = useQuery<Party[]>({
+    queryKey: ["/api/plant-module/parties"],
   });
 
   const aggregateMaterials = materials?.filter(m => m.category === "Aggregate") || [];
@@ -1747,6 +1752,7 @@ function MixTemplateMaster() {
     setBitumenPercent("");
     setLdoNorm("6");
     setNotes("");
+    setSelectedPartyId("");
     setAggregateProportions({});
     setAggregateMoistureContent({});
     setAggregateWastageFactors({});
@@ -1759,6 +1765,7 @@ function MixTemplateMaster() {
     setBitumenPercent(template.bitumenPercent?.toString() || "");
     setLdoNorm(template.ldoNorm?.toString() || "6");
     setNotes(template.notes || "");
+    setSelectedPartyId(template.partyId != null ? String(template.partyId) : "");
     // Load components for this template
     const templateComponents = allComponents?.filter(c => c.templateId === template.id) || [];
     const proportions: Record<number, string> = {};
@@ -1815,6 +1822,7 @@ function MixTemplateMaster() {
       bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
       ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
       notes,
+      partyId: selectedPartyId ? parseInt(selectedPartyId) : null,
       components
     };
 
@@ -1884,6 +1892,20 @@ function MixTemplateMaster() {
                     <SelectItem value="__add_new__" className="text-primary font-medium">
                       <span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Add New Type</span>
                     </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="party-assign">Assign to Party <span className="text-muted-foreground font-normal">(optional — leave blank for shared/standard)</span></Label>
+                <Select value={selectedPartyId} onValueChange={setSelectedPartyId}>
+                  <SelectTrigger id="party-assign" data-testid="select-template-party">
+                    <SelectValue placeholder="Shared / all parties" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Shared / all parties</SelectItem>
+                    {parties?.filter(p => p.isActive !== 0).map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2200,10 +2222,15 @@ function MixTemplateMaster() {
                 <div key={template.id} className="p-3 rounded-md bg-muted/50">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <p className="font-medium">{template.name}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium">{template.name}</p>
+                        {template.partyId != null
+                          ? <Badge variant="secondary" className="text-xs">{parties?.find(p => p.id === template.partyId)?.name ?? `Party #${template.partyId}`}</Badge>
+                          : <Badge variant="outline" className="text-xs text-muted-foreground">Shared</Badge>
+                        }
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        {template.mixType} - Bitumen: {template.bitumenPercent}% - LDO: {template.ldoNorm || 6} L/ton
-                        {template.isStandard === 1 ? " (Standard)" : " (Job-specific)"}
+                        {template.mixType} — Bitumen: {template.bitumenPercent}% — LDO: {template.ldoNorm || 6} L/ton
                       </p>
                       {template.createdAt && (
                         <p className="text-xs text-muted-foreground mt-1">

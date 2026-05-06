@@ -166,6 +166,13 @@ export default function PlantDispatches() {
     return sitesList.filter(s => s.isActive !== 0 && (!s.partyId || s.partyId === pid));
   }, [sitesList, partyId]);
 
+  const filteredTemplates = useMemo(() => {
+    if (!templates) return [];
+    if (!partyId) return templates;
+    const pid = parseInt(partyId);
+    return templates.filter(t => t.partyId == null || t.partyId === pid);
+  }, [templates, partyId]);
+
   // Shortage confirmation state — shown when the owner's stock can't cover
   // a dispatch and the operator must explicitly approve borrowing from HLC.
   type ShortageInfo = {
@@ -768,7 +775,18 @@ export default function PlantDispatches() {
 
               <div>
                 <Label>Party/Job</Label>
-                <Select value={partyId} onValueChange={(v) => { setPartyId(v); setDeliveryLocation(""); }}>
+                <Select value={partyId} onValueChange={(v) => {
+                  setPartyId(v);
+                  setDeliveryLocation("");
+                  // Clear template if it doesn't belong to the new party or shared pool
+                  if (mixTemplateId && templates) {
+                    const tpl = templates.find(t => t.id === parseInt(mixTemplateId));
+                    const pid = parseInt(v);
+                    if (tpl && tpl.partyId != null && tpl.partyId !== pid) {
+                      setMixTemplateId("");
+                    }
+                  }
+                }}>
                   <SelectTrigger data-testid="select-dispatch-party">
                     <SelectValue placeholder="Select party" />
                   </SelectTrigger>
@@ -799,7 +817,7 @@ export default function PlantDispatches() {
                     <SelectValue placeholder="Select mix template" />
                   </SelectTrigger>
                   <SelectContent>
-                    {templates?.map((template) => (
+                    {filteredTemplates.map((template) => (
                       <SelectItem key={template.id} value={String(template.id)}>
                         {template.name} ({template.mixType} - {template.bitumenPercent}%)
                       </SelectItem>
