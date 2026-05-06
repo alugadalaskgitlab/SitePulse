@@ -792,7 +792,11 @@ export const ldoDipReadings = pgTable("ldo_dip_readings", {
   sourceShiftLogId: integer("source_shift_log_id").references(() => plantShiftLogs.id, { onDelete: "set null" }),
   sourceHeatingSessionId: integer("source_heating_session_id").references(() => bitumenHeatingSessions.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  uniqDateTankTypePlant: uniqueIndex("ldo_dip_readings_date_tank_type_plant_uq").on(
+    table.date, table.tankNumber, table.readingType, table.plantName
+  ),
+}));
 
 export const insertBitumenDipReadingSchema = createInsertSchema(bitumenDipReadings).omit({ id: true, createdAt: true });
 export const insertLdoFlowReadingSchema = createInsertSchema(ldoFlowReadings).omit({ id: true, createdAt: true });

@@ -11233,7 +11233,7 @@ export class DatabaseStorage implements IStorage {
     pushLdoDip(1, "closing", log.ldoTank1ClosingDip, log.plantStopTime);
     pushLdoDip(2, "opening", log.ldoTank2OpeningDip, log.plantStartTime);
     pushLdoDip(2, "closing", log.ldoTank2ClosingDip, log.plantStopTime);
-    if (ldoDipRows.length) await tx.insert(ldoDipReadings).values(ldoDipRows);
+    if (ldoDipRows.length) await tx.insert(ldoDipReadings).values(ldoDipRows).onConflictDoNothing();
 
     // Task #434 — Divergence check: compare dip-derived stock change vs meter-
     // reported consumption for each physical tank where both are available.
