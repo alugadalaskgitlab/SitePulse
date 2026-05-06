@@ -2839,6 +2839,9 @@ export async function registerRoutes(
       sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
+      if (err?.code === "DUPLICATE_BITUMEN_DIP" || err?.constraint === "bitumen_dip_readings_date_tank_type_plant_uq") {
+        return res.status(409).json({ message: err.message || "A reading for this date, tank, and type already exists. Please edit the existing entry instead." });
+      }
       res.status(400).json({ message: err.message || "Failed to create bitumen dip reading" });
     }
   });
@@ -2851,6 +2854,9 @@ export async function registerRoutes(
       sendPushToAll("Bitumen Dip Updated", `Tank ${req.body.tankNumber || ''} reading updated`, "/plant/bitumen-stock").catch(() => {});
       res.json(result);
     } catch (err: any) {
+      if (err?.code === "DUPLICATE_BITUMEN_DIP" || err?.constraint === "bitumen_dip_readings_date_tank_type_plant_uq" || err?.message?.includes("bitumen_dip_readings_date_tank_type_plant_uq")) {
+        return res.status(409).json({ message: err.message || "A reading for this date, tank, and type already exists. Please edit the existing entry instead." });
+      }
       res.status(400).json({ message: err.message || "Failed to update bitumen dip reading" });
     }
   });

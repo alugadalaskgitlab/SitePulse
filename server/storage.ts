@@ -6843,6 +6843,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBitumenDipReading(reading: InsertBitumenDipReading): Promise<BitumenDipReading> {
+    const [existing] = await db.select({ id: bitumenDipReadings.id })
+      .from(bitumenDipReadings)
+      .where(and(
+        eq(bitumenDipReadings.date, String(reading.date)),
+        eq(bitumenDipReadings.tankNumber, reading.tankNumber),
+        eq(bitumenDipReadings.readingType, reading.readingType),
+        eq(bitumenDipReadings.plantName, reading.plantName ?? "Main Plant"),
+      ))
+      .limit(1);
+    if (existing) {
+      const err = Object.assign(
+        new Error(`A ${reading.readingType} reading for Tank ${reading.tankNumber} on ${reading.date} already exists.`),
+        { code: "DUPLICATE_BITUMEN_DIP" as const }
+      );
+      throw err;
+    }
+
     const uppercased = {
       ...reading,
       notes: reading.notes?.toUpperCase(),

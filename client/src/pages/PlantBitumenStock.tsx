@@ -474,11 +474,25 @@ export default function PlantBitumenStock() {
     };
   }, [dispatches, readings, bitumenReceipts, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite]);
 
+  async function bitumenDipFetch(method: string, url: string, data: any) {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "include",
+    });
+    if (res.status === 401 && window.location.pathname !== "/login") {
+      window.location.assign("/login");
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw Object.assign(new Error(body.message || "Request failed"), { status: res.status });
+    }
+    return body;
+  }
+
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/plant-module/bitumen-dip-readings", data);
-      return res.json();
-    },
+    mutationFn: (data: any) => bitumenDipFetch("POST", "/api/plant-module/bitumen-dip-readings", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       toast({ title: "Dip reading recorded" });
@@ -486,15 +500,17 @@ export default function PlantBitumenStock() {
       setDialogOpen(false);
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      if (err?.status === 409) {
+        toast({ title: "Reading already exists", description: err.message, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const res = await apiRequest("PATCH", `/api/plant-module/bitumen-dip-readings/${id}`, data);
-      return res.json();
-    },
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      bitumenDipFetch("PATCH", `/api/plant-module/bitumen-dip-readings/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/bitumen-dip-readings"] });
       toast({ title: "Dip reading updated" });
@@ -503,7 +519,11 @@ export default function PlantBitumenStock() {
       setDialogOpen(false);
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      if (err?.status === 409) {
+        toast({ title: "Reading already exists", description: err.message, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
     },
   });
 

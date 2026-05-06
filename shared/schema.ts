@@ -745,7 +745,11 @@ export const bitumenDipReadings = pgTable("bitumen_dip_readings", {
   plantName: text("plant_name").notNull().default("Main Plant"),
   sourceShiftLogId: integer("source_shift_log_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  uniqDateTankTypePlant: uniqueIndex("bitumen_dip_readings_date_tank_type_plant_uq").on(
+    table.date, table.tankNumber, table.readingType, table.plantName
+  ),
+}));
 
 export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   id: serial("id").primaryKey(),
