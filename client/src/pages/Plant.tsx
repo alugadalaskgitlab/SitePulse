@@ -1897,12 +1897,15 @@ function MixTemplateMaster() {
               </div>
               <div>
                 <Label htmlFor="party-assign">Assign to Party <span className="text-muted-foreground font-normal">(optional — leave blank for shared/standard)</span></Label>
-                <Select value={selectedPartyId} onValueChange={setSelectedPartyId}>
+                <Select
+                  value={selectedPartyId === "" ? "__none__" : selectedPartyId}
+                  onValueChange={(v) => setSelectedPartyId(v === "__none__" ? "" : v)}
+                >
                   <SelectTrigger id="party-assign" data-testid="select-template-party">
                     <SelectValue placeholder="Shared / all parties" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Shared / all parties</SelectItem>
+                    <SelectItem value="__none__">Shared / all parties</SelectItem>
                     {parties?.filter(p => p.isActive !== 0).map(p => (
                       <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                     ))}
