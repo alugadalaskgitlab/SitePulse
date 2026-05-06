@@ -81,6 +81,20 @@ app.use((req, res, next) => {
     console.error("Startup: Failed to migrate legacy generator names:", e);
   }
 
+  // Audit note (Task #546): there is no separate `bitumen_flow_readings` table —
+  // bitumen is tracked exclusively via depth-based dip readings in `bitumen_dip_readings`.
+  // All auto-insert paths for that table already use .onConflictDoNothing():
+  //   • _syncShiftLogReadings()  — shift log save / update
+  // Heating sessions do NOT auto-insert bitumen dip rows.
+  // The table also has an explicit duplicate-check in createBitumenDipReading() for
+  // manual entries (throws DUPLICATE_BITUMEN_DIP before inserting).
+  // This startup call removes any historical duplicates that pre-date the unique index.
+  try {
+    await storage.deduplicateBitumenDipReadings();
+  } catch (e) {
+    console.error("Startup: deduplicateBitumenDipReadings failed:", e);
+  }
+
   try {
     await storage.deduplicateLdoFlowSlotReadings();
   } catch (e) {
