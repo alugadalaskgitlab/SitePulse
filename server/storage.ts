@@ -12482,6 +12482,36 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
       }
 
+      // LDO Dip sync: upsert opening/closing dip readings into ldo_dip_readings
+      // keyed by sourceHeatingSessionId so they round-trip cleanly on edits.
+      await tx.delete(ldoDipReadings)
+        .where(eq(ldoDipReadings.sourceHeatingSessionId, saved.id));
+      const dipRows: any[] = [];
+      const pushDip = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
+        if (depth == null) return;
+        const vol = getLdoVolumeAtDepth(tank, depth);
+        const wt = vol * LDO_DENSITY_KG_PER_LITER;
+        dipRows.push({
+          date: saved.date,
+          time,
+          tankNumber: tank,
+          depthCm: depth,
+          volumeLiters: Math.round(vol),
+          weightKg: Math.round(wt),
+          readingType: type,
+          notes: `AUTO from Heating Session #${saved.id}`,
+          plantName: saved.plantName,
+          sourceHeatingSessionId: saved.id,
+        });
+      };
+      pushDip(1, "opening", saved.ldoTank1OpeningDip, startTimeStr);
+      pushDip(1, "closing", saved.ldoTank1ClosingDip, endTimeStr);
+      pushDip(2, "opening", saved.ldoTank2OpeningDip, startTimeStr);
+      pushDip(2, "closing", saved.ldoTank2ClosingDip, endTimeStr);
+      if (dipRows.length > 0) {
+        await tx.insert(ldoDipReadings).values(dipRows).onConflictDoNothing();
+      }
+
       return saved;
     });
   }

@@ -1097,6 +1097,10 @@ export const bitumenHeatingSessions = pgTable("bitumen_heating_sessions", {
   ldoTank1OpeningMeter: real("ldo_tank1_opening_meter"),
   ldoTank1ClosingMeter: real("ldo_tank1_closing_meter"),
   ldoTank1Consumed: real("ldo_tank1_consumed"),
+  ldoTank1OpeningDip: real("ldo_tank1_opening_dip"),
+  ldoTank1ClosingDip: real("ldo_tank1_closing_dip"),
+  ldoTank2OpeningDip: real("ldo_tank2_opening_dip"),
+  ldoTank2ClosingDip: real("ldo_tank2_closing_dip"),
   // Task #255 — Which physical LDO storage tank fed the dryer at the time
   // of this heating session. Heating sessions only record the Boiler meter
   // (Tank-1 stock), so this field is documentation-only here, but kept on
