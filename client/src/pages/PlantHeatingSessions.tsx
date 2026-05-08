@@ -20,6 +20,7 @@ import { HEATING_SESSION_TYPE_LABELS, heatingSessionTypeLabel } from "@shared/sc
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 import DryerSourceFixDialog from "@/components/DryerSourceFixDialog";
 import type { DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
+import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -43,6 +44,14 @@ function emptyForm(date: string) {
     bitumenTank2TempEnd: "",
     ldoTank1OpeningMeter: "",
     ldoTank1ClosingMeter: "",
+    ldoTank1OpeningDip: "",
+    ldoTank1ClosingDip: "",
+    ldoTank2OpeningDip: "",
+    ldoTank2ClosingDip: "",
+    autoFilledDipT1: false,
+    autoFilledDipT1Source: "",
+    autoFilledDipT2: false,
+    autoFilledDipT2Source: "",
     dgMode: "inline" as DgMode,
     dgGeneratorName: "",
     dgStartTime: "",
@@ -440,6 +449,43 @@ export default function PlantHeatingSessions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen, form.id, form.date, form.startTime, form.plantName]);
 
+  // Auto-fill Tank-1 and Tank-2 opening dip from the previous session's closing dip.
+  const autoFilledDipT1Ref = useRef<string | null>(null);
+  const autoFilledDipT2Ref = useRef<string | null>(null);
+  const dipSeqRef = useRef(0);
+  useEffect(() => {
+    if (!dialogOpen || form.id) return;
+    const seq = ++dipSeqRef.current;
+    fetch(`/api/plant-module/heating-sessions?plant=${encodeURIComponent(form.plantName)}&limit=50`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any[]) => {
+        if (seq !== dipSeqRef.current || !Array.isArray(data)) return;
+        const past = data
+          .filter((s: any) => s.date < form.date || (s.date === form.date && (!form.startTime || (s.endTime && s.endTime < form.startTime))))
+          .sort((a: any, b: any) => b.date.localeCompare(a.date) || (b.endTime || "").localeCompare(a.endTime || ""));
+        const last = past[0];
+        if (!last) return;
+        if (last.ldoTank1ClosingDip != null) {
+          const next = String(last.ldoTank1ClosingDip);
+          setForm(prev => {
+            if (prev.ldoTank1OpeningDip && prev.ldoTank1OpeningDip !== autoFilledDipT1Ref.current) return prev;
+            autoFilledDipT1Ref.current = next;
+            return { ...prev, ldoTank1OpeningDip: next, autoFilledDipT1: true, autoFilledDipT1Source: `${last.date} closing dip` };
+          });
+        }
+        if (last.ldoTank2ClosingDip != null) {
+          const next = String(last.ldoTank2ClosingDip);
+          setForm(prev => {
+            if (prev.ldoTank2OpeningDip && prev.ldoTank2OpeningDip !== autoFilledDipT2Ref.current) return prev;
+            autoFilledDipT2Ref.current = next;
+            return { ...prev, ldoTank2OpeningDip: next, autoFilledDipT2: true, autoFilledDipT2Source: `${last.date} closing dip` };
+          });
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, form.id, form.date, form.startTime, form.plantName]);
+
   const numOrNull = (s: string) => s.trim() === "" ? null : parseFloat(s);
 
   const dur = durationHrs(form.startTime, form.endTime);
@@ -494,6 +540,10 @@ export default function PlantHeatingSessions() {
       bitumenTank2TempEnd: numOrNull(form.bitumenTank2TempEnd),
       ldoTank1OpeningMeter: ldoOpen,
       ldoTank1ClosingMeter: ldoClose,
+      ldoTank1OpeningDip: numOrNull(form.ldoTank1OpeningDip),
+      ldoTank1ClosingDip: numOrNull(form.ldoTank1ClosingDip),
+      ldoTank2OpeningDip: numOrNull(form.ldoTank2OpeningDip),
+      ldoTank2ClosingDip: numOrNull(form.ldoTank2ClosingDip),
       dgMode: form.dgMode,
       dgGeneratorName: form.dgMode === "inline" ? form.dgGeneratorName : null,
       dgStartTime: form.dgMode === "inline" ? (form.dgStartTime || null) : null,
@@ -659,6 +709,14 @@ export default function PlantHeatingSessions() {
       bitumenTank2TempEnd: s.bitumenTank2TempEnd?.toString() || "",
       ldoTank1OpeningMeter: s.ldoTank1OpeningMeter?.toString() || "",
       ldoTank1ClosingMeter: s.ldoTank1ClosingMeter?.toString() || "",
+      ldoTank1OpeningDip: s.ldoTank1OpeningDip?.toString() || "",
+      ldoTank1ClosingDip: s.ldoTank1ClosingDip?.toString() || "",
+      ldoTank2OpeningDip: s.ldoTank2OpeningDip?.toString() || "",
+      ldoTank2ClosingDip: s.ldoTank2ClosingDip?.toString() || "",
+      autoFilledDipT1: false,
+      autoFilledDipT1Source: "",
+      autoFilledDipT2: false,
+      autoFilledDipT2Source: "",
       dgMode: (s.dgMode as DgMode) || "none",
       dgGeneratorName: s.dgGeneratorName || "",
       dgStartTime: s.dgStartTime || "",
@@ -1377,6 +1435,60 @@ export default function PlantHeatingSessions() {
                 <div><Label>Closing Meter</Label><Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" /></div>
                 <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
                 <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="py-3"><CardTitle className="text-base">LDO Tank Dip-Stick Readings</CardTitle></CardHeader>
+              <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <Label>Tank 1 — opening dip (cm)</Label>
+                  <Input type="number" step="0.1" value={form.ldoTank1OpeningDip}
+                    onChange={e => setForm(p => ({ ...p, ldoTank1OpeningDip: e.target.value, autoFilledDipT1: false }))}
+                    data-testid="input-ldo-dip-t1-open" />
+                  {form.autoFilledDipT1 && form.autoFilledDipT1Source ? (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT1Source}</p>
+                  ) : (
+                    (() => {
+                      const hint = form.ldoTank1OpeningDip ? (() => { const v = getLdoVolumeAtDepth(1, parseFloat(form.ldoTank1OpeningDip)); const dead = getLdoDeadStockVolume(1); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
+                      return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
+                    })()
+                  )}
+                </div>
+                <div>
+                  <Label>Tank 1 — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={form.ldoTank1ClosingDip}
+                    onChange={e => setField("ldoTank1ClosingDip", e.target.value)}
+                    data-testid="input-ldo-dip-t1-close" />
+                  {(() => {
+                    const hint = form.ldoTank1ClosingDip ? (() => { const v = getLdoVolumeAtDepth(1, parseFloat(form.ldoTank1ClosingDip)); const dead = getLdoDeadStockVolume(1); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
+                    return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
+                  })()}
+                </div>
+                <div>
+                  <Label>Tank 2 — opening dip (cm)</Label>
+                  <Input type="number" step="0.1" value={form.ldoTank2OpeningDip}
+                    onChange={e => setForm(p => ({ ...p, ldoTank2OpeningDip: e.target.value, autoFilledDipT2: false }))}
+                    data-testid="input-ldo-dip-t2-open" />
+                  {form.autoFilledDipT2 && form.autoFilledDipT2Source ? (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT2Source}</p>
+                  ) : (
+                    (() => {
+                      const hint = form.ldoTank2OpeningDip ? (() => { const v = getLdoVolumeAtDepth(2, parseFloat(form.ldoTank2OpeningDip)); const dead = getLdoDeadStockVolume(2); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
+                      return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
+                    })()
+                  )}
+                </div>
+                <div>
+                  <Label>Tank 2 — closing dip (cm)</Label>
+                  <Input type="number" step="0.1" value={form.ldoTank2ClosingDip}
+                    onChange={e => setField("ldoTank2ClosingDip", e.target.value)}
+                    data-testid="input-ldo-dip-t2-close" />
+                  {(() => {
+                    const hint = form.ldoTank2ClosingDip ? (() => { const v = getLdoVolumeAtDepth(2, parseFloat(form.ldoTank2ClosingDip)); const dead = getLdoDeadStockVolume(2); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
+                    return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
+                  })()}
+                </div>
               </CardContent>
             </Card>
 
