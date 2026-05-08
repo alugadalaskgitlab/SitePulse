@@ -865,6 +865,7 @@ export default function PlantHeatingSessions() {
                   {/* Collapsible date header */}
                   <button
                     type="button"
+                    aria-expanded={isOpen}
                     className="sticky top-14 z-10 bg-background w-full flex items-center gap-2 flex-wrap border-b py-2 pt-1 text-left hover:bg-muted/30 transition-colors"
                     onClick={() => toggleDateGroup(date)}
                     data-testid={`button-toggle-date-${date}`}
@@ -881,13 +882,21 @@ export default function PlantHeatingSessions() {
                       <span className="text-sm text-muted-foreground">LDO: {totalLdo.toFixed(1)} L</span>
                     )}
                     {reconMismatches.length > 0 && (
-                      <Badge variant="destructive" className="text-[10px]">
-                        ⚠ Boiler meter mismatch
+                      <Badge
+                        variant="destructive"
+                        className="text-[10px]"
+                        title={reconMismatches.map(r => `${r.plantName}: ${r.reconciliation.mismatches.length} mismatch${r.reconciliation.mismatches.length !== 1 ? "es" : ""}`).join(" • ")}
+                      >
+                        ⚠ Boiler meter mismatch{reconMismatches.length > 1 ? ` (${reconMismatches.length} plants)` : ""}
                       </Badge>
                     )}
                     {dryerMismatches.length > 0 && (
-                      <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400">
-                        ⚠ Dryer conflict
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400"
+                        title={dryerMismatches.map(d => `${d.plantName}: ${d.conflictingSessions.length + (d.intraSessionConflicts?.length || 0)} session${d.conflictingSessions.length + (d.intraSessionConflicts?.length || 0) !== 1 ? "s" : ""} in conflict`).join(" • ")}
+                      >
+                        ⚠ Dryer conflict{dryerMismatches.length > 1 ? ` (${dryerMismatches.length} plants)` : ""}
                       </Badge>
                     )}
                   </button>
