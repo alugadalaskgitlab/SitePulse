@@ -7101,6 +7101,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLdoDipReading(reading: InsertLdoDipReading): Promise<LdoDipReading> {
+    const [existing] = await db.select({ id: ldoDipReadings.id })
+      .from(ldoDipReadings)
+      .where(and(
+        eq(ldoDipReadings.date, String(reading.date)),
+        eq(ldoDipReadings.tankNumber, reading.tankNumber),
+        eq(ldoDipReadings.readingType, reading.readingType),
+        eq(ldoDipReadings.plantName, reading.plantName ?? "Main Plant"),
+      ))
+      .limit(1);
+    if (existing) {
+      const err = Object.assign(
+        new Error(`A ${reading.readingType} dip reading for Tank ${reading.tankNumber} on ${reading.date} already exists.`),
+        { code: "DUPLICATE_LDO_DIP" as const }
+      );
+      throw err;
+    }
+
     const uppercased = {
       ...reading,
       notes: reading.notes?.toUpperCase(),

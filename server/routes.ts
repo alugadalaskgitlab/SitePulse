@@ -3078,6 +3078,9 @@ export async function registerRoutes(
       sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
+      if (err?.code === "DUPLICATE_LDO_DIP" || err?.constraint === "ldo_dip_readings_date_tank_type_plant_uq") {
+        return res.status(409).json({ message: err.message || "A dip reading for this tank, date, and type already exists." });
+      }
       res.status(400).json({ message: err.message || "Failed to create LDO dip reading" });
     }
   });

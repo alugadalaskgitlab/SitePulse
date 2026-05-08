@@ -716,7 +716,15 @@ export default function PlantLdoFlowMeter() {
       setDipDialogOpen(false);
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      let description = err.message;
+      let isDuplicate = false;
+      try {
+        const jsonStr = err.message.replace(/^\d+:\s*/, "");
+        const parsed = JSON.parse(jsonStr);
+        if (parsed?.message) description = parsed.message;
+        if (err.message.startsWith("409:")) isDuplicate = true;
+      } catch {}
+      toast({ title: isDuplicate ? "Duplicate reading" : "Error", description, variant: "destructive" });
     },
   });
 
