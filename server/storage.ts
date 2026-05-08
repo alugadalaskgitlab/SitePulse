@@ -9343,6 +9343,20 @@ export class DatabaseStorage implements IStorage {
               });
             }
             if (ldoRows.length > 0) {
+              // Also delete any untagged (manual) rows for the same slot keys so
+              // the re-insert never creates a duplicate. Without the unique index
+              // on production, onConflictDoNothing has nothing to detect; this
+              // sweep is what makes the backfill truly idempotent.
+              for (const row of ldoRows) {
+                await tx.delete(ldoFlowReadings)
+                  .where(and(
+                    eq(ldoFlowReadings.date, row.date),
+                    eq(ldoFlowReadings.tankNumber, row.tankNumber!),
+                    eq(ldoFlowReadings.readingType, row.readingType!),
+                    eq(ldoFlowReadings.plantName, row.plantName!),
+                    isNull(ldoFlowReadings.sourceHeatingSessionId),
+                  ));
+              }
               const inserted = await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing().returning({ id: ldoFlowReadings.id });
               result.rowsInserted += inserted.length;
               if (inserted.length > 0) result.sessionsUpdated++;
