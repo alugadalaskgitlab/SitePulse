@@ -9394,53 +9394,92 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deduplicateBitumenDipReadings(): Promise<{ removed: number }> {
-    const result = await db.execute(sql`
-      DELETE FROM bitumen_dip_readings
-      WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM bitumen_dip_readings
-        GROUP BY date, tank_number, reading_type, plant_name
-      )
-    `);
-    const removed = (result as { rowCount?: number }).rowCount ?? 0;
-    if (removed > 0) {
-      console.log(`deduplicateBitumenDipReadings: removed ${removed} duplicate dip row(s)`);
+    const MIGRATION_FLAG = "deduplicate_bitumen_dip_readings_v1";
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing.length > 0) {
+      console.log("deduplicateBitumenDipReadings: already applied, skipping.");
+      return { removed: 0 };
     }
-    return { removed };
+    try {
+      const result = await db.execute(sql`
+        DELETE FROM bitumen_dip_readings
+        WHERE id NOT IN (
+          SELECT MIN(id)
+          FROM bitumen_dip_readings
+          GROUP BY date, tank_number, reading_type, plant_name
+        )
+      `);
+      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      if (removed > 0) {
+        console.log(`deduplicateBitumenDipReadings: removed ${removed} duplicate dip row(s)`);
+      }
+      await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() }).onConflictDoNothing();
+      console.log("deduplicateBitumenDipReadings: migration flag recorded, will skip on future restarts.");
+      return { removed };
+    } catch (err) {
+      console.error("deduplicateBitumenDipReadings: error — flag NOT recorded, will retry on next restart:", err);
+      throw err;
+    }
   }
 
   async deduplicateLdoDipReadings(): Promise<{ removed: number }> {
-    const result = await db.execute(sql`
-      DELETE FROM ldo_dip_readings
-      WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM ldo_dip_readings
-        GROUP BY date, tank_number, reading_type, plant_name
-      )
-    `);
-    const removed = (result as { rowCount?: number }).rowCount ?? 0;
-    if (removed > 0) {
-      console.log(`deduplicateLdoDipReadings: removed ${removed} duplicate dip row(s)`);
+    const MIGRATION_FLAG = "deduplicate_ldo_dip_readings_v1";
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing.length > 0) {
+      console.log("deduplicateLdoDipReadings: already applied, skipping.");
+      return { removed: 0 };
     }
-    return { removed };
+    try {
+      const result = await db.execute(sql`
+        DELETE FROM ldo_dip_readings
+        WHERE id NOT IN (
+          SELECT MIN(id)
+          FROM ldo_dip_readings
+          GROUP BY date, tank_number, reading_type, plant_name
+        )
+      `);
+      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      if (removed > 0) {
+        console.log(`deduplicateLdoDipReadings: removed ${removed} duplicate dip row(s)`);
+      }
+      await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() }).onConflictDoNothing();
+      console.log("deduplicateLdoDipReadings: migration flag recorded, will skip on future restarts.");
+      return { removed };
+    } catch (err) {
+      console.error("deduplicateLdoDipReadings: error — flag NOT recorded, will retry on next restart:", err);
+      throw err;
+    }
   }
 
   async deduplicateLdoFlowSlotReadings(): Promise<{ removed: number }> {
-    const result = await db.execute(sql`
-      DELETE FROM ldo_flow_readings
-      WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM ldo_flow_readings
-        WHERE reading_type NOT IN ('receipt')
-        GROUP BY date, tank_number, reading_type, plant_name
-      )
-      AND reading_type NOT IN ('receipt')
-    `);
-    const removed = (result as { rowCount?: number }).rowCount ?? 0;
-    if (removed > 0) {
-      console.log(`deduplicateLdoFlowSlotReadings: removed ${removed} duplicate slot row(s)`);
+    const MIGRATION_FLAG = "deduplicate_ldo_flow_slot_readings_v1";
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing.length > 0) {
+      console.log("deduplicateLdoFlowSlotReadings: already applied, skipping.");
+      return { removed: 0 };
     }
-    return { removed };
+    try {
+      const result = await db.execute(sql`
+        DELETE FROM ldo_flow_readings
+        WHERE id NOT IN (
+          SELECT MIN(id)
+          FROM ldo_flow_readings
+          WHERE reading_type NOT IN ('receipt')
+          GROUP BY date, tank_number, reading_type, plant_name
+        )
+        AND reading_type NOT IN ('receipt')
+      `);
+      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      if (removed > 0) {
+        console.log(`deduplicateLdoFlowSlotReadings: removed ${removed} duplicate slot row(s)`);
+      }
+      await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() }).onConflictDoNothing();
+      console.log("deduplicateLdoFlowSlotReadings: migration flag recorded, will skip on future restarts.");
+      return { removed };
+    } catch (err) {
+      console.error("deduplicateLdoFlowSlotReadings: error — flag NOT recorded, will retry on next restart:", err);
+      throw err;
+    }
   }
 
   async backfillLdoReceiptsFromMaterialReceipts(): Promise<{ receiptsScanned: number; rowsInserted: number; rowsSkipped: number; errors: number }> {
