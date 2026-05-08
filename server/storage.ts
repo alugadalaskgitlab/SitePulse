@@ -9288,6 +9288,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
+    const MIGRATION_FLAG = "backfill_ldo_flow_from_heating_sessions_v1";
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing.length > 0) {
+      console.log("backfillLdoFlowReadingsFromHeatingSessions: already applied, skipping.");
+      return { sessionsScanned: 0, rowsInserted: 0, sessionsUpdated: 0, sessionsSkipped: 0, errors: 0 };
+    }
+
     const result = { sessionsScanned: 0, rowsInserted: 0, sessionsUpdated: 0, sessionsSkipped: 0, errors: 0 };
     try {
       const sessions = await db.select().from(bitumenHeatingSessions).orderBy(bitumenHeatingSessions.id);
@@ -9373,6 +9380,12 @@ export class DatabaseStorage implements IStorage {
       }
 
       console.log(`backfillLdoFlowReadingsFromHeatingSessions: scanned ${result.sessionsScanned}, sessions updated ${result.sessionsUpdated}, rows inserted ${result.rowsInserted}, skipped ${result.sessionsSkipped}, errors ${result.errors}`);
+      if (result.errors === 0) {
+        await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() }).onConflictDoNothing();
+        console.log("backfillLdoFlowReadingsFromHeatingSessions: migration flag recorded, will skip on future restarts.");
+      } else {
+        console.warn("backfillLdoFlowReadingsFromHeatingSessions: completed with errors — migration flag NOT recorded, will retry on next restart.");
+      }
     } catch (err) {
       console.error('backfillLdoFlowReadingsFromHeatingSessions: Fatal error:', err);
       result.errors++;
