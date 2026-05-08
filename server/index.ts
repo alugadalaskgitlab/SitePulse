@@ -76,6 +76,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureHeatingSessionDipColumns();
+  } catch (e) {
+    console.error("Startup: Failed to ensure heating session dip columns:", e);
+  }
+
+  try {
     await storage.migrateLegacyGeneratorNamesToCanonical();
   } catch (e) {
     console.error("Startup: Failed to migrate legacy generator names:", e);

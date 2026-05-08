@@ -3062,6 +3062,7 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         readingType: req.query.readingType as string | undefined,
+        plant: req.query.plant as string | undefined,
       };
       const readings = await storage.getLdoDipReadings(filters);
       res.json(readings);

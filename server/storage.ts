@@ -418,6 +418,10 @@ export interface IStorage {
   // Rewrite legacy short generator names (e.g. "600 KVA") to canonical Equipment Master names ("600 KVA GENERATOR")
   migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
 
+  // Ensures the 4 LDO dip columns added in Task #551 exist on bitumen_heating_sessions.
+  // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
+  ensureHeatingSessionDipColumns(): Promise<void>;
+
   // Removes duplicate dip rows from bitumen_dip_readings before the unique index is enforced,
   // keeping the lowest id per (date, tank_number, reading_type, plant_name).
   deduplicateBitumenDipReadings(): Promise<{ removed: number }>;
@@ -7088,12 +7092,13 @@ export class DatabaseStorage implements IStorage {
   // LDO DIP READINGS
   // ============================================
 
-  async getLdoDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string }): Promise<LdoDipReading[]> {
+  async getLdoDipReadings(filters?: { tankNumber?: number; dateFrom?: string; dateTo?: string; readingType?: string; plant?: string }): Promise<LdoDipReading[]> {
     let conditions = [];
     if (filters?.tankNumber !== undefined) conditions.push(eq(ldoDipReadings.tankNumber, filters.tankNumber));
     if (filters?.readingType) conditions.push(eq(ldoDipReadings.readingType, filters.readingType));
     if (filters?.dateFrom) conditions.push(gte(ldoDipReadings.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(ldoDipReadings.date, filters.dateTo));
+    if (filters?.plant) conditions.push(eq(ldoDipReadings.plantName, filters.plant));
 
     return db.select().from(ldoDipReadings)
       .where(conditions.length ? and(...conditions) : undefined)
@@ -9267,6 +9272,19 @@ export class DatabaseStorage implements IStorage {
       result.errors++;
     }
     return result;
+  }
+
+  async ensureHeatingSessionDipColumns(): Promise<void> {
+    const cols = [
+      "ldo_tank1_opening_dip",
+      "ldo_tank1_closing_dip",
+      "ldo_tank2_opening_dip",
+      "ldo_tank2_closing_dip",
+    ];
+    for (const col of cols) {
+      await db.execute(sql.raw(`ALTER TABLE bitumen_heating_sessions ADD COLUMN IF NOT EXISTS ${col} real`));
+    }
+    console.log("ensureHeatingSessionDipColumns: columns verified/added");
   }
 
   async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
@@ -12529,6 +12547,7 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(generatorLogs).where(eq(generatorLogs.sourceHeatingSessionId, id));
       await tx.delete(equipmentUsage).where(eq(equipmentUsage.sourceHeatingSessionId, id));
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceHeatingSessionId, id));
+      await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceHeatingSessionId, id));
       await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
       return result.length > 0;
