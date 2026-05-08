@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useRoute } from "wouter";
+import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X, Download } from "lucide-react";
+import { ChevronLeft, ChevronDown, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -39,6 +39,7 @@ export default function PlantShiftLog() {
   const { toast } = useToast();
   const { isFromPortal, appendPlantContext } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
+  const [currentLocation] = useLocation();
   const today = format(new Date(), "yyyy-MM-dd");
   const dateParam = params?.date || today;
 
@@ -223,6 +224,55 @@ export default function PlantShiftLog() {
       return res.json();
     },
   });
+
+  // Collapsible date groups for the list view — mirrors PlantHeatingSessions.tsx.
+  // Sorted date keys drive first-visit default and sessionStorage restoration.
+  const listGroupedDates = useMemo(() => {
+    const sorted = (shiftLogs || []).slice()
+      .filter(r => listDryerFilter === "all" || r.dryerFedFrom === listDryerFilter)
+      .sort((a, b) => b.date.localeCompare(a.date) || (a.shiftCode || "").localeCompare(b.shiftCode || ""));
+    const seen = new Set<string>();
+    const dates: string[] = [];
+    for (const r of sorted) { if (!seen.has(r.date)) { seen.add(r.date); dates.push(r.date); } }
+    return dates;
+  }, [shiftLogs, listDryerFilter]);
+
+  const SHIFT_LOG_GROUPS_KEY = `open-date-groups:${currentLocation.split("?")[0]}`;
+  const [openDateGroups, setOpenDateGroups] = useState<Set<string>>(new Set());
+  const initialOpenSetRef = useRef(false);
+  useEffect(() => {
+    if (initialOpenSetRef.current || listGroupedDates.length === 0) return;
+    initialOpenSetRef.current = true;
+    try {
+      const stored = sessionStorage.getItem(SHIFT_LOG_GROUPS_KEY);
+      if (stored !== null) {
+        const parsed: string[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(d => listGroupedDates.includes(d));
+          setOpenDateGroups(new Set(valid));
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed sessionStorage value
+    }
+    // Fallback: open most-recent date on first visit
+    setOpenDateGroups(new Set([listGroupedDates[0]]));
+  }, [listGroupedDates]);
+
+  const toggleDateGroup = (date: string) => {
+    setOpenDateGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      try {
+        sessionStorage.setItem(SHIFT_LOG_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
 
   // Task #300 — Dryer-source mismatch audit: fetch cross-check data for the
   // visible date range so we can flag shift log rows where saved heating
@@ -1077,13 +1127,26 @@ export default function PlantShiftLog() {
           <CardContent>
             {listLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
               !sorted.length ? <p className="text-sm text-muted-foreground">{listDryerFilter !== "all" ? `No plant logs with dryer fed from ${listDryerFilter === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No plant logs in this date range."}</p> :
-              <div className="space-y-4">
-                {Object.keys(grouped).map(d => (
+              <div className="space-y-1">
+                {Object.keys(grouped).map(d => {
+                  const isOpen = openDateGroups.has(d);
+                  return (
                   <div key={d}>
-                    <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-3 pt-1">
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      className="sticky top-14 z-10 bg-background w-full flex items-center gap-2 border-b pb-2 mb-3 pt-1 text-left hover:bg-muted/30 transition-colors"
+                      onClick={() => toggleDateGroup(d)}
+                      data-testid={`button-toggle-date-${d}`}
+                    >
+                      <ChevronDown
+                        className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200"
+                        style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+                      />
                       <h3 className="font-semibold text-lg">{format(parseISO(d), "EEEE, dd MMM yyyy")}</h3>
-                    </div>
-                    <div className="space-y-2">
+                      <span className="text-xs text-muted-foreground ml-1">({grouped[d].length} log{grouped[d].length !== 1 ? "s" : ""})</span>
+                    </button>
+                    {isOpen && <div className="space-y-2">
                       {grouped[d].map(r => {
                         const ldo1 = (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null)
                           ? Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter) : null;
@@ -1167,9 +1230,10 @@ export default function PlantShiftLog() {
                           </div>
                         );
                       })}
-                    </div>
+                    </div>}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             }
           </CardContent>
