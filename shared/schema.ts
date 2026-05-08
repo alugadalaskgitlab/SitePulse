@@ -777,6 +777,9 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   dryerFedFrom: text("dryer_fed_from"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
+  // Prevents duplicate slot (opening/closing) rows per day/tank/plant.
+  // backfillLdoFlowReadingsFromHeatingSessions clears any conflicting row
+  // for a slot before inserting, so this index is never violated on startup.
   uniqSlotReadings: uniqueIndex("ldo_flow_readings_slot_uq").on(
     table.date, table.tankNumber, table.readingType, table.plantName
   ).where(sql`reading_type NOT IN ('receipt')`),
