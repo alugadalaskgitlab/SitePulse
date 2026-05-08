@@ -696,11 +696,29 @@ export default function PlantHeatingSessions() {
   const groupedDates = Object.keys(grouped);
 
   // Collapsible date groups: most recent date starts expanded on first load.
+  // Previously-open groups are restored from sessionStorage on return visits.
+  const SESSION_STORAGE_KEY = `open-date-groups:${currentLocation.split("?")[0]}`;
   const [openDateGroups, setOpenDateGroups] = useState<Set<string>>(new Set());
   const initialOpenSetRef = useRef(false);
   useEffect(() => {
     if (initialOpenSetRef.current || groupedDates.length === 0) return;
     initialOpenSetRef.current = true;
+    try {
+      const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored !== null) {
+        const parsed: string[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          // Keep only dates that still exist in the current grouped list.
+          // An empty result (user had all groups closed) is valid — apply it.
+          const valid = parsed.filter(d => grouped[d]);
+          setOpenDateGroups(new Set(valid));
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed sessionStorage value
+    }
+    // Fallback only when no stored state exists (first visit or parse error)
     setOpenDateGroups(new Set([groupedDates[0]]));
   }, [groupedDates]);
 
@@ -709,6 +727,11 @@ export default function PlantHeatingSessions() {
       const next = new Set(prev);
       if (next.has(date)) next.delete(date);
       else next.add(date);
+      try {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage errors
+      }
       return next;
     });
   };
