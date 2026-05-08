@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
+import { ChevronLeft, ChevronDown, Loader2, Trash2, Download, Printer, Droplets, Pencil, Lock, Filter, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -17,7 +17,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
 import {
   BITUMEN_DIP_CHART,
@@ -212,6 +212,51 @@ export default function PlantBitumenStock() {
       return true;
     });
   }, [readings, filterDateFrom, filterDateTo, filterTank, filterSource]);
+
+  const bitumenDipGroupedDates = useMemo(() => {
+    const seen = new Set<string>();
+    const dates: string[] = [];
+    for (const r of filteredReadings) {
+      if (!seen.has(r.date)) { seen.add(r.date); dates.push(r.date); }
+    }
+    return dates;
+  }, [filteredReadings]);
+
+  const BITUMEN_DIP_GROUPS_KEY = "open-date-groups:/plant/bitumen-stock";
+  const [openBitumenDipGroups, setOpenBitumenDipGroups] = useState<Set<string>>(new Set());
+  const bitumenDipGroupsInitRef = useRef(false);
+  useEffect(() => {
+    if (bitumenDipGroupsInitRef.current || bitumenDipGroupedDates.length === 0) return;
+    bitumenDipGroupsInitRef.current = true;
+    try {
+      const stored = sessionStorage.getItem(BITUMEN_DIP_GROUPS_KEY);
+      if (stored !== null) {
+        const parsed: string[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(d => bitumenDipGroupedDates.includes(d));
+          setOpenBitumenDipGroups(new Set(valid));
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed sessionStorage value
+    }
+    setOpenBitumenDipGroups(new Set([bitumenDipGroupedDates[0]]));
+  }, [bitumenDipGroupedDates]);
+
+  const toggleBitumenDipGroup = (date: string) => {
+    setOpenBitumenDipGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      try {
+        sessionStorage.setItem(BITUMEN_DIP_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
 
   const depthNum = parseFloat(depthCm) || 0;
   const computedVolume = getVolumeAtDepth(depthNum);
@@ -1491,25 +1536,47 @@ export default function PlantBitumenStock() {
           ) : filteredReadings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No dip readings recorded yet</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-left p-2">Time</th>
-                    <th className="text-left p-2">Tank</th>
-                    <th className="text-right p-2">Depth (cm)</th>
-                    <th className="text-right p-2">Volume (L)</th>
-                    <th className="text-right p-2">Weight (MT)</th>
-                    <th className="text-right p-2">Usable (MT)</th>
-                    <th className="text-left p-2">Type</th>
-                    <th className="text-left p-2">Source</th>
-                    <th className="text-left p-2">Notes</th>
-                    {isAdmin && <th className="text-center p-2">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredReadings.map(r => {
+            <div className="space-y-1">
+              {bitumenDipGroupedDates.map(date => {
+                const isOpen = openBitumenDipGroups.has(date);
+                const dateReadings = filteredReadings.filter(r => r.date === date);
+                return (
+                  <div key={date}>
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      className="w-full flex items-center gap-2 flex-wrap border-b py-2 text-left hover:bg-muted/30 transition-colors"
+                      onClick={() => toggleBitumenDipGroup(date)}
+                      data-testid={`button-toggle-date-${date}`}
+                    >
+                      <ChevronDown
+                        className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200"
+                        style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+                      />
+                      <h3 className="font-semibold">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
+                      <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                        {dateReadings.length} reading{dateReadings.length !== 1 ? "s" : ""}
+                      </Badge>
+                    </button>
+                    {isOpen && (
+                      <div className="overflow-x-auto pt-1 pb-3">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-2">Time</th>
+                              <th className="text-left p-2">Tank</th>
+                              <th className="text-right p-2">Depth (cm)</th>
+                              <th className="text-right p-2">Volume (L)</th>
+                              <th className="text-right p-2">Weight (MT)</th>
+                              <th className="text-right p-2">Usable (MT)</th>
+                              <th className="text-left p-2">Type</th>
+                              <th className="text-left p-2">Source</th>
+                              <th className="text-left p-2">Notes</th>
+                              {isAdmin && <th className="text-center p-2">Actions</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dateReadings.map(r => {
                     const src = classifyReadingSource(r);
                     const srcClass =
                       src === "backfill"
@@ -1521,7 +1588,6 @@ export default function PlantBitumenStock() {
                             : "";
                     return (
                     <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
-                      <td className="p-2">{r.date}</td>
                       <td className="p-2">{r.time || "-"}</td>
                       <td className="p-2"><Badge variant="outline">Tank {r.tankNumber}</Badge></td>
                       <td className="p-2 text-right font-medium">{r.depthCm}</td>
@@ -1579,9 +1645,14 @@ export default function PlantBitumenStock() {
                       </td>}
                     </tr>
                     );
-                  })}
-                </tbody>
-              </table>
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

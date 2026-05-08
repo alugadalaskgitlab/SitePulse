@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
+import { ChevronLeft, ChevronDown, Loader2, Trash2, Download, Printer, Gauge, Pencil, Lock, Ruler, BarChart3, TrendingDown, TrendingUp, Info, Scale, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -18,7 +18,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { LdoFlowReading, LdoDipReading, TruckDispatch, Party, MixTemplate } from "@shared/schema";
 import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoVolumeAtDepth, getLdoMaxDepth, getLdoDeadStockDepth, getLdoDeadStockVolume, getLdoUsableVolume } from "@shared/ldo-dip-chart";
@@ -703,6 +703,51 @@ export default function PlantLdoFlowMeter() {
       return src === dipFilterSource;
     });
   }, [sortedDipReadings, dipFilterSource]);
+
+  const ldoDipGroupedDates = useMemo(() => {
+    const seen = new Set<string>();
+    const dates: string[] = [];
+    for (const r of filteredDipReadings) {
+      if (!seen.has(r.date)) { seen.add(r.date); dates.push(r.date); }
+    }
+    return dates;
+  }, [filteredDipReadings]);
+
+  const LDO_DIP_GROUPS_KEY = "open-date-groups:/plant/ldo-dip-readings";
+  const [openLdoDipGroups, setOpenLdoDipGroups] = useState<Set<string>>(new Set());
+  const ldoDipGroupsInitRef = useRef(false);
+  useEffect(() => {
+    if (ldoDipGroupsInitRef.current || ldoDipGroupedDates.length === 0) return;
+    ldoDipGroupsInitRef.current = true;
+    try {
+      const stored = sessionStorage.getItem(LDO_DIP_GROUPS_KEY);
+      if (stored !== null) {
+        const parsed: string[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(d => ldoDipGroupedDates.includes(d));
+          setOpenLdoDipGroups(new Set(valid));
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed sessionStorage value
+    }
+    setOpenLdoDipGroups(new Set([ldoDipGroupedDates[0]]));
+  }, [ldoDipGroupedDates]);
+
+  const toggleLdoDipGroup = (date: string) => {
+    setOpenLdoDipGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      try {
+        sessionStorage.setItem(LDO_DIP_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
 
   const dipCreateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1903,24 +1948,46 @@ export default function PlantLdoFlowMeter() {
             ) : filteredDipReadings.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-no-dip-readings-filtered">No dip readings match the current filter</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm" data-testid="table-dip-readings">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2">Date</th>
-                      <th className="text-left p-2">Time</th>
-                      <th className="text-left p-2">Tank</th>
-                      <th className="text-right p-2">Depth (cm)</th>
-                      <th className="text-right p-2">Volume (L)</th>
-                      <th className="text-right p-2">Weight (kg)</th>
-                      <th className="text-left p-2">Type</th>
-                      <th className="text-left p-2">Source</th>
-                      <th className="text-left p-2">Notes</th>
-                      {isAdmin && <th className="text-center p-2">Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDipReadings.map(r => {
+              <div className="space-y-1" data-testid="table-dip-readings">
+                {ldoDipGroupedDates.map(date => {
+                  const isOpen = openLdoDipGroups.has(date);
+                  const dateReadings = filteredDipReadings.filter(r => r.date === date);
+                  return (
+                    <div key={date}>
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        className="w-full flex items-center gap-2 flex-wrap border-b py-2 text-left hover:bg-muted/30 transition-colors"
+                        onClick={() => toggleLdoDipGroup(date)}
+                        data-testid={`button-toggle-dip-date-${date}`}
+                      >
+                        <ChevronDown
+                          className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200"
+                          style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+                        />
+                        <h3 className="font-semibold">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
+                        <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                          {dateReadings.length} reading{dateReadings.length !== 1 ? "s" : ""}
+                        </Badge>
+                      </button>
+                      {isOpen && (
+                        <div className="overflow-x-auto pt-1 pb-3">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left p-2">Time</th>
+                                <th className="text-left p-2">Tank</th>
+                                <th className="text-right p-2">Depth (cm)</th>
+                                <th className="text-right p-2">Volume (L)</th>
+                                <th className="text-right p-2">Weight (kg)</th>
+                                <th className="text-left p-2">Type</th>
+                                <th className="text-left p-2">Source</th>
+                                <th className="text-left p-2">Notes</th>
+                                {isAdmin && <th className="text-center p-2">Actions</th>}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dateReadings.map(r => {
                       const dipSrc = classifyReadingSource(r);
                       const dipSrcClass =
                         dipSrc === "backfill"
@@ -1932,7 +1999,6 @@ export default function PlantLdoFlowMeter() {
                               : "no-default-hover-elevate no-default-active-elevate";
                       return (
                       <tr key={r.id} className="border-b" data-testid={`row-dip-${r.id}`}>
-                        <td className="p-2">{r.date}</td>
                         <td className="p-2">{r.time || "-"}</td>
                         <td className="p-2">
                           <Badge variant={r.tankNumber === 1 ? "default" : "secondary"} data-testid={`badge-dip-tank-${r.id}`}>
@@ -1991,9 +2057,14 @@ export default function PlantLdoFlowMeter() {
                         )}
                       </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
