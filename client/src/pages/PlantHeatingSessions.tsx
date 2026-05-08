@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ChevronLeft, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
+import { ChevronLeft, ChevronDown, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -633,6 +633,12 @@ export default function PlantHeatingSessions() {
     setDialogOpen(true);
   };
 
+  const openNewForDate = (date: string) => {
+    const seedPlant = (returnToFromUrl && originPlantFromUrl) ? originPlantFromUrl : "Main Plant";
+    setForm({ ...emptyForm(date), plantName: seedPlant });
+    setDialogOpen(true);
+  };
+
   const openEdit = (s: BitumenHeatingSession) => {
     setForm({
       id: s.id,
@@ -688,6 +694,24 @@ export default function PlantHeatingSessions() {
     return out;
   }, [sessions, filterDryerSource]);
   const groupedDates = Object.keys(grouped);
+
+  // Collapsible date groups: most recent date starts expanded on first load.
+  const [openDateGroups, setOpenDateGroups] = useState<Set<string>>(new Set());
+  const initialOpenSetRef = useRef(false);
+  useEffect(() => {
+    if (initialOpenSetRef.current || groupedDates.length === 0) return;
+    initialOpenSetRef.current = true;
+    setOpenDateGroups(new Set([groupedDates[0]]));
+  }, [groupedDates]);
+
+  const toggleDateGroup = (date: string) => {
+    setOpenDateGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
 
   // Task #238 — auto-open the requested session once it loads. The ref tracks
   // the last session ID that was auto-opened so re-clicking a different conflict
@@ -829,37 +853,51 @@ export default function PlantHeatingSessions() {
           })()}
           {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> :
             groupedDates.length === 0 ? <p className="text-sm text-muted-foreground">{filterDryerSource !== "all" ? `No heating sessions fed from ${filterDryerSource === "TANK_1" ? "Boiler tank" : "Dryer tank"} in this date range.` : "No heating sessions in this date range."}</p> :
-            <div className="space-y-4">
-              {groupedDates.map(date => (
+            <div className="space-y-1">
+              {groupedDates.map(date => {
+                const isOpen = openDateGroups.has(date);
+                const dateSessions = grouped[date];
+                const totalLdo = dateSessions.reduce((sum, s) => sum + (s.ldoTank1Consumed ?? 0), 0);
+                const reconMismatches = reconByDate.get(date) || [];
+                const dryerMismatches = dryerMismatchByDate.get(date) || [];
+                return (
                 <div key={date}>
-                  <div className="sticky top-14 z-10 bg-background border-b pb-2 mb-2 pt-1">
+                  {/* Collapsible date header */}
+                  <button
+                    type="button"
+                    className="sticky top-14 z-10 bg-background w-full flex items-center gap-2 flex-wrap border-b py-2 pt-1 text-left hover:bg-muted/30 transition-colors"
+                    onClick={() => toggleDateGroup(date)}
+                    data-testid={`button-toggle-date-${date}`}
+                  >
+                    <ChevronDown
+                      className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform duration-200"
+                      style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+                    />
                     <h3 className="font-semibold text-lg">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap mb-2">
-                    {(reconByDate.get(date) || []).map(rec => (
-                      <Link
-                        key={rec.plantName}
-                        href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}
-                      >
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] cursor-pointer"
-                          data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
-                          title={rec.reconciliation.mismatches.map(m => {
-                            const sign = m.deltaL > 0 ? "+" : "";
-                            const which =
-                              m.kind === "sessions_vs_shift" ? "sessions vs shift meter"
-                              : m.kind === "sessions_vs_ledger" ? "sessions vs LDO ledger"
-                              : "shift meter vs LDO ledger";
-                            return `${which}: Δ ${sign}${m.deltaL}L`;
-                          }).join(" • ")}
-                        >
-                          ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length}) →
-                        </Badge>
-                      </Link>
-                    ))}
+                    <Badge variant="secondary" className="text-xs">
+                      {dateSessions.length} session{dateSessions.length !== 1 ? "s" : ""}
+                    </Badge>
+                    {totalLdo > 0 && (
+                      <span className="text-sm text-muted-foreground">LDO: {totalLdo.toFixed(1)} L</span>
+                    )}
+                    {reconMismatches.length > 0 && (
+                      <Badge variant="destructive" className="text-[10px]">
+                        ⚠ Boiler meter mismatch
+                      </Badge>
+                    )}
+                    {dryerMismatches.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400">
+                        ⚠ Dryer conflict
+                      </Badge>
+                    )}
+                  </button>
+
+                  {/* Collapsible content */}
+                  {isOpen && (
+                  <div className="space-y-2 pt-2 mb-4">
+                    {/* Dryer-source mismatch panels */}
                     {(() => {
-                      const dms = dryerMismatchByDate.get(date);
+                      const dms = dryerMismatches;
                       if (!dms || dms.length === 0) return null;
                       return (
                         <div className="space-y-2" data-testid={`panel-dryer-conflict-${date}`}>
@@ -1012,47 +1050,50 @@ export default function PlantHeatingSessions() {
                         </div>
                       );
                     })()}
-                  </div>
-                  {(reconByDate.get(date) || []).map(rec => (
-                    <div
-                      key={`detail-${rec.plantName}`}
-                      className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
-                      data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="font-semibold text-destructive">
-                          {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
+
+                    {/* Boiler meter recon detail panels */}
+                    {reconMismatches.map(rec => (
+                      <div
+                        key={`detail-${rec.plantName}`}
+                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5"
+                        data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="font-semibold text-destructive">
+                            {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
+                          </div>
+                          <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
+                            <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
+                              Review →
+                            </Button>
+                          </Link>
                         </div>
-                        <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
-                          <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
-                            Review →
-                          </Button>
-                        </Link>
+                        <p className="text-muted-foreground italic mb-1">
+                          This usually happens when a heating session was deleted or edited after the shift log was saved, or when a meter reading was entered incorrectly. Open the reconciliation report to see the detail and correct whichever record is wrong.
+                        </p>
+                        <ul className="list-disc list-inside">
+                          {rec.reconciliation.mismatches.map(m => {
+                            const sign = m.deltaL > 0 ? "+" : "";
+                            const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
+                            const label =
+                              m.kind === "sessions_vs_shift"
+                                ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match shift log meter (${fmt(rec.shiftLogT1L)} L)`
+                                : m.kind === "sessions_vs_ledger"
+                                ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerSessionsT1L)} L)`
+                                : `Shift log meter (${fmt(rec.shiftLogT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerShiftT1L)} L)`;
+                            return (
+                              <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
+                                {label} — difference: {sign}{m.deltaL} L
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </div>
-                      <p className="text-muted-foreground italic mb-1">
-                        This usually happens when a heating session was deleted or edited after the shift log was saved, or when a meter reading was entered incorrectly. Open the reconciliation report to see the detail and correct whichever record is wrong.
-                      </p>
-                      <ul className="list-disc list-inside">
-                        {rec.reconciliation.mismatches.map(m => {
-                          const sign = m.deltaL > 0 ? "+" : "";
-                          const fmt = (n: number | null) => n == null ? "—" : n.toFixed(1);
-                          const label =
-                            m.kind === "sessions_vs_shift"
-                              ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match shift log meter (${fmt(rec.shiftLogT1L)} L)`
-                              : m.kind === "sessions_vs_ledger"
-                              ? `Session meter total (${fmt(rec.sessionsLdoT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerSessionsT1L)} L)`
-                              : `Shift log meter (${fmt(rec.shiftLogT1L)} L) doesn't match LDO flow ledger (${fmt(rec.ledgerShiftT1L)} L)`;
-                          return (
-                            <li key={m.kind} data-testid={`text-recon-mismatch-${date}-${m.kind}`}>
-                              {label} — difference: {sign}{m.deltaL} L
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                  <div className="space-y-2">
-                    {grouped[date].map(s => {
+                    ))}
+
+                    {/* Session cards */}
+                    <div className="space-y-2">
+                    {dateSessions.map(s => {
                       const sessLdoLPerHr = (s.ldoTank1Consumed != null && s.durationHours && s.durationHours > 0)
                         ? s.ldoTank1Consumed / s.durationHours : null;
                       const sessDgHrs = (s.dgClosingHourMeter != null && s.dgOpeningHourMeter != null)
@@ -1193,9 +1234,26 @@ export default function PlantHeatingSessions() {
                         </div>
                       );
                     })}
+                    </div>
+
+                    {/* Add Session for this date */}
+                    <div className="pt-2 border-t border-border">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => openNewForDate(date)}
+                        data-testid={`button-add-session-${date}`}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add Session for {format(parseISO(date), "d MMM")}
+                      </Button>
+                    </div>
                   </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           }
         </CardContent>
