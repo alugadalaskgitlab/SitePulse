@@ -62,7 +62,12 @@ export default function SiteReport() {
   });
 
   const handleEditClick = () => {
-    if (canEdit) setLocation(appendOrigin(`/site/edit/${id}`));
+    if (canEdit) {
+      const role = user?.isAdmin ? "admin" : "manager";
+      sessionStorage.setItem(`edit_pin_${id}`, role);
+      sessionStorage.setItem(`auth_role_${id}`, role);
+      setLocation(appendOrigin(`/site/edit/${id}`));
+    }
   };
 
   const handleDeleteClick = () => {
