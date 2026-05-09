@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
+import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -214,11 +215,13 @@ export default function SiteEntry() {
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
   }, []);
 
-  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
+  const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
     formKey: "site-entry-new",
     data: formData,
     onRestore: handleRestoreDraft,
   });
+
+  const { confirmLeave } = useBeforeUnload(isDirty);
 
   // Calculate length from chainage if not manually entered
   const getEffectiveLength = (entry: ProgressEntry): number | null => {
@@ -428,7 +431,7 @@ export default function SiteEntry() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation(backLink)} data-testid="button-back">
+        <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
         </Button>
         <div>
@@ -1407,7 +1410,7 @@ export default function SiteEntry() {
       {/* Action Buttons */}
       <div className="flex items-center justify-end gap-4 pt-4">
         <AutoSaveIndicator lastSavedAt={lastSavedAt} className="mr-auto" />
-        <Button variant="outline" onClick={() => setLocation(backLink)} data-testid="button-cancel">
+        <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
           Cancel
         </Button>
         <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">

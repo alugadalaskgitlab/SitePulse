@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -87,12 +88,15 @@ export default function PlantMaterialReceipts() {
     setTankNumber(data.tankNumber || "");
   }, []);
 
-  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
+  const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
     formKey: "plant-material-receipt-new",
     data: formData,
     enabled: dialogOpen && !editingReceipt,
     onRestore: handleRestoreDraft,
   });
+
+  const [, setLocation] = useLocation();
+  const { confirmLeave } = useBeforeUnload(isDirty);
 
   const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
     queryKey: ["/api/plant-module/material-receipts"],
@@ -512,11 +516,9 @@ export default function PlantMaterialReceipts() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href={backLink}>
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
           <div>
             <h1 className="text-2xl font-bold">Material Receipts</h1>
             <p className="text-muted-foreground">Record incoming materials at plant</p>

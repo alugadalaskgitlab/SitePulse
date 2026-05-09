@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
+import { useLocation } from "wouter";
+import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
@@ -85,12 +86,15 @@ export default function PlantMaterialIssues() {
     setNotes(data.notes);
   }, []);
 
-  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
+  const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
     formKey: "plant-material-issue-new",
     data: formData,
     enabled: dialogOpen && !editingIssue,
     onRestore: handleRestoreDraft,
   });
+
+  const [, setLocation] = useLocation();
+  const { confirmLeave } = useBeforeUnload(isDirty);
 
   const { data: issues, isLoading } = useQuery<MaterialIssue[]>({
     queryKey: ["/api/plant-module/material-issues"],
@@ -374,11 +378,9 @@ export default function PlantMaterialIssues() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href={backLink}>
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <ArrowUpRight className="w-6 h-6 text-orange-500" />

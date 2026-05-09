@@ -15,6 +15,7 @@ interface UseAutosaveReturn<T> {
   hasDraft: boolean;
   draftAge: string | null;
   lastSavedAt: Date | null;
+  isDirty: boolean;
   restoreDraft: () => void;
   discardDraft: () => void;
   clearDraft: () => Promise<void>;
@@ -32,10 +33,12 @@ export function useAutosave<T>({
   const [hasDraft, setHasDraft] = useState(false);
   const [draftAge, setDraftAge] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [restoredData, setRestoredData] = useState<T | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedDataRef = useRef<string>("");
   const hasRestoredRef = useRef(false);
+  const initialDataRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -60,6 +63,24 @@ export function useAutosave<T>({
 
     checkForDraft();
   }, [formKey, enabled]);
+
+  useEffect(() => {
+    if (!enabled || isLoading || hasDraft || lastSavedAt !== null) {
+      if (!enabled) initialDataRef.current = null;
+      setIsDirty(false);
+      return;
+    }
+
+    const currentStr = JSON.stringify(data);
+
+    if (initialDataRef.current === null) {
+      initialDataRef.current = currentStr;
+      setIsDirty(false);
+      return;
+    }
+
+    setIsDirty(currentStr !== initialDataRef.current);
+  }, [data, enabled, isLoading, hasDraft, lastSavedAt]);
 
   useEffect(() => {
     if (!enabled || isLoading || hasDraft) return;
@@ -168,6 +189,7 @@ export function useAutosave<T>({
     hasDraft,
     draftAge,
     lastSavedAt,
+    isDirty,
     restoreDraft,
     discardDraft,
     clearDraft,
