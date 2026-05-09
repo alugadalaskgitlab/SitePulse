@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -143,7 +144,7 @@ export default function PlantHeatingSessions() {
   // changes so that navigating away (e.g. to fix a shift-log mismatch) and returning
   // does not lose the operator's in-progress work.
   const setFormForDraft = useCallback((data: FormState) => setForm(data), []);
-  const { clearDraft: clearHeatingDraft } = useFormDraft<FormState>(
+  const { clearDraft: clearHeatingDraft, lastSavedAt: draftLastSavedAt } = useFormDraft<FormState>(
     "hs-draft-new",
     form,
     setFormForDraft,
@@ -1352,7 +1353,10 @@ export default function PlantHeatingSessions() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form.id ? "Edit" : "New"} Heating Session</DialogTitle>
+            <DialogTitle className="flex items-center gap-3">
+              {form.id ? "Edit" : "New"} Heating Session
+              {!form.id && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">

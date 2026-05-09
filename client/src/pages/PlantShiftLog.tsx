@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -456,7 +457,7 @@ export default function PlantShiftLog() {
     dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
     manpower, idleEvents]);
 
-  const { clearDraft, wasRestoredRef } = useFormDraft<ShiftLogFormData>(
+  const { clearDraft, wasRestoredRef, lastSavedAt } = useFormDraft<ShiftLogFormData>(
     `sl-draft:${date}:${plantName}`,
     formData,
     onRestoreDraft,
@@ -1261,6 +1262,7 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
+          <AutoSaveIndicator lastSavedAt={lastSavedAt} />
           <Link href={appendPlantContext(`/plant/daily-report/${date}`, { forceTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
           </Link>

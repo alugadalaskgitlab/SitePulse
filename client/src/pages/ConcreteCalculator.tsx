@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -951,9 +952,14 @@ export default function ConcreteCalculator() {
       .catch(() => {});
   }, []);
 
+  const [calcLastSavedAt, setCalcLastSavedAt] = useState<Date | null>(null);
+
   // Persist state
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(s));
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(s));
+      setCalcLastSavedAt(new Date());
+    } catch {}
   }, [s]);
 
   function update(patch: Partial<CalcState>) {
@@ -1428,9 +1434,12 @@ export default function ConcreteCalculator() {
             {s.grade && <Badge variant="outline" className="font-mono">{s.grade}</Badge>}
             {s.structureType && <Badge variant="outline" className="text-xs">{s.structureType}</Badge>}
           </div>
-          <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
-            {fmtR(costs.totalWithEsc)}/m³ · {s.totalVolume} m³ · {s.contractor || "No contractor"}
-          </p>
+          <div className="flex items-center gap-3 mt-0.5">
+            <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+              {fmtR(costs.totalWithEsc)}/m³ · {s.totalVolume} m³ · {s.contractor || "No contractor"}
+            </p>
+            <AutoSaveIndicator lastSavedAt={calcLastSavedAt} />
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button

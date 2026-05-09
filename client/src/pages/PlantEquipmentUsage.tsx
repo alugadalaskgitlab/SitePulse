@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -133,7 +134,7 @@ export default function PlantEquipmentUsage() {
     setTransportDistance(data.transportDistance ?? "");
   }, []);
 
-  const { clearDraft } = useFormDraft<EquipmentFormData>(
+  const { clearDraft, lastSavedAt: draftLastSavedAt } = useFormDraft<EquipmentFormData>(
     "plant-equipment-usage-new",
     formData,
     handleRestoreDraft,
@@ -814,7 +815,10 @@ export default function PlantEquipmentUsage() {
           )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}</DialogTitle>
+              <DialogTitle className="flex items-center gap-3">
+                {editingUsage ? "Edit Equipment Usage" : "Record Equipment Usage"}
+                {!editingUsage && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 
 /**
  * useFormDraft<T> — localStorage draft hook for forms that navigate away mid-fill.
@@ -11,17 +11,20 @@ import { useEffect, useRef, useCallback } from "react";
  * options.enabled      — gate the whole hook (e.g. only in edit mode)
  * options.initialized  — secondary auto-save gate; pass !isLoading to wait for server data
  *
- * Returns { clearDraft, wasRestoredRef } where wasRestoredRef is a ref (not state) so that
- * dependent effects in the same render flush read the correct synchronously-updated value.
+ * Returns { clearDraft, wasRestoredRef, lastSavedAt } where wasRestoredRef is a ref (not state)
+ * so that dependent effects in the same render flush read the correct synchronously-updated value.
  * This matches the original draftAppliedRef pattern and prevents the draft being overwritten
  * by a cached React Query result that arrives before state updates have applied.
+ *
+ * lastSavedAt is a Date | null that updates each time a draft is written to localStorage,
+ * suitable for passing to <AutoSaveIndicator lastSavedAt={lastSavedAt} />.
  */
 export function useFormDraft<T>(
   key: string,
   data: T,
   onRestore: (data: T) => void,
   options: { enabled?: boolean; initialized?: boolean } = {}
-): { clearDraft: () => void; wasRestoredRef: React.MutableRefObject<boolean> } {
+): { clearDraft: () => void; wasRestoredRef: React.MutableRefObject<boolean>; lastSavedAt: Date | null } {
   const { enabled = true, initialized = true } = options;
 
   const wasRestoredRef = useRef(false);
@@ -32,6 +35,8 @@ export function useFormDraft<T>(
 
   const onRestoreRef = useRef(onRestore);
   onRestoreRef.current = onRestore;
+
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // Declared before autosave so it runs first in the same flush — wasRestoredRef is then
   // synchronously correct when the population effect (or autosave) reads it.
@@ -62,6 +67,7 @@ export function useFormDraft<T>(
     }
     try {
       localStorage.setItem(key, JSON.stringify(data));
+      setLastSavedAt(new Date());
     } catch {}
   }, [enabled, key, data, initialized]);
 
@@ -71,7 +77,8 @@ export function useFormDraft<T>(
     wasRestoredRef.current = false;
     selfInitializedRef.current = false;
     justRestoredRef.current = false;
+    setLastSavedAt(null);
   }, [key]);
 
-  return { clearDraft, wasRestoredRef };
+  return { clearDraft, wasRestoredRef, lastSavedAt };
 }
