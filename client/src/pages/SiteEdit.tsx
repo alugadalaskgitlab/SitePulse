@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
@@ -114,6 +114,90 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
   return null;
 }
 
+// Shared mapping from a raw DPR object to typed form state.
+// Used for initial load, draft comparison, and discard-draft restore.
+function mapDprToFormState(dpr: any) {
+  const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
+  const header = { date: dpr.date, site: baseSite, engineer: dpr.engineer };
+
+  const progress: ProgressEntry[] = dpr.progress?.length
+    ? dpr.progress.map((p: any) => ({
+        activity: p.activity || "",
+        side: p.side || "",
+        chainageFrom: p.chainageFrom || "",
+        chainageTo: p.chainageTo || "",
+        length: p.length,
+        width: p.width,
+        thickness: p.thickness,
+        quantity: p.quantity,
+        uom: p.uom || "SQM",
+        noSiteWork: p.noSiteWork || false,
+        noSiteWorkDescription: p.noSiteWorkDescription || "",
+        personnelIds: p.personnelIds || [],
+      }))
+    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }];
+
+  const equipment: EquipmentEntry[] = dpr.equipment?.length
+    ? dpr.equipment.map((e: any) => ({
+        machine: e.machine || "",
+        vehicleNo: e.vehicleNo || "",
+        operator: e.operator || "",
+        task: e.task || "",
+        entryType: e.entryType ?? "time_meter",
+        startTime: e.startTime || "",
+        endTime: e.endTime || "",
+        openingReading: e.openingReading ?? null,
+        closingReading: e.closingReading ?? null,
+        diesel: e.diesel,
+        equipmentId: e.equipmentId ?? null,
+        dieselSource: e.dieselSource ?? "plant_stock",
+        fuelStation: e.fuelStation ?? "",
+        billNumber: e.billNumber ?? "",
+        amountPaid: e.amountPaid ?? null,
+        numberOfTrips: e.numberOfTrips ?? null,
+        tripDistance: e.tripDistance ?? null,
+        totalKm: e.totalKm ?? null,
+        waterQuantity: e.waterQuantity ?? null,
+      }))
+    : [{ machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }];
+
+  const labour: LabourEntry[] = dpr.labour?.length
+    ? dpr.labour.map((l: any) => ({
+        category: l.category || "Skilled",
+        gender: l.gender || "Male",
+        count: l.count,
+        task: l.task || "",
+        contractor: l.contractor || "",
+      }))
+    : [{ category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }];
+
+  const materials: MaterialEntry[] = dpr.materials
+    ? dpr.materials.map((m: any) => ({
+        type: m.type || "Received",
+        material: m.material || "",
+        quantity: m.quantity != null ? Number(m.quantity) : null,
+        uom: m.uom || "",
+        vehicleNumber: m.vehicleNumber || "",
+        supplier: m.supplier || "",
+        location: m.location || "",
+        receiptNumber: m.receiptNumber || "",
+      }))
+    : [];
+
+  const sitePurchases: SitePurchaseEntry[] = dpr.sitePurchases
+    ? dpr.sitePurchases.map((sp: any) => ({
+        itemDescription: sp.itemDescription || "",
+        vendor: sp.vendor || "",
+        billNo: sp.billNo || "",
+        amount: sp.amount != null ? Number(sp.amount) : null,
+        quantity: sp.quantity != null ? Number(sp.quantity) : null,
+        uom: sp.uom || "",
+      }))
+    : [];
+
+  return { header, progress, equipment, labour, materials, sitePurchases };
+}
+
 export default function SiteEdit() {
   const [, params] = useRoute("/site/edit/:id");
   const [, setLocation] = useLocation();
@@ -122,6 +206,7 @@ export default function SiteEdit() {
   const { sectionCan, user: authUser } = useAuth();
   const id = parseInt(params?.id || "0");
   const backToReport = appendOrigin(`/site/report/${id}`);
+  const DRAFT_KEY = `dpr_draft_${id}`;
 
   const isCompleteMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('complete');
 
@@ -153,11 +238,17 @@ export default function SiteEdit() {
     }
   }, [id, pin, effectivePin, effectiveRole]);
 
-  // Clear credentials after successful save
+  // Clear credentials and draft after successful save
   const clearCredentials = () => {
     sessionStorage.removeItem(`edit_pin_${id}`);
     sessionStorage.removeItem(`auth_role_${id}`);
+    sessionStorage.removeItem(DRAFT_KEY);
   };
+
+  const [draftRestored, setDraftRestored] = useState(false);
+  const formInitializedRef = useRef(false);
+  // JSON snapshot of the server-provided form state; used to detect real user edits before saving a draft
+  const serverSnapshotRef = useRef<string | null>(null);
 
   const { data: dpr, isLoading } = useDpr(id);
 
@@ -221,90 +312,61 @@ export default function SiteEdit() {
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
   useEffect(() => {
-    if (dpr) {
-      const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
-      setHeader({
-        date: dpr.date,
-        site: baseSite,
-        engineer: dpr.engineer,
-      });
+    if (!dpr) return;
 
-      if (dpr.progress?.length) {
-        setProgress(dpr.progress.map((p: any) => ({
-          activity: p.activity || "",
-          side: p.side || "",
-          chainageFrom: p.chainageFrom || "",
-          chainageTo: p.chainageTo || "",
-          length: p.length,
-          width: p.width,
-          thickness: p.thickness,
-          quantity: p.quantity,
-          uom: p.uom || "SQM",
-          noSiteWork: p.noSiteWork || false,
-          noSiteWorkDescription: p.noSiteWorkDescription || "",
-          personnelIds: p.personnelIds || [],
-        })));
-      }
+    // Compute and store the canonical server-side form state for dirty-checking
+    const serverState = mapDprToFormState(dpr);
+    const serverJson = JSON.stringify(serverState);
+    serverSnapshotRef.current = serverJson;
 
-      if (dpr.equipment?.length) {
-        setEquipment(dpr.equipment.map(e => ({
-          machine: e.machine || "",
-          vehicleNo: e.vehicleNo || "",
-          operator: e.operator || "",
-          task: e.task || "",
-          entryType: (e as any).entryType ?? "time_meter",
-          startTime: e.startTime || "",
-          endTime: e.endTime || "",
-          openingReading: e.openingReading ?? null,
-          closingReading: e.closingReading ?? null,
-          diesel: e.diesel,
-          equipmentId: e.equipmentId ?? null,
-          dieselSource: e.dieselSource ?? "plant_stock",
-          fuelStation: e.fuelStation ?? "",
-          billNumber: e.billNumber ?? "",
-          amountPaid: e.amountPaid ?? null,
-          numberOfTrips: (e as any).numberOfTrips ?? null,
-          tripDistance: (e as any).tripDistance ?? null,
-          totalKm: (e as any).totalKm ?? null,
-          waterQuantity: (e as any).waterQuantity ?? null,
-        })));
-      }
-
-      if (dpr.labour?.length) {
-        setLabour(dpr.labour.map(l => ({
-          category: l.category || "Skilled",
-          gender: l.gender || "Male",
-          count: l.count,
-          task: l.task || "",
-          contractor: (l as any).contractor || "",
-        })));
-      }
-
-      if (dpr.materials) {
-        setMaterials(dpr.materials.map((m: any) => ({
-          type: m.type || "Received",
-          material: m.material || "",
-          quantity: m.quantity != null ? Number(m.quantity) : null,
-          uom: m.uom || "",
-          vehicleNumber: m.vehicleNumber || "",
-          supplier: m.supplier || "",
-          location: m.location || "",
-          receiptNumber: m.receiptNumber || "",
-        })));
-      }
-
-      if (dpr.sitePurchases) {
-        setSitePurchases(dpr.sitePurchases.map((sp: any) => ({
-          itemDescription: sp.itemDescription || "",
-          vendor: sp.vendor || "",
-          billNo: sp.billNo || "",
-          amount: sp.amount != null ? Number(sp.amount) : null,
-          quantity: sp.quantity != null ? Number(sp.quantity) : null,
-          uom: sp.uom || "",
-        })));
+    // Check for a saved draft first — restore it instead of overwriting with server data
+    const savedDraft = sessionStorage.getItem(DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        // Only restore the draft if it actually differs from the server state
+        if (JSON.stringify(draft) !== serverJson) {
+          setHeader(draft.header || serverState.header);
+          if (draft.progress?.length) setProgress(draft.progress);
+          if (draft.equipment?.length) setEquipment(draft.equipment);
+          if (draft.labour?.length) setLabour(draft.labour);
+          setMaterials(draft.materials || []);
+          setSitePurchases(draft.sitePurchases || []);
+          setDraftRestored(true);
+          formInitializedRef.current = true;
+          return;
+        }
+        // Draft matches server — treat as stale, remove it
+        sessionStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // Corrupted draft — discard it and fall through to server data
+        sessionStorage.removeItem(DRAFT_KEY);
       }
     }
+
+    const { header: h, progress: prog, equipment: eq, labour: lab, materials: mat, sitePurchases: sp } = serverState;
+    setHeader(h);
+    setProgress(prog);
+    setEquipment(eq);
+    setLabour(lab);
+    setMaterials(mat);
+    setSitePurchases(sp);
+    formInitializedRef.current = true;
   }, [dpr]);
+
+  // Auto-save draft to sessionStorage whenever form state changes (only after initial load,
+  // and only when the state actually differs from what the server provided — prevents stale drafts)
+  useEffect(() => {
+    if (!formInitializedRef.current) return;
+    const draft = { header, progress, equipment, labour, materials, sitePurchases };
+    const draftJson = JSON.stringify(draft);
+    if (draftJson === serverSnapshotRef.current) {
+      // Form matches server state — no real edits, remove any stale draft
+      sessionStorage.removeItem(DRAFT_KEY);
+      return;
+    }
+    sessionStorage.setItem(DRAFT_KEY, draftJson);
+  }, [header, progress, equipment, labour, materials, sitePurchases]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -515,6 +577,40 @@ export default function SiteEdit() {
           Save Changes
         </Button>
       </div>
+
+      {draftRestored && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300"
+          data-testid="banner-draft-restored"
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 shrink-0" />
+            <span><strong>Unsaved draft restored.</strong> Your in-progress edits were recovered after the page refresh. Save when ready or discard below.</span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-400 h-7 px-2"
+            onClick={() => {
+              sessionStorage.removeItem(DRAFT_KEY);
+              setDraftRestored(false);
+              if (dpr) {
+                const serverState = mapDprToFormState(dpr);
+                setHeader(serverState.header);
+                setProgress(serverState.progress);
+                setEquipment(serverState.equipment);
+                setLabour(serverState.labour);
+                setMaterials(serverState.materials);
+                setSitePurchases(serverState.sitePurchases);
+              }
+            }}
+            data-testid="button-discard-draft"
+          >
+            <X className="w-3 h-3 mr-1" />
+            Discard draft
+          </Button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
