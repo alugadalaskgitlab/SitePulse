@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useAuth } from "@/lib/auth-context";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +119,7 @@ export default function SiteEdit() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { getBackLink, appendOrigin } = useOrigin();
+  const { sectionCan, user: authUser } = useAuth();
   const id = parseInt(params?.id || "0");
   const backToReport = appendOrigin(`/site/report/${id}`);
 
@@ -135,7 +137,22 @@ export default function SiteEdit() {
     const storedRole = sessionStorage.getItem(`auth_role_${id}`) || "manager";
     return storedRole as "manager" | "admin";
   });
-  
+
+  // If the user navigated directly (bookmark/share/refresh), sessionStorage may be empty.
+  // Fall back to the live permission check so authorised users are never locked out.
+  const canEditLive = sectionCan("site_dprs", "edit");
+  const effectivePin = pin || (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : "");
+  const effectiveRole = (pin ? role : (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : role)) as "manager" | "admin" | "engineer";
+
+  // Auto-issue token into sessionStorage when derived from live permission,
+  // so subsequent reads (e.g. after a sub-navigation) find consistent values.
+  useEffect(() => {
+    if (!pin && effectivePin) {
+      sessionStorage.setItem(`edit_pin_${id}`, effectivePin);
+      sessionStorage.setItem(`auth_role_${id}`, effectiveRole);
+    }
+  }, [id, pin, effectivePin, effectiveRole]);
+
   // Clear credentials after successful save
   const clearCredentials = () => {
     sessionStorage.removeItem(`edit_pin_${id}`);
@@ -296,8 +313,8 @@ export default function SiteEdit() {
       const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
       
       const response = await apiRequest("POST", `/api/dprs/${id}/version`, { 
-        pin, 
-        editedBy: role,
+        pin: effectivePin, 
+        editedBy: effectiveRole,
         data,
         clientTimestamp,
       });
@@ -470,7 +487,7 @@ export default function SiteEdit() {
     return <div className="p-20 text-center text-red-500">Report not found.</div>;
   }
 
-  if (!pin) {
+  if (!effectivePin) {
     return (
       <div className="p-20 text-center">
         <p className="text-muted-foreground mb-4">Authorization required to edit this report.</p>
