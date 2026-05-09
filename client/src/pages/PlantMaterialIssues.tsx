@@ -11,6 +11,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, Plus, Package, Loader2, Edit, Trash2, Download, Printer, ArrowUpRight } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -84,7 +85,7 @@ export default function PlantMaterialIssues() {
     setNotes(data.notes);
   }, []);
 
-  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
+  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
     formKey: "plant-material-issue-new",
     data: formData,
     enabled: dialogOpen && !editingIssue,
@@ -506,14 +507,17 @@ export default function PlantMaterialIssues() {
                   <Input value={notes} onChange={(e) => setNotes(e.target.value.toUpperCase())} placeholder="Additional notes" data-testid="input-notes" />
                 </div>
                 
-                <Button 
-                  onClick={handleSubmit} 
-                  className="w-full" 
-                  disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !issuedTo}
-                  data-testid="button-submit"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingIssue ? "Update Issue" : "Record Issue"}
-                </Button>
+                <div className="space-y-1.5">
+                  <Button 
+                    onClick={handleSubmit} 
+                    className="w-full" 
+                    disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !issuedTo}
+                    data-testid="button-submit"
+                  >
+                    {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingIssue ? "Update Issue" : "Record Issue"}
+                  </Button>
+                  {!editingIssue && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
+                </div>
               </div>
             </DialogContent>
           </Dialog>

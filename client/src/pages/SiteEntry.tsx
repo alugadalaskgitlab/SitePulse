@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,7 +214,7 @@ export default function SiteEntry() {
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
   }, []);
 
-  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
+  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<SiteEntryFormData>({
     formKey: "site-entry-new",
     data: formData,
     onRestore: handleRestoreDraft,
@@ -1404,7 +1405,8 @@ export default function SiteEntry() {
       </Card>
 
       {/* Action Buttons */}
-      <div className="flex justify-end gap-4 pt-4">
+      <div className="flex items-center justify-end gap-4 pt-4">
+        <AutoSaveIndicator lastSavedAt={lastSavedAt} className="mr-auto" />
         <Button variant="outline" onClick={() => setLocation(backLink)} data-testid="button-cancel">
           Cancel
         </Button>

@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ChevronLeft, ChevronRight, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X } from "lucide-react";
@@ -128,7 +129,7 @@ export default function PlantDispatches() {
     setLdoTankNumber(data.ldoTankNumber || "2");
   }, []);
 
-  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
+  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
     formKey: "plant-dispatch-new",
     data: formData,
     enabled: dialogOpen && !editingDispatch,
@@ -1067,9 +1068,12 @@ export default function PlantDispatches() {
                 </div>
               )}
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight || hasToleranceError} data-testid="button-save-dispatch">
-                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingDispatch ? "Update Dispatch" : "Save Dispatch"}
-              </Button>
+              <div className="space-y-1.5">
+                <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !partyId || !mixTemplateId || !truckNumber || !loadWeight || hasToleranceError} data-testid="button-save-dispatch">
+                  {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingDispatch ? "Update Dispatch" : "Save Dispatch"}
+                </Button>
+                {!editingDispatch && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
+              </div>
             </div>
           </DialogContent>
         </Dialog>

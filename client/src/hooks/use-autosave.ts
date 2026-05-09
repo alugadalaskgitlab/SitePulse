@@ -14,6 +14,7 @@ interface UseAutosaveReturn<T> {
   isLoading: boolean;
   hasDraft: boolean;
   draftAge: string | null;
+  lastSavedAt: Date | null;
   restoreDraft: () => void;
   discardDraft: () => void;
   clearDraft: () => Promise<void>;
@@ -30,6 +31,7 @@ export function useAutosave<T>({
   const [isLoading, setIsLoading] = useState(true);
   const [hasDraft, setHasDraft] = useState(false);
   const [draftAge, setDraftAge] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [restoredData, setRestoredData] = useState<T | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedDataRef = useRef<string>("");
@@ -74,6 +76,7 @@ export function useAutosave<T>({
       try {
         await saveFormDraft(formKey, data);
         lastSavedDataRef.current = currentDataStr;
+        setLastSavedAt(new Date());
       } catch (error) {
         console.error("Error saving draft:", error);
       }
@@ -94,6 +97,7 @@ export function useAutosave<T>({
         try {
           await saveFormDraft(formKey, data);
           lastSavedDataRef.current = JSON.stringify(data);
+          setLastSavedAt(new Date());
         } catch (error) {
           console.error("Error saving on visibility change:", error);
         }
@@ -153,6 +157,7 @@ export function useAutosave<T>({
       lastSavedDataRef.current = "";
       setHasDraft(false);
       setRestoredData(null);
+      setLastSavedAt(null);
     } catch (error) {
       console.error("Error clearing draft:", error);
     }
@@ -162,6 +167,7 @@ export function useAutosave<T>({
     isLoading,
     hasDraft,
     draftAge,
+    lastSavedAt,
     restoreDraft,
     discardDraft,
     clearDraft,

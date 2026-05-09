@@ -11,6 +11,7 @@ import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -86,7 +87,7 @@ export default function PlantMaterialReceipts() {
     setTankNumber(data.tankNumber || "");
   }, []);
 
-  const { hasDraft, draftAge, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
+  const { hasDraft, draftAge, lastSavedAt, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
     formKey: "plant-material-receipt-new",
     data: formData,
     enabled: dialogOpen && !editingReceipt,
@@ -648,9 +649,12 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
-              <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">
-                {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
-              </Button>
+              <div className="space-y-1.5">
+                <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">
+                  {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingReceipt ? "Update Receipt" : "Save Receipt"}
+                </Button>
+                {!editingReceipt && <AutoSaveIndicator lastSavedAt={lastSavedAt} className="justify-center w-full" />}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
