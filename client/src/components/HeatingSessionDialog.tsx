@@ -17,6 +17,7 @@ import { HEATING_SESSION_TYPE_LABELS } from "@shared/schema";
 import type { BitumenHeatingSession, GeneratorLog } from "@shared/schema";
 import DryerSourceFixDialog, { type DryerSourceFixTarget } from "@/components/DryerSourceFixDialog";
 import { getLdoVolumeAtDepth, getLdoDeadStockVolume } from "@shared/ldo-dip-chart";
+import { LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 
 type DgMode = "none" | "inline" | "link";
 
@@ -668,6 +669,32 @@ export function HeatingSessionDialog({
                   : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
                 }
               </div>
+              {(() => {
+                const parts = [
+                  { tank: 1, openStr: form.ldoTank1OpeningDip, closeStr: form.ldoTank1ClosingDip, label: "Tank 1" },
+                  { tank: 2, openStr: form.ldoTank2OpeningDip, closeStr: form.ldoTank2ClosingDip, label: "Tank 2" },
+                ];
+                const results = parts.map(({ tank, openStr, closeStr, label }) => {
+                  const o = parseFloat(openStr);
+                  const c = parseFloat(closeStr);
+                  if (isNaN(o) || o <= 0 || isNaN(c) || c <= 0) return null;
+                  const diff = getLdoVolumeAtDepth(tank, o) - getLdoVolumeAtDepth(tank, c);
+                  const litres = Math.round(Math.abs(diff));
+                  const mt = (litres * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3);
+                  const isReceipt = diff < 0;
+                  return { label, litres, mt, isReceipt };
+                }).filter(Boolean);
+                if (!results.length) return null;
+                return (
+                  <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4 pt-1" data-testid="text-ldo-dip-consumed-summary">
+                    {results.map(r => r && (
+                      <span key={r.label} className={`text-xs font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                        {r.label} — {r.isReceipt ? "Net receipt" : "Consumed"}: {r.litres.toLocaleString()} L ({r.mt} MT)
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
