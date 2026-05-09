@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronDown, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X, Download } from "lucide-react";
 import * as XLSX from "xlsx";
-import { format, parseISO, subDays } from "date-fns";
+import { format, formatDistanceToNow, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -457,7 +457,7 @@ export default function PlantShiftLog() {
     dryerFedFrom, boilerRunsDuringProduction, noMainPlantOps,
     manpower, idleEvents]);
 
-  const { clearDraft, wasRestoredRef, lastSavedAt } = useFormDraft<ShiftLogFormData>(
+  const { clearDraft, wasRestoredRef, lastSavedAt, draftSavedAt } = useFormDraft<ShiftLogFormData>(
     `sl-draft:${date}:${plantName}`,
     formData,
     onRestoreDraft,
@@ -1276,7 +1276,7 @@ export default function PlantShiftLog() {
         >
           <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <span className="flex-1 text-amber-800 dark:text-amber-200">
-            Draft restored — your unsaved changes have been recovered. Save to keep them, or discard to reload from the server.
+            Draft restored{draftSavedAt ? ` from ${formatDistanceToNow(draftSavedAt, { addSuffix: true })}` : ""} — your unsaved changes have been recovered. Save to keep them, or discard to reload from the server.
           </span>
           <div className="flex items-center gap-2 shrink-0">
             <Button
