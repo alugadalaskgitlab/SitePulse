@@ -1552,7 +1552,7 @@ export default function PlantShiftLog() {
                 const results = parts.map(({ tank, openStr, closeStr, label }) => {
                   const o = parseFloat(openStr);
                   const c = parseFloat(closeStr);
-                  if (isNaN(o) || o <= 0 || isNaN(c) || c <= 0) return null;
+                  if (isNaN(o) || o < 0 || isNaN(c) || c < 0) return null;
                   const diff = getLdoVolumeAtDepth(tank, o) - getLdoVolumeAtDepth(tank, c);
                   const litres = Math.round(Math.abs(diff));
                   const mt = (litres * LDO_DENSITY_KG_PER_LITER / 1000).toFixed(3);
