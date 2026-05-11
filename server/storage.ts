@@ -5799,6 +5799,24 @@ export class DatabaseStorage implements IStorage {
         uom: stockUom,
         notes: conversionNote,
       });
+
+      // Task #592 — When LDO or DIESEL is issued directly to a tank, auto-create
+      // a receipt row in ldo_flow_readings so the flow-meter tracker sees the fill.
+      if (issue.ldoTankNumber != null && material &&
+          (material.name.toUpperCase().trim() === "LDO" || material.name.toUpperCase().trim() === "DIESEL")) {
+        const qtyL = convertLdoQtyToLiters(issue.quantity, issue.uom);
+        await tx.insert(ldoFlowReadings).values({
+          date: issue.date,
+          time: issue.time || null,
+          tankNumber: issue.ldoTankNumber,
+          meterReading: 0,
+          readingType: "receipt",
+          quantityLiters: qtyL,
+          notes: `AUTO FROM MATERIAL ISSUE #${result.id}`,
+          plantName: "Main Plant",
+          sourceMaterialIssueId: result.id,
+        });
+      }
       
       return result;
     });
@@ -5821,6 +5839,7 @@ export class DatabaseStorage implements IStorage {
       if (issue.purpose !== undefined) updates.purpose = issue.purpose;
       if (issue.vehicleNumber !== undefined) updates.vehicleNumber = issue.vehicleNumber?.toUpperCase();
       if (issue.notes !== undefined) updates.notes = issue.notes;
+      if (issue.ldoTankNumber !== undefined) updates.ldoTankNumber = issue.ldoTankNumber;
       
       // Get material info for UOM conversion (original material)
       const [origMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
@@ -5910,7 +5929,27 @@ export class DatabaseStorage implements IStorage {
         uom: newStockUom,
         notes: conversionNote,
       });
-      
+
+      // Task #592 — Sync linked ldo_flow_readings receipt row: drop old then re-insert.
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialIssueId, id));
+      const newLdoTankNumber = issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber;
+      if (newLdoTankNumber != null && newMaterial &&
+          (newMaterial.name.toUpperCase().trim() === "LDO" || newMaterial.name.toUpperCase().trim() === "DIESEL")) {
+        const newTime = issue.time !== undefined ? issue.time : original.time;
+        const qtyL = convertLdoQtyToLiters(newQuantity, newUom);
+        await tx.insert(ldoFlowReadings).values({
+          date: newDate,
+          time: newTime || null,
+          tankNumber: newLdoTankNumber,
+          meterReading: 0,
+          readingType: "receipt",
+          quantityLiters: qtyL,
+          notes: `AUTO FROM MATERIAL ISSUE #${id}`,
+          plantName: "Main Plant",
+          sourceMaterialIssueId: id,
+        });
+      }
+
       return result;
     });
   }
@@ -5949,6 +5988,9 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(stockLedger).where(
         and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
       );
+
+      // Task #592 — Remove linked ldo_flow_readings receipt row if present.
+      await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialIssueId, id));
       
       await tx.delete(materialIssues).where(eq(materialIssues.id, id));
       

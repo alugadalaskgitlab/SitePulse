@@ -53,6 +53,7 @@ export default function PlantMaterialIssues() {
   const [receivedBy, setReceivedBy] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [ldoTankNumber, setLdoTankNumber] = useState<string>("");
 
   interface IssueFormData {
     date: string;
@@ -66,11 +67,12 @@ export default function PlantMaterialIssues() {
     receivedBy: string;
     vehicleNumber: string;
     notes: string;
+    ldoTankNumber: string;
   }
 
   const formData = useMemo<IssueFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes
-  }), [date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes]);
+    date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes, ldoTankNumber
+  }), [date, time, partyId, materialId, quantity, uom, issuedTo, purpose, receivedBy, vehicleNumber, notes, ldoTankNumber]);
 
   const handleRestoreDraft = useCallback((data: IssueFormData) => {
     setDate(data.date);
@@ -84,6 +86,7 @@ export default function PlantMaterialIssues() {
     setReceivedBy(data.receivedBy || "");
     setVehicleNumber(data.vehicleNumber);
     setNotes(data.notes);
+    setLdoTankNumber(data.ldoTankNumber || "");
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
@@ -167,6 +170,7 @@ export default function PlantMaterialIssues() {
     setReceivedBy("");
     setVehicleNumber("");
     setNotes("");
+    setLdoTankNumber("");
   };
 
   const openEditDialog = (issue: MaterialIssue) => {
@@ -182,7 +186,19 @@ export default function PlantMaterialIssues() {
     setReceivedBy((issue as any).receivedBy || "");
     setVehicleNumber(issue.vehicleNumber || "");
     setNotes(issue.notes || "");
+    setLdoTankNumber((issue as any).ldoTankNumber ? String((issue as any).ldoTankNumber) : "");
     setDialogOpen(true);
+  };
+
+  const selectedMaterial = materials?.find(m => String(m.id) === materialId);
+  const isLdoOrDiesel = selectedMaterial
+    ? ["LDO", "DIESEL"].includes(selectedMaterial.name.toUpperCase().trim())
+    : false;
+
+  const getLdoTankLabel = (tank: number | null | undefined) => {
+    if (tank === 1) return "Tank 1 (Boiler)";
+    if (tank === 2) return "Tank 2 (Dryer)";
+    return null;
   };
 
   const handleSubmit = () => {
@@ -201,6 +217,7 @@ export default function PlantMaterialIssues() {
       receivedBy: receivedBy || null,
       vehicleNumber: vehicleNumber || null,
       notes: notes || null,
+      ldoTankNumber: (isLdoOrDiesel && ldoTankNumber && ldoTankNumber !== "none") ? parseInt(ldoTankNumber) : null,
     };
     
     if (editingIssue) {
@@ -259,6 +276,7 @@ export default function PlantMaterialIssues() {
       Time: issue.time || "",
       "Stock Owner": getPartyName(issue.partyId),
       Material: getMaterialName(issue.materialId),
+      "LDO Tank": getLdoTankLabel((issue as any).ldoTankNumber) || "",
       Quantity: issue.quantity,
       UOM: issue.uom,
       "Issued To": issue.issuedTo,
@@ -286,6 +304,7 @@ export default function PlantMaterialIssues() {
       issue.date,
       getPartyName(issue.partyId),
       getMaterialName(issue.materialId),
+      getLdoTankLabel((issue as any).ldoTankNumber) || "",
       `${issue.quantity} ${issue.uom}`,
       issue.issuedTo,
       issue.purpose || "",
@@ -294,7 +313,7 @@ export default function PlantMaterialIssues() {
 
     autoTable(doc, {
       startY: 28,
-      head: [["Date", "Stock Owner", "Material", "Qty", "Issued To", "Purpose", "Received By"]],
+      head: [["Date", "Stock Owner", "Material", "LDO Tank", "Qty", "Issued To", "Purpose", "Received By"]],
       body: tableData,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [245, 158, 11] },
@@ -310,6 +329,7 @@ export default function PlantMaterialIssues() {
         <td>${issue.date}</td>
         <td>${getPartyName(issue.partyId)}</td>
         <td>${getMaterialName(issue.materialId)}</td>
+        <td>${getLdoTankLabel((issue as any).ldoTankNumber) || ""}</td>
         <td>${issue.quantity} ${issue.uom}</td>
         <td>${issue.issuedTo}</td>
         <td>${issue.purpose || ""}</td>
@@ -347,6 +367,7 @@ export default function PlantMaterialIssues() {
                 <th>Date</th>
                 <th>Stock Owner</th>
                 <th>Material</th>
+                <th>LDO Tank</th>
                 <th>Quantity</th>
                 <th>Issued To</th>
                 <th>Purpose</th>
@@ -452,7 +473,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Material</Label>
-                  <Select value={materialId} onValueChange={setMaterialId}>
+                  <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setLdoTankNumber(""); }}>
                     <SelectTrigger data-testid="select-material">
                       <SelectValue placeholder="Select material" />
                     </SelectTrigger>
@@ -463,6 +484,25 @@ export default function PlantMaterialIssues() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {isLdoOrDiesel && (
+                  <div>
+                    <Label>Destination LDO Tank</Label>
+                    <Select value={ldoTankNumber} onValueChange={setLdoTankNumber}>
+                      <SelectTrigger data-testid="select-ldo-tank">
+                        <SelectValue placeholder="Select tank (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None / Not applicable</SelectItem>
+                        <SelectItem value="1">Tank 1 — Boiler</SelectItem>
+                        <SelectItem value="2">Tank 2 — Dryer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Select a tank to auto-record this issue as a receipt in the LDO flow tracker.
+                    </p>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -613,9 +653,14 @@ export default function PlantMaterialIssues() {
                       <ArrowUpRight className="w-6 h-6 text-orange-600" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{getMaterialName(issue.materialId)}</span>
                         <Badge variant="secondary">{issue.quantity} {issue.uom}</Badge>
+                        {getLdoTankLabel((issue as any).ldoTankNumber) && (
+                          <Badge variant="outline" className="text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-600 text-xs">
+                            {getLdoTankLabel((issue as any).ldoTankNumber)}
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {issue.date} {issue.time && `at ${issue.time}`}

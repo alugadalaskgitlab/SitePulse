@@ -479,6 +479,10 @@ export const materialIssues = pgTable("material_issues", {
   receivedBy: text("received_by"), // Person receiving the material
   vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
+  // Task #592 — When LDO/diesel is issued directly into an LDO tank, record
+  // which tank (1=Boiler, 2=Dryer) received the fuel so a receipt row can be
+  // auto-created in ldo_flow_readings.
+  ldoTankNumber: integer("ldo_tank_number"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("material_issues_date_idx").on(table.date),
@@ -767,6 +771,9 @@ export const ldoFlowReadings = pgTable("ldo_flow_readings", {
   // row that created it. Set automatically when an LDO material receipt is
   // created/updated; used to prevent double-counting and to cascade updates.
   sourceMaterialReceiptId: integer("source_material_receipt_id"),
+  // Task #592 — Links a receipt-type flow reading back to the material_issues
+  // row that created it when diesel/LDO is issued directly into an LDO tank.
+  sourceMaterialIssueId: integer("source_material_issue_id"),
   // Task #255 — Denormalised dryer-source tag copied from the originating
   // shift log. Only set on tankNumber=2 (dryer-meter) rows. When present
   // and equal to "TANK_1", the litres recorded by this row are debited from
