@@ -88,8 +88,10 @@ export default function PlantMaterialIssues() {
   const [ldoTankNumber, setLdoTankNumber] = useState<string>("");
   const issuedToAutoSet = useRef(false);
   const purposeAutoSet = useRef(false);
+  const receivedByAutoSet = useRef(false);
 
   const LDO_AUTO_PURPOSE = "TANK FILLING";
+  const LDO_AUTO_RECEIVED_BY = "PLANT OPERATOR";
 
   interface IssueFormData {
     date: string;
@@ -126,6 +128,7 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === LDO_TANK_LABELS[tank]);
     purposeAutoSet.current = !!(tank && tank !== "none" && data.purpose === LDO_AUTO_PURPOSE);
+    receivedByAutoSet.current = !!(tank && tank !== "none" && data.receivedBy === LDO_AUTO_RECEIVED_BY);
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
@@ -208,6 +211,10 @@ export default function PlantMaterialIssues() {
         setPurpose(LDO_AUTO_PURPOSE);
         purposeAutoSet.current = true;
       }
+      if (!receivedBy || receivedByAutoSet.current) {
+        setReceivedBy(LDO_AUTO_RECEIVED_BY);
+        receivedByAutoSet.current = true;
+      }
     } else {
       if (issuedToAutoSet.current) {
         setIssuedTo("");
@@ -216,6 +223,10 @@ export default function PlantMaterialIssues() {
       if (purposeAutoSet.current) {
         setPurpose("");
         purposeAutoSet.current = false;
+      }
+      if (receivedByAutoSet.current) {
+        setReceivedBy("");
+        receivedByAutoSet.current = false;
       }
     }
   };
@@ -235,6 +246,7 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber("");
     issuedToAutoSet.current = false;
     purposeAutoSet.current = false;
+    receivedByAutoSet.current = false;
   };
 
   const openEditDialog = (issue: MaterialIssue) => {
@@ -254,6 +266,7 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === LDO_TANK_LABELS[tank]);
     purposeAutoSet.current = !!(tank && (issue.purpose || "") === LDO_AUTO_PURPOSE);
+    receivedByAutoSet.current = !!(tank && (issue.receivedBy || "") === LDO_AUTO_RECEIVED_BY);
     setDialogOpen(true);
   };
 
@@ -603,7 +616,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Received By</Label>
-                  <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value.toUpperCase())} placeholder="Person receiving the material" data-testid="input-received-by" />
+                  <Input value={receivedBy} onChange={(e) => { receivedByAutoSet.current = false; setReceivedBy(e.target.value.toUpperCase()); }} placeholder="Person receiving the material" data-testid="input-received-by" />
                 </div>
                 
                 <div>
