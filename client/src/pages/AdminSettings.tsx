@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { ChevronLeft, Lock, Save, Loader2, Shield, MapPin, Plus, Trash2, Pencil, Check, X, Fuel } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
@@ -14,6 +14,8 @@ import {
   type Site,
   type Party,
 } from "@shared/schema";
+
+const LDO_FALLBACK = "PLANT OPERATOR";
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -35,6 +37,39 @@ export default function AdminSettings() {
   // Manager PIN change state
   const [newManagerPin, setNewManagerPin] = useState("");
   const [confirmManagerPin, setConfirmManagerPin] = useState("");
+
+  // LDO Received By defaults
+  const [ldoTank1ReceivedBy, setLdoTank1ReceivedBy] = useState("");
+  const [ldoTank2ReceivedBy, setLdoTank2ReceivedBy] = useState("");
+
+  const { data: ldoReceivedByData } = useQuery<{ tank1: string | null; tank2: string | null }>({
+    queryKey: ["/api/admin/ldo-received-by"],
+    enabled: authenticated,
+  });
+
+  useEffect(() => {
+    if (ldoReceivedByData) {
+      setLdoTank1ReceivedBy(ldoReceivedByData.tank1 ?? "");
+      setLdoTank2ReceivedBy(ldoReceivedByData.tank2 ?? "");
+    }
+  }, [ldoReceivedByData]);
+
+  const saveLdoReceivedByMutation = useMutation({
+    mutationFn: async (data: { tank1: string; tank2: string }) => {
+      const response = await apiRequest("POST", "/api/admin/ldo-received-by", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to save");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ldo-received-by"] });
+      toast({ title: "LDO Defaults Saved", description: "Received By defaults have been updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save defaults", variant: "destructive" });
+    },
+  });
 
   const changeAdminPinMutation = useMutation({
     mutationFn: async (data: { newPin: string }) => {
@@ -366,6 +401,58 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Fuel className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <CardTitle>LDO Tank Defaults</CardTitle>
+              <CardDescription>Configure the default "Received By" name for each LDO tank. Falls back to <span className="font-medium">{LDO_FALLBACK}</span> if not set.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ldoTank1ReceivedBy">Tank 1 (Boiler) — Received By</Label>
+              <Input
+                id="ldoTank1ReceivedBy"
+                value={ldoTank1ReceivedBy}
+                onChange={(e) => setLdoTank1ReceivedBy(e.target.value.toUpperCase())}
+                placeholder={LDO_FALLBACK}
+                className="uppercase"
+                data-testid="input-ldo-tank1-received-by"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ldoTank2ReceivedBy">Tank 2 (Dryer) — Received By</Label>
+              <Input
+                id="ldoTank2ReceivedBy"
+                value={ldoTank2ReceivedBy}
+                onChange={(e) => setLdoTank2ReceivedBy(e.target.value.toUpperCase())}
+                placeholder={LDO_FALLBACK}
+                className="uppercase"
+                data-testid="input-ldo-tank2-received-by"
+              />
+            </div>
+            <Button
+              onClick={() => saveLdoReceivedByMutation.mutate({ tank1: ldoTank1ReceivedBy, tank2: ldoTank2ReceivedBy })}
+              disabled={saveLdoReceivedByMutation.isPending}
+              className="w-full gap-2"
+              data-testid="button-save-ldo-received-by"
+            >
+              {saveLdoReceivedByMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
+              ) : (
+                <><Save className="w-4 h-4" />Save LDO Defaults</>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

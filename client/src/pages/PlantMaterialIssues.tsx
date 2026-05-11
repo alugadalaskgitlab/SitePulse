@@ -78,7 +78,29 @@ export default function PlantMaterialIssues() {
   const receivedByAutoSet = useRef(false);
 
   const LDO_AUTO_PURPOSE = "TANK FILLING";
-  const LDO_AUTO_RECEIVED_BY = "PLANT OPERATOR";
+  const LDO_FALLBACK_RECEIVED_BY = "PLANT OPERATOR";
+
+  const { data: ldoDefaults } = useQuery<{ tank1: string | null; tank2: string | null }>({
+    queryKey: ["/api/admin/ldo-received-by"],
+  });
+
+  const getLdoReceivedByDefault = (tank: string) => {
+    if (tank === "1") return ldoDefaults?.tank1 || LDO_FALLBACK_RECEIVED_BY;
+    if (tank === "2") return ldoDefaults?.tank2 || LDO_FALLBACK_RECEIVED_BY;
+    return LDO_FALLBACK_RECEIVED_BY;
+  };
+
+  // When defaults finish loading, update receivedBy if the tank is already
+  // selected and the field was auto-set to the fallback (meaning defaults
+  // arrived after the user picked a tank).
+  useEffect(() => {
+    if (!ldoDefaults || !ldoTankNumber || ldoTankNumber === "none") return;
+    if (!receivedByAutoSet.current) return;
+    const configured = getLdoReceivedByDefault(ldoTankNumber);
+    if (receivedBy === LDO_FALLBACK_RECEIVED_BY && configured !== LDO_FALLBACK_RECEIVED_BY) {
+      setReceivedBy(configured);
+    }
+  }, [ldoDefaults]);
 
   interface IssueFormData {
     date: string;
@@ -115,8 +137,8 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === LDO_TANK_LABELS[tank]);
     purposeAutoSet.current = !!(tank && tank !== "none" && data.purpose === LDO_AUTO_PURPOSE);
-    receivedByAutoSet.current = !!(tank && tank !== "none" && data.receivedBy === LDO_AUTO_RECEIVED_BY);
-  }, []);
+    receivedByAutoSet.current = !!(tank && tank !== "none" && data.receivedBy === getLdoReceivedByDefault(tank));
+  }, [ldoDefaults]);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
     formKey: "plant-material-issue-new",
@@ -212,7 +234,7 @@ export default function PlantMaterialIssues() {
         purposeAutoSet.current = true;
       }
       if (!receivedBy || receivedByAutoSet.current) {
-        setReceivedBy(LDO_AUTO_RECEIVED_BY);
+        setReceivedBy(getLdoReceivedByDefault(value));
         receivedByAutoSet.current = true;
       }
     } else {
@@ -266,7 +288,7 @@ export default function PlantMaterialIssues() {
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === LDO_TANK_LABELS[tank]);
     purposeAutoSet.current = !!(tank && (issue.purpose || "") === LDO_AUTO_PURPOSE);
-    receivedByAutoSet.current = !!(tank && (issue.receivedBy || "") === LDO_AUTO_RECEIVED_BY);
+    receivedByAutoSet.current = !!(tank && (issue.receivedBy || "") === getLdoReceivedByDefault(tank));
     setDialogOpen(true);
   };
 

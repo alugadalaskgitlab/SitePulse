@@ -670,6 +670,32 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Task #605 — Configurable "Received By" defaults per LDO tank.
+  // GET is available to all authenticated users so the material-issue form can
+  // read the configured defaults without requiring an admin role.
+  app.get('/api/admin/ldo-received-by', async (req, res) => {
+    if (!assertAuthed(req, res)) return;
+    const [tank1, tank2] = await Promise.all([
+      storage.getSetting('ldo_tank1_received_by'),
+      storage.getSetting('ldo_tank2_received_by'),
+    ]);
+    res.json({ tank1: tank1 ?? null, tank2: tank2 ?? null });
+  });
+
+  app.post('/api/admin/ldo-received-by', async (req, res) => {
+    if (!assertAdmin(req, res)) return;
+    const { tank1, tank2 } = req.body || {};
+    if (tank1 !== undefined) {
+      if (typeof tank1 !== 'string') return res.status(400).json({ message: 'tank1 must be a string.' });
+      await storage.setSetting('ldo_tank1_received_by', tank1.trim());
+    }
+    if (tank2 !== undefined) {
+      if (typeof tank2 !== 'string') return res.status(400).json({ message: 'tank2 must be a string.' });
+      await storage.setSetting('ldo_tank2_received_by', tank2.trim());
+    }
+    res.json({ ok: true });
+  });
+
   // Operator instruction manual — PDF download (admin only)
   app.get('/api/admin/operator-manual.pdf', async (req, res) => {
     if (!assertAdmin(req, res)) return;
