@@ -50,11 +50,24 @@ export default function PlantMaterialIssues() {
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
+  const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
   useEffect(() => {
-    if (highlightId != null && highlightRowRef.current) {
-      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (highlightId != null) {
+      setLocalHighlightId(highlightId);
     }
   }, [highlightId]);
+  useEffect(() => {
+    if (localHighlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlight");
+        history.replaceState(null, "", url.toString());
+        setLocalHighlightId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [localHighlightId]);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -701,9 +714,9 @@ export default function PlantMaterialIssues() {
           {filteredIssues.map((issue) => (
             <div
               key={issue.id}
-              ref={issue.id === highlightId ? highlightRowRef : null}
+              ref={issue.id === localHighlightId ? highlightRowRef : null}
             >
-            <Card className={`hover-elevate transition-colors duration-500 ${issue.id === highlightId ? "ring-2 ring-yellow-400 dark:ring-yellow-600 bg-yellow-50 dark:bg-yellow-900/20" : ""}`}>
+            <Card className={`hover-elevate transition-all duration-500 ${issue.id === localHighlightId ? "ring-2 ring-yellow-400 dark:ring-yellow-600 bg-yellow-50 dark:bg-yellow-900/20" : ""}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">

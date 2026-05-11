@@ -45,16 +45,25 @@ export default function PlantMaterialReceipts() {
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
+  const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
   useEffect(() => {
     if (highlightId != null) {
+      setLocalHighlightId(highlightId);
       setExpandedIds(prev => { const s = new Set(prev); s.add(highlightId); return s; });
     }
   }, [highlightId]);
   useEffect(() => {
-    if (highlightId != null && highlightRowRef.current) {
+    if (localHighlightId != null && highlightRowRef.current) {
       highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlight");
+        history.replaceState(null, "", url.toString());
+        setLocalHighlightId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
     }
-  }, [highlightId]);
+  }, [localHighlightId]);
 
   // Filter state
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -836,8 +845,8 @@ export default function PlantMaterialReceipts() {
                         return (
                           <div
                             key={receipt.id}
-                            ref={receipt.id === highlightId ? highlightRowRef : null}
-                            className={`rounded-lg overflow-hidden transition-colors duration-500 ${receipt.id === highlightId ? "bg-yellow-100 dark:bg-yellow-900/40 ring-2 ring-yellow-400 dark:ring-yellow-600" : "bg-muted/50"}`}
+                            ref={receipt.id === localHighlightId ? highlightRowRef : null}
+                            className={`rounded-lg overflow-hidden transition-all duration-500 ${receipt.id === localHighlightId ? "bg-yellow-100 dark:bg-yellow-900/40 ring-2 ring-yellow-400 dark:ring-yellow-600" : "bg-muted/50"}`}
                           >
                             <div
                               className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
