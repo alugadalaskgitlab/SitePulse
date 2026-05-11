@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,6 +107,8 @@ export default function PlantEquipmentUsage() {
     date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance
   }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
 
+  const [draftRestored, setDraftRestored] = useState(false);
+
   const handleRestoreDraft = useCallback((data: EquipmentFormData) => {
     setDate(data.date);
     setEquipmentId(data.equipmentId);
@@ -132,14 +135,22 @@ export default function PlantEquipmentUsage() {
     setShiftTo(data.shiftTo ?? "");
     setTransportEquipmentId(data.transportEquipmentId ?? "");
     setTransportDistance(data.transportDistance ?? "");
+    setDraftRestored(true);
   }, []);
 
-  const { clearDraft, lastSavedAt: draftLastSavedAt } = useFormDraft<EquipmentFormData>(
+  const { clearDraft, lastSavedAt: draftLastSavedAt, draftSavedAt: equipmentDraftSavedAt } = useFormDraft<EquipmentFormData>(
     "plant-equipment-usage-new",
     formData,
     handleRestoreDraft,
     { enabled: dialogOpen && !editingUsage }
   );
+
+  // Auto-dismiss the "Draft restored" banner after 8 seconds.
+  useEffect(() => {
+    if (!draftRestored) return;
+    const t = setTimeout(() => setDraftRestored(false), 8000);
+    return () => clearTimeout(t);
+  }, [draftRestored]);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -195,6 +206,7 @@ export default function PlantEquipmentUsage() {
       apiRequest("POST", "/api/plant-module/equipment-usage", data),
     onSuccess: () => {
       clearDraft();
+      setDraftRestored(false);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       setDialogOpen(false);
       resetForm();
@@ -805,7 +817,7 @@ export default function PlantEquipmentUsage() {
             <p className="text-muted-foreground">Track meter readings and fuel consumption</p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { resetForm(); setDraftRestored(false); } }}>
           {canCreate && (
             <DialogTrigger asChild>
               <Button className="gap-2" data-testid="button-add-usage">
@@ -820,6 +832,12 @@ export default function PlantEquipmentUsage() {
                 {!editingUsage && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
               </DialogTitle>
             </DialogHeader>
+            <DraftRestoredBanner
+              show={draftRestored && !editingUsage}
+              draftSavedAt={equipmentDraftSavedAt}
+              onDismiss={() => setDraftRestored(false)}
+              onDiscard={() => { clearDraft(); setDraftRestored(false); resetForm(); }}
+            />
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Date</Label>

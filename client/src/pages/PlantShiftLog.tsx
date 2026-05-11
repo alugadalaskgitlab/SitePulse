@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -11,9 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronDown, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, RotateCcw, X, Download } from "lucide-react";
+import { ChevronLeft, ChevronDown, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, X, Download } from "lucide-react";
 import * as XLSX from "xlsx";
-import { format, formatDistanceToNow, parseISO, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -1269,36 +1270,13 @@ export default function PlantShiftLog() {
         </div>
       </div>
 
-      {draftRestored && (
-        <div
-          className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 px-4 py-3 text-sm"
-          data-testid="banner-draft-restored"
-        >
-          <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="flex-1 text-amber-800 dark:text-amber-200">
-            Draft restored{draftSavedAt ? ` from ${formatDistanceToNow(draftSavedAt, { addSuffix: true })}` : ""} — your unsaved changes have been recovered. Save to keep them, or discard to reload from the server.
-          </span>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 border-amber-400 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70"
-              onClick={discardDraft}
-              data-testid="button-discard-draft"
-            >
-              Discard draft
-            </Button>
-            <button
-              className="text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200"
-              onClick={() => setDraftRestored(false)}
-              aria-label="Dismiss"
-              data-testid="button-dismiss-draft-banner"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <DraftRestoredBanner
+        show={draftRestored}
+        draftSavedAt={draftSavedAt}
+        onDismiss={() => setDraftRestored(false)}
+        onDiscard={discardDraft}
+        discardLabel="Discard draft"
+      />
 
       {isLoading && (
         <Card data-testid="loading-shift-log-form">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -139,17 +140,28 @@ export default function PlantHeatingSessions() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
+  const [draftRestored, setDraftRestored] = useState(false);
 
   // Draft recovery: save the new-session form to localStorage whenever any field
   // changes so that navigating away (e.g. to fix a shift-log mismatch) and returning
   // does not lose the operator's in-progress work.
-  const setFormForDraft = useCallback((data: FormState) => setForm(data), []);
-  const { clearDraft: clearHeatingDraft, lastSavedAt: draftLastSavedAt } = useFormDraft<FormState>(
+  const setFormForDraft = useCallback((data: FormState) => {
+    setForm(data);
+    setDraftRestored(true);
+  }, []);
+  const { clearDraft: clearHeatingDraft, lastSavedAt: draftLastSavedAt, draftSavedAt: heatingDraftSavedAt } = useFormDraft<FormState>(
     "hs-draft-new",
     form,
     setFormForDraft,
     { enabled: dialogOpen && !form.id }
   );
+
+  // Auto-dismiss the "Draft restored" banner after 8 seconds.
+  useEffect(() => {
+    if (!draftRestored) return;
+    const t = setTimeout(() => setDraftRestored(false), 8000);
+    return () => clearTimeout(t);
+  }, [draftRestored]);
   const [showTemps, setShowTemps] = useState(false);
 
   const [dryerFixDialogOpen, setDryerFixDialogOpen] = useState(false);
@@ -618,6 +630,7 @@ export default function PlantHeatingSessions() {
     },
     onSuccess: () => {
       clearHeatingDraft();
+      setDraftRestored(false);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/generator-logs"] });
@@ -1350,7 +1363,7 @@ export default function PlantHeatingSessions() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setDraftRestored(false); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
@@ -1358,6 +1371,13 @@ export default function PlantHeatingSessions() {
               {!form.id && <AutoSaveIndicator lastSavedAt={draftLastSavedAt} />}
             </DialogTitle>
           </DialogHeader>
+
+          <DraftRestoredBanner
+            show={draftRestored && !form.id}
+            draftSavedAt={heatingDraftSavedAt}
+            onDismiss={() => setDraftRestored(false)}
+            onDiscard={() => { clearHeatingDraft(); setDraftRestored(false); setForm(emptyForm(today)); }}
+          />
 
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
