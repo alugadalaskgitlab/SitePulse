@@ -11791,14 +11791,19 @@ export class DatabaseStorage implements IStorage {
         row.ldoBoilerLitres = Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter);
       }
       // LDO dryer (Tank 2):
-      // - dryerFedFrom === "TANK_1" AND dip was used → dryer is already captured
-      //   in ldoBoilerLitres; skip to avoid double-counting.
-      // - dryerFedFrom === "TANK_1" AND dip absent → retain meter-split fallback
-      //   so the Tank 2 meter contribution is not lost from the report.
-      // - dryerFedFrom === "TANK_2" → prefer dip, fall back to meter as usual.
+      // - dryerFedFrom === "TANK_1" AND T1 dip used → dryer already in ldoBoilerLitres; skip.
+      // - dryerFedFrom === "TANK_1" AND T1 dip absent → meter split fallback; T2 dip is
+      //   irrelevant in TANK_1 mode so only the T2 meter is used here.
+      // - dryerFedFrom === "TANK_2" → prefer T2 dip, fall back to T2 meter.
       if (r.dryerFedFrom === "TANK_1" && slDipDeltaT1 != null) {
         // Dryer share already included in ldoBoilerLitres; do nothing.
+      } else if (r.dryerFedFrom === "TANK_1") {
+        // T1 dip absent: use T2 meter only (T2 dip irrelevant in TANK_1 feed mode).
+        if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
+          row.ldoDryerLitres = Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter);
+        }
       } else {
+        // TANK_2 feed mode: prefer T2 dip, fall back to T2 meter.
         if (slDipDeltaT2 != null) {
           row.ldoDryerLitres = Math.max(0, slDipDeltaT2);
         } else if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
