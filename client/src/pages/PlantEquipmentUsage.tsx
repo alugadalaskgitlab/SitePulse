@@ -1588,7 +1588,7 @@ export default function PlantEquipmentUsage() {
                         const efficiencyValue = (!isPartialEntry(entry) && !isDieselIncluded && runtime > 0 && consumed > 0)
                           ? consumed / runtime : null;
                         const efficiencyIsGood = norm > 0 ? (efficiencyValue != null ? efficiencyValue <= norm : true) : true;
-                        const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselBalanceInTank != null || (entry as any).dieselSource === "direct_purchase";
+                        const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselSource === "direct_purchase";
                         return (
                           <div key={entry.id} className="rounded-lg bg-muted/50 overflow-hidden">
                             <div
@@ -1649,6 +1649,12 @@ export default function PlantEquipmentUsage() {
                                         {efficiencyValue.toFixed(2)} {effUnit}{norm > 0 ? ` (norm: ${norm})` : ""}
                                       </span>
                                     )}
+                                    {/* Tank balance inline chip */}
+                                    {(entry as any).dieselBalanceInTank != null && (
+                                      <span className="font-medium text-blue-600 dark:text-blue-400">
+                                        Bal: {((entry as any).dieselBalanceInTank as number).toFixed(1)} L{(entry as any).dieselBalanceConfirmed ? " ✓" : ""}
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1675,19 +1681,6 @@ export default function PlantEquipmentUsage() {
                                     {(entry as any).billNumber && <span><span className="text-muted-foreground">Bill#: </span><span className="font-medium">{(entry as any).billNumber}</span></span>}
                                     {(entry as any).amountPaid != null && <span><span className="text-muted-foreground">Amt: </span><span className="font-medium">₹{((entry as any).amountPaid as number).toFixed(0)}</span></span>}
                                     {(entry as any).siteName && <span><span className="text-muted-foreground">Site: </span><span className="font-medium">{(entry as any).siteName}</span></span>}
-                                  </div>
-                                )}
-                                {(entry as any).dieselBalanceInTank != null && (
-                                  <div className="text-xs">
-                                    <span className="text-muted-foreground">Tank Balance: </span>
-                                    <span className="font-medium text-blue-600 dark:text-blue-400">
-                                      {((entry as any).dieselBalanceInTank as number).toFixed(3)} L{(entry as any).dieselBalanceConfirmed ? " ✓" : ""}
-                                    </span>
-                                    {dieselIssuedVal > 0 && (
-                                      <span className="text-muted-foreground ml-2">
-                                        · Net used: {(dieselIssuedVal - ((entry as any).dieselBalanceInTank as number)).toFixed(3)} L
-                                      </span>
-                                    )}
                                   </div>
                                 )}
                                 {entry.remarks?.trim() && (
