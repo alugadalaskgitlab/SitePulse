@@ -27,16 +27,18 @@ import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 const TANK_LABELS: Record<number, string> = { 1: "Boiler Meter", 2: "Dryer Meter" };
 
-type ReadingSource = "shift-log" | "heating-session" | "backfill" | "manual";
+type ReadingSource = "shift-log" | "heating-session" | "backfill" | "manual" | "material-receipt" | "material-issue";
 
 const SOURCE_LABELS: Record<ReadingSource, string> = {
   "shift-log": "Shift Log",
   "heating-session": "Heating",
   "backfill": "Backfill",
   "manual": "Manual",
+  "material-receipt": "Mat. Receipt",
+  "material-issue": "Mat. Issue",
 };
 
-function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeatingSessionId?: number | null; notes?: string | null }): ReadingSource {
+function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeatingSessionId?: number | null; sourceMaterialReceiptId?: number | null; sourceMaterialIssueId?: number | null; notes?: string | null }): ReadingSource {
   // Task #239: the "[BACKFILL ...]" notes prefix is the source of truth, so
   // it wins over source IDs. In normal operation backfill rows never have a
   // source ID (the backfill upsert skips owned rows), but if both ever
@@ -44,6 +46,8 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
   if (r.notes && r.notes.toUpperCase().startsWith("[BACKFILL")) return "backfill";
   if (r.sourceShiftLogId != null) return "shift-log";
   if (r.sourceHeatingSessionId != null) return "heating-session";
+  if (r.sourceMaterialIssueId != null) return "material-issue";
+  if (r.sourceMaterialReceiptId != null) return "material-receipt";
   return "manual";
 }
 
@@ -984,6 +988,13 @@ export default function PlantLdoFlowMeter() {
     dipDeleteMutation.mutate(readingId);
   }
 
+  function getReadingSourceLabel(r: LdoFlowReading): string {
+    const src = classifyReadingSource(r);
+    if (src === "material-receipt" && r.sourceMaterialReceiptId) return `From Material Receipt #${r.sourceMaterialReceiptId}`;
+    if (src === "material-issue" && r.sourceMaterialIssueId) return `From Material Issue #${r.sourceMaterialIssueId}`;
+    return SOURCE_LABELS[src];
+  }
+
   function exportExcel() {
     const data = filteredReadings.map(r => ({
       Date: r.date,
@@ -993,7 +1004,7 @@ export default function PlantLdoFlowMeter() {
       "Meter Reading (L)": r.meterReading,
       Type: r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       "Receipt Qty (L)": r.quantityLiters || "",
-      Source: SOURCE_LABELS[classifyReadingSource(r)],
+      Source: getReadingSourceLabel(r),
       Notes: r.notes || "",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -1031,7 +1042,7 @@ export default function PlantLdoFlowMeter() {
       r.meterReading.toFixed(3),
       r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1),
       r.quantityLiters ? r.quantityLiters.toFixed(3) : "",
-      SOURCE_LABELS[classifyReadingSource(r)],
+      getReadingSourceLabel(r),
       r.notes || "",
     ]);
     autoTable(doc, {
@@ -1049,7 +1060,7 @@ export default function PlantLdoFlowMeter() {
       <style>body{font-family:Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;text-align:left;font-size:12px}th{background:#f0f0f0}.header{margin-bottom:15px}</style></head>
       <body><div class="header"><h2>LDO Flow Meter Readings - HLC Plant</h2><p>Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p></div>
       <table><tr><th>Date</th><th>Time</th><th>Tank</th><th>Dryer Src</th><th>Meter (L)</th><th>Type</th><th>Receipt Qty (L)</th><th>Source</th><th>Notes</th></tr>
-      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${SOURCE_LABELS[classifyReadingSource(r)]}</td><td>${r.notes || ""}</td></tr>`).join("")}
+      ${filteredReadings.map(r => `<tr><td>${r.date}</td><td>${r.time || ""}</td><td>${TANK_LABELS[r.tankNumber] || `Tank ${r.tankNumber}`}</td><td>${r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" ? "← Boiler tank" : ""}</td><td>${r.meterReading.toFixed(3)}</td><td>${r.readingType}</td><td>${r.quantityLiters ? r.quantityLiters.toFixed(3) : ""}</td><td>${getReadingSourceLabel(r)}</td><td>${r.notes || ""}</td></tr>`).join("")}
       </table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(printContent); w.document.close(); w.print(); }
@@ -2112,6 +2123,8 @@ export default function PlantLdoFlowMeter() {
                 <SelectItem value="hide-backfill">Hide Backfill rows</SelectItem>
                 <SelectItem value="shift-log">Only Shift Log</SelectItem>
                 <SelectItem value="heating-session">Only Heating</SelectItem>
+                <SelectItem value="material-receipt">Only Mat. Receipt</SelectItem>
+                <SelectItem value="material-issue">Only Mat. Issue</SelectItem>
                 <SelectItem value="manual">Only Manual</SelectItem>
                 <SelectItem value="backfill">Only Backfill</SelectItem>
               </SelectContent>
@@ -2170,7 +2183,29 @@ export default function PlantLdoFlowMeter() {
                           ? "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200 no-default-hover-elevate no-default-active-elevate"
                           : src === "heating-session"
                             ? "bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200 no-default-hover-elevate no-default-active-elevate"
-                            : "no-default-hover-elevate no-default-active-elevate";
+                            : src === "material-receipt"
+                              ? "bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200 no-default-hover-elevate no-default-active-elevate"
+                              : src === "material-issue"
+                                ? "bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200 no-default-hover-elevate no-default-active-elevate"
+                                : "no-default-hover-elevate no-default-active-elevate";
+                    const srcLabel =
+                      src === "material-receipt" && r.sourceMaterialReceiptId
+                        ? `From Material Receipt #${r.sourceMaterialReceiptId}`
+                        : src === "material-issue" && r.sourceMaterialIssueId
+                          ? `From Material Issue #${r.sourceMaterialIssueId}`
+                          : SOURCE_LABELS[src];
+                    const srcTitle =
+                      src === "backfill"
+                        ? "Entered via the admin LDO Backfill tool"
+                        : src === "shift-log"
+                          ? "Auto-created from a plant shift log"
+                          : src === "heating-session"
+                            ? "Auto-created from a bitumen heating session"
+                            : src === "material-receipt"
+                              ? `Auto-created from Material Receipt #${r.sourceMaterialReceiptId}`
+                              : src === "material-issue"
+                                ? `Auto-created from Material Issue #${r.sourceMaterialIssueId}`
+                                : "Manually entered on this page";
                     return (
                     <tr key={r.id} className="border-b" data-testid={`row-reading-${r.id}`}>
                       <td className="p-2">{r.date}</td>
@@ -2205,17 +2240,9 @@ export default function PlantLdoFlowMeter() {
                           variant={src === "manual" ? "outline" : "secondary"}
                           className={srcClass}
                           data-testid={`badge-source-${r.id}`}
-                          title={
-                            src === "backfill"
-                              ? "Entered via the admin LDO Backfill tool"
-                              : src === "shift-log"
-                                ? "Auto-created from a plant shift log"
-                                : src === "heating-session"
-                                  ? "Auto-created from a bitumen heating session"
-                                  : "Manually entered on this page"
-                          }
+                          title={srcTitle}
                         >
-                          {SOURCE_LABELS[src]}
+                          {srcLabel}
                         </Badge>
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
