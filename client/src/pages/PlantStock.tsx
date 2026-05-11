@@ -1513,24 +1513,33 @@ export default function PlantStock() {
                             })()}
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
-                            {(() => {
-                              if (isBF) return entry.notes;
-                              const mDelta = entry._mergedDelta;
-                              const mOrigOut = entry._originalQtyOut;
-                              if (mDelta != null && mDelta !== 0) {
-                                const suffix = ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`;
-                                return (entry.notes || '-') + suffix;
-                              }
-                              if (entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to '))
-                                return entry.notes.replace('Diesel issued to ', '');
-                              if (entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to '))
-                                return entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)';
-                              if (entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at '))
-                                return entry.notes.replace('Direct purchase at ', '');
-                              if (entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to '))
-                                return entry.notes.replace('Issue to ', '').split(' - ')[0];
-                              return entry.notes || '-';
-                            })()}
+                            <div className="flex items-center gap-1.5">
+                              <span>
+                                {(() => {
+                                  if (isBF) return entry.notes;
+                                  const mDelta = entry._mergedDelta;
+                                  const mOrigOut = entry._originalQtyOut;
+                                  if (mDelta != null && mDelta !== 0) {
+                                    const suffix = ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`;
+                                    return (entry.notes || '-') + suffix;
+                                  }
+                                  if (entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to '))
+                                    return entry.notes.replace('Diesel issued to ', '');
+                                  if (entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to '))
+                                    return entry.notes.replace('DPR diesel issued to ', '').replace(/ at .*$/, '') + ' (DPR)';
+                                  if (entry.transactionType === 'direct_purchase' && entry.notes?.startsWith('Direct purchase at '))
+                                    return entry.notes.replace('Direct purchase at ', '');
+                                  if (entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to '))
+                                    return entry.notes.replace('Issue to ', '').split(' - ')[0];
+                                  return entry.notes || '-';
+                                })()}
+                              </span>
+                              {!isBF && (entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage') && (
+                                <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}`}>
+                                  <ClipboardList className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" />
+                                </Link>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-right text-green-600 dark:text-green-400 font-medium">
                             {isBF ? (displayBalance >= 0 ? displayBalance.toFixed(3) : '-') : (displayIn > 0 ? `${displayIn.toFixed(3)}` : '-')}

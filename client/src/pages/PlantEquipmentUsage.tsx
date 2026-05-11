@@ -152,8 +152,14 @@ export default function PlantEquipmentUsage() {
     return () => clearTimeout(t);
   }, [draftRestored]);
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("dateFrom") || "";
+  });
+  const [filterDateTo, setFilterDateTo] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("dateTo") || "";
+  });
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
 
 
