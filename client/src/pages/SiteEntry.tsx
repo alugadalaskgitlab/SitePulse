@@ -1409,7 +1409,7 @@ export default function SiteEntry() {
 
       {/* Action Buttons */}
       <div className="flex items-center justify-end gap-4 pt-4">
-        <AutoSaveIndicator lastSavedAt={lastSavedAt} className="mr-auto" />
+        <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
         <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
           Cancel
         </Button>

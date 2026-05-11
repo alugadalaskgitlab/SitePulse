@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Check, Clock } from "lucide-react";
+import { Check, Clock, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AutoSaveIndicatorProps {
   lastSavedAt: Date | null;
+  isDirty?: boolean;
   className?: string;
 }
 
@@ -22,7 +23,7 @@ function formatSavedTime(date: Date): string {
   return `Draft saved ${diffMins} mins ago`;
 }
 
-export function AutoSaveIndicator({ lastSavedAt, className }: AutoSaveIndicatorProps) {
+export function AutoSaveIndicator({ lastSavedAt, isDirty, className }: AutoSaveIndicatorProps) {
   const [label, setLabel] = useState<string>("");
   const [isJustNow, setIsJustNow] = useState(false);
 
@@ -50,6 +51,21 @@ export function AutoSaveIndicator({ lastSavedAt, className }: AutoSaveIndicatorP
 
     return () => clearInterval(interval);
   }, [lastSavedAt]);
+
+  if (isDirty && !lastSavedAt) {
+    return (
+      <span
+        data-testid="unsaved-changes-indicator"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300",
+          className
+        )}
+      >
+        <PenLine className="w-3 h-3 shrink-0" />
+        Unsaved changes
+      </span>
+    );
+  }
 
   if (!lastSavedAt) return null;
 
