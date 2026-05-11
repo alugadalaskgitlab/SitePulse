@@ -74,6 +74,9 @@ export default function PlantMaterialIssues() {
   const [notes, setNotes] = useState("");
   const [ldoTankNumber, setLdoTankNumber] = useState<string>("");
   const issuedToAutoSet = useRef(false);
+  const purposeAutoSet = useRef(false);
+
+  const LDO_AUTO_PURPOSE = "TANK FILLING";
 
   interface IssueFormData {
     date: string;
@@ -109,6 +112,7 @@ export default function PlantMaterialIssues() {
     const tank = data.ldoTankNumber || "";
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === LDO_TANK_LABELS[tank]);
+    purposeAutoSet.current = !!(tank && tank !== "none" && data.purpose === LDO_AUTO_PURPOSE);
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
@@ -187,10 +191,18 @@ export default function PlantMaterialIssues() {
         setIssuedTo(LDO_TANK_LABELS[value] ?? "");
         issuedToAutoSet.current = true;
       }
+      if (!purpose || purposeAutoSet.current) {
+        setPurpose(LDO_AUTO_PURPOSE);
+        purposeAutoSet.current = true;
+      }
     } else {
       if (issuedToAutoSet.current) {
         setIssuedTo("");
         issuedToAutoSet.current = false;
+      }
+      if (purposeAutoSet.current) {
+        setPurpose("");
+        purposeAutoSet.current = false;
       }
     }
   };
@@ -209,6 +221,7 @@ export default function PlantMaterialIssues() {
     setNotes("");
     setLdoTankNumber("");
     issuedToAutoSet.current = false;
+    purposeAutoSet.current = false;
   };
 
   const openEditDialog = (issue: MaterialIssue) => {
@@ -227,6 +240,7 @@ export default function PlantMaterialIssues() {
     const tank = issue.ldoTankNumber ? String(issue.ldoTankNumber) : "";
     setLdoTankNumber(tank);
     issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === LDO_TANK_LABELS[tank]);
+    purposeAutoSet.current = !!(tank && (issue.purpose || "") === LDO_AUTO_PURPOSE);
     setDialogOpen(true);
   };
 
@@ -571,7 +585,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Purpose</Label>
-                  <Input value={purpose} onChange={(e) => setPurpose(e.target.value.toUpperCase())} placeholder="e.g., Equipment fuel, Site consumption" data-testid="input-purpose" />
+                  <Input value={purpose} onChange={(e) => { purposeAutoSet.current = false; setPurpose(e.target.value.toUpperCase()); }} placeholder="e.g., Equipment fuel, Site consumption" data-testid="input-purpose" />
                 </div>
                 
                 <div>
