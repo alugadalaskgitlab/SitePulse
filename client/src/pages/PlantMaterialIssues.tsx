@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -23,6 +23,11 @@ import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue } from "@shared/schema";
 import { UOM_OPTIONS } from "@shared/schema";
+
+const LDO_TANK_LABELS: Record<string, string> = {
+  "1": "LDO TANK 1 (BOILER)",
+  "2": "LDO TANK 2 (DRYER)",
+};
 
 export default function PlantMaterialIssues() {
   const { toast } = useToast();
@@ -54,6 +59,7 @@ export default function PlantMaterialIssues() {
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [ldoTankNumber, setLdoTankNumber] = useState<string>("");
+  const issuedToAutoSet = useRef(false);
 
   interface IssueFormData {
     date: string;
@@ -86,7 +92,9 @@ export default function PlantMaterialIssues() {
     setReceivedBy(data.receivedBy || "");
     setVehicleNumber(data.vehicleNumber);
     setNotes(data.notes);
-    setLdoTankNumber(data.ldoTankNumber || "");
+    const tank = data.ldoTankNumber || "";
+    setLdoTankNumber(tank);
+    issuedToAutoSet.current = !!(tank && tank !== "none" && data.issuedTo === LDO_TANK_LABELS[tank]);
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<IssueFormData>({
@@ -158,6 +166,21 @@ export default function PlantMaterialIssues() {
     },
   });
 
+  const handleLdoTankChange = (value: string) => {
+    setLdoTankNumber(value);
+    if (value && value !== "none") {
+      if (!issuedTo || issuedToAutoSet.current) {
+        setIssuedTo(LDO_TANK_LABELS[value] ?? "");
+        issuedToAutoSet.current = true;
+      }
+    } else {
+      if (issuedToAutoSet.current) {
+        setIssuedTo("");
+        issuedToAutoSet.current = false;
+      }
+    }
+  };
+
   const resetForm = () => {
     setDate(format(new Date(), "yyyy-MM-dd"));
     setTime(format(new Date(), "HH:mm"));
@@ -171,6 +194,7 @@ export default function PlantMaterialIssues() {
     setVehicleNumber("");
     setNotes("");
     setLdoTankNumber("");
+    issuedToAutoSet.current = false;
   };
 
   const openEditDialog = (issue: MaterialIssue) => {
@@ -186,7 +210,9 @@ export default function PlantMaterialIssues() {
     setReceivedBy(issue.receivedBy || "");
     setVehicleNumber(issue.vehicleNumber || "");
     setNotes(issue.notes || "");
-    setLdoTankNumber(issue.ldoTankNumber ? String(issue.ldoTankNumber) : "");
+    const tank = issue.ldoTankNumber ? String(issue.ldoTankNumber) : "";
+    setLdoTankNumber(tank);
+    issuedToAutoSet.current = !!(tank && (issue.issuedTo || "") === LDO_TANK_LABELS[tank]);
     setDialogOpen(true);
   };
 
@@ -488,7 +514,7 @@ export default function PlantMaterialIssues() {
                 {isLdoOrDiesel && (
                   <div>
                     <Label>Destination LDO Tank</Label>
-                    <Select value={ldoTankNumber} onValueChange={setLdoTankNumber}>
+                    <Select value={ldoTankNumber} onValueChange={handleLdoTankChange}>
                       <SelectTrigger data-testid="select-ldo-tank">
                         <SelectValue placeholder="Select tank (optional)" />
                       </SelectTrigger>
@@ -526,7 +552,7 @@ export default function PlantMaterialIssues() {
                 
                 <div>
                   <Label>Issued To (Site/Party)</Label>
-                  <Input value={issuedTo} onChange={(e) => setIssuedTo(e.target.value.toUpperCase())} placeholder="e.g., SITE A, HYDERABAD OFFICE" data-testid="input-issued-to" />
+                  <Input value={issuedTo} onChange={(e) => { issuedToAutoSet.current = false; setIssuedTo(e.target.value.toUpperCase()); }} placeholder="e.g., SITE A, HYDERABAD OFFICE" data-testid="input-issued-to" />
                 </div>
                 
                 <div>
