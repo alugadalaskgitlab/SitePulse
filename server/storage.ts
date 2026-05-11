@@ -11348,11 +11348,15 @@ export class DatabaseStorage implements IStorage {
       log.ldoTank2OpeningMeter != null && log.ldoTank2ClosingMeter != null
         ? log.ldoTank2ClosingMeter - log.ldoTank2OpeningMeter
         : null;
-    // When dryerFedFrom === "TANK_1", the entire Tank 1 dip delta covers both
-    // boiler + dryer stock; Tank 2 carries no separate consumption quantity.
+    // When dryerFedFrom === "TANK_1", both boiler (T1 meter) and dryer (T2 meter)
+    // draw from Tank 1 stock. For the dip path, full dipDeltaT1 covers the combined
+    // draw. For the meter fallback, sum both meter deltas into Tank 1's closing row
+    // (both drain Tank 1 stock) — Tank 2 closing row carries no quantity in this mode.
     const closingQtyT1 = dipDeltaT1 != null
       ? Math.max(0, dipDeltaT1)
-      : (meterDeltaT1 != null ? Math.max(0, meterDeltaT1) : null);
+      : log.dryerFedFrom === "TANK_1" && meterDeltaT1 != null && meterDeltaT2 != null
+        ? Math.max(0, meterDeltaT1 + meterDeltaT2)
+        : (meterDeltaT1 != null ? Math.max(0, meterDeltaT1) : null);
     const closingQtyT2 = log.dryerFedFrom === "TANK_1"
       ? null
       : (dipDeltaT2 != null ? Math.max(0, dipDeltaT2) : (meterDeltaT2 != null ? Math.max(0, meterDeltaT2) : null));
@@ -11772,8 +11776,9 @@ export class DatabaseStorage implements IStorage {
         row.dryerFedFrom = r.dryerFedFrom;
       }
       // LDO boiler (Tank 1) — prefer dip-based delta; fall back to meter delta.
-      // When dryerFedFrom === "TANK_1", the full Tank 1 dip delta covers both
-      // boiler + dryer; attribute it all to ldoBoilerLitres.
+      // When dryerFedFrom === "TANK_1" and dip is used: the full Tank 1 dip delta
+      // covers both boiler + dryer; attribute it all to ldoBoilerLitres (split is
+      // unavailable from dip alone).
       const slDipDeltaT1 = r.ldoTank1OpeningDip != null && r.ldoTank1ClosingDip != null
         ? getLdoVolumeAtDepth(1, r.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, r.ldoTank1ClosingDip)
         : null;
@@ -11785,9 +11790,15 @@ export class DatabaseStorage implements IStorage {
       } else if (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null) {
         row.ldoBoilerLitres = Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter);
       }
-      // LDO dryer (Tank 2) — skipped when dryerFedFrom === "TANK_1" (dryer
-      // draws from Tank 1; its share is already captured in ldoBoilerLitres).
-      if (r.dryerFedFrom !== "TANK_1") {
+      // LDO dryer (Tank 2):
+      // - dryerFedFrom === "TANK_1" AND dip was used → dryer is already captured
+      //   in ldoBoilerLitres; skip to avoid double-counting.
+      // - dryerFedFrom === "TANK_1" AND dip absent → retain meter-split fallback
+      //   so the Tank 2 meter contribution is not lost from the report.
+      // - dryerFedFrom === "TANK_2" → prefer dip, fall back to meter as usual.
+      if (r.dryerFedFrom === "TANK_1" && slDipDeltaT1 != null) {
+        // Dryer share already included in ldoBoilerLitres; do nothing.
+      } else {
         if (slDipDeltaT2 != null) {
           row.ldoDryerLitres = Math.max(0, slDipDeltaT2);
         } else if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
