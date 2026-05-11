@@ -1588,7 +1588,7 @@ export default function PlantEquipmentUsage() {
                         const efficiencyValue = (!isPartialEntry(entry) && !isDieselIncluded && runtime > 0 && consumed > 0)
                           ? consumed / runtime : null;
                         const efficiencyIsGood = norm > 0 ? (efficiencyValue != null ? efficiencyValue <= norm : true) : true;
-                        const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselBalanceInTank != null;
+                        const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselBalanceInTank != null || (entry as any).dieselSource === "direct_purchase";
                         return (
                           <div key={entry.id} className="rounded-lg bg-muted/50 overflow-hidden">
                             <div
@@ -1640,7 +1640,7 @@ export default function PlantEquipmentUsage() {
                                       <span className="font-medium text-foreground">{runtimeDisplay}</span>
                                     )}
                                     {/* Diesel issued + consumed */}
-                                    {!isDieselIncluded && !isPartialEntry(entry) && dieselIssuedVal > 0 && (
+                                    {!isDieselIncluded && !isPartialEntry(entry) && (
                                       <span>Issued: {dieselIssuedVal.toFixed(1)} L · Consumed: {consumed.toFixed(1)} L</span>
                                     )}
                                     {/* Efficiency */}
@@ -1668,6 +1668,15 @@ export default function PlantEquipmentUsage() {
                             </div>
                             {needsExpand && isExpanded && (
                               <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-1.5">
+                                {(entry as any).dieselSource === "direct_purchase" && (
+                                  <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5">
+                                    <span className="text-muted-foreground">Direct Purchase</span>
+                                    {(entry as any).fuelStation && <span><span className="text-muted-foreground">Station: </span><span className="font-medium">{(entry as any).fuelStation}</span></span>}
+                                    {(entry as any).billNumber && <span><span className="text-muted-foreground">Bill#: </span><span className="font-medium">{(entry as any).billNumber}</span></span>}
+                                    {(entry as any).amountPaid != null && <span><span className="text-muted-foreground">Amt: </span><span className="font-medium">₹{((entry as any).amountPaid as number).toFixed(0)}</span></span>}
+                                    {(entry as any).siteName && <span><span className="text-muted-foreground">Site: </span><span className="font-medium">{(entry as any).siteName}</span></span>}
+                                  </div>
+                                )}
                                 {(entry as any).dieselBalanceInTank != null && (
                                   <div className="text-xs">
                                     <span className="text-muted-foreground">Tank Balance: </span>
