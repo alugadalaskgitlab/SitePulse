@@ -183,10 +183,10 @@ export default function PlantMaterialIssues() {
     setUom(issue.uom);
     setIssuedTo(issue.issuedTo || "");
     setPurpose(issue.purpose || "");
-    setReceivedBy((issue as any).receivedBy || "");
+    setReceivedBy(issue.receivedBy || "");
     setVehicleNumber(issue.vehicleNumber || "");
     setNotes(issue.notes || "");
-    setLdoTankNumber((issue as any).ldoTankNumber ? String((issue as any).ldoTankNumber) : "");
+    setLdoTankNumber(issue.ldoTankNumber ? String(issue.ldoTankNumber) : "");
     setDialogOpen(true);
   };
 
@@ -276,12 +276,12 @@ export default function PlantMaterialIssues() {
       Time: issue.time || "",
       "Stock Owner": getPartyName(issue.partyId),
       Material: getMaterialName(issue.materialId),
-      "LDO Tank": getLdoTankLabel((issue as any).ldoTankNumber) || "",
+      "LDO Tank": getLdoTankLabel(issue.ldoTankNumber) || "",
       Quantity: issue.quantity,
       UOM: issue.uom,
       "Issued To": issue.issuedTo,
       Purpose: issue.purpose || "",
-      "Received By": (issue as any).receivedBy || "",
+      "Received By": issue.receivedBy || "",
       "Vehicle No.": issue.vehicleNumber || "",
       Notes: issue.notes || "",
     }));
@@ -304,11 +304,11 @@ export default function PlantMaterialIssues() {
       issue.date,
       getPartyName(issue.partyId),
       getMaterialName(issue.materialId),
-      getLdoTankLabel((issue as any).ldoTankNumber) || "",
+      getLdoTankLabel(issue.ldoTankNumber) || "",
       `${issue.quantity} ${issue.uom}`,
       issue.issuedTo,
       issue.purpose || "",
-      (issue as any).receivedBy || "",
+      issue.receivedBy || "",
     ]);
 
     autoTable(doc, {
@@ -329,11 +329,11 @@ export default function PlantMaterialIssues() {
         <td>${issue.date}</td>
         <td>${getPartyName(issue.partyId)}</td>
         <td>${getMaterialName(issue.materialId)}</td>
-        <td>${getLdoTankLabel((issue as any).ldoTankNumber) || ""}</td>
+        <td>${getLdoTankLabel(issue.ldoTankNumber) || ""}</td>
         <td>${issue.quantity} ${issue.uom}</td>
         <td>${issue.issuedTo}</td>
         <td>${issue.purpose || ""}</td>
-        <td>${(issue as any).receivedBy || ""}</td>
+        <td>${issue.receivedBy || ""}</td>
       </tr>
     `).join('');
 
@@ -656,9 +656,9 @@ export default function PlantMaterialIssues() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{getMaterialName(issue.materialId)}</span>
                         <Badge variant="secondary">{issue.quantity} {issue.uom}</Badge>
-                        {getLdoTankLabel((issue as any).ldoTankNumber) && (
+                        {getLdoTankLabel(issue.ldoTankNumber) && (
                           <Badge variant="outline" className="text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-600 text-xs">
-                            {getLdoTankLabel((issue as any).ldoTankNumber)}
+                            {getLdoTankLabel(issue.ldoTankNumber)}
                           </Badge>
                         )}
                       </div>
@@ -670,10 +670,10 @@ export default function PlantMaterialIssues() {
                         <span className="font-medium">{issue.issuedTo}</span>
                         {issue.purpose && <span className="text-muted-foreground"> - {issue.purpose}</span>}
                       </div>
-                      {(issue as any).receivedBy && (
+                      {issue.receivedBy && (
                         <div className="text-sm">
                           <span className="text-muted-foreground">Received By: </span>
-                          <span className="font-medium">{(issue as any).receivedBy}</span>
+                          <span className="font-medium">{issue.receivedBy}</span>
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground">
