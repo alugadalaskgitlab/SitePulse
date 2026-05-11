@@ -52,19 +52,6 @@ export default function PlantMaterialReceipts() {
       setExpandedIds(prev => { const s = new Set(prev); s.add(highlightId); return s; });
     }
   }, [highlightId]);
-  useEffect(() => {
-    if (localHighlightId != null && highlightRowRef.current) {
-      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      const timer = setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("highlight");
-        history.replaceState(null, "", url.toString());
-        setLocalHighlightId(null);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [localHighlightId]);
-
   // Filter state
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -129,6 +116,19 @@ export default function PlantMaterialReceipts() {
   const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
+
+  useEffect(() => {
+    if (localHighlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlight");
+        history.replaceState(null, "", url.toString());
+        setLocalHighlightId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [localHighlightId, receipts]);
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],

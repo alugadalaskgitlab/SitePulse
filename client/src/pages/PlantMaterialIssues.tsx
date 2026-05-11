@@ -56,19 +56,6 @@ export default function PlantMaterialIssues() {
       setLocalHighlightId(highlightId);
     }
   }, [highlightId]);
-  useEffect(() => {
-    if (localHighlightId != null && highlightRowRef.current) {
-      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      const timer = setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("highlight");
-        history.replaceState(null, "", url.toString());
-        setLocalHighlightId(null);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [localHighlightId]);
-
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterPartyId, setFilterPartyId] = useState("all");
@@ -144,6 +131,19 @@ export default function PlantMaterialIssues() {
   const { data: issues, isLoading } = useQuery<MaterialIssue[]>({
     queryKey: ["/api/plant-module/material-issues"],
   });
+
+  useEffect(() => {
+    if (localHighlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlight");
+        history.replaceState(null, "", url.toString());
+        setLocalHighlightId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [localHighlightId, issues]);
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
