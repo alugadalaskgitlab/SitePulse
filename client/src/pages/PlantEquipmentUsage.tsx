@@ -598,39 +598,90 @@ export default function PlantEquipmentUsage() {
   const getExportData = () => {
     return filteredUsage.map(entry => {
       const equip = equipment?.find(e => e.id === entry.equipmentId);
+      const equipName = equip?.name || "Unknown";
+      const regNo = (equip as any)?.registrationNumber || "-";
+      const ownership = !equip
+        ? "-"
+        : (equip as any).ownership === "hired"
+          ? `HIRED${(equip as any)?.vendorName ? `: ${(equip as any).vendorName}` : ""}`
+          : "HLC OWN";
+      const meterType = equip?.meterType || "hour_meter";
+      const norm = equip?.consumptionNorm;
+      const normLabel = norm != null ? `${norm} ${meterType === "hour_meter" ? "L/hr" : "L/km"}` : "-";
+
       if ((entry as any).entryType === "shifting") {
         const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
-        const transportName = tEquip ? `${tEquip.name}${(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}` : "-";
+        const transportName = tEquip
+          ? `${tEquip.name}${(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}`
+          : "-";
         return {
           Date: entry.date,
-          Equipment: `${equip?.name || "Unknown"}${(equip as any)?.registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}`,
+          Equipment: equipName,
+          "Reg#": regNo,
+          Ownership: ownership,
           "Entry Type": "MOBILIZATION",
-          "From": (entry as any).shiftFrom || "",
-          "To": (entry as any).shiftTo || "",
-          "Transport Vehicle": transportName,
-          "Distance (km)": (entry as any).transportDistance || "-",
-          "Remarks": entry.remarks || "",
+          "Time / Meter": `${(entry as any).shiftFrom || "?"} → ${(entry as any).shiftTo || "?"}`,
+          "Runtime": (entry as any).transportDistance ? `${(entry as any).transportDistance} km` : "-",
+          "Diesel Issued (L)": "-",
+          "Consumed (L)": "-",
+          "Efficiency": "-",
+          "Norm": "-",
+          "Transport Vehicle (Mobilization)": transportName,
+          Remarks: entry.remarks || "",
         };
       }
+
+      const isTripBased = (entry as any).entryType === "trip_based" || (entry as any).tripBasedEntry;
+      const hasMeterReading = entry.openingReading != null && entry.closingReading != null;
+      const hasTime = (entry as any).startTime && (entry as any).endTime;
+
+      let timeMeterCell = "-";
+      if (isTripBased && (entry as any).numberOfTrips) {
+        timeMeterCell = `${(entry as any).numberOfTrips} trips × ${(entry as any).tripDistance || "?"} km`;
+      } else if (hasMeterReading) {
+        timeMeterCell = `${entry.openingReading} → ${entry.closingReading}`;
+      } else if (hasTime) {
+        timeMeterCell = `${(entry as any).startTime} → ${(entry as any).endTime}`;
+      } else if (entry.openingReading != null) {
+        timeMeterCell = `${entry.openingReading} → (pending)`;
+      }
+
+      const runtime = entry.hoursOrKmRun ?? (isTripBased ? (entry as any).totalKm : null);
+      const runtimeUnit = isTripBased ? "km" : meterType === "hour_meter" ? "hrs" : "km";
+      const runtimeLabel = runtime != null ? `${runtime.toFixed(3)} ${runtimeUnit}` : "-";
+
       const openingDieselVal = (entry as any).openingDiesel ?? 0;
       const dieselIssuedVal = entry.dieselIssued ?? 0;
-      const consumed = entry.expectedDiesel ?? 0;
-      const closingDieselVal = (entry as any).closingDiesel ?? (openingDieselVal + dieselIssuedVal - consumed);
-      const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
+      const isDieselIncluded = (entry as any).dieselIncluded;
+      // Match inline view: actual consumption = opening + issued - closing when closing is tracked
+      const closingDieselEntry = (entry as any).closingDiesel;
+      const consumed = closingDieselEntry != null
+        ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
+        : (entry.expectedDiesel ?? 0);
+
+      let efficiencyLabel = "-";
+      if (!isPartialEntry(entry) && !isDieselIncluded && runtime && runtime > 0 && consumed > 0) {
+        const effVal = consumed / runtime;
+        const effUnit = isTripBased ? "L/km" : meterType === "hour_meter" ? "L/hr" : "L/km";
+        efficiencyLabel = `${effVal.toFixed(3)} ${effUnit}`;
+      }
+
+      const entryTypeLabel = ((entry as any).entryType || "time_meter").replace(/_/g, " ").toUpperCase();
+
       return {
         Date: entry.date,
-        Equipment: `${equip?.name || "Unknown"}${(equip as any)?.registrationNumber ? ` - ${(equip as any).registrationNumber}` : ""}${(equip as any)?.ownership === "hired" ? ` (HIRED${(equip as any)?.vendorName ? `: ${(equip as any).vendorName}` : ""})` : (equip as any)?.ownership === "owned" ? " (HLC OWN)" : ""}`,
-        "Opening Reading": entry.openingReading,
-        "Closing Reading": entry.closingReading,
-        "Hours/KM Run": entry.hoursOrKmRun?.toFixed(3) || (isTripBased ? "-" : "0"),
-        "Trips": (entry as any).numberOfTrips || "-",
-        "Trip Dist (km)": (entry as any).tripDistance || "-",
-        "Total KM": (entry as any).totalKm?.toFixed(3) || "-",
-        "Opening Diesel": openingDieselVal.toFixed(3),
-        "Diesel Issued": dieselIssuedVal.toFixed(3),
-        "Closing Diesel": closingDieselVal.toFixed(3),
-        "Expected Diesel": consumed.toFixed(3),
-        "Remarks": entry.remarks || "",
+        Equipment: equipName,
+        "Reg#": regNo,
+        Ownership: ownership,
+        "Entry Type": entryTypeLabel,
+        "Time / Meter": timeMeterCell,
+        "Runtime": runtimeLabel,
+        "Diesel Issued (L)": dieselIssuedVal > 0 ? dieselIssuedVal.toFixed(3) : ((entry as any).dieselIncluded ? "CONTRACTOR" : "-"),
+        "Consumed (L)": consumed > 0 ? consumed.toFixed(3) : "-",
+        "Efficiency": efficiencyLabel,
+        "Norm": normLabel,
+        "Transport Vehicle (Mobilization)": "-",
+        Remarks: entry.remarks || "",
       };
     });
   };
@@ -679,7 +730,7 @@ export default function PlantEquipmentUsage() {
   const exportToPdf = async () => {
     try {
       const data = getExportData();
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       doc.setFontSize(16);
       doc.text("Equipment Usage Report", 14, 15);
       doc.setFontSize(10);
@@ -690,26 +741,36 @@ export default function PlantEquipmentUsage() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Equipment", "Rdg/Trips", "Hrs/KM", "Open Diesel", "Issued", "Close Diesel", "Expected", "Remarks"]],
-        body: data.map(row => {
-          const rdgOrTrips = row["Trips"] !== "-" 
-            ? `${row["Trips"]} trips × ${row["Trip Dist (km)"]} km`
-            : `${row["Opening Reading"] || "-"} - ${row["Closing Reading"] || "-"}`;
-          const hrsOrKm = row["Total KM"] !== "-" ? `${row["Total KM"]} km` : row["Hours/KM Run"];
-          return [
-            row.Date,
-            row.Equipment,
-            rdgOrTrips,
-            hrsOrKm,
-            row["Opening Diesel"],
-            row["Diesel Issued"],
-            row["Closing Diesel"],
-            row["Expected Diesel"],
-            row["Remarks"],
-          ];
-        }),
-        styles: { fontSize: 8 },
+        head: [["Date", "Equipment", "Reg#", "Ownership", "Entry Type", "Time / Meter", "Runtime", "Issued (L)", "Consumed (L)", "Efficiency", "Norm", "Remarks"]],
+        body: data.map(row => [
+          row.Date,
+          row.Equipment,
+          row["Reg#"],
+          row.Ownership,
+          row["Entry Type"],
+          row["Time / Meter"],
+          row["Runtime"],
+          row["Diesel Issued (L)"],
+          row["Consumed (L)"],
+          row["Efficiency"],
+          row["Norm"],
+          row.Remarks,
+        ]),
+        styles: { fontSize: 7 },
         headStyles: { fillColor: [41, 128, 185] },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 30 },
+          6: { cellWidth: 18 },
+          7: { cellWidth: 18 },
+          8: { cellWidth: 18 },
+          9: { cellWidth: 18 },
+          10: { cellWidth: 16 },
+        },
         margin: { left: 10, right: 10 },
       });
 
@@ -754,15 +815,15 @@ export default function PlantEquipmentUsage() {
         <head>
           <title>Equipment Usage Report</title>
           <style>
-            @page { size: A4 portrait; margin: 15mm; }
+            @page { size: A4 landscape; margin: 10mm; }
             * { box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 11px; }
-            .header { margin-bottom: 15px; }
-            h1 { color: #333; margin: 0 0 5px 0; font-size: 18px; }
-            .date { color: #666; margin: 0; font-size: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+            body { font-family: Arial, sans-serif; padding: 0; margin: 0; font-size: 10px; }
+            .header { margin-bottom: 10px; }
+            h1 { color: #333; margin: 0 0 4px 0; font-size: 15px; }
+            .date { color: #666; margin: 0; font-size: 9px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; page-break-inside: auto; }
             tr { page-break-inside: avoid; page-break-after: auto; }
-            th, td { border: 1px solid #ccc; padding: 6px 4px; text-align: left; font-size: 9px; }
+            th, td { border: 1px solid #ccc; padding: 4px 3px; text-align: left; font-size: 8px; }
             th { background-color: #f0f0f0; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
             @media print {
@@ -771,9 +832,9 @@ export default function PlantEquipmentUsage() {
           </style>
         </head>
         <body>
-          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+          <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 45px; margin-bottom: 4px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 13px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
           </div>
           <div class="header">
             <h1>Equipment Usage Report</h1>
@@ -784,34 +845,35 @@ export default function PlantEquipmentUsage() {
               <tr>
                 <th>Date</th>
                 <th>Equipment</th>
-                <th>Rdg/Trips</th>
-                <th>Hrs/KM</th>
-                <th>Open Diesel</th>
-                <th>Issued</th>
-                <th>Close Diesel</th>
-                <th>Expected</th>
+                <th>Reg#</th>
+                <th>Ownership</th>
+                <th>Entry Type</th>
+                <th>Time / Meter</th>
+                <th>Runtime</th>
+                <th>Issued (L)</th>
+                <th>Consumed (L)</th>
+                <th>Efficiency</th>
+                <th>Norm</th>
                 <th>Remarks</th>
               </tr>
             </thead>
             <tbody>
-              ${data.map(row => {
-                const rdgOrTrips = row["Trips"] !== "-" 
-                  ? `${row["Trips"]} trips × ${row["Trip Dist (km)"]} km`
-                  : `${row["Opening Reading"] || "-"} - ${row["Closing Reading"] || "-"}`;
-                const hrsOrKm = row["Total KM"] !== "-" ? `${row["Total KM"]} km` : row["Hours/KM Run"];
-                return `
+              ${data.map(row => `
                 <tr>
                   <td>${row.Date}</td>
                   <td>${row.Equipment}</td>
-                  <td>${rdgOrTrips}</td>
-                  <td>${hrsOrKm}</td>
-                  <td>${row["Opening Diesel"]}</td>
-                  <td>${row["Diesel Issued"]}</td>
-                  <td>${row["Closing Diesel"]}</td>
-                  <td>${row["Expected Diesel"]}</td>
-                  <td>${row["Remarks"]}</td>
+                  <td>${row["Reg#"]}</td>
+                  <td>${row.Ownership}</td>
+                  <td>${row["Entry Type"]}</td>
+                  <td>${row["Time / Meter"]}</td>
+                  <td>${row["Runtime"]}</td>
+                  <td>${row["Diesel Issued (L)"]}</td>
+                  <td>${row["Consumed (L)"]}</td>
+                  <td>${row["Efficiency"]}</td>
+                  <td>${row["Norm"]}</td>
+                  <td>${row.Remarks}</td>
                 </tr>
-              `}).join('')}
+              `).join('')}
             </tbody>
           </table>
         <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
