@@ -1714,7 +1714,7 @@ export default function PlantEquipmentUsage() {
                                     {/* Tank balance inline chip */}
                                     {(entry as any).dieselBalanceInTank != null && (
                                       <span className="font-medium text-blue-600 dark:text-blue-400">
-                                        Bal: {((entry as any).dieselBalanceInTank as number).toFixed(1)} L{(entry as any).dieselBalanceConfirmed ? " ✓" : ""}
+                                        Bal: {((entry as any).dieselBalanceInTank as number).toFixed(1)} L{(entry as any).dieselBalanceConfirmed ? " ✓" : ""}{dieselIssuedVal > 0 ? ` (net: ${(dieselIssuedVal - (entry as any).dieselBalanceInTank).toFixed(1)} L)` : ""}
                                       </span>
                                     )}
                                   </div>
