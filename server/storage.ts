@@ -11330,9 +11330,35 @@ export class DatabaseStorage implements IStorage {
     await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, log.id));
 
     const ldoRows: any[] = [];
-    const pushLdo = (tank: number, type: "opening" | "closing", value: number | null | undefined, time: string | null) => {
+    // Compute consumption deltas early. Dip-stick is the authoritative source while
+    // flow meters are being calibrated; meter delta is kept as a fallback only.
+    const dipDeltaT1 =
+      log.ldoTank1OpeningDip != null && log.ldoTank1ClosingDip != null
+        ? getLdoVolumeAtDepth(1, log.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, log.ldoTank1ClosingDip)
+        : null;
+    const dipDeltaT2 =
+      log.ldoTank2OpeningDip != null && log.ldoTank2ClosingDip != null
+        ? getLdoVolumeAtDepth(2, log.ldoTank2OpeningDip) - getLdoVolumeAtDepth(2, log.ldoTank2ClosingDip)
+        : null;
+    const meterDeltaT1 =
+      log.ldoTank1OpeningMeter != null && log.ldoTank1ClosingMeter != null
+        ? log.ldoTank1ClosingMeter - log.ldoTank1OpeningMeter
+        : null;
+    const meterDeltaT2 =
+      log.ldoTank2OpeningMeter != null && log.ldoTank2ClosingMeter != null
+        ? log.ldoTank2ClosingMeter - log.ldoTank2OpeningMeter
+        : null;
+    // When dryerFedFrom === "TANK_1", the entire Tank 1 dip delta covers both
+    // boiler + dryer stock; Tank 2 carries no separate consumption quantity.
+    const closingQtyT1 = dipDeltaT1 != null
+      ? Math.max(0, dipDeltaT1)
+      : (meterDeltaT1 != null ? Math.max(0, meterDeltaT1) : null);
+    const closingQtyT2 = log.dryerFedFrom === "TANK_1"
+      ? null
+      : (dipDeltaT2 != null ? Math.max(0, dipDeltaT2) : (meterDeltaT2 != null ? Math.max(0, meterDeltaT2) : null));
+    const pushLdo = (tank: number, type: "opening" | "closing", value: number | null | undefined, time: string | null, qty?: number | null) => {
       if (value === null || value === undefined) return;
-      ldoRows.push({
+      const row: any = {
         date: log.date,
         time,
         tankNumber: tank,
@@ -11345,12 +11371,14 @@ export class DatabaseStorage implements IStorage {
         // tag; boiler-meter rows always debit Tank-1 stock so we leave
         // dryerFedFrom NULL for them.
         dryerFedFrom: tank === 2 ? (log.dryerFedFrom || "TANK_2") : null,
-      });
+      };
+      if (type === "closing" && qty != null) row.quantityLiters = qty;
+      ldoRows.push(row);
     };
     pushLdo(1, "opening", log.ldoTank1OpeningMeter, log.plantStartTime);
-    pushLdo(1, "closing", log.ldoTank1ClosingMeter, log.plantStopTime);
+    pushLdo(1, "closing", log.ldoTank1ClosingMeter, log.plantStopTime, closingQtyT1);
     pushLdo(2, "opening", log.ldoTank2OpeningMeter, log.plantStartTime);
-    pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime);
+    pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime, closingQtyT2);
     if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
 
     const bitumenRows: any[] = [];
@@ -11412,23 +11440,8 @@ export class DatabaseStorage implements IStorage {
     //   dryerFedFrom === "TANK_2"  → boiler-meter draws from Tank 1, dryer-meter
     //                                 draws from Tank 2; compare each independently.
     const divergenceWarnings: string[] = [];
-
-    const meterDeltaT1 =
-      log.ldoTank1OpeningMeter != null && log.ldoTank1ClosingMeter != null
-        ? log.ldoTank1ClosingMeter - log.ldoTank1OpeningMeter
-        : null;
-    const meterDeltaT2 =
-      log.ldoTank2OpeningMeter != null && log.ldoTank2ClosingMeter != null
-        ? log.ldoTank2ClosingMeter - log.ldoTank2OpeningMeter
-        : null;
-    const dipDeltaT1 =
-      log.ldoTank1OpeningDip != null && log.ldoTank1ClosingDip != null
-        ? getLdoVolumeAtDepth(1, log.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, log.ldoTank1ClosingDip)
-        : null;
-    const dipDeltaT2 =
-      log.ldoTank2OpeningDip != null && log.ldoTank2ClosingDip != null
-        ? getLdoVolumeAtDepth(2, log.ldoTank2OpeningDip) - getLdoVolumeAtDepth(2, log.ldoTank2ClosingDip)
-        : null;
+    // meterDeltaT1, meterDeltaT2, dipDeltaT1, dipDeltaT2 are computed above
+    // near pushLdo and are reused here for the divergence check.
 
     const pushDivergenceWarning = (label: string, meterConsumed: number, dipConsumed: number) => {
       const diff = Math.abs(meterConsumed - dipConsumed);
@@ -11741,6 +11754,10 @@ export class DatabaseStorage implements IStorage {
       ldoTank1ClosingMeter: plantShiftLogs.ldoTank1ClosingMeter,
       ldoTank2OpeningMeter: plantShiftLogs.ldoTank2OpeningMeter,
       ldoTank2ClosingMeter: plantShiftLogs.ldoTank2ClosingMeter,
+      ldoTank1OpeningDip: plantShiftLogs.ldoTank1OpeningDip,
+      ldoTank1ClosingDip: plantShiftLogs.ldoTank1ClosingDip,
+      ldoTank2OpeningDip: plantShiftLogs.ldoTank2OpeningDip,
+      ldoTank2ClosingDip: plantShiftLogs.ldoTank2ClosingDip,
       bitumenTank1OpeningDip: plantShiftLogs.bitumenTank1OpeningDip,
       bitumenTank1ClosingDip: plantShiftLogs.bitumenTank1ClosingDip,
       bitumenTank2OpeningDip: plantShiftLogs.bitumenTank2OpeningDip,
@@ -11754,13 +11771,28 @@ export class DatabaseStorage implements IStorage {
       if (r.dryerFedFrom === "TANK_1" || r.dryerFedFrom === "TANK_2") {
         row.dryerFedFrom = r.dryerFedFrom;
       }
-      // LDO boiler (Tank 1) — max(0, closing - opening)
-      if (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null) {
+      // LDO boiler (Tank 1) — prefer dip-based delta; fall back to meter delta.
+      // When dryerFedFrom === "TANK_1", the full Tank 1 dip delta covers both
+      // boiler + dryer; attribute it all to ldoBoilerLitres.
+      const slDipDeltaT1 = r.ldoTank1OpeningDip != null && r.ldoTank1ClosingDip != null
+        ? getLdoVolumeAtDepth(1, r.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, r.ldoTank1ClosingDip)
+        : null;
+      const slDipDeltaT2 = r.ldoTank2OpeningDip != null && r.ldoTank2ClosingDip != null
+        ? getLdoVolumeAtDepth(2, r.ldoTank2OpeningDip) - getLdoVolumeAtDepth(2, r.ldoTank2ClosingDip)
+        : null;
+      if (slDipDeltaT1 != null) {
+        row.ldoBoilerLitres = Math.max(0, slDipDeltaT1);
+      } else if (r.ldoTank1OpeningMeter != null && r.ldoTank1ClosingMeter != null) {
         row.ldoBoilerLitres = Math.max(0, r.ldoTank1ClosingMeter - r.ldoTank1OpeningMeter);
       }
-      // LDO dryer (Tank 2) — max(0, closing - opening)
-      if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
-        row.ldoDryerLitres = Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter);
+      // LDO dryer (Tank 2) — skipped when dryerFedFrom === "TANK_1" (dryer
+      // draws from Tank 1; its share is already captured in ldoBoilerLitres).
+      if (r.dryerFedFrom !== "TANK_1") {
+        if (slDipDeltaT2 != null) {
+          row.ldoDryerLitres = Math.max(0, slDipDeltaT2);
+        } else if (r.ldoTank2OpeningMeter != null && r.ldoTank2ClosingMeter != null) {
+          row.ldoDryerLitres = Math.max(0, r.ldoTank2ClosingMeter - r.ldoTank2OpeningMeter);
+        }
       }
       // Bitumen dip readings (raw — frontend converts to MT using dip chart)
       if (r.bitumenTank1OpeningDip != null) row.bitumenTank1OpeningDip = r.bitumenTank1OpeningDip;
@@ -12306,7 +12338,13 @@ export class DatabaseStorage implements IStorage {
     // Derived numbers
     const durationHours = this._computeDurationHours(payload.startTime, payload.endTime);
     if (durationHours != null) payload.durationHours = durationHours;
-    if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null) {
+    // Dip-stick readings are the authoritative source for LDO consumption while the
+    // flow meters are being calibrated. Fall back to meter delta only when dip is absent.
+    if (payload.ldoTank1OpeningDip != null && payload.ldoTank1ClosingDip != null) {
+      payload.ldoTank1Consumed = Math.max(0,
+        getLdoVolumeAtDepth(1, payload.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, payload.ldoTank1ClosingDip)
+      );
+    } else if (payload.ldoTank1OpeningMeter != null && payload.ldoTank1ClosingMeter != null) {
       payload.ldoTank1Consumed = Math.max(0, payload.ldoTank1ClosingMeter - payload.ldoTank1OpeningMeter);
     }
     if (payload.dgMode === "inline") {
