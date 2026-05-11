@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,25 @@ export default function PlantMaterialReceipts() {
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  // Deep-link highlight support: ?highlight=<receiptId>
+  const searchString = useSearch();
+  const highlightId = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    const v = params.get("highlight");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
+  const highlightRowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (highlightId != null) {
+      setExpandedIds(prev => { const s = new Set(prev); s.add(highlightId); return s; });
+    }
+  }, [highlightId]);
+  useEffect(() => {
+    if (highlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightId]);
 
   // Filter state
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -815,7 +834,11 @@ export default function PlantMaterialReceipts() {
                       {dayReceipts.map((receipt) => {
                         const isExpanded = expandedIds.has(receipt.id);
                         return (
-                          <div key={receipt.id} className="rounded-lg bg-muted/50 overflow-hidden">
+                          <div
+                            key={receipt.id}
+                            ref={receipt.id === highlightId ? highlightRowRef : null}
+                            className={`rounded-lg overflow-hidden transition-colors duration-500 ${receipt.id === highlightId ? "bg-yellow-100 dark:bg-yellow-900/40 ring-2 ring-yellow-400 dark:ring-yellow-600" : "bg-muted/50"}`}
+                          >
                             <div
                               className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                               onClick={() => setExpandedIds(prev => { const s = new Set(prev); s.has(receipt.id) ? s.delete(receipt.id) : s.add(receipt.id); return s; })}

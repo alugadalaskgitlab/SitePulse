@@ -2236,14 +2236,38 @@ export default function PlantLdoFlowMeter() {
                       </td>
                       <td className="p-2 text-right">{r.quantityLiters ? r.quantityLiters.toFixed(3) : "-"}</td>
                       <td className="p-2">
-                        <Badge
-                          variant={src === "manual" ? "outline" : "secondary"}
-                          className={srcClass}
-                          data-testid={`badge-source-${r.id}`}
-                          title={srcTitle}
-                        >
-                          {srcLabel}
-                        </Badge>
+                        {src === "material-receipt" && r.sourceMaterialReceiptId ? (
+                          <Link href={`/plant/material-receipts?highlight=${r.sourceMaterialReceiptId}`}>
+                            <Badge
+                              variant="secondary"
+                              className={`${srcClass} cursor-pointer underline-offset-2 hover:underline`}
+                              data-testid={`badge-source-${r.id}`}
+                              title={`${srcTitle} — click to view receipt`}
+                            >
+                              {srcLabel}
+                            </Badge>
+                          </Link>
+                        ) : src === "material-issue" && r.sourceMaterialIssueId ? (
+                          <Link href={`/plant/material-issues?highlight=${r.sourceMaterialIssueId}`}>
+                            <Badge
+                              variant="secondary"
+                              className={`${srcClass} cursor-pointer underline-offset-2 hover:underline`}
+                              data-testid={`badge-source-${r.id}`}
+                              title={`${srcTitle} — click to view issue`}
+                            >
+                              {srcLabel}
+                            </Badge>
+                          </Link>
+                        ) : (
+                          <Badge
+                            variant={src === "manual" ? "outline" : "secondary"}
+                            className={srcClass}
+                            data-testid={`badge-source-${r.id}`}
+                            title={srcTitle}
+                          >
+                            {srcLabel}
+                          </Badge>
+                        )}
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">{r.notes || "-"}</td>
                       {isAdmin && (

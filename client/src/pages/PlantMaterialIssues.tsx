@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,20 @@ export default function PlantMaterialIssues() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState<MaterialIssue | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // Deep-link highlight support: ?highlight=<issueId>
+  const searchString = useSearch();
+  const highlightId = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    const v = params.get("highlight");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
+  const highlightRowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (highlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightId]);
 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -671,7 +685,11 @@ export default function PlantMaterialIssues() {
       ) : (
         <div className="space-y-3">
           {filteredIssues.map((issue) => (
-            <Card key={issue.id} className="hover-elevate">
+            <div
+              key={issue.id}
+              ref={issue.id === highlightId ? highlightRowRef : null}
+            >
+            <Card className={`hover-elevate transition-colors duration-500 ${issue.id === highlightId ? "ring-2 ring-yellow-400 dark:ring-yellow-600 bg-yellow-50 dark:bg-yellow-900/20" : ""}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -722,6 +740,7 @@ export default function PlantMaterialIssues() {
                 </div>
               </CardContent>
             </Card>
+            </div>
           ))}
         </div>
       )}
