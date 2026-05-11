@@ -211,7 +211,7 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         challanNumber,
-        tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
+        tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
     } else {
@@ -227,7 +227,7 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         challanNumber,
-        tankNumber: isTankMaterial && tankNumber ? parseInt(tankNumber) : null,
+        tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
       };
       createMutation.mutate(data);
     }
@@ -571,7 +571,7 @@ export default function PlantMaterialReceipts() {
 
               <div>
                 <Label>Material</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
                   <SelectTrigger data-testid="select-material">
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
@@ -591,20 +591,27 @@ export default function PlantMaterialReceipts() {
                   (selectedMat.name || "").toUpperCase() === "DIESEL" ||
                   (selectedMat.name || "").toUpperCase() === "HSD"
                 );
-                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isLdo || isDiesel);
+                const isFuel = isLdo || isDiesel;
+                const showTank = selectedMat && (selectedMat.category === "Bitumen" || isFuel);
                 if (!showTank) return null;
                 return (
                   <div>
                     <Label>Receiving Tank</Label>
                     <Select value={tankNumber} onValueChange={setTankNumber}>
                       <SelectTrigger data-testid="select-tank-number">
-                        <SelectValue placeholder="Select tank" />
+                        <SelectValue placeholder={isFuel ? "Select tank or keep as stock" : "Select tank"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">Tank 1{isLdo ? " (Boiler)" : ""}</SelectItem>
-                        <SelectItem value="2">Tank 2{isLdo ? " (Dryer)" : ""}</SelectItem>
+                        {isFuel && <SelectItem value="none">Keep as Stock — barrel / no tank</SelectItem>}
+                        <SelectItem value="1">Tank 1{isFuel ? " — Boiler" : ""}</SelectItem>
+                        <SelectItem value="2">Tank 2{isFuel ? " — Dryer" : ""}</SelectItem>
                       </SelectContent>
                     </Select>
+                    {isFuel && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Choose a tank to log this receipt in the LDO flow tracker, or select "Keep as Stock" if storing in barrels to issue later.
+                      </p>
+                    )}
                   </div>
                 );
               })()}

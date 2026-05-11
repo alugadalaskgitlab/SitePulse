@@ -2153,14 +2153,17 @@ export class DatabaseStorage implements IStorage {
         notes: conversionNote,
       });
 
-      // Task #490 — If this is an LDO receipt, insert a linked ldo_flow_readings
-      // receipt row so the flow-meter tracker balance reflects the delivery.
-      if (material && material.name.toUpperCase().trim() === "LDO") {
+      // Task #490 — If this is an LDO or DIESEL receipt going to a specific tank,
+      // insert a linked ldo_flow_readings receipt row so the flow-meter tracker
+      // balance reflects the delivery. Receipts with no tank (barrel stock) are
+      // skipped intentionally — they enter the tracker only when issued to a tank.
+      if (receipt.tankNumber != null && material &&
+          (material.name.toUpperCase().trim() === "LDO" || material.name.toUpperCase().trim() === "DIESEL")) {
         const qtyL = convertLdoQtyToLiters(receipt.quantity, receipt.uom);
         await tx.insert(ldoFlowReadings).values({
           date: receipt.date,
           time: receipt.time || null,
-          tankNumber: receipt.tankNumber ?? 1,
+          tankNumber: receipt.tankNumber,
           meterReading: 0,
           readingType: "receipt",
           quantityLiters: qtyL,
@@ -2278,10 +2281,11 @@ export class DatabaseStorage implements IStorage {
 
       const [newMaterialForLdo] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, newMaterialId)).limit(1);
-      if (newMaterialForLdo && newMaterialForLdo.name.toUpperCase().trim() === "LDO") {
+      const newTankNumber = receipt.tankNumber !== undefined ? receipt.tankNumber : existing.tankNumber;
+      if (newTankNumber != null && newMaterialForLdo &&
+          (newMaterialForLdo.name.toUpperCase().trim() === "LDO" || newMaterialForLdo.name.toUpperCase().trim() === "DIESEL")) {
         const newDate = receipt.date ?? existing.date;
         const newTime = receipt.time !== undefined ? receipt.time : existing.time;
-        const newTankNumber = receipt.tankNumber !== undefined ? (receipt.tankNumber ?? 1) : (existing.tankNumber ?? 1);
         const newPlantName = receipt.plantName ?? existing.plantName ?? "Main Plant";
         const qtyL = convertLdoQtyToLiters(newQuantity, newUom);
         await tx.insert(ldoFlowReadings).values({
