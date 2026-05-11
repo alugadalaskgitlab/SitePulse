@@ -1576,35 +1576,81 @@ export default function PlantEquipmentUsage() {
                         const consumed = closingDieselEntry != null 
                           ? Math.max(0, openingDieselVal + dieselIssuedVal - closingDieselEntry)
                           : (entry.expectedDiesel ?? 0);
-                        const closingDieselVal = closingDieselEntry ?? (openingDieselVal + dieselIssuedVal - (entry.expectedDiesel ?? 0));
                         const isExpanded = expandedIds.has(entry.id);
                         const ownerLabel = equip ? ((equip as any).ownership === "hired" ? `HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""}` : "HLC OWN") : "";
                         const runtimeDisplay = isPartialEntry(entry) ? "Pending"
                           : (entry as any).totalKm > 0 && !entry.hoursOrKmRun ? `${((entry as any).totalKm || 0).toFixed(1)} km`
                           : entry.hoursOrKmRun != null ? `${entry.hoursOrKmRun.toFixed(2)} ${equip?.meterType === "hour_meter" ? "hrs" : "km"}` : "—";
+                        const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
+                        const norm = equip?.consumptionNorm || 0;
+                        const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
+                        const effUnit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
+                        const efficiencyValue = (!isPartialEntry(entry) && !isDieselIncluded && runtime > 0 && consumed > 0)
+                          ? consumed / runtime : null;
+                        const efficiencyIsGood = norm > 0 ? (efficiencyValue != null ? efficiencyValue <= norm : true) : true;
+                        const needsExpand = !!(entry.remarks?.trim()) || (entry as any).dieselBalanceInTank != null;
                         return (
                           <div key={entry.id} className="rounded-lg bg-muted/50 overflow-hidden">
                             <div
-                              className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                              onClick={() => setExpandedIds(prev => { const s = new Set(prev); s.has(entry.id) ? s.delete(entry.id) : s.add(entry.id); return s; })}
+                              className={`flex items-start gap-2 px-3 py-2.5${needsExpand ? " cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors" : ""}`}
+                              onClick={needsExpand ? () => setExpandedIds(prev => { const s = new Set(prev); s.has(entry.id) ? s.delete(entry.id) : s.add(entry.id); return s; }) : undefined}
                             >
-                              <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
-                              <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
-                                <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
-                                {equip && <span className="text-xs text-muted-foreground">{ownerLabel}</span>}
-                                {(entry as any).entryType === "shifting"
-                                  ? <span className="text-xs text-muted-foreground">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
-                                  : <span className="text-sm font-medium">{runtimeDisplay}</span>}
-                                {!isDieselIncluded && !isPartialEntry(entry) && (entry as any).entryType !== "shifting" && consumed > 0 && (
-                                  <span className="text-sm text-muted-foreground">{consumed.toFixed(1)} L consumed</span>
+                              {needsExpand
+                                ? <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground mt-0.5 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                                : <div className="w-4 shrink-0" />}
+                              <div className="flex-1 min-w-0">
+                                {/* Line 1: name, ownership, entry-type badges */}
+                                <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-sm">
+                                  <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
+                                  {equip && <span className="text-xs text-muted-foreground">{ownerLabel}</span>}
+                                  {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
+                                  {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
+                                  {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
+                                  {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
+                                  {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
+                                  {isDieselIncluded && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
+                                  {isPartialEntry(entry) && <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
+                                </div>
+                                {/* Line 2: inline operational detail */}
+                                {(entry as any).entryType === "shifting" ? (
+                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-xs text-muted-foreground mt-1">
+                                    <span className="font-medium text-foreground">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
+                                    {(() => {
+                                      const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
+                                      return tEquip ? <span>{tEquip.name}{(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}</span> : null;
+                                    })()}
+                                    {(entry as any).transportDistance ? <span>{(entry as any).transportDistance} km</span> : null}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-xs text-muted-foreground mt-1">
+                                    {/* Time or meter range */}
+                                    {!isPartialEntry(entry) && entry.openingReading != null && entry.closingReading != null && (
+                                      <span>Meter: {entry.openingReading} → {entry.closingReading}</span>
+                                    )}
+                                    {!isPartialEntry(entry) && !(entry.openingReading != null && entry.closingReading != null) && entry.startTime && entry.endTime && (
+                                      <span>{entry.startTime} → {entry.endTime}</span>
+                                    )}
+                                    {isPartialEntry(entry) && entry.openingReading != null && (
+                                      <span>Opening: {entry.openingReading}</span>
+                                    )}
+                                    {/* Runtime */}
+                                    {isTripBased && !isPartialEntry(entry) ? (
+                                      <span className="font-medium text-foreground">{(entry as any).numberOfTrips || 0} trips × {(entry as any).tripDistance} km × 2 = {((entry as any).totalKm || 0).toFixed(1)} km</span>
+                                    ) : (
+                                      <span className="font-medium text-foreground">{runtimeDisplay}</span>
+                                    )}
+                                    {/* Diesel issued + consumed */}
+                                    {!isDieselIncluded && !isPartialEntry(entry) && dieselIssuedVal > 0 && (
+                                      <span>Issued: {dieselIssuedVal.toFixed(1)} L · Consumed: {consumed.toFixed(1)} L</span>
+                                    )}
+                                    {/* Efficiency */}
+                                    {efficiencyValue != null && (
+                                      <span className={efficiencyIsGood ? "font-medium text-green-600 dark:text-green-400" : "font-medium text-red-600 dark:text-red-400"}>
+                                        {efficiencyValue.toFixed(2)} {effUnit}{norm > 0 ? ` (norm: ${norm})` : ""}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
-                                {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
-                                {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
-                                {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
-                                {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
-                                {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
-                                {isDieselIncluded && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
-                                {isPartialEntry(entry) && <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
                               </div>
                               <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
                                 {isPartialEntry(entry) && (
@@ -1620,178 +1666,28 @@ export default function PlantEquipmentUsage() {
                                 </Button>
                               </div>
                             </div>
-                            {isExpanded && (
-                            <div className="px-4 pb-4 pt-3 border-t border-border/50">
-                            <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
-                              <div>
-                                <span className="text-muted-foreground text-sm block">Equipment</span>
-                                <span className="font-medium">{equip?.name || "Unknown"}</span>
-                                {(equip as any)?.registrationNumber && (
-                                  <span className="text-sm text-muted-foreground block">{(equip as any).registrationNumber}</span>
-                                )}
-                                {equip && (
-                                  <span className="text-sm text-muted-foreground block">
-                                    {(equip as any).ownership === "hired" ? `HIRED${(equip as any).vendorName ? `: ${(equip as any).vendorName}` : ""}` : (equip as any).ownership === "owned" ? "HLC OWN" : ""}
-                                  </span>
-                                )}
-                                {(entry as any).entryType === "hourly" && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>
-                                )}
-                                {(entry as any).entryType === "daily" && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>
-                                )}
-                                {(entry as any).entryType === "monthly" && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>
-                                )}
-                                {(entry as any).entryType === "trip_based" && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>
-                                )}
-                                {(entry as any).entryType === "shifting" && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>
-                                )}
-                                {isDieselIncluded && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>
-                                )}
-                                {isPartialEntry(entry) && (
-                                  <Badge variant="outline" className="mt-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>
-                                )}
-                              </div>
-                              {(entry as any).entryType === "shifting" ? (
-                                <>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">From → To</span>
-                                    <span className="font-medium">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Transport Vehicle</span>
-                                    {(() => {
-                                      const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
-                                      return tEquip ? (
-                                        <>
-                                          <span className="font-medium">{tEquip.name}{(tEquip as any).registrationNumber ? ` (${(tEquip as any).registrationNumber})` : ""}</span>
-                                          <span className="text-sm text-muted-foreground block">{(tEquip as any).ownership === "hired" ? `HIRED: ${(tEquip as any).vendorName || ""}` : "HLC OWN"}</span>
-                                        </>
-                                      ) : <span className="font-medium text-muted-foreground">-</span>;
-                                    })()}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Distance</span>
-                                    <span className="font-medium">{(entry as any).transportDistance ? `${(entry as any).transportDistance} km` : "-"}</span>
-                                  </div>
-                                  <div className="col-span-2" />
-                                </>
-                              ) : (
-                              <>
-                              <div>
-                                <span className="text-muted-foreground text-sm block">
-                                  {isPartialEntry(entry)
-                                    ? (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")
-                                    : (entry as any).totalKm > 0 && !entry.hoursOrKmRun 
-                                      ? "Distance" 
-                                      : (equip?.meterType === "hour_meter" ? "Hours Run" : "KM Run")}
-                                </span>
-                                {isPartialEntry(entry) ? (
-                                  <>
-                                    <span className="font-medium text-yellow-600 dark:text-yellow-400">Pending</span>
-                                    <span className="text-sm text-muted-foreground block">Opening: {entry.openingReading}</span>
-                                  </>
-                                ) : (entry as any).totalKm > 0 && !entry.hoursOrKmRun ? (
-                                  <>
-                                    <span className="font-medium">{((entry as any).totalKm || 0).toFixed(3)} km</span>
-                                    <span className="text-sm text-muted-foreground block">
-                                      {(entry as any).numberOfTrips} trips × {(entry as any).tripDistance} km × 2
+                            {needsExpand && isExpanded && (
+                              <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-1.5">
+                                {(entry as any).dieselBalanceInTank != null && (
+                                  <div className="text-xs">
+                                    <span className="text-muted-foreground">Tank Balance: </span>
+                                    <span className="font-medium text-blue-600 dark:text-blue-400">
+                                      {((entry as any).dieselBalanceInTank as number).toFixed(3)} L{(entry as any).dieselBalanceConfirmed ? " ✓" : ""}
                                     </span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="font-medium">{entry.hoursOrKmRun?.toFixed(3)} {equip?.meterType === "hour_meter" ? "hrs" : "km"}</span>
-                                    {entry.openingReading != null && entry.closingReading != null ? (
-                                      <span className="text-sm text-muted-foreground block">Meter: {entry.openingReading} - {entry.closingReading}</span>
-                                    ) : entry.startTime && entry.endTime ? (
-                                      <span className="text-sm text-muted-foreground block">Time: {entry.startTime} - {entry.endTime}</span>
-                                    ) : (
-                                      <span className="text-sm text-muted-foreground block">-</span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                              {isDieselIncluded ? (
-                                <>
-                                  <div className="col-span-4 flex items-center">
-                                    <span className="text-sm text-amber-600 dark:text-amber-400 italic">Diesel provided by contractor - tracking only</span>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Diesel Issued</span>
-                                    <span className="font-medium">{dieselIssuedVal.toFixed(3)} L</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Consumed</span>
-                                    {isPartialEntry(entry) ? (
-                                      <span className="font-medium text-yellow-600 dark:text-yellow-400">Pending</span>
-                                    ) : (
-                                      <span className="font-medium">{consumed.toFixed(3)} L</span>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Efficiency</span>
-                                    {isPartialEntry(entry) ? (
-                                      <span className="font-medium text-muted-foreground">-</span>
-                                    ) : (
-                                      <>
-                                        {(() => {
-                                          const runtime = entry.hoursOrKmRun || (entry as any).totalKm || 0;
-                                          const isTripBased = !entry.hoursOrKmRun && (entry as any).totalKm > 0;
-                                          if (runtime <= 0 || consumed <= 0) {
-                                            return <span className="font-medium text-muted-foreground">-</span>;
-                                          }
-                                          const efficiencyValue = consumed / runtime;
-                                          const norm = equip?.consumptionNorm || 0;
-                                          const isGood = norm > 0 ? efficiencyValue <= norm : true;
-                                          const unit = isTripBased ? "L/km" : (equip?.meterType === "hour_meter" ? "L/hr" : "L/km");
-                                          return (
-                                            <span className={`font-medium ${isGood ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                              {efficiencyValue.toFixed(3)} {unit}
-                                            </span>
-                                          );
-                                        })()}
-                                        {equip?.consumptionNorm && (
-                                          <span className="text-sm text-muted-foreground block">Norm: {equip.consumptionNorm} {equip.meterType === "hour_meter" ? "L/hr" : "L/km"}</span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground text-sm block">Tank Balance</span>
-                                    <span className="font-medium">{closingDieselVal.toFixed(3)} L</span>
-                                    {(entry as any).dieselBalanceInTank != null && (
-                                      <span className="text-sm block mt-1">
-                                        <span className="text-blue-600 dark:text-blue-400">
-                                          Balance: {((entry as any).dieselBalanceInTank as number).toFixed(3)} L
-                                          {(entry as any).dieselBalanceConfirmed && " ✓"}
-                                        </span>
-                                        {dieselIssuedVal > 0 && (
-                                          <span className="text-muted-foreground block">
-                                            Net: {(dieselIssuedVal - ((entry as any).dieselBalanceInTank as number)).toFixed(3)} L
-                                          </span>
-                                        )}
+                                    {dieselIssuedVal > 0 && (
+                                      <span className="text-muted-foreground ml-2">
+                                        · Net used: {(dieselIssuedVal - ((entry as any).dieselBalanceInTank as number)).toFixed(3)} L
                                       </span>
                                     )}
                                   </div>
-                                </>
-                              )}
-                              </>
-                              )}
-                            </div>
-                            {entry.remarks?.trim() && (
-                              <div className="pt-2 mt-2 border-t border-border/30">
-                                <span className="text-xs text-muted-foreground">Remarks: </span>
-                                <span className="text-xs font-medium">{entry.remarks}</span>
+                                )}
+                                {entry.remarks?.trim() && (
+                                  <div className="text-xs">
+                                    <span className="text-muted-foreground">Remarks: </span>
+                                    <span className="font-medium">{entry.remarks}</span>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            </div>
                             )}
                           </div>
                         );
