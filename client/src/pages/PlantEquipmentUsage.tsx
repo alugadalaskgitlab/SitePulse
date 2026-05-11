@@ -152,15 +152,39 @@ export default function PlantEquipmentUsage() {
     return () => clearTimeout(t);
   }, [draftRestored]);
 
+  const FILTER_SESSION_KEY = "plant-equipment-usage-filter";
+
   const [filterDateFrom, setFilterDateFrom] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("dateFrom") || "";
+    if (params.get("dateFrom")) return params.get("dateFrom")!;
+    try {
+      const stored = sessionStorage.getItem(FILTER_SESSION_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { dateFrom?: string; dateTo?: string };
+        return parsed.dateFrom || "";
+      }
+    } catch { /* ignore */ }
+    return "";
   });
   const [filterDateTo, setFilterDateTo] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("dateTo") || "";
+    if (params.get("dateTo")) return params.get("dateTo")!;
+    try {
+      const stored = sessionStorage.getItem(FILTER_SESSION_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { dateFrom?: string; dateTo?: string };
+        return parsed.dateTo || "";
+      }
+    } catch { /* ignore */ }
+    return "";
   });
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({ dateFrom: filterDateFrom, dateTo: filterDateTo }));
+    } catch { /* ignore */ }
+  }, [filterDateFrom, filterDateTo]);
 
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
