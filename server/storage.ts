@@ -451,7 +451,7 @@ export interface IStorage {
   // LDO/DIESEL receipts (which must not affect store stock) and removes stock_ledger
   // 'dispatch' entries for LDO (dispatch deduction removed from forward logic).
   // Recomputes stock_balances for affected LDO/DIESEL materials. Idempotent.
-  fixLdoStockDeductionErrors(): Promise<{ receiptLedgerRemoved: number; dispatchLedgerRemoved: number; balancesFixed: number; errors: number }>;
+  fixLdoStockDeductionErrors(): Promise<{ receiptLedgerRemoved: number; dispatchLedgerRemoved: number; balancesFixed: number; receiptsBackfilled: number; errors: number }>;
 
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
   listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
@@ -9746,8 +9746,8 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async fixLdoStockDeductionErrors(): Promise<{ receiptLedgerRemoved: number; dispatchLedgerRemoved: number; balancesFixed: number; errors: number }> {
-    const result = { receiptLedgerRemoved: 0, dispatchLedgerRemoved: 0, balancesFixed: 0, errors: 0 };
+  async fixLdoStockDeductionErrors(): Promise<{ receiptLedgerRemoved: number; dispatchLedgerRemoved: number; balancesFixed: number; receiptsBackfilled: number; errors: number }> {
+    const result = { receiptLedgerRemoved: 0, dispatchLedgerRemoved: 0, balancesFixed: 0, receiptsBackfilled: 0, errors: 0 };
     try {
       // Find all LDO / DIESEL material IDs
       const ldoMaterials = await db.select({ id: plantMaterials.id, name: plantMaterials.name })
@@ -9760,6 +9760,71 @@ export class DatabaseStorage implements IStorage {
       const ldoMatIds = ldoMaterials.map(m => m.id);
 
       await db.transaction(async (tx) => {
+        // ── 0. Backfill missing stock_ledger 'receipt' entries for LDO/DIESEL receipts.
+        //       Receipts created before the direct-to-tank guard was removed never got a
+        //       stock_ledger row.  Find any receipt whose id doesn't appear as a referenceId
+        //       in the ledger and create the entry now.
+        const allLdoReceipts = await tx.select().from(materialReceipts)
+          .where(inArray(materialReceipts.materialId, ldoMatIds))
+          .orderBy(asc(materialReceipts.id));
+
+        for (const rcpt of allLdoReceipts) {
+          const [existingLedger] = await tx.select({ id: stockLedger.id })
+            .from(stockLedger)
+            .where(and(
+              eq(stockLedger.transactionType, "receipt"),
+              eq(stockLedger.referenceId, rcpt.id),
+            )).limit(1);
+          if (existingLedger) continue; // already has a ledger entry
+
+          // Get material for UOM conversion
+          const [mat] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, rcpt.materialId)).limit(1);
+          let stockQty = rcpt.quantity;
+          let stockUom = rcpt.uom ?? "Liters";
+          if (mat?.conversionFactor && mat?.conversionFromUom && mat?.conversionToUom) {
+            if (rcpt.uom?.toUpperCase() === mat.conversionFromUom.toUpperCase()) {
+              stockQty = rcpt.quantity * mat.conversionFactor;
+              stockUom = mat.conversionToUom;
+            }
+          }
+
+          const targetPartyId = rcpt.isPlantCommon ? null : (rcpt.partyId ?? null);
+          const partyCondition = targetPartyId === null
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, rcpt.materialId))
+            : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, rcpt.materialId));
+
+          const [balRow] = await tx.select().from(stockBalances).where(partyCondition).limit(1);
+          const newBalance = (balRow?.balance ?? 0) + stockQty;
+
+          if (balRow) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, uom: stockUom, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, balRow.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: targetPartyId,
+              materialId: rcpt.materialId,
+              balance: stockQty,
+              uom: stockUom,
+            });
+          }
+
+          const convNote = rcpt.supplier ? `From ${rcpt.supplier}` : undefined;
+          await tx.insert(stockLedger).values({
+            date: rcpt.date,
+            partyId: targetPartyId,
+            materialId: rcpt.materialId,
+            transactionType: "receipt",
+            referenceId: rcpt.id,
+            quantityIn: stockQty,
+            balanceAfter: newBalance,
+            uom: stockUom,
+            notes: convNote,
+          });
+          result.receiptsBackfilled++;
+          console.log(`fixLdoStockDeductionErrors: backfilled missing receipt ledger for receipt id=${rcpt.id} (${stockQty} ${stockUom}, party=${targetPartyId})`);
+        }
+
         // ── 1. Remove stock_ledger 'dispatch' entries for LDO/DIESEL.
         //       These were created by createTruckDispatchWithStockDeduction before the fix.
         const badDispatchLedger = await tx.select({ id: stockLedger.id })
@@ -9799,69 +9864,37 @@ export class DatabaseStorage implements IStorage {
           eq(stockLedger.transactionType, "ldo_dip_consumption")
         );
 
-        // ── 4. Recompute stock_balances for all affected (material, party) combinations.
-        //       CRITICAL: group by UOM so MT adjustment entries do not corrupt Liters balances.
-        //       For LDO/Diesel, the authoritative store stock is always in Liters; MT-unit entries
-        //       (e.g. old admin dead-stock adjustments) are excluded from the Liters balance.
+        // ── 4. Recompute every stock_balance row for LDO/Diesel materials.
+        //       Iterates balance rows (not ledger groups) so we also zero-out orphaned rows
+        //       (e.g. party=null rows left over from wrong dip-consumption writes).
+        //       Each row is recomputed using only the ledger entries that share the same UOM.
+        //       Rows whose current UOM is not 'Liters' are also corrected to Liters (the
+        //       authoritative unit for liquid fuels) before recomputing.
         for (const matId of ldoMatIds) {
-          // Get distinct (partyId, uom) ledger groups for this material
-          const ledgerGroups = await tx.select({
-            partyId: stockLedger.partyId,
-            uom: stockLedger.uom,
-            totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
-            totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
-          })
-            .from(stockLedger)
-            .where(eq(stockLedger.materialId, matId))
-            .groupBy(stockLedger.partyId, stockLedger.uom);
-
-          for (const group of ledgerGroups) {
-            const netBalance = (Number(group.totalIn) || 0) - (Number(group.totalOut) || 0);
-            const uom = group.uom ?? "Liters";
-            const partyId = group.partyId ?? null;
-
-            // Find balance row matching this exact (party, material, uom)
-            const partyMatchClause = partyId !== null
-              ? eq(stockBalances.partyId, partyId)
-              : sql`${stockBalances.partyId} IS NULL`;
-            const [balRow] = await tx.select().from(stockBalances).where(and(
-              partyMatchClause,
-              eq(stockBalances.materialId, matId),
-              eq(stockBalances.uom, uom),
-            )).limit(1);
-
-            if (balRow) {
-              await tx.update(stockBalances)
-                .set({ balance: netBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, balRow.id));
-              result.balancesFixed++;
-            }
-            // (We do NOT create new balance rows here — receipts already create them)
-          }
-
-          // Ensure the primary Liters balance row has the correct UOM='Liters'.
-          // If the row currently shows uom=MT due to old mixed-unit writes, fix it.
           const balanceRows = await tx.select().from(stockBalances).where(eq(stockBalances.materialId, matId));
           for (const balRow of balanceRows) {
-            if (balRow.uom !== "Liters") {
-              // Recalculate using only Liters ledger entries for this party+material
-              const partyMatchClause = balRow.partyId !== null
-                ? eq(stockLedger.partyId, balRow.partyId)
-                : sql`${stockLedger.partyId} IS NULL`;
-              const [litersRow] = await tx.select({
-                totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
-                totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
-              }).from(stockLedger).where(and(
-                partyMatchClause,
-                eq(stockLedger.materialId, matId),
-                eq(stockLedger.uom, "Liters"),
-              ));
-              const litersNet = (Number(litersRow?.totalIn) || 0) - (Number(litersRow?.totalOut) || 0);
-              await tx.update(stockBalances)
-                .set({ balance: litersNet, uom: "Liters", lastUpdated: new Date() })
-                .where(eq(stockBalances.id, balRow.id));
-              result.balancesFixed++;
-            }
+            // If the balance row has a non-Liters UOM (e.g. MT from old adjustments),
+            // switch it to Liters so it reflects the correct store stock going forward.
+            const effectiveUom = "Liters";
+
+            const partyMatchClause = balRow.partyId !== null
+              ? eq(stockLedger.partyId, balRow.partyId)
+              : sql`${stockLedger.partyId} IS NULL`;
+
+            const [netRow] = await tx.select({
+              totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+              totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+            }).from(stockLedger).where(and(
+              partyMatchClause,
+              eq(stockLedger.materialId, matId),
+              eq(stockLedger.uom, effectiveUom),
+            ));
+
+            const netBalance = (Number(netRow?.totalIn) || 0) - (Number(netRow?.totalOut) || 0);
+            await tx.update(stockBalances)
+              .set({ balance: netBalance, uom: effectiveUom, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, balRow.id));
+            result.balancesFixed++;
           }
         }
 
@@ -9939,7 +9972,7 @@ export class DatabaseStorage implements IStorage {
         }
       });
 
-      console.log(`fixLdoStockDeductionErrors: receiptLedgerRemoved=${result.receiptLedgerRemoved}, dispatchLedgerRemoved=${result.dispatchLedgerRemoved}, balancesFixed=${result.balancesFixed}`);
+      console.log(`fixLdoStockDeductionErrors: receiptsBackfilled=${result.receiptsBackfilled}, receiptLedgerRemoved=${result.receiptLedgerRemoved}, dispatchLedgerRemoved=${result.dispatchLedgerRemoved}, balancesFixed=${result.balancesFixed}`);
     } catch (err) {
       console.error("fixLdoStockDeductionErrors: Fatal error:", err);
       result.errors++;
