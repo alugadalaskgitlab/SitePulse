@@ -99,6 +99,7 @@ export default function PlantLdoFlowMeter() {
     "filterDateFrom", "filterDateTo", "filterTank", "filterSource", "filterDryerSrc",
     "reconDateFrom", "reconDateTo", "reconPartyId", "reconMixTemplateId", "reconSite",
     "dipFilterSource",
+    "officialMethod",
   ];
   const urlHasLdoFilterParams = (() => {
     if (typeof window === "undefined") return false;
@@ -119,10 +120,11 @@ export default function PlantLdoFlowMeter() {
       reconPartyId: "all",
       reconMixTemplateId: "all",
       reconSite: "all",
+      officialMethod: "dip" as "dip" | "flowmeter",
     },
     { shouldHydrate: !urlHasLdoFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterTank, filterSource, filterDryerSrc, dipFilterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite } = persistedFilters;
+  const { filterDateFrom, filterDateTo, filterTank, filterSource, filterDryerSrc, dipFilterSource, reconDateFrom, reconDateTo, reconPartyId, reconMixTemplateId, reconSite, officialMethod } = persistedFilters;
   const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
   const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
   const setFilterTank = (v: string) => setPersistedFilters((f) => ({ ...f, filterTank: v }));
@@ -134,6 +136,7 @@ export default function PlantLdoFlowMeter() {
   const setReconPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, reconPartyId: v }));
   const setReconMixTemplateId = (v: string) => setPersistedFilters((f) => ({ ...f, reconMixTemplateId: v }));
   const setReconSite = (v: string) => setPersistedFilters((f) => ({ ...f, reconSite: v }));
+  const setOfficialMethod = (v: "dip" | "flowmeter") => setPersistedFilters((f) => ({ ...f, officialMethod: v }));
 
   const [ldoCorrTank1L, setLdoCorrTank1L] = useState("");
   const [ldoCorrTank2L, setLdoCorrTank2L] = useState("");
@@ -424,7 +427,7 @@ export default function PlantLdoFlowMeter() {
   }, [readings]);
 
   const varianceData = useMemo(() => {
-    if (!dispatches || dailySummary.length === 0) return [];
+    if (!dispatches) return [];
     const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
     for (const d of dispatches) {
       if (filterDateFrom && d.date < filterDateFrom) continue;
@@ -444,7 +447,23 @@ export default function PlantLdoFlowMeter() {
       variancePercent: number | null;
       status: "SAVING" | "LOSS" | "OK";
     }[] = [];
-    for (const day of dailySummary) {
+
+    // Use dip daily summary (official) or flow meter daily summary depending on toggle
+    const activeSummary = officialMethod === "dip"
+      ? dipDailySummary.map(d => ({
+          date: d.date,
+          t1Consumption: d.t1Consumption,
+          t2Consumption: d.t2Consumption,
+          totalConsumption: d.totalConsumed ?? 0,
+        }))
+      : dailySummary.map(d => ({
+          date: d.date,
+          t1Consumption: d.t1Consumption,
+          t2Consumption: d.t2Consumption,
+          totalConsumption: d.totalConsumption,
+        }));
+
+    for (const day of activeSummary) {
       const dd = dispatchByDate[day.date];
       if (!dd || day.totalConsumption === 0) continue;
       const variance = day.totalConsumption - dd.theoreticalLdo;
@@ -463,7 +482,7 @@ export default function PlantLdoFlowMeter() {
       });
     }
     return result.slice(0, 10);
-  }, [dispatches, dailySummary, filterDateFrom, filterDateTo]);
+  }, [dispatches, dailySummary, dipDailySummary, officialMethod, filterDateFrom, filterDateTo]);
 
   const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
     queryKey: ["/api/plant-module/ldo-dip-readings"],
@@ -1826,7 +1845,26 @@ export default function PlantLdoFlowMeter() {
       {varianceData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">LDO Consumption Variance Analysis</CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm font-medium">LDO Consumption Variance Analysis</CardTitle>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">Actual source:</span>
+                <button
+                  data-testid="button-ldo-official-dip"
+                  onClick={() => setOfficialMethod("dip")}
+                  className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${officialMethod === "dip" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                >
+                  Dip Reading
+                </button>
+                <button
+                  data-testid="button-ldo-official-flowmeter"
+                  onClick={() => setOfficialMethod("flowmeter")}
+                  className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${officialMethod === "flowmeter" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                >
+                  Flow Meter
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -1836,8 +1874,8 @@ export default function PlantLdoFlowMeter() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">Production (MT)</th>
                     <th className="text-right p-2">Norm (L)</th>
-                    <th className="text-right p-2">Actual Boiler (L)</th>
-                    <th className="text-right p-2">Actual Dryer (L)</th>
+                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 1 Dip (L)" : "Actual Boiler (L)"}</th>
+                    <th className="text-right p-2">{officialMethod === "dip" ? "Tank 2 Dip (L)" : "Actual Dryer (L)"}</th>
                     <th className="text-right p-2">Actual Total (L)</th>
                     <th className="text-right p-2">L/Ton</th>
                     <th className="text-right p-2">Variance (L)</th>
