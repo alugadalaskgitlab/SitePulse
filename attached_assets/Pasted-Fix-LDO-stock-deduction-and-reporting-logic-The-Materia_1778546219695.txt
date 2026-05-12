@@ -1,0 +1,117 @@
+Fix LDO stock deduction and reporting logic.
+
+The Material Receipt form already has destination selection:
+- Store Stock
+- Tank 1
+- Tank 2
+
+Retain this.
+
+Main issue:
+When LDO is issued through Material Issue to Tank 1 / Tank 2, the app is treating it as stock out/consumption. Later, when heating session / plant log / dispatch consumption is recorded, it deducts again. This creates double deduction and negative stock.
+
+Required logic:
+
+1. Material Receipt
+If received to Store:
+- increase Store Stock only
+
+If received directly to Tank 1:
+- increase Tank 1 Stock only
+
+If received directly to Tank 2:
+- increase Tank 2 Stock only
+
+Do not also add direct tank receipts to Store.
+
+2. Material Issue of LDO to Tank 1 / Tank 2
+Treat this only as internal transfer, not consumption.
+
+If issue source is Store and destination is Tank 1:
+- Store Stock decreases
+- Tank 1 Stock increases
+- Consumption = 0
+
+If issue source is Store and destination is Tank 2:
+- Store Stock decreases
+- Tank 2 Stock increases
+- Consumption = 0
+
+Do not show this as LDO consumed.
+
+3. Actual LDO consumption
+Actual consumption must be deducted only from the respective tank when recorded through:
+- heating session
+- plant shift log
+- production / dispatch log
+- dip reading calculation
+- flow meter only if selected as official
+
+4. Official consumption method
+For now, use dip reading as official for tank consumption.
+
+Tank consumption formula:
+Consumption = Opening Tank Stock + Direct Receipt to Tank + Transfer In - Closing Dip Stock
+
+Flow meter reading should only be shown as reference:
+Flow Meter Consumption = Closing Flow Meter - Opening Flow Meter
+Variance = Flow Meter Consumption - Dip Consumption
+
+Do not deduct stock using flow meter unless user selects “Use Flow Meter as Official”.
+
+5. Stock Ledger Report
+Update stock ledger so it does not combine transfer and consumption under one “Out” column.
+
+Show separate columns:
+- Opening
+- Receipt
+- Transfer In
+- Transfer Out
+- Consumption
+- Closing
+
+For Store Stock:
+Closing = Opening + Receipt - Transfer Out
+
+For Tank 1:
+Closing = Opening + Direct Receipt + Transfer In - Consumption
+
+For Tank 2:
+Closing = Opening + Direct Receipt + Transfer In - Consumption
+
+6. LDO Stock Tracker
+The LDO Stock Tracker should show actual location-wise stock:
+
+- Store Stock
+- Tank 1 Stock
+- Tank 2 Stock
+- Total LDO Available
+
+Total LDO Available =
+Store Stock + Tank 1 Stock + Tank 2 Stock
+
+7. Do not double deduct
+Ensure the same LDO quantity is never deducted both at Material Issue stage and Heating/Plant Log consumption stage.
+
+Material Issue to tank = transfer only.
+Heating/Plant Log = actual consumption.
+
+8. Reports required
+Create or update reports as:
+
+A. Store Ledger
+Opening + Receipts - Transfers to Tank 1/Tank 2 = Closing Store
+
+B. Tank 1 Ledger
+Opening + Direct Receipts + Transfers In - Consumption = Closing Tank 1
+
+C. Tank 2 Ledger
+Opening + Direct Receipts + Transfers In - Consumption = Closing Tank 2
+
+D. LDO Summary
+Store Closing + Tank 1 Closing + Tank 2 Closing = Total LDO Available
+
+9. Existing diesel equipment logic
+Do not change diesel deduction for equipment usage.
+Equipment diesel consumption is already handled correctly through Equipment Usage source selection.
+This fix is only for LDO / diesel used for boiler/dryer/heating tanks.

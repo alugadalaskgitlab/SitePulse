@@ -126,6 +126,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r = await storage.fixLdoStockDeductionErrors();
+    console.log(`Startup: fixLdoStockDeductionErrors — receiptLedgerRemoved=${r.receiptLedgerRemoved}, dispatchLedgerRemoved=${r.dispatchLedgerRemoved}, balancesFixed=${r.balancesFixed}, errors=${r.errors}`);
+  } catch (e) {
+    console.error("Startup: fixLdoStockDeductionErrors failed:", e);
+  }
+
+  try {
     const result = await storage.migrate6mmDownUomFix();
     console.log(`Startup: ${result.message}`);
   } catch (e) {
