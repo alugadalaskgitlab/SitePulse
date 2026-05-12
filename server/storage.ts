@@ -7195,15 +7195,27 @@ export class DatabaseStorage implements IStorage {
     tankNumber: number,
     plantName: string,
   ): Promise<void> {
-    const ldoMats = await tx.select({ id: plantMaterials.id })
+    // Look up specifically the LDO material (NOT Diesel — tank dip readings are always LDO)
+    const [ldoMat] = await tx.select({ id: plantMaterials.id })
       .from(plantMaterials)
-      .where(sql`UPPER(TRIM(${plantMaterials.name})) IN ('LDO', 'DIESEL')`);
-    if (ldoMats.length === 0) return;
-    const ldoMatId = ldoMats[0].id;
+      .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+      .limit(1);
+    if (!ldoMat) return;
+    const ldoMatId = ldoMat.id;
+
+    // Find the Liters stock-balance row for LDO — this is the store stock to deduct from.
+    // All LDO receipts go against a real party (e.g. HLC, partyId=1), NOT against null.
+    const [ldoLitersBal] = await tx.select().from(stockBalances).where(and(
+      eq(stockBalances.materialId, ldoMatId),
+      eq(stockBalances.uom, "Liters"),
+      sql`${stockBalances.partyId} IS NOT NULL`,
+    )).orderBy(desc(stockBalances.balance)).limit(1);
+    // partyId that holds the Liters LDO store stock (falls back to null only if truly unset)
+    const storePartyId: number | null = ldoLitersBal?.partyId ?? null;
 
     const noteKey = `[LDO_DIP_CONS:T${tankNumber}:${date}:${plantName}]`;
 
-    // Reverse any existing stock entry for this pair
+    // Reverse any existing stock entry for this pair (search by noteKey regardless of partyId)
     const oldEntries = await tx.select().from(stockLedger).where(and(
       eq(stockLedger.transactionType, "ldo_dip_consumption"),
       eq(stockLedger.materialId, ldoMatId),
@@ -7212,16 +7224,10 @@ export class DatabaseStorage implements IStorage {
     ));
     if (oldEntries.length > 0) {
       const oldQtyOut = oldEntries.reduce((s: number, e: any) => s + (Number(e.quantityOut) || 0), 0);
-      if (oldQtyOut > 0) {
-        const [bal] = await tx.select().from(stockBalances).where(and(
-          sql`${stockBalances.partyId} IS NULL`,
-          eq(stockBalances.materialId, ldoMatId),
-        )).limit(1);
-        if (bal) {
-          await tx.update(stockBalances)
-            .set({ balance: bal.balance + oldQtyOut, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, bal.id));
-        }
+      if (oldQtyOut > 0 && ldoLitersBal) {
+        await tx.update(stockBalances)
+          .set({ balance: ldoLitersBal.balance + oldQtyOut, lastUpdated: new Date() })
+          .where(eq(stockBalances.id, ldoLitersBal.id));
       }
       await tx.delete(stockLedger).where(inArray(stockLedger.id, oldEntries.map((e: any) => e.id)));
     }
@@ -7244,23 +7250,27 @@ export class DatabaseStorage implements IStorage {
     const consumption = openingDip.volumeLiters - closingDip.volumeLiters;
     if (consumption <= 0) return;
 
-    const [bal] = await tx.select().from(stockBalances).where(and(
-      sql`${stockBalances.partyId} IS NULL`,
+    // Re-fetch balance (may have changed above) then deduct
+    const [freshBal] = await tx.select().from(stockBalances).where(and(
       eq(stockBalances.materialId, ldoMatId),
+      eq(stockBalances.uom, "Liters"),
+      storePartyId !== null
+        ? eq(stockBalances.partyId, storePartyId)
+        : sql`${stockBalances.partyId} IS NULL`,
     )).limit(1);
-    const newBalance = (bal?.balance ?? 0) - consumption;
+    const newBalance = (freshBal?.balance ?? 0) - consumption;
 
-    if (bal) {
+    if (freshBal) {
       await tx.update(stockBalances)
         .set({ balance: newBalance, lastUpdated: new Date() })
-        .where(eq(stockBalances.id, bal.id));
+        .where(eq(stockBalances.id, freshBal.id));
     } else {
-      await tx.insert(stockBalances).values({ partyId: null, materialId: ldoMatId, balance: newBalance, uom: "Liters" });
+      await tx.insert(stockBalances).values({ partyId: storePartyId, materialId: ldoMatId, balance: newBalance, uom: "Liters" });
     }
 
     await tx.insert(stockLedger).values({
       date,
-      partyId: null,
+      partyId: storePartyId,
       materialId: ldoMatId,
       transactionType: "ldo_dip_consumption",
       referenceId: openingDip.id,
@@ -9782,36 +9792,97 @@ export class DatabaseStorage implements IStorage {
           console.log(`fixLdoStockDeductionErrors: removed ${badIssueLedger.length} bad issue ledger entries (LDO→tank transfers)`);
         }
 
-        // ── 3. Remove existing ldo_dip_consumption entries (will be rebuilt below).
-        await tx.delete(stockLedger).where(and(
-          eq(stockLedger.transactionType, "ldo_dip_consumption"),
-          inArray(stockLedger.materialId, ldoMatIds)
-        ));
+        // ── 3. Remove ALL ldo_dip_consumption entries regardless of materialId.
+        //       Previous runs may have written them to the wrong material (e.g. Diesel instead of LDO).
+        //       We identify them by the note pattern [LDO_DIP_CONS: to be safe.
+        await tx.delete(stockLedger).where(
+          eq(stockLedger.transactionType, "ldo_dip_consumption")
+        );
 
-        // ── 4. Recompute stock_balances for all affected combinations from remaining ledger rows.
+        // ── 4. Recompute stock_balances for all affected (material, party) combinations.
+        //       CRITICAL: group by UOM so MT adjustment entries do not corrupt Liters balances.
+        //       For LDO/Diesel, the authoritative store stock is always in Liters; MT-unit entries
+        //       (e.g. old admin dead-stock adjustments) are excluded from the Liters balance.
         for (const matId of ldoMatIds) {
+          // Get distinct (partyId, uom) ledger groups for this material
+          const ledgerGroups = await tx.select({
+            partyId: stockLedger.partyId,
+            uom: stockLedger.uom,
+            totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+            totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+          })
+            .from(stockLedger)
+            .where(eq(stockLedger.materialId, matId))
+            .groupBy(stockLedger.partyId, stockLedger.uom);
+
+          for (const group of ledgerGroups) {
+            const netBalance = (Number(group.totalIn) || 0) - (Number(group.totalOut) || 0);
+            const uom = group.uom ?? "Liters";
+            const partyId = group.partyId ?? null;
+
+            // Find balance row matching this exact (party, material, uom)
+            const partyMatchClause = partyId !== null
+              ? eq(stockBalances.partyId, partyId)
+              : sql`${stockBalances.partyId} IS NULL`;
+            const [balRow] = await tx.select().from(stockBalances).where(and(
+              partyMatchClause,
+              eq(stockBalances.materialId, matId),
+              eq(stockBalances.uom, uom),
+            )).limit(1);
+
+            if (balRow) {
+              await tx.update(stockBalances)
+                .set({ balance: netBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, balRow.id));
+              result.balancesFixed++;
+            }
+            // (We do NOT create new balance rows here — receipts already create them)
+          }
+
+          // Ensure the primary Liters balance row has the correct UOM='Liters'.
+          // If the row currently shows uom=MT due to old mixed-unit writes, fix it.
           const balanceRows = await tx.select().from(stockBalances).where(eq(stockBalances.materialId, matId));
           for (const balRow of balanceRows) {
-            const partyCondition = balRow.partyId === null
-              ? and(sql`${stockLedger.partyId} IS NULL`, eq(stockLedger.materialId, matId))
-              : and(eq(stockLedger.partyId, balRow.partyId), eq(stockLedger.materialId, matId));
-
-            const [netRow] = await tx.select({
-              totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
-              totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
-            }).from(stockLedger).where(partyCondition);
-
-            const netBalance = (Number(netRow?.totalIn) || 0) - (Number(netRow?.totalOut) || 0);
-            await tx.update(stockBalances)
-              .set({ balance: netBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, balRow.id));
-            result.balancesFixed++;
+            if (balRow.uom !== "Liters") {
+              // Recalculate using only Liters ledger entries for this party+material
+              const partyMatchClause = balRow.partyId !== null
+                ? eq(stockLedger.partyId, balRow.partyId)
+                : sql`${stockLedger.partyId} IS NULL`;
+              const [litersRow] = await tx.select({
+                totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+                totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+              }).from(stockLedger).where(and(
+                partyMatchClause,
+                eq(stockLedger.materialId, matId),
+                eq(stockLedger.uom, "Liters"),
+              ));
+              const litersNet = (Number(litersRow?.totalIn) || 0) - (Number(litersRow?.totalOut) || 0);
+              await tx.update(stockBalances)
+                .set({ balance: litersNet, uom: "Liters", lastUpdated: new Date() })
+                .where(eq(stockBalances.id, balRow.id));
+              result.balancesFixed++;
+            }
           }
         }
 
         // ── 5. Backfill ldo_dip_consumption entries from all existing dip pairs.
-        //       For each (date, tankNumber, plantName) with both opening and closing,
-        //       compute consumption and deduct from plant-common LDO stock.
+        //       Uses the specific LDO material (never Diesel) and the party that holds
+        //       the Liters LDO store balance (e.g. HIGH LANE CONSTRUCTIONS, partyId=1).
+        const [ldoSpecificMat] = await tx.select({ id: plantMaterials.id })
+          .from(plantMaterials)
+          .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+          .limit(1);
+        if (!ldoSpecificMat) return;
+        const ldoMatId = ldoSpecificMat.id;
+
+        // Find the partyId that holds the Liters LDO stock (e.g. HLC = 1)
+        const [ldoLitersBal] = await tx.select().from(stockBalances).where(and(
+          eq(stockBalances.materialId, ldoMatId),
+          eq(stockBalances.uom, "Liters"),
+          sql`${stockBalances.partyId} IS NOT NULL`,
+        )).orderBy(desc(stockBalances.balance)).limit(1);
+        const storePartyId: number | null = ldoLitersBal?.partyId ?? null;
+
         const allDipReadings = await tx.select().from(ldoDipReadings)
           .where(sql`${ldoDipReadings.readingType} IN ('opening', 'closing')`)
           .orderBy(asc(ldoDipReadings.date), asc(ldoDipReadings.tankNumber));
@@ -9827,16 +9898,21 @@ export class DatabaseStorage implements IStorage {
           else if (row.readingType === "closing") pair.closing = row;
         }
 
-        const ldoMatId = ldoMatIds[0];
         for (const [, pair] of dipPairs) {
           if (!pair.opening || !pair.closing) continue;
           const consumption = pair.opening.volumeLiters - pair.closing.volumeLiters;
           if (consumption <= 0) continue;
 
           const noteKey = `[LDO_DIP_CONS:T${pair.tankNumber}:${pair.date}:${pair.plantName}]`;
+
+          // Re-fetch the current Liters balance for LDO (may change with each pair iteration)
+          const partyMatchClause = storePartyId !== null
+            ? eq(stockBalances.partyId, storePartyId)
+            : sql`${stockBalances.partyId} IS NULL`;
           const [bal] = await tx.select().from(stockBalances).where(and(
-            sql`${stockBalances.partyId} IS NULL`,
+            partyMatchClause,
             eq(stockBalances.materialId, ldoMatId),
+            eq(stockBalances.uom, "Liters"),
           )).limit(1);
           const newBalance = (bal?.balance ?? 0) - consumption;
 
@@ -9845,12 +9921,12 @@ export class DatabaseStorage implements IStorage {
               .set({ balance: newBalance, lastUpdated: new Date() })
               .where(eq(stockBalances.id, bal.id));
           } else {
-            await tx.insert(stockBalances).values({ partyId: null, materialId: ldoMatId, balance: newBalance, uom: "Liters" });
+            await tx.insert(stockBalances).values({ partyId: storePartyId, materialId: ldoMatId, balance: newBalance, uom: "Liters" });
           }
 
           await tx.insert(stockLedger).values({
             date: pair.date,
-            partyId: null,
+            partyId: storePartyId,
             materialId: ldoMatId,
             transactionType: "ldo_dip_consumption",
             referenceId: pair.opening.id,
