@@ -903,7 +903,14 @@ export default function PlantStock() {
         }
       };
       
-      const ledgerTableData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
+      const isPdfRowTanked = (matId: number) => {
+        const mat = materials?.find(m => m.id === matId);
+        return mat ? /bitumen|ldo/i.test(mat.name) : false;
+      };
+      const pdfLedgerRows = ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance');
+      const pdfHasTankedRows = pdfLedgerRows.some(e => isPdfRowTanked(e.materialId));
+
+      const ledgerTableData = pdfLedgerRows.map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
         const mergedDelta = entry._mergedDelta;
         const origQtyOut = entry._originalQtyOut;
@@ -911,7 +918,7 @@ export default function PlantStock() {
         const revisionSuffix = isRevision
           ? ` (was ${(origQtyOut ?? 0).toFixed(3)}T, ${mergedDelta >= 0 ? '+' : ''}${mergedDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
           : '';
-        return [
+        const row: (string)[] = [
           entry.date,
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId),
@@ -932,11 +939,22 @@ export default function PlantStock() {
           displayBalance.toFixed(3),
           balanceUom,
         ];
+        if (pdfHasTankedRows) {
+          const tanked = isPdfRowTanked(entry.materialId);
+          row.push(tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : "");
+          row.push(tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : "");
+        }
+        return row;
       });
+
+      const pdfLedgerHead = ["Date", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"];
+      if (pdfHasTankedRows) {
+        pdfLedgerHead.push("T1 Balance", "T2 Balance");
+      }
       
       autoTable(doc, {
         startY: 20,
-        head: [["Date", "Material", "Stock Owner", "Type", "Notes/Issued To", "In", "Out", "Balance", "UOM"]],
+        head: [pdfLedgerHead],
         body: ledgerTableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
