@@ -745,9 +745,15 @@ export default function PlantStock() {
         UOM: item.uom,
       }));
       
-      const ledgerData = processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
+      const isRowTanked = (matId: number) => {
+        const mat = materials?.find(m => m.id === matId);
+        return mat ? /bitumen|ldo/i.test(mat.name) : false;
+      };
+      const ledgerRows = ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance');
+      const hasTankedRows = ledgerRows.some(e => isRowTanked(e.materialId));
+      const ledgerData = ledgerRows.map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
-        return {
+        const row: Record<string, string> = {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
@@ -766,6 +772,12 @@ export default function PlantStock() {
           Balance: displayBalance.toFixed(3),
           UOM: balanceUom,
         };
+        if (hasTankedRows) {
+          const tanked = isRowTanked(entry.materialId);
+          row["T1 Balance"] = tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : "";
+          row["T2 Balance"] = tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : "";
+        }
+        return row;
       });
       
       const wb = XLSX.utils.book_new();
