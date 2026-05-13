@@ -26,6 +26,10 @@ type StockBalanceAsOf = {
   uom: string;
   totalIn: number;
   totalOut: number;
+  t1TotalIn: number;
+  t1TotalOut: number;
+  t2TotalIn: number;
+  t2TotalOut: number;
 };
 
 type ProcessedLedgerEntry = StockLedgerEntry & {
@@ -280,6 +284,10 @@ export default function PlantStock() {
     // (server-side SUM query). Returns zeros until the aggregate resolves, then updates.
     const groupBalances: Record<string, number> = {};
 
+    // Per-tank opening balances derived from the aggregate (for B/F row when filtering by tank)
+    const t1GroupBalances: Record<string, number> = {};
+    const t2GroupBalances: Record<string, number> = {};
+
     if (dateFrom && balanceAsOf) {
       // Use the efficient server-side aggregate — one row per (material, party, uom)
       balanceAsOf.forEach(row => {
@@ -290,6 +298,11 @@ export default function PlantStock() {
           row.uom?.toUpperCase() === material.conversionFromUom.toUpperCase())
           ? material.conversionFactor : 1;
         groupBalances[key] = roundBalance(groupBalances[key] + (row.totalIn * factor) - (row.totalOut * factor));
+        // Per-tank opening balances (also apply conversion factor)
+        if (t1GroupBalances[key] === undefined) t1GroupBalances[key] = 0;
+        if (t2GroupBalances[key] === undefined) t2GroupBalances[key] = 0;
+        t1GroupBalances[key] = roundBalance(t1GroupBalances[key] + (row.t1TotalIn * factor) - (row.t1TotalOut * factor));
+        t2GroupBalances[key] = roundBalance(t2GroupBalances[key] + (row.t2TotalIn * factor) - (row.t2TotalOut * factor));
       });
     }
 
@@ -304,6 +317,8 @@ export default function PlantStock() {
         const materialId = Number(materialIdStr);
         const partyId = Number(partyIdStr) === 0 ? null : Number(partyIdStr);
         const openingBalance = groupBalances[key] ?? 0;
+        const t1Opening = t1GroupBalances[key] ?? 0;
+        const t2Opening = t2GroupBalances[key] ?? 0;
         const material = materials?.find(m => m.id === materialId);
         const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
         syntheticRows.push({
@@ -320,6 +335,8 @@ export default function PlantStock() {
           notes: `Opening balance (B/F) as of ${dateFrom}`,
           createdAt: null,
           calculatedBalance: openingBalance,
+          t1BalanceAfter: t1Opening,
+          t2BalanceAfter: t2Opening,
           isSynthetic: true,
         } as ProcessedLedgerEntry);
       }
@@ -438,9 +455,20 @@ export default function PlantStock() {
     }
     if (isTankedMaterial && selectedTank !== "all") {
       const tankNum = Number(selectedTank);
-      // Hide all rows that don't belong to the selected tank — including the synthetic B/F row
-      // which carries a combined (all-tank) balance and would be misleading when a specific tank is chosen.
-      entries = entries.filter(e => e.tankNumber === tankNum);
+      // Keep the synthetic B/F row but remap its balance to the selected tank's opening balance.
+      // All real entries are filtered to only show those belonging to the chosen tank.
+      entries = entries.filter(e => e.transactionType === 'opening_balance' || e.tankNumber === tankNum).map(e => {
+        if (e.transactionType !== 'opening_balance') return e;
+        // For the B/F row: use the per-tank opening balance so the running total is coherent
+        const tankBalance = tankNum === 1 ? (e.t1BalanceAfter ?? 0) : (e.t2BalanceAfter ?? 0);
+        return {
+          ...e,
+          calculatedBalance: tankBalance,
+          quantityIn: tankBalance >= 0 ? tankBalance : null,
+          quantityOut: tankBalance < 0 ? Math.abs(tankBalance) : null,
+          notes: `Opening balance (B/F) as of ${e.date} — Tank ${tankNum} only`,
+        };
+      });
     }
     return entries;
   }, [processedLedger, selectedTransactionType, issuedToFilter, isTankedMaterial, selectedTank]);

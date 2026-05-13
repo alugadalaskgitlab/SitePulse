@@ -294,7 +294,7 @@ export interface IStorage {
   
   // Stock Ledger
   getStockLedger(filters?: { partyId?: number; materialId?: number; dateFrom?: string; dateTo?: string }): Promise<StockLedgerEntry[]>;
-  getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]>;
+  getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number; t1TotalIn: number; t1TotalOut: number; t2TotalIn: number; t2TotalOut: number }[]>;
   getPartyStatement(partyId: number, materialId: number, dateFrom?: string, dateTo?: string): Promise<{
     summary: { totalReceived: number; dispatchedOwn: number; borrowedFromHlc: number; replenishedToHlc: number; outstanding: number; uom: string };
     entries: (StockLedgerEntry & { displayType: string; borrowedQty: number; runningBalance: number })[];
@@ -3450,7 +3450,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(stockLedger.date));
   }
 
-  async getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number }[]> {
+  async getStockBalanceAsOf(date: string, filters?: { partyId?: number; materialId?: number }): Promise<{ materialId: number; partyId: number | null; uom: string; totalIn: number; totalOut: number; t1TotalIn: number; t1TotalOut: number; t2TotalIn: number; t2TotalOut: number }[]> {
     const conditions = [
       lt(stockLedger.date, date),
       ne(stockLedger.transactionType, 'equipment_issue'),
@@ -3470,6 +3470,10 @@ export class DatabaseStorage implements IStorage {
       uom: stockLedger.uom,
       totalIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
       totalOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+      t1TotalIn: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 1 THEN ${stockLedger.quantityIn} ELSE 0 END), 0)`,
+      t1TotalOut: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 1 THEN ${stockLedger.quantityOut} ELSE 0 END), 0)`,
+      t2TotalIn: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 2 THEN ${stockLedger.quantityIn} ELSE 0 END), 0)`,
+      t2TotalOut: sql<number>`COALESCE(SUM(CASE WHEN ${stockLedger.tankNumber} = 2 THEN ${stockLedger.quantityOut} ELSE 0 END), 0)`,
     })
     .from(stockLedger)
     .where(and(...conditions))
