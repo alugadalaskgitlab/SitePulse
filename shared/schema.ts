@@ -463,6 +463,13 @@ export const stockLedger = pgTable("stock_ledger", {
 }, (table) => ({
   dateIdx: index("stock_ledger_date_idx").on(table.date),
   dateMaterialPartyIdx: index("stock_ledger_date_material_party_idx").on(table.date, table.materialId, table.partyId),
+  // Unique partial index — prevents duplicate dispatch ledger rows for the same
+  // (material, party, dispatch) triple.  Uses COALESCE so NULL party_id is
+  // treated as -1 (a sentinel that never clashes with a real party row).
+  // Created via raw SQL at startup (see server/index.ts, step 2 of the
+  // "Dispatch ledger deduplication + unique index" block) because drizzle-kit
+  // push does not support expression-based columns inside uniqueIndex.on().
+  // Index name: stock_ledger_dispatch_dedup_idx
 }));
 
 // Material Issues (issues to sites/parties from central store)

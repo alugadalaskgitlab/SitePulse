@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { initPush } from "./push";
 import { storage } from "./storage";
 import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema, backfillPlantSubPermissions } from "./auth";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -139,13 +141,37 @@ app.use((req, res, next) => {
     console.error("Startup: backfillDispatchReferenceIds failed:", e);
   }
 
+  // ── Dispatch ledger deduplication + unique index ─────────────────────────
+  // ORDER MATTERS: dedup must run before index creation so that any
+  // pre-existing duplicate rows are removed first.  If the index were
+  // attempted first it would fail on a dirty database, leaving the system
+  // unprotected until the next restart.
+  //
+  // Step 1 — remove any existing duplicate (material_id, party_id, reference_id)
+  // dispatch rows, keeping only the most-recent (highest id) per group.
   try {
     const r = await storage.deduplicateStockLedgerDispatchRows();
     if (r.rowsDeleted > 0) {
       console.log(`Startup: deduplicateStockLedgerDispatchRows — fixed ${r.groupsFixed} groups, removed ${r.rowsDeleted} duplicate dispatch rows`);
+    } else {
+      console.log("Startup: deduplicateStockLedgerDispatchRows — 0 rows removed (clean)");
     }
   } catch (e) {
     console.error("Startup: deduplicateStockLedgerDispatchRows failed:", e);
+  }
+
+  // Step 2 — create the unique partial index now that the table is clean.
+  // Created with raw SQL because drizzle-kit push does not support expression-
+  // based index columns (COALESCE).  IF NOT EXISTS makes this idempotent.
+  try {
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS stock_ledger_dispatch_dedup_idx
+      ON stock_ledger (material_id, COALESCE(party_id, -1), reference_id)
+      WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+    `);
+    console.log("Startup: stock_ledger_dispatch_dedup_idx ensured");
+  } catch (e) {
+    console.error("Startup: Failed to create stock_ledger_dispatch_dedup_idx:", e);
   }
 
   try {

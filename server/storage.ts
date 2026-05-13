@@ -4510,32 +4510,44 @@ export class DatabaseStorage implements IStorage {
             // ownerQty may be 0 when the dispatch is fully HLC-covered — in that case we
             // still write a 0-qty marker row so getPartyStatement can detect this dispatch
             // in the owner's ledger and count the HLC obligation toward borrowedFromHlc.
+            //
+            // Uses INSERT … ON CONFLICT DO UPDATE (upsert) so that if a row already exists
+            // for this (material_id, COALESCE(party_id,-1), reference_id) / dispatch triple
+            // (e.g. a prior rebuild run), it is updated in-place rather than creating a
+            // duplicate — enforced by the unique partial index
+            // stock_ledger_dispatch_dedup_idx.
             if (ownerQty > 0 || (ownerQty === 0 && hlcQty > 0 && dispatch.partyId !== null)) {
-              await db.insert(stockLedger).values({
-                date: dispatch.date,
-                partyId: dispatch.partyId,
-                materialId: comp.materialId,
-                transactionType: 'dispatch',
-                quantityOut: ownerQty,
-                balanceAfter: 0,
-                uom: 'Ton',
-                notes: `Aggregate dispatch (${partyName})`,
-                referenceId: dispatch.id,
-              });
+              await db.execute(sql`
+                INSERT INTO stock_ledger
+                  (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id)
+                VALUES
+                  (${dispatch.date}, ${dispatch.partyId}, ${comp.materialId}, 'dispatch',
+                   ${ownerQty}, 0, 'Ton', ${`Aggregate dispatch (${partyName})`}, ${dispatch.id})
+                ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+                  WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+                DO UPDATE SET
+                  quantity_out  = EXCLUDED.quantity_out,
+                  date          = EXCLUDED.date,
+                  notes         = EXCLUDED.notes,
+                  balance_after = 0
+              `);
               ledgerRowsCreated++;
             }
             if (hlcQty > 0 && hlcPartyId) {
-              await db.insert(stockLedger).values({
-                date: dispatch.date,
-                partyId: hlcPartyId,
-                materialId: comp.materialId,
-                transactionType: 'dispatch',
-                quantityOut: hlcQty,
-                balanceAfter: 0,
-                uom: 'Ton',
-                notes: `Aggregate dispatch (Borrowed from ${hlcPartyName})`,
-                referenceId: dispatch.id,
-              });
+              await db.execute(sql`
+                INSERT INTO stock_ledger
+                  (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id)
+                VALUES
+                  (${dispatch.date}, ${hlcPartyId}, ${comp.materialId}, 'dispatch',
+                   ${hlcQty}, 0, 'Ton', ${`Aggregate dispatch (Borrowed from ${hlcPartyName})`}, ${dispatch.id})
+                ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+                  WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+                DO UPDATE SET
+                  quantity_out  = EXCLUDED.quantity_out,
+                  date          = EXCLUDED.date,
+                  notes         = EXCLUDED.notes,
+                  balance_after = 0
+              `);
               ledgerRowsCreated++;
             }
             newAggregates[comp.materialId] = totalQty;
@@ -10081,7 +10093,9 @@ export class DatabaseStorage implements IStorage {
     const result = { groupsFixed: 0, rowsDeleted: 0 };
     try {
       // Count affected groups BEFORE deletion so the number is accurate.
-      const [groupRow] = await db.execute(sql`
+      // db.execute() with node-postgres returns a QueryResult { rows: [...] },
+      // so we access .rows[0] rather than destructuring the result directly.
+      const countResult = await db.execute(sql`
         SELECT COUNT(*) AS cnt
         FROM (
           SELECT material_id, COALESCE(party_id, -1), reference_id
@@ -10091,7 +10105,8 @@ export class DatabaseStorage implements IStorage {
           GROUP BY material_id, COALESCE(party_id, -1), reference_id
           HAVING COUNT(*) > 1
         ) t
-      `) as unknown as [{ cnt: string }];
+      `);
+      const groupRow = (countResult as unknown as { rows: { cnt: string }[] }).rows?.[0];
       const groupsFixed = parseInt(groupRow?.cnt ?? "0", 10);
 
       if (groupsFixed > 0) {
