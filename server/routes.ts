@@ -251,6 +251,7 @@ export async function registerRoutes(
   // Update a site material trip
   app.patch("/api/site-material-trips/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
       const trip = await storage.updateSiteMaterialTrip(id, input);
@@ -265,6 +266,7 @@ export async function registerRoutes(
   // Delete a site material trip
   app.delete("/api/site-material-trips/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       await storage.deleteSiteMaterialTrip(id);
       res.json({ success: true });
@@ -476,6 +478,7 @@ export async function registerRoutes(
 
   app.post("/api/notifications", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const input = insertAdminNotificationSchema.parse(req.body);
       const notification = await storage.createNotification(input);
       res.status(201).json(notification);
@@ -492,6 +495,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:id/read", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "dashboard")) return;
       await storage.markNotificationRead(Number(req.params.id));
       res.json({ success: true });
     } catch (err) {
@@ -501,6 +505,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/read-all", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "dashboard")) return;
       await storage.markAllNotificationsRead();
       res.json({ success: true });
     } catch (err) {
@@ -510,6 +515,7 @@ export async function registerRoutes(
 
   app.delete("/api/notifications/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       await storage.deleteNotification(Number(req.params.id));
       res.json({ success: true });
     } catch (err) {
@@ -528,6 +534,7 @@ export async function registerRoutes(
 
   app.post("/api/push/subscribe", requireAuth, async (req, res) => {
     try {
+      if (!assertEdit(req, res, "dashboard")) return;
       const user = req.authUser;
       // Only allow subscribe if the admin has enabled notifications for this user.
       if (!user?.notificationsEnabled && !user?.isAdmin) {
@@ -560,6 +567,7 @@ export async function registerRoutes(
 
   app.delete("/api/push/unsubscribe", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "dashboard")) return;
       const { endpoint } = req.body;
       if (!endpoint) {
         return res.status(400).json({ message: "Endpoint required" });
@@ -946,6 +954,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = Number(req.params.id);
       const input = createPlantReportRequestSchema.parse(req.body);
       const updated = await storage.updatePlantReport(id, input);
@@ -1328,6 +1337,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_materials")) return;
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
@@ -1346,6 +1356,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialReceipt(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Receipt not found" });
       sendPushToAll("Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
@@ -1395,6 +1406,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/material-issues/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_materials")) return;
       const input = insertMaterialIssueSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialIssue(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Issue not found" });
@@ -1410,6 +1422,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-issues/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialIssue(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Issue not found" });
       sendPushToAll("Material Issue Deleted", `Issue #${req.params.id} deleted`, "/plant").catch(() => {});
@@ -1475,6 +1488,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/material-returns/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_materials")) return;
       const input = insertMaterialReturnSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialReturn(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Return not found" });
@@ -1496,6 +1510,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/material-returns/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialReturn(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Return not found" });
       sendPushToAll("Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
@@ -1549,6 +1564,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/opening-stocks/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_stock")) return;
       const input = insertMaterialOpeningStockSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialOpeningStock(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Opening stock not found" });
@@ -1564,6 +1580,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/opening-stocks/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialOpeningStock(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Opening stock not found" });
       sendPushToAll("Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
@@ -1615,6 +1632,7 @@ export async function registerRoutes(
 
   app.put("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_production")) return;
       const id = parseInt(req.params.id);
       const { adjustedBy, overrideTolerance, ...dispatchData } = req.body;
       
@@ -1738,6 +1756,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/dispatches/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteTruckDispatch(id);
       if (!deleted) {
@@ -2885,6 +2904,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_bitumen")) return;
       const id = parseInt(req.params.id);
       const result = await storage.updateBitumenDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
@@ -2900,6 +2920,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/bitumen-dip-readings/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteBitumenDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
@@ -2959,6 +2980,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/ldo-flow-readings/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_ldo")) return;
       const id = parseInt(req.params.id);
       const parsed: LdoFlowReadingPatch = ldoFlowReadingPatchSchema.parse(req.body);
       const result = await storage.updateLdoFlowReading(id, parsed);
@@ -2972,6 +2994,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-flow-readings/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoFlowReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
@@ -3125,6 +3148,7 @@ export async function registerRoutes(
 
   app.patch("/api/plant-module/ldo-dip-readings/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_ldo")) return;
       const id = parseInt(req.params.id);
       const result = await storage.updateLdoDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
@@ -3137,6 +3161,7 @@ export async function registerRoutes(
 
   app.delete("/api/plant-module/ldo-dip-readings/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
@@ -3412,6 +3437,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/shift-logs/:id/finalize", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_shift_logs")) return;
       const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
       const id = parseInt(req.params.id);
       const updated = await storage.finalizePlantShiftLog(id, finalizedBy);
@@ -4466,6 +4492,7 @@ export async function registerRoutes(
 
   app.post("/api/plant-module/heating-sessions/:id/finalize", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "plant_heating")) return;
       const finalizedBy: string = (req.body?.finalizedBy as string) || "operator";
       const updated = await storage.finalizeBitumenHeatingSession(parseInt(req.params.id), finalizedBy);
       if (!updated) return res.status(404).json({ message: "Heating session not found" });
@@ -4755,6 +4782,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-indents/:id/notify", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_procurement")) return;
       const id = Number(req.params.id);
       const customMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
       const indent = await storage.getPurchaseIndent(id);
@@ -4792,6 +4820,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indent-items/:id/purchase-update", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_procurement")) return;
       const itemId = Number(req.params.id);
       const updateSchema = z.object({
         purchaseStatus: z.string().optional(),
@@ -4849,6 +4878,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indent-items/:id/reviewer-note", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_procurement")) return;
       const itemId = Number(req.params.id);
       const note = typeof req.body?.note === "string" ? req.body.note : "";
       await storage.setItemReviewerNote(itemId, note);
@@ -5073,6 +5103,7 @@ export async function registerRoutes(
 
   app.patch("/api/diesel-requirements/:id/purchase-update", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_diesel")) return;
       const id = Number(req.params.id);
       const updateSchema = z.object({
         qtyPurchased: z.number().optional(),
@@ -6122,6 +6153,7 @@ export async function registerRoutes(
 
   app.post("/api/vendor-bills/check-duplicates", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "vendor_bills")) return;
       const { vendorName, items, excludeBillId } = req.body;
       if (!vendorName || !items) return res.status(400).json({ message: "vendorName and items required" });
       const duplicates = await storage.checkDuplicateBilledItems(vendorName, items, excludeBillId ? Number(excludeBillId) : undefined);
@@ -6243,6 +6275,7 @@ export async function registerRoutes(
 
   app.post("/api/mix-estimates", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
@@ -6255,6 +6288,7 @@ export async function registerRoutes(
 
   app.put("/api/mix-estimates/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
@@ -6269,6 +6303,7 @@ export async function registerRoutes(
 
   app.delete("/api/mix-estimates/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteMixEstimate(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
@@ -6293,6 +6328,7 @@ export async function registerRoutes(
 
   app.post("/api/price-scenarios", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { estimateId, name, revisedPrices, baseState } = req.body;
       if (!estimateId || !name) return res.status(400).json({ message: "estimateId and name required" });
       const rp = revisedPrices ? (typeof revisedPrices === "string" ? revisedPrices : JSON.stringify(revisedPrices)) : "{}";
@@ -6319,6 +6355,7 @@ export async function registerRoutes(
 
   app.patch("/api/price-scenarios/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
       const { name, state, baseState } = req.body;
       const updated = await storage.updatePriceScenario(id, { name, state, baseState });
@@ -6332,6 +6369,7 @@ export async function registerRoutes(
 
   app.delete("/api/price-scenarios/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deletePriceScenario(id);
       if (!deleted) return res.status(404).json({ message: "Scenario not found" });
@@ -6344,6 +6382,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-contractor", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const { from, to } = req.body;
       if (!from || !to) return res.status(400).json({ message: "from and to are required" });
       const count = await storage.renameContractor(from, to);
@@ -6356,6 +6395,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-project", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const { ids, to } = req.body;
       if (!Array.isArray(ids) || ids.length === 0 || !to) return res.status(400).json({ message: "ids and to are required" });
       let count = 0;
@@ -6402,6 +6442,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete-estimates", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const estimate = await storage.createConcreteEstimate({ name, contractor: contractor || null, structureType: structureType || null, grade: grade || null, state, totalCum: totalCum || null, totalAmt: totalAmt || null });
@@ -6414,6 +6455,7 @@ export async function registerRoutes(
 
   app.patch("/api/concrete-estimates/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       const estimate = await storage.updateConcreteEstimate(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, grade: grade || null, ...(state ? { state } : {}), totalCum: totalCum || null, totalAmt: totalAmt || null });
@@ -6427,6 +6469,7 @@ export async function registerRoutes(
 
   app.delete("/api/concrete-estimates/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteConcreteEstimate(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
@@ -6465,6 +6508,7 @@ export async function registerRoutes(
 
   app.post("/api/concrete/v2/estimates", async (req, res) => {
     try {
+      if (!assertCreate(req, res, "admin_settings")) return;
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const estimate = await storage.createConcreteEstimateV2({ name, contractor: contractor || null, structureType: structureType || null, state, totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
@@ -6477,6 +6521,7 @@ export async function registerRoutes(
 
   app.patch("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       const estimate = await storage.updateConcreteEstimateV2(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, ...(state ? { state } : {}), totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
@@ -6490,6 +6535,7 @@ export async function registerRoutes(
 
   app.delete("/api/concrete/v2/estimates/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteConcreteEstimateV2(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
