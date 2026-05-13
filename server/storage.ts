@@ -182,6 +182,32 @@ import {
   HEATING_TRENDS_MISMATCH_THRESHOLD_L,
 } from "@shared/heating-trends-constants";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RAW SQL CONVENTION — db.execute() usage
+//
+// When running raw SQL with db.execute(sql`...`) always follow these rules:
+//
+//   SELECT queries  →  use execSelectRows<T>(result, context) to obtain the
+//                       rows array.  node-postgres wraps the result in a
+//                       QueryResult object ({ rows, rowCount, … }) that is NOT
+//                       iterable, so array-destructuring or direct casting will
+//                       silently return undefined instead of throwing.
+//                       The helper throws loudly when the shape is unexpected.
+//
+//       ✓ const rows = execSelectRows<{ cnt: string }>(
+//             await db.execute(sql`SELECT COUNT(*) AS cnt FROM foo`),
+//             "myMethod: count"
+//           );
+//       ✗ const [row] = await db.execute(sql`SELECT …`);  // always undefined!
+//
+//   DML (INSERT / UPDATE / DELETE / DDL)
+//                   →  access .rowCount directly via a cast:
+//                       (result as { rowCount?: number }).rowCount ?? 0
+//                       or just result.rowCount when the type is inferred.
+//
+// The execSelectRows helper is defined just above the DatabaseStorage class.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Task #434 — Maximum acceptable divergence between LDO flow-meter consumption
 // and dip-stick-derived consumption within a single shift before the operator is
 // warned. Expressed in litres. Adjust via this single constant if the threshold
