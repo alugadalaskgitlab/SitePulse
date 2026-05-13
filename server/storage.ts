@@ -4458,13 +4458,10 @@ export class DatabaseStorage implements IStorage {
           //
           // Safety: dispatches in linkedDispatches are guaranteed to have been rebuilt
           // (they have has_ref entries). Any remaining no_ref entry on the same date/party/
-          // material is therefore an orphan. Processing dispatches in sortByDateTime order
-          // and using LIMIT 1 ORDER BY id ensures each call removes exactly one orphan in
-          // ascending-id order — correct even when multiple dispatches share the same date.
+          // material is therefore an orphan from a prior rebuild run.
           // ── Orphan cleanup: remove ALL "no_ref" duplicate entries for this dispatch ────
-          // Previously this deleted only LIMIT 1 per rebuild run, requiring N runs to
-          // clear N orphans. Now we delete ALL null-ref rows in one pass so that a
-          // single rebuild is sufficient regardless of how many orphans accumulated.
+          // We delete ALL null-ref rows in one pass so that a single rebuild is sufficient
+          // regardless of how many orphans accumulated across prior runs.
           for (const comp of components) {
             if (dispatch.partyId !== null) {
               const orphanDel = await db.execute(sql`
@@ -10083,34 +10080,45 @@ export class DatabaseStorage implements IStorage {
     // dispatch row and keep only the row with the highest id (most recent rebuild).
     const result = { groupsFixed: 0, rowsDeleted: 0 };
     try {
-      const deleted = await db.execute(sql`
-        DELETE FROM stock_ledger
-        WHERE transaction_type = 'dispatch'
-          AND reference_id IS NOT NULL
-          AND id NOT IN (
-            SELECT MAX(id)
-            FROM stock_ledger
-            WHERE transaction_type = 'dispatch'
-              AND reference_id IS NOT NULL
-            GROUP BY material_id, COALESCE(party_id, -1), reference_id
-          )
-          AND (material_id, COALESCE(party_id, -1), reference_id) IN (
-            SELECT material_id, COALESCE(party_id, -1), reference_id
-            FROM stock_ledger
-            WHERE transaction_type = 'dispatch'
-              AND reference_id IS NOT NULL
-            GROUP BY material_id, COALESCE(party_id, -1), reference_id
-            HAVING COUNT(*) > 1
-          )
-      `);
-      const rowsDeleted = (deleted as { rowCount?: number }).rowCount ?? 0;
-      if (rowsDeleted > 0) {
-        // Count how many distinct groups were affected by querying before deletion isn't
-        // possible after, so we approximate: rowsDeleted / avg duplicates. Instead,
-        // just log the row count which is the actionable number.
+      // Count affected groups BEFORE deletion so the number is accurate.
+      const [groupRow] = await db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM (
+          SELECT material_id, COALESCE(party_id, -1), reference_id
+          FROM stock_ledger
+          WHERE transaction_type = 'dispatch'
+            AND reference_id IS NOT NULL
+          GROUP BY material_id, COALESCE(party_id, -1), reference_id
+          HAVING COUNT(*) > 1
+        ) t
+      `) as unknown as [{ cnt: string }];
+      const groupsFixed = parseInt(groupRow?.cnt ?? "0", 10);
+
+      if (groupsFixed > 0) {
+        const deleted = await db.execute(sql`
+          DELETE FROM stock_ledger
+          WHERE transaction_type = 'dispatch'
+            AND reference_id IS NOT NULL
+            AND id NOT IN (
+              SELECT MAX(id)
+              FROM stock_ledger
+              WHERE transaction_type = 'dispatch'
+                AND reference_id IS NOT NULL
+              GROUP BY material_id, COALESCE(party_id, -1), reference_id
+            )
+            AND (material_id, COALESCE(party_id, -1), reference_id) IN (
+              SELECT material_id, COALESCE(party_id, -1), reference_id
+              FROM stock_ledger
+              WHERE transaction_type = 'dispatch'
+                AND reference_id IS NOT NULL
+              GROUP BY material_id, COALESCE(party_id, -1), reference_id
+              HAVING COUNT(*) > 1
+            )
+        `);
+        const rowsDeleted = (deleted as { rowCount?: number }).rowCount ?? 0;
+        result.groupsFixed = groupsFixed;
         result.rowsDeleted = rowsDeleted;
-        result.groupsFixed = rowsDeleted; // at least 1 group per row deleted
-        console.log(`deduplicateStockLedgerDispatchRows: removed ${rowsDeleted} duplicate dispatch rows`);
+        console.log(`deduplicateStockLedgerDispatchRows: fixed ${groupsFixed} groups, removed ${rowsDeleted} duplicate dispatch rows`);
       }
     } catch (err) {
       console.error("deduplicateStockLedgerDispatchRows: error:", err);

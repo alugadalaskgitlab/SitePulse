@@ -133,19 +133,19 @@ app.use((req, res, next) => {
   }
 
   try {
-    const r = await storage.deduplicateStockLedgerDispatchRows();
-    if (r.rowsDeleted > 0) {
-      console.log(`Startup: deduplicateStockLedgerDispatchRows — removed ${r.rowsDeleted} duplicate dispatch rows`);
-    }
-  } catch (e) {
-    console.error("Startup: deduplicateStockLedgerDispatchRows failed:", e);
-  }
-
-  try {
     const r0 = await storage.backfillDispatchReferenceIds();
     console.log(`Startup: backfillDispatchReferenceIds — updated: ${r0.updated}, skipped: ${r0.skipped}, errors: ${r0.errors}`);
   } catch (e) {
     console.error("Startup: backfillDispatchReferenceIds failed:", e);
+  }
+
+  try {
+    const r = await storage.deduplicateStockLedgerDispatchRows();
+    if (r.rowsDeleted > 0) {
+      console.log(`Startup: deduplicateStockLedgerDispatchRows — fixed ${r.groupsFixed} groups, removed ${r.rowsDeleted} duplicate dispatch rows`);
+    }
+  } catch (e) {
+    console.error("Startup: deduplicateStockLedgerDispatchRows failed:", e);
   }
 
   try {
