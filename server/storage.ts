@@ -14273,12 +14273,13 @@ export class DatabaseStorage implements IStorage {
       .from(plantMaterials)
       .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
       .limit(1);
-    if (!bitumenMat) return { updated: 0, errors: 0 };
+    // NOTE: do NOT early-return when bitumenMat is absent — the receipt section runs for ALL materials.
 
     let updated = 0;
     let errors = 0;
 
-    // Backfill dispatch rows
+    // Backfill dispatch rows (bitumen-only — depends on bitumenMat.id)
+    if (bitumenMat)
     try {
       const dispatchRows = await db.select({
         ledgerId: stockLedger.id,
@@ -14311,6 +14312,7 @@ export class DatabaseStorage implements IStorage {
     } catch (e) {
       errors++;
     }
+    // (end of bitumen-only dispatch block)
 
     // Backfill receipt rows — all materials (not just bitumen), so LDO and any future
     // tanked material get their tankNumber copied from material_receipts automatically.

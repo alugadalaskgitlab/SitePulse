@@ -438,8 +438,9 @@ export default function PlantStock() {
     }
     if (isTankedMaterial && selectedTank !== "all") {
       const tankNum = Number(selectedTank);
-      // Keep opening_balance rows for context; only show real entries matching the selected tank
-      entries = entries.filter(e => e.transactionType === 'opening_balance' || e.tankNumber === tankNum);
+      // Hide all rows that don't belong to the selected tank — including the synthetic B/F row
+      // which carries a combined (all-tank) balance and would be misleading when a specific tank is chosen.
+      entries = entries.filter(e => e.tankNumber === tankNum);
     }
     return entries;
   }, [processedLedger, selectedTransactionType, issuedToFilter, isTankedMaterial, selectedTank]);
@@ -1624,8 +1625,8 @@ export default function PlantStock() {
                             </div>
                             {!isBF && isTankedMaterial && ((entry.t1BalanceAfter ?? 0) !== 0 || (entry.t2BalanceAfter ?? 0) !== 0) && (
                               <div className="flex items-center justify-end gap-2 mt-0.5 text-xs font-normal">
-                                <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)}</span>
-                                <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)}</span>
+                                <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
+                                <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
                               </div>
                             )}
                             {displayBalance < -1e-9 && !isBF && (
