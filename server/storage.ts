@@ -2268,13 +2268,14 @@ export class DatabaseStorage implements IStorage {
       
       // Get material info for UOM conversion
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
       
       // Apply UOM conversion if receipt UOM differs from default/stock UOM
       // Stock is always tracked in the default UOM (usually Ton for aggregates)
       let stockQuantity = receipt.quantity;
       let stockUom = receipt.uom;
       
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         // If receipt is in the "from" UOM, convert to "to" UOM
         if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = receipt.quantity * material.conversionFactor;
@@ -2364,9 +2365,10 @@ export class DatabaseStorage implements IStorage {
       
       // Calculate old stock quantity (what was originally added)
       const [oldMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, existing.materialId)).limit(1);
+      if (!oldMaterial) throw new Error(`Plant material #${existing.materialId} not found`);
       let oldStockQuantity = existing.quantity;
       let oldStockUom = existing.uom;
-      if (oldMaterial?.conversionFactor && oldMaterial?.conversionFromUom && oldMaterial?.conversionToUom) {
+      if (oldMaterial.conversionFactor && oldMaterial.conversionFromUom && oldMaterial.conversionToUom) {
         if (existing.uom.toUpperCase() === oldMaterial.conversionFromUom.toUpperCase()) {
           oldStockQuantity = existing.quantity * oldMaterial.conversionFactor;
           oldStockUom = oldMaterial.conversionToUom;
@@ -2381,9 +2383,10 @@ export class DatabaseStorage implements IStorage {
       const newPartyId = receipt.partyId ?? existing.partyId;
       
       const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
-      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+      if (newMaterial.conversionFactor && newMaterial.conversionFromUom && newMaterial.conversionToUom) {
         if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
           newStockQuantity = newQuantity * newMaterial.conversionFactor;
           newStockUom = newMaterial.conversionToUom;
@@ -2498,10 +2501,11 @@ export class DatabaseStorage implements IStorage {
       
       // Get material for conversion factor
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${receipt.materialId} not found`);
       
       // Calculate the converted quantity that was added
       let stockQuantity = receipt.quantity;
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (receipt.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = receipt.quantity * material.conversionFactor;
         }
@@ -2550,10 +2554,11 @@ export class DatabaseStorage implements IStorage {
   async createTruckDispatch(dispatch: InsertTruckDispatch): Promise<TruckDispatch> {
     // Get mix template to calculate theoretical consumption
     const [template] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, dispatch.mixTemplateId)).limit(1);
+    if (!template) throw new Error(`Mix template #${dispatch.mixTemplateId} not found`);
     
-    const theoreticalBitumenPercent = template?.bitumenPercent || 0;
+    const theoreticalBitumenPercent = template.bitumenPercent || 0;
     const theoreticalBitumenQty = (dispatch.loadWeight * theoreticalBitumenPercent) / 100;
-    const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
+    const ldoNorm = (template as any).ldoNorm || DEFAULT_LDO_NORM;
     const theoreticalLdoQty = dispatch.loadWeight * ldoNorm;
     
     const uppercased = {
@@ -2594,16 +2599,15 @@ export class DatabaseStorage implements IStorage {
 
       if (mixTemplateId && loadWeight) {
         const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, mixTemplateId)).limit(1);
-        if (template) {
-          const bitumenPercent = template.bitumenPercent || 0;
-          const ldoNorm = template.ldoNorm || 6;
-          // Always set these computed values on every update
-          uppercased.theoreticalBitumenPercent = bitumenPercent;
-          uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
-          uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
-          theoreticalBitumenQty = uppercased.theoreticalBitumenQty;
-          theoreticalLdoQty = uppercased.theoreticalLdoQty;
-        }
+        if (!template) throw new Error(`Mix template #${mixTemplateId} not found`);
+        const bitumenPercent = template.bitumenPercent || 0;
+        const ldoNorm = template.ldoNorm || 6;
+        // Always set these computed values on every update
+        uppercased.theoreticalBitumenPercent = bitumenPercent;
+        uppercased.theoreticalBitumenQty = (loadWeight * bitumenPercent) / 100;
+        uppercased.theoreticalLdoQty = loadWeight * ldoNorm;
+        theoreticalBitumenQty = uppercased.theoreticalBitumenQty;
+        theoreticalLdoQty = uppercased.theoreticalLdoQty;
       }
       
       const theoreticalBitumenPercent = uppercased.theoreticalBitumenPercent ?? currentDispatch.theoreticalBitumenPercent ?? 0;
@@ -4067,13 +4071,14 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async (tx) => {
       // Get mix template with components
       const [template] = await tx.select().from(mixTemplates).where(eq(mixTemplates.id, dispatchData.mixTemplateId)).limit(1);
+      if (!template) throw new Error(`Mix template #${dispatchData.mixTemplateId} not found`);
       const components = await tx.select().from(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, dispatchData.mixTemplateId));
       
       // Calculate theoretical consumption
       const loadWeight = dispatch.loadWeight;
-      const theoreticalBitumenPercent = template?.bitumenPercent || 0;
+      const theoreticalBitumenPercent = template.bitumenPercent || 0;
       const theoreticalBitumenQty = (loadWeight * theoreticalBitumenPercent) / 100;
-      const ldoNorm = (template as any)?.ldoNorm || DEFAULT_LDO_NORM;
+      const ldoNorm = (template as any).ldoNorm || DEFAULT_LDO_NORM;
       const theoreticalLdoQty = loadWeight * ldoNorm;
       
       // Calculate aggregate consumption from components (percent of total mix).
@@ -5141,13 +5146,16 @@ export class DatabaseStorage implements IStorage {
 
     // Resolve UOM from material master
     const [material] = await db.select().from(plantMaterials).where(eq(plantMaterials.id, materialId));
-    const uom = material?.defaultUom || "MT";
+    if (!material) throw new Error(`Plant material #${materialId} not found`);
+    const uom = material.defaultUom || "MT";
 
     // Resolve party names for audit notes
     const [fromParty] = await db.select().from(parties).where(eq(parties.id, fromPartyId));
+    if (!fromParty) throw new Error(`Party #${fromPartyId} not found`);
     const [toParty] = await db.select().from(parties).where(eq(parties.id, toPartyId));
-    const fromName = fromParty?.name || `Party ${fromPartyId}`;
-    const toName = toParty?.name || `Party ${toPartyId}`;
+    if (!toParty) throw new Error(`Party #${toPartyId} not found`);
+    const fromName = fromParty.name;
+    const toName = toParty.name;
     const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
     const actorTag = actorName ? ` by ${actorName}` : "";
 
@@ -6030,12 +6038,13 @@ export class DatabaseStorage implements IStorage {
       
       // Get material info for UOM conversion
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${issue.materialId} not found`);
       
       // Apply UOM conversion if issue UOM differs from stock UOM
       let stockQuantity = issue.quantity;
       let stockUom = issue.uom;
       
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (issue.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = issue.quantity * material.conversionFactor;
           stockUom = material.conversionToUom;
@@ -6129,10 +6138,11 @@ export class DatabaseStorage implements IStorage {
       
       // Get material info for UOM conversion (original material)
       const [origMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      if (!origMaterial) throw new Error(`Plant material #${original.materialId} not found`);
       
       // Calculate original stock quantity with conversion
       let origStockQuantity = original.quantity;
-      if (origMaterial?.conversionFactor && origMaterial?.conversionFromUom && origMaterial?.conversionToUom) {
+      if (origMaterial.conversionFactor && origMaterial.conversionFromUom && origMaterial.conversionToUom) {
         if (original.uom.toUpperCase() === origMaterial.conversionFromUom.toUpperCase()) {
           origStockQuantity = original.quantity * origMaterial.conversionFactor;
         }
@@ -6170,10 +6180,11 @@ export class DatabaseStorage implements IStorage {
       
       // Get material info for new material (may be different if material changed)
       const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
-      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+      if (newMaterial.conversionFactor && newMaterial.conversionFromUom && newMaterial.conversionToUom) {
         if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
           newStockQuantity = newQuantity * newMaterial.conversionFactor;
           newStockUom = newMaterial.conversionToUom;
@@ -6258,10 +6269,11 @@ export class DatabaseStorage implements IStorage {
       
       // Get material info for UOM conversion
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, issue.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${issue.materialId} not found`);
       
       let stockQuantity = issue.quantity;
       let stockUom = issue.uom;
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (issue.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = issue.quantity * material.conversionFactor;
           stockUom = material.conversionToUom;
@@ -6348,10 +6360,11 @@ export class DatabaseStorage implements IStorage {
 
       // Get material info for UOM conversion
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${ret.materialId} not found`);
       
       let stockQuantity = ret.quantity;
       let stockUom = ret.uom;
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (ret.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = ret.quantity * material.conversionFactor;
           stockUom = material.conversionToUom;
@@ -6407,10 +6420,11 @@ export class DatabaseStorage implements IStorage {
 
       // Get material info for UOM conversion (original)
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, original.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${original.materialId} not found`);
 
       let origStockQuantity = original.quantity;
       let origStockUom = original.uom;
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (original.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           origStockQuantity = original.quantity * material.conversionFactor;
           origStockUom = material.conversionToUom;
@@ -6465,10 +6479,11 @@ export class DatabaseStorage implements IStorage {
       const newPartyId = (updates.isPlantCommon ?? original.isPlantCommon) ? null : (updates.partyId ?? original.partyId);
 
       const [newMaterial] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
-      if (newMaterial?.conversionFactor && newMaterial?.conversionFromUom && newMaterial?.conversionToUom) {
+      if (newMaterial.conversionFactor && newMaterial.conversionFromUom && newMaterial.conversionToUom) {
         if (newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()) {
           newStockQuantity = newQuantity * newMaterial.conversionFactor;
           newStockUom = newMaterial.conversionToUom;
@@ -6528,10 +6543,11 @@ export class DatabaseStorage implements IStorage {
 
       // Get material info for UOM conversion
       const [material] = await tx.select().from(plantMaterials).where(eq(plantMaterials.id, ret.materialId)).limit(1);
+      if (!material) throw new Error(`Plant material #${ret.materialId} not found`);
       
       let stockQuantity = ret.quantity;
       let stockUom = ret.uom;
-      if (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom) {
+      if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
         if (ret.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
           stockQuantity = ret.quantity * material.conversionFactor;
           stockUom = material.conversionToUom;
@@ -6661,9 +6677,10 @@ export class DatabaseStorage implements IStorage {
       // Mirrors the reverse-step logic in updateMaterialReceipt.
       const [oldMaterial] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, original.materialId)).limit(1);
+      if (!oldMaterial) throw new Error(`Plant material #${original.materialId} not found`);
       let oldStockQuantity = original.quantity;
       if (
-        oldMaterial?.conversionFactor &&
+        oldMaterial.conversionFactor &&
         oldMaterial.conversionFromUom &&
         oldMaterial.conversionToUom &&
         original.uom.toUpperCase() === oldMaterial.conversionFromUom.toUpperCase()
@@ -6698,10 +6715,11 @@ export class DatabaseStorage implements IStorage {
 
       const [newMaterial] = await tx.select().from(plantMaterials)
         .where(eq(plantMaterials.id, newMaterialId)).limit(1);
+      if (!newMaterial) throw new Error(`Plant material #${newMaterialId} not found`);
       let newStockQuantity = newQuantity;
       let newStockUom = newUom;
       if (
-        newMaterial?.conversionFactor &&
+        newMaterial.conversionFactor &&
         newMaterial.conversionFromUom &&
         newMaterial.conversionToUom &&
         newUom.toUpperCase() === newMaterial.conversionFromUom.toUpperCase()
@@ -8354,6 +8372,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const [updatedIndent] = await tx.select().from(purchaseIndents).where(eq(purchaseIndents.id, id));
+      if (!updatedIndent) throw new Error(`Purchase indent #${id} not found after update`);
       return { ...updatedIndent, items };
     });
   }
@@ -9414,6 +9433,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const [updated] = await tx.select().from(dieselRequirements).where(eq(dieselRequirements.id, id));
+      if (!updated) throw new Error(`Diesel requirement #${id} not found after update`);
       return { ...updated, items };
     });
   }

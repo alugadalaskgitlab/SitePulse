@@ -1288,6 +1288,7 @@ export async function registerRoutes(
       if (!equip) return res.status(404).json({ message: "Equipment not found" });
       const newStatus = equip.isActive === 1 ? 0 : 1;
       const updated = await storage.updateEquipment(id, { isActive: newStatus } as any);
+      if (!updated) return res.status(404).json({ message: "Equipment not found" });
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to toggle equipment status" });
