@@ -187,18 +187,32 @@ import {
 //
 // When running raw SQL with db.execute(sql`...`) always follow these rules:
 //
-//   SELECT queries  →  use execSelectRows<T>(result, context) to obtain the
-//                       rows array.  node-postgres wraps the result in a
-//                       QueryResult object ({ rows, rowCount, … }) that is NOT
-//                       iterable, so array-destructuring or direct casting will
-//                       silently return undefined instead of throwing.
-//                       The helper throws loudly when the shape is unexpected.
+//   SELECT queries (multiple rows)
+//               →  use execSelectRows<T>(result, context) to obtain the rows
+//                  array.  node-postgres wraps the result in a QueryResult
+//                  object ({ rows, rowCount, … }) that is NOT iterable, so
+//                  array-destructuring or direct casting will silently return
+//                  undefined instead of throwing.
+//                  The helper throws loudly when the shape is unexpected.
 //
-//       ✓ const rows = execSelectRows<{ cnt: string }>(
+//       ✓ const rows = execSelectRows<{ name: string }>(
+//             await db.execute(sql`SELECT name FROM foo`),
+//             "myMethod: list"
+//           );
+//       ✗ const [row] = await db.execute(sql`SELECT …`);  // always undefined!
+//
+//   SELECT queries (exactly one row required)
+//               →  use execSelectOneRow<T>(result, context) when the query
+//                  MUST return exactly one row (e.g. COUNT(*), lookup by PK).
+//                  It extracts the rows array via execSelectRows then throws a
+//                  descriptive error when zero rows come back, making silent
+//                  "not found" bugs surface immediately instead of propagating
+//                  as undefined downstream.
+//
+//       ✓ const row = execSelectOneRow<{ cnt: string }>(
 //             await db.execute(sql`SELECT COUNT(*) AS cnt FROM foo`),
 //             "myMethod: count"
 //           );
-//       ✗ const [row] = await db.execute(sql`SELECT …`);  // always undefined!
 //
 //   DML (INSERT / UPDATE / DELETE / DDL)
 //                   →  use execDmlRowCount(result, context?) to extract the
@@ -215,7 +229,7 @@ import {
 //           );
 //       ✗ (result as { rowCount?: number }).rowCount ?? 0  // scattered cast
 //
-// Both helpers are defined just above the DatabaseStorage class.
+// All helpers are defined just above the DatabaseStorage class.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Task #434 — Maximum acceptable divergence between LDO flow-meter consumption
@@ -1102,6 +1116,36 @@ function execSelectRows<T = Record<string, unknown>>(result: unknown, context = 
   throw new Error(
     `${context}: expected a QueryResult with a .rows array but received: ${JSON.stringify(result)?.slice(0, 200)}`
   );
+}
+
+/**
+ * Like execSelectRows but asserts that exactly one row was returned.
+ *
+ * Use this helper when the query MUST produce a single row — e.g. a COUNT(*)
+ * aggregate, or a lookup by primary key where missing data is a programming
+ * error rather than a legitimate "not found" scenario.  If zero rows come back
+ * the helper throws a descriptive error immediately, surfacing the failure at
+ * the point of the query rather than letting an `undefined` value propagate
+ * silently and cause confusing errors downstream.
+ *
+ * When more than one row is returned the first row is returned and a warning is
+ * logged so unexpected multi-row results are visible without breaking callers
+ * that only consume one row.
+ */
+function execSelectOneRow<T = Record<string, unknown>>(result: unknown, context = "db.execute SELECT"): T {
+  const rows = execSelectRows<T>(result, context);
+  if (rows.length === 0) {
+    throw new Error(
+      `${context}: expected exactly one row but query returned zero rows. ` +
+      `This indicates a data integrity issue or an incorrect query predicate.`
+    );
+  }
+  if (rows.length > 1) {
+    console.warn(
+      `${context}: expected exactly one row but query returned ${rows.length} rows — using first row only.`
+    );
+  }
+  return rows[0];
 }
 
 /**
@@ -10220,8 +10264,8 @@ export class DatabaseStorage implements IStorage {
           HAVING COUNT(*) > 1
         ) t
       `);
-      const groupRow = execSelectRows<{ cnt: string }>(countResult, "deduplicateStockLedgerDispatchRows: count")?.[0];
-      const groupsFixed = parseInt(groupRow?.cnt ?? "0", 10);
+      const groupRow = execSelectOneRow<{ cnt: string }>(countResult, "deduplicateStockLedgerDispatchRows: count");
+      const groupsFixed = parseInt(groupRow.cnt ?? "0", 10);
 
       if (groupsFixed > 0) {
         const deleted = await db.execute(sql`
