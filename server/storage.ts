@@ -4245,17 +4245,44 @@ export class DatabaseStorage implements IStorage {
         return value;
       };
       
-      // PHASE 1: Compute shortages without writing anything.
-      // Normalise the balance to the dispatch item's UOM before comparing so that
-      // a CFT balance is not compared directly against a Ton dispatch quantity.
-      const shortageDetails: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] = [];
+      // Pre-fetch which materials the owner party has ANY recorded receipts for.
+      // Business rule: if a party has never received a material, that material's
+      // scope belongs entirely to HLC. The dispatch deducts directly from HLC
+      // with no owner-party ledger row written at all.
+      // Only when the party has at least one receipt does the owner-first /
+      // borrow-from-HLC path apply.
       const matIdsForLookup = Array.from(new Set(plan.map(p => p.matId)));
       const matRows = matIdsForLookup.length
         ? await tx.select().from(plantMaterials).where(inArray(plantMaterials.id, matIdsForLookup))
         : [];
       const matNameById = new Map(matRows.map(m => [m.id, m.name]));
+
+      const ownerReceiptMatIds = new Set<number>();
+      if (matIdsForLookup.length > 0) {
+        const receiptRows = await tx
+          .select({ materialId: materialReceipts.materialId })
+          .from(materialReceipts)
+          .where(
+            and(
+              eq(materialReceipts.partyId, partyId),
+              inArray(materialReceipts.materialId, matIdsForLookup),
+            )
+          )
+          .limit(1000);
+        for (const r of receiptRows) ownerReceiptMatIds.add(r.materialId);
+      }
+
+      // PHASE 1: Compute shortages without writing anything.
+      // Normalise the balance to the dispatch item's UOM before comparing so that
+      // a CFT balance is not compared directly against a Ton dispatch quantity.
+      // Materials the owner has never received are skipped here — they go directly
+      // to HLC in Phase 2 and never produce an owner shortage.
+      const shortageDetails: { materialId: number; materialName: string; required: number; available: number; shortfall: number; uom: string }[] = [];
       
       for (const item of plan) {
+        // No receipts for this material → HLC scope only; skip owner shortage check.
+        if (!ownerReceiptMatIds.has(item.matId)) continue;
+
         const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
         const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         if (ownerBal < item.qty) {
@@ -4289,6 +4316,21 @@ export class DatabaseStorage implements IStorage {
       // Normalise balance to item UOM for the split calculation before calling
       // deductFromSource (which handles its own conversion internally).
       for (const item of plan) {
+        // ── HLC-scope material (owner has no receipts) ──────────────────────────
+        // The party has never received this material so it is entirely under HLC's
+        // scope. Deduct directly from HLC with no owner ledger row written.
+        if (!ownerReceiptMatIds.has(item.matId)) {
+          if (hlcPartyId && hlcPartyId !== partyId) {
+            await deductFromSource(hlcPartyId, item.matId, item.qty, item.uom, item.label, item.tankNumber);
+          } else {
+            // Owner IS HLC, or HLC not found — deduct from owner as normal.
+            await deductFromSource(partyId, item.matId, item.qty, item.uom, item.label, item.tankNumber);
+          }
+          // No shortage entry — this is expected HLC stock consumption, not a shortfall.
+          continue;
+        }
+
+        // ── Owner-receipt material: owner-first, borrow from HLC if needed ──────
         const { balance: rawBal, uom: balUom } = await getBalanceRow(partyId, item.matId);
         const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
