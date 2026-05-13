@@ -133,6 +133,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r2 = await storage.backfillDispatchNotes();
+    console.log(`Startup: backfillDispatchNotes — updated: ${r2.updated}, skipped: ${r2.skipped}, errors: ${r2.errors}`);
+  } catch (e) {
+    console.error("Startup: backfillDispatchNotes failed:", e);
+  }
+
+  try {
     const result = await storage.migrate6mmDownUomFix();
     console.log(`Startup: ${result.message}`);
   } catch (e) {

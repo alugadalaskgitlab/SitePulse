@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -139,6 +139,15 @@ export default function PlantDispatches() {
 
   const [, setLocation] = useLocation();
   const { confirmLeave } = useBeforeUnload(isDirty);
+
+  // Deep-link edit support: ?edit=<dispatchId>
+  const searchString = useSearch();
+  const editId = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    const v = params.get("edit");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
+  const [autoEditDone, setAutoEditDone] = useState(false);
 
   const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches"],
@@ -435,6 +444,20 @@ export default function PlantDispatches() {
 
   const handleEditClick = (dispatch: TruckDispatch) => openEditDialog(dispatch);
   const handleDeleteClick = (dispatchId: number) => setDeleteConfirmId(dispatchId);
+
+  // Auto-open edit dialog from ?edit=<id> deep link
+  useEffect(() => {
+    if (editId != null && dispatches && !autoEditDone) {
+      const target = dispatches.find(d => d.id === editId);
+      if (target) {
+        setAutoEditDone(true);
+        openEditDialog(target);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("edit");
+        history.replaceState(null, "", url.toString());
+      }
+    }
+  }, [editId, dispatches, autoEditDone]);
   const handleExportExcelClick = () => exportToExcel();
   const handleExportPdfClick = () => exportToPDF();
   const handlePrintClick = () => handlePrint();

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare } from "lucide-react";
+import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink } from "lucide-react";
 import { format, subDays } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -1537,6 +1537,16 @@ export default function PlantStock() {
                               {!isBF && (entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage') && (
                                 <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}`}>
                                   <ClipboardList className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
+                                <Link href={`/plant/material-receipts?edit=${entry.referenceId}`}>
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'dispatch' && entry.referenceId != null && !entry._mergedDelta && (
+                                <Link href={`/plant/dispatches?edit=${entry.referenceId}`}>
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
                                 </Link>
                               )}
                             </div>

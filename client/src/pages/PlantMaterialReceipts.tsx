@@ -38,14 +38,21 @@ export default function PlantMaterialReceipts() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   // Deep-link highlight support: ?highlight=<receiptId>
+  // Deep-link edit support: ?edit=<receiptId>
   const searchString = useSearch();
   const highlightId = useMemo(() => {
     const params = new URLSearchParams(searchString);
     const v = params.get("highlight");
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
+  const editId = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    const v = params.get("edit");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
   const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
+  const [autoEditDone, setAutoEditDone] = useState(false);
   useEffect(() => {
     if (highlightId != null) {
       setLocalHighlightId(highlightId);
@@ -129,6 +136,20 @@ export default function PlantMaterialReceipts() {
       return () => clearTimeout(timer);
     }
   }, [localHighlightId, receipts]);
+
+  // Auto-open edit dialog from ?edit=<id> deep link
+  useEffect(() => {
+    if (editId != null && receipts && !autoEditDone) {
+      const target = receipts.find(r => r.id === editId);
+      if (target) {
+        setAutoEditDone(true);
+        openEditDialog(target);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("edit");
+        history.replaceState(null, "", url.toString());
+      }
+    }
+  }, [editId, receipts, autoEditDone]);
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],

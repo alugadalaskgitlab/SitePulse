@@ -2189,7 +2189,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined> {
-    return db.transaction(async (tx) => {
+    const oldRecord = await db.select({ materialId: materialReceipts.materialId }).from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
+    const oldMaterialId = oldRecord[0]?.materialId;
+
+    await db.transaction(async (tx) => {
       // Get existing receipt first
       const [existing] = await tx.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1);
       if (!existing) return undefined;
@@ -2313,9 +2316,18 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Update the receipt record
-      const [result] = await tx.update(materialReceipts).set(updates).where(eq(materialReceipts.id, id)).returning();
-      return result;
+      await tx.update(materialReceipts).set(updates).where(eq(materialReceipts.id, id));
     });
+
+    // Recompute running balanceAfter for affected material(s) so the ledger
+    // running totals stay correct after the delete+reinsert above.
+    const newMaterialId2 = receipt.materialId ?? oldMaterialId;
+    if (newMaterialId2) await this.recomputeBalanceAfterForMaterial(newMaterialId2);
+    if (oldMaterialId && oldMaterialId !== newMaterialId2) {
+      await this.recomputeBalanceAfterForMaterial(oldMaterialId);
+    }
+
+    return (await db.select().from(materialReceipts).where(eq(materialReceipts.id, id)).limit(1))[0];
   }
 
   async deleteMaterialReceipt(id: number): Promise<boolean> {
@@ -2402,7 +2414,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTruckDispatch(id: number, dispatch: Partial<InsertTruckDispatch>, adjustedBy?: string): Promise<TruckDispatch | undefined> {
-    return db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       // Get current dispatch to always recompute theoretical values from latest template data
       const [currentDispatch] = await tx.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
       if (!currentDispatch) return undefined;
@@ -2500,9 +2512,66 @@ export class DatabaseStorage implements IStorage {
           adjustedBy: adjustedBy || "operator",
         });
       }
-      
+
+      // Sync stock ledger when bitumen deduction qty changes.
+      // Effective deducted qty = actual if set, else theoretical.
+      const qtyAffectingChange = dispatch.loadWeight !== undefined
+        || dispatch.actualBitumenPercent !== undefined
+        || dispatch.mixTemplateId !== undefined;
+
+      if (qtyAffectingChange) {
+        const newEffectiveBitumenQty = result.actualBitumenQty ?? result.theoreticalBitumenQty ?? 0;
+        const [bitumenMat] = await tx.select({ id: plantMaterials.id })
+          .from(plantMaterials)
+          .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+          .limit(1);
+
+        if (bitumenMat) {
+          const ledgerRows = await tx.select()
+            .from(stockLedger)
+            .where(and(
+              eq(stockLedger.transactionType, "dispatch"),
+              eq(stockLedger.referenceId, id),
+              eq(stockLedger.materialId, bitumenMat.id),
+            ));
+
+          for (const row of ledgerRows) {
+            const oldQty = row.quantityOut ?? 0;
+            const diff = oldQty - newEffectiveBitumenQty; // positive → releasing stock back
+            if (Math.abs(diff) < 1e-9) continue;
+
+            // Update the ledger entry qty
+            await tx.update(stockLedger)
+              .set({ quantityOut: newEffectiveBitumenQty })
+              .where(eq(stockLedger.id, row.id));
+
+            // Update stock_balances incrementally
+            const condition = row.partyId === null
+              ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, bitumenMat.id))
+              : and(eq(stockBalances.partyId, row.partyId), eq(stockBalances.materialId, bitumenMat.id));
+            const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
+            if (bal) {
+              await tx.update(stockBalances)
+                .set({ balance: bal.balance + diff, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, bal.id));
+            }
+          }
+        }
+      }
+
       return result;
     });
+
+    // Recompute running balanceAfter column for bitumen so the ledger display is correct.
+    if (dispatch.loadWeight !== undefined || dispatch.actualBitumenPercent !== undefined || dispatch.mixTemplateId !== undefined) {
+      const [bitumenMat] = await db.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+        .limit(1);
+      if (bitumenMat) await this.recomputeBalanceAfterForMaterial(bitumenMat.id);
+    }
+
+    return (await db.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1))[0];
   }
 
   async deleteTruckDispatch(id: number): Promise<boolean> {
@@ -13926,6 +13995,7 @@ export class DatabaseStorage implements IStorage {
   // Idempotent: rows that already carry the new format are left untouched because
   // they won't match the old LIKE patterns.
   async backfillDispatchNotes(): Promise<{ updated: number; skipped: number; errors: number }> {
+    // Cover old-format notes AND null-notes entries (both need backfilling)
     const oldStyleRows = await db
       .select({
         id: stockLedger.id,
@@ -13938,6 +14008,7 @@ export class DatabaseStorage implements IStorage {
           eq(stockLedger.transactionType, 'dispatch'),
           isNotNull(stockLedger.referenceId),
           or(
+            sql`${stockLedger.notes} IS NULL`,
             sql`${stockLedger.notes} LIKE 'Aggregate dispatch%'`,
             sql`${stockLedger.notes} LIKE 'Bitumen dispatch%'`,
             sql`${stockLedger.notes} LIKE 'LDO dispatch%'`,
