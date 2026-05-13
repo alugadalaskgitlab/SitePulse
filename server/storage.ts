@@ -10362,29 +10362,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async fixDoubleDeductedDispatchOwnerRows(): Promise<{ rowsFixed: number; materialsRecomputed: number }> {
-    // Detect and correct double-deduction: owner dispatch row has quantity_out > 0 while
-    // (a) an HLC "Borrowed from HLC" row (identified by notes marker AND party_id
-    //     matching any known HLC-family party) exists for the same reference_id +
-    //     material_id with quantity_out > 0, AND
-    // (b) the dispatch's shortage_warning JSON shows available = 0 for that material.
+    // Detect and correct double-deduction: an owner dispatch row has quantity_out > 0
+    // while an HLC "Borrowed from HLC" row also has quantity_out > 0 for the same
+    // dispatch + material — meaning HLC ALREADY covered the full deduction, so the
+    // owner row should be zero.
     //
-    // Both conditions together prove the owner should have been written as a 0-qty
-    // marker row (entire quantity borrowed from HLC) but was mistakenly written with a
-    // positive quantity_out, creating a phantom negative balance for the owner.
+    // Two cases are detected (either is sufficient to confirm the row is erroneous):
+    //   Case A — owner has NO material receipts for that material at all.
+    //            The material scope belongs entirely to HLC; the owner row is always wrong.
+    //   Case B — owner HAS receipts but shortage_warning.available === 0 at dispatch time.
+    //            Their stock was fully exhausted; HLC covered the whole qty, yet the
+    //            owner row still carries a positive qty_out.
     //
-    // Fix: zero out quantity_out on offending owner rows.  Recompute balance_after for
+    // Fix: zero out quantity_out on confirmed owner rows, recompute balance_after for
     // each affected material, then reconcile stock_balances.
     //
-    // Robustness design:
-    //   • HLC parties resolved dynamically (ILIKE match on name) — no hard-coded id.
-    //   • shortage_warning is pre-filtered by text before JSONB cast; any row whose
-    //     cast still fails is skipped per-row in TypeScript rather than aborting the
-    //     whole pass.
+    // Robustness:
+    //   • HLC parties resolved dynamically (ILIKE '%HLC%' OR '%HIGH LANE%').
+    //   • shortage_warning parsed per-row in TypeScript; malformed rows are skipped.
+    //   • Idempotent: qty_out > 0 guard prevents re-running on already-fixed rows.
     const result = { rowsFixed: 0, materialsRecomputed: 0 };
     try {
-      // 0. Resolve all HLC-family party IDs dynamically (matches names containing
-      //    'HLC' or 'HIGH LANE', case-insensitive).  In production this finds
-      //    party_id=1 (HIGH LANE CONSTRUCTIONS) even though no party is named 'HLC'.
+      // 0. Resolve all HLC-family party IDs dynamically.
       const hlcPartyRows = execSelectRows<{ id: string }>(
         await db.execute(sql`
           SELECT id FROM parties
@@ -10394,49 +10393,63 @@ export class DatabaseStorage implements IStorage {
       ) ?? [];
       const hlcPartyIds = hlcPartyRows.map(r => parseInt(r.id, 10)).filter(id => !isNaN(id));
 
-      // 1. Phase A (SQL): find owner rows that satisfy structural conditions —
-      //    qty_out > 0, not themselves a borrow row, AND a borrow row exists for the
-      //    same dispatch+material identified by BOTH notes marker AND (if possible)
-      //    HLC party_id.  Fetch shortage_warning as text for per-row parsing in TS.
-      //    The JSONB cast is intentionally NOT done here to avoid aborting on any
-      //    malformed legacy shortage_warning value.
+      // 1. Phase A (SQL): find owner rows matching either Case A or Case B.
+      //    • no_receipts = 1  → Case A (owner never received this material)
+      //    • no_receipts = 0  → Case B candidate; shortage_warning passed to TS for parsing
+      //    shortage_warning fetched as text to avoid JSONB cast errors on legacy rows.
+      //    borrow_party_id fetched for HLC verification in Phase B.
       const phaseAResult = await db.execute(sql`
-        SELECT sl.id, sl.material_id, td.shortage_warning,
-          -- Fetch the borrow row's party_id so TypeScript can verify it is a
-          -- known HLC-family party (avoids embedding a JS array in SQL).
+        SELECT
+          sl.id,
+          sl.material_id,
+          CASE WHEN NOT EXISTS (
+            SELECT 1 FROM material_receipts mr
+            WHERE mr.party_id    = sl.party_id
+              AND mr.material_id = sl.material_id
+          ) THEN 1 ELSE 0 END AS no_receipts,
+          td.shortage_warning,
           (SELECT hlc2.party_id FROM stock_ledger hlc2
-           WHERE hlc2.reference_id    = sl.reference_id
-             AND hlc2.material_id     = sl.material_id
+           WHERE hlc2.reference_id     = sl.reference_id
+             AND hlc2.material_id      = sl.material_id
              AND hlc2.transaction_type = 'dispatch'
-             AND hlc2.quantity_out    > 0
+             AND hlc2.quantity_out     > 0
              AND hlc2.notes LIKE '%Borrowed from HLC%'
            LIMIT 1) AS borrow_party_id
         FROM stock_ledger sl
-        INNER JOIN truck_dispatches td ON td.id = sl.reference_id
-        WHERE sl.transaction_type = 'dispatch'
-          AND sl.reference_id IS NOT NULL
-          AND sl.quantity_out > 0
-          -- owner row: notes do NOT contain the HLC borrow marker
+        LEFT JOIN truck_dispatches td ON td.id = sl.reference_id
+        WHERE sl.transaction_type  = 'dispatch'
+          AND sl.reference_id      IS NOT NULL
+          AND sl.quantity_out      > 0
+          AND sl.party_id          IS NOT NULL
+          -- Not itself a borrow row
           AND (sl.notes IS NULL OR sl.notes NOT LIKE '%Borrowed from HLC%')
-          -- a "Borrowed from HLC" row exists for the same dispatch + material.
-          -- Notes marker is the primary selector; party_id is verified in TS Phase B.
+          -- An HLC borrow row must exist for the same dispatch + material
           AND EXISTS (
             SELECT 1 FROM stock_ledger hlc
-            WHERE hlc.reference_id    = sl.reference_id
-              AND hlc.material_id     = sl.material_id
+            WHERE hlc.reference_id     = sl.reference_id
+              AND hlc.material_id      = sl.material_id
               AND hlc.transaction_type = 'dispatch'
-              AND hlc.quantity_out    > 0
+              AND hlc.quantity_out     > 0
               AND hlc.notes LIKE '%Borrowed from HLC%'
           )
-          -- Pre-filter: shortage_warning must be present and look like proper JSON
-          -- (double-quoted keys) before we attempt to parse it in TypeScript.
-          AND td.shortage_warning IS NOT NULL
-          AND td.shortage_warning LIKE '%"materialId"%'
+          -- At least one detection condition must apply:
+          AND (
+            -- Case A: owner has no receipts for this material
+            NOT EXISTS (
+              SELECT 1 FROM material_receipts mr
+              WHERE mr.party_id    = sl.party_id
+                AND mr.material_id = sl.material_id
+            )
+            OR
+            -- Case B: shortage_warning present and parseable — check available=0 in TS
+            (td.shortage_warning IS NOT NULL AND td.shortage_warning LIKE '%"materialId"%')
+          )
       `);
 
       const phaseARows = execSelectRows<{
         id: string;
         material_id: string;
+        no_receipts: string | number;
         shortage_warning: string | null;
         borrow_party_id: string | null;
       }>(phaseAResult, "fixDoubleDeductedDispatchOwnerRows: phase A SELECT") ?? [];
@@ -10446,10 +10459,10 @@ export class DatabaseStorage implements IStorage {
         return result;
       }
 
-      // 2. Phase B (TypeScript): verify per-row:
-      //    (a) borrow row's party_id is a known HLC-family party (if any resolved),
-      //    (b) shortage_warning JSON parses cleanly and shows available=0 for material.
-      //    Malformed or non-matching rows are skipped rather than aborting the pass.
+      // 2. Phase B (TypeScript): final confirmation per-row.
+      //    • Verify borrow row's party_id is an HLC-family party (when IDs resolved).
+      //    • Case A rows (no_receipts=1): accepted immediately — no shortage_warning needed.
+      //    • Case B rows (no_receipts=0): parse shortage_warning and require available=0.
       const confirmedIds: number[] = [];
       const affectedMatIdSet = new Set<number>();
 
@@ -10458,33 +10471,40 @@ export class DatabaseStorage implements IStorage {
         const matId = parseInt(row.material_id, 10);
         if (isNaN(rowId) || isNaN(matId)) continue;
 
-        // (a) Verify borrow row's party_id is an HLC-family party when IDs are known.
+        // Verify the borrow row belongs to an HLC-family party (when IDs are known).
         if (hlcPartyIds.length > 0) {
-          const borrowPartyId = row.borrow_party_id != null ? parseInt(row.borrow_party_id, 10) : NaN;
+          const borrowPartyId = row.borrow_party_id != null ? parseInt(String(row.borrow_party_id), 10) : NaN;
           if (isNaN(borrowPartyId) || !hlcPartyIds.includes(borrowPartyId)) continue;
         }
 
-        // (b) Parse shortage_warning JSON; skip row if malformed.
-        let shortages: { materialId: number; available: number }[] = [];
-        try {
-          shortages = JSON.parse(row.shortage_warning ?? "[]") ?? [];
-        } catch {
-          console.warn(
-            `fixDoubleDeductedDispatchOwnerRows: skipping row ${rowId} — ` +
-            `could not parse shortage_warning JSON`
-          );
-          continue;
-        }
+        const noReceipts = Number(row.no_receipts) === 1;
 
-        const entry = shortages.find(s => s.materialId === matId);
-        if (entry && Number(entry.available) === 0) {
+        if (noReceipts) {
+          // Case A: owner never received this material — always erroneous.
           confirmedIds.push(rowId);
           affectedMatIdSet.add(matId);
+        } else {
+          // Case B: owner has receipts; confirm via shortage_warning available=0.
+          let shortages: { materialId: number; available: number }[] = [];
+          try {
+            shortages = JSON.parse(row.shortage_warning ?? "[]") ?? [];
+          } catch {
+            console.warn(
+              `fixDoubleDeductedDispatchOwnerRows: skipping row ${rowId} — ` +
+              `could not parse shortage_warning JSON`
+            );
+            continue;
+          }
+          const entry = shortages.find(s => s.materialId === matId);
+          if (entry && Number(entry.available) === 0) {
+            confirmedIds.push(rowId);
+            affectedMatIdSet.add(matId);
+          }
         }
       }
 
       if (confirmedIds.length === 0) {
-        console.log("fixDoubleDeductedDispatchOwnerRows: 0 rows confirmed after JSON check (clean)");
+        console.log("fixDoubleDeductedDispatchOwnerRows: 0 rows confirmed after Phase B check (clean)");
         return result;
       }
 
