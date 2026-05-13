@@ -698,6 +698,10 @@ export default function PlantStock() {
 
   // Filter all-time balances based on party/material selection (but NOT date - always all-time)
   const filteredBalances = allTimeBalances?.filter((b) => {
+    // Hide phantom cards where a party has only 0-qty marker rows (no real receipts or issues).
+    // These arise from the borrowing system writing 0-quantity dispatch marker rows for parties
+    // with no own stock. They are needed for party statement tracking but should not show as cards.
+    if (b.totalReceipts === 0 && b.totalIssues === 0) return false;
     if (selectedPartyId !== "all" && String(b.partyId ?? "") !== selectedPartyId && selectedPartyId !== "common") return false;
     if (selectedPartyId === "common" && b.partyId !== null) return false;
     if (selectedMaterialId !== "all" && b.materialId !== Number(selectedMaterialId)) return false;
