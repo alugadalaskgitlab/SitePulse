@@ -778,15 +778,15 @@ export default function PlantStock() {
         const mat = materials?.find(m => m.id === matId);
         return mat ? /bitumen|ldo/i.test(mat.name) : false;
       };
-      const ledgerRows = ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance');
-      const hasTankedRows = ledgerRows.some(e => isRowTanked(e.materialId));
+      const ledgerRows = ledgerForDisplay;
+      const hasTankedRows = ledgerRows.filter(e => e.transactionType !== 'opening_balance').some(e => isRowTanked(e.materialId));
       const ledgerData = ledgerRows.map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
         const row: Record<string, string> = {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -899,6 +899,7 @@ export default function PlantStock() {
           case 'equipment_usage': return 'Equip. Usage';
           case 'dpr_equipment_usage': return 'DPR Equip. Usage';
           case 'direct_purchase': return 'Direct Site Purchase';
+          case 'opening_balance': return 'B/F Opening Bal.';
           default: return type;
         }
       };
@@ -907,8 +908,8 @@ export default function PlantStock() {
         const mat = materials?.find(m => m.id === matId);
         return mat ? /bitumen|ldo/i.test(mat.name) : false;
       };
-      const pdfLedgerRows = ledgerForDisplay.filter(e => e.transactionType !== 'opening_balance');
-      const pdfHasTankedRows = pdfLedgerRows.some(e => isPdfRowTanked(e.materialId));
+      const pdfLedgerRows = [...ledgerForDisplay].reverse();
+      const pdfHasTankedRows = pdfLedgerRows.filter(e => e.transactionType !== 'opening_balance').some(e => isPdfRowTanked(e.materialId));
 
       const ledgerTableData = pdfLedgerRows.map(entry => {
         const { displayIn, displayOut, displayBalance, balanceUom } = getConvertedEntryData(entry);
@@ -922,8 +923,10 @@ export default function PlantStock() {
           entry.date,
           getMaterialName(entry.materialId),
           getPartyName(entry.partyId),
-          isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
-          isRevision
+          entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType),
+          entry.transactionType === 'opening_balance'
+            ? (entry.notes || '-')
+            : isRevision
             ? (entry.notes || '-') + revisionSuffix
             : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
@@ -1011,6 +1014,7 @@ export default function PlantStock() {
             .text-green { color: #16a34a; }
             .text-red { color: #dc2626; }
             .section-title { font-size: 12px; font-weight: bold; margin: 15px 0 5px 0; color: #333; }
+            .bf-row { background-color: #fffbeb !important; font-weight: bold; }
             @media print {
               body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
@@ -1070,15 +1074,21 @@ export default function PlantStock() {
               </tr>
             </thead>
             <tbody>
-              ${processedLedger.filter(e => e.transactionType !== 'opening_balance').map(entry => {
+              ${[...ledgerForDisplay].reverse().map(entry => {
                 const convData = getConvertedEntryData(entry);
+                const isBF = entry.transactionType === 'opening_balance';
                 const mDelta = entry._mergedDelta;
                 const mOrigOut = entry._originalQtyOut;
                 const isRevision = mDelta != null && mDelta !== 0;
                 const revSuffix = isRevision
                   ? ` (was ${(mOrigOut ?? 0).toFixed(3)}T, ${mDelta >= 0 ? '+' : ''}${mDelta.toFixed(3)}T \u2192 ${(entry.quantityOut || 0).toFixed(3)}T)`
                   : '';
-                const notes = isRevision
+                const typeLabel = isBF ? 'B/F Opening Bal.'
+                  : isRevision ? 'Dispatch Revision'
+                  : getTransactionTypeLabel(entry.transactionType);
+                const notes = isBF
+                  ? (entry.notes || '-')
+                  : isRevision
                   ? (entry.notes || '-') + revSuffix
                   : entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
                   ? entry.notes.replace('Diesel issued to ', '').replace(' (backfilled)', '')
@@ -1090,11 +1100,11 @@ export default function PlantStock() {
                   ? entry.notes.replace('Issue to ', '').split(' - ')[0]
                   : entry.notes || '-';
                 return `
-                <tr>
+                <tr${isBF ? ' class="bf-row"' : ''}>
                   <td>${entry.date}</td>
                   <td>${getMaterialName(entry.materialId)}</td>
                   <td>${getPartyName(entry.partyId)}</td>
-                  <td>${isRevision ? 'Dispatch Revision' : getTransactionTypeLabel(entry.transactionType)}</td>
+                  <td>${typeLabel}</td>
                   <td>${notes}</td>
                   <td class="text-right text-green">${convData.displayIn > 0 ? convData.displayIn.toFixed(3) : '-'}</td>
                   <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
