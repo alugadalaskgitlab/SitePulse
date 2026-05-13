@@ -14312,7 +14312,8 @@ export class DatabaseStorage implements IStorage {
       errors++;
     }
 
-    // Backfill receipt rows
+    // Backfill receipt rows — all materials (not just bitumen), so LDO and any future
+    // tanked material get their tankNumber copied from material_receipts automatically.
     try {
       const receiptRows = await db.select({
         ledgerId: stockLedger.id,
@@ -14320,7 +14321,6 @@ export class DatabaseStorage implements IStorage {
       })
         .from(stockLedger)
         .where(and(
-          eq(stockLedger.materialId, bitumenMat.id),
           eq(stockLedger.transactionType, "receipt"),
           sql`${stockLedger.tankNumber} IS NULL`,
           sql`${stockLedger.referenceId} IS NOT NULL`,

@@ -30,6 +30,8 @@ type StockBalanceAsOf = {
 
 type ProcessedLedgerEntry = StockLedgerEntry & {
   calculatedBalance: number;
+  t1BalanceAfter?: number;
+  t2BalanceAfter?: number;
   isSynthetic?: boolean;
   _mergedDelta?: number;
   _originalQtyOut?: number;
@@ -106,6 +108,7 @@ export default function PlantStock() {
   });
 
   const [activeTab, setActiveTab] = useState("summary");
+  const [selectedTank, setSelectedTank] = useState<"all" | "1" | "2">("all");
 
   const { data: parties } = useQuery<Party[]>({ queryKey: ["/api/plant-module/parties"] });
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
@@ -209,6 +212,14 @@ export default function PlantStock() {
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;
   const getPartyName = (id: number | null) => id ? parties?.find((p) => p.id === id)?.name || `Party ${id}` : "Unknown";
+
+  // Detect if the currently selected material tracks per-tank stock (Bitumen or LDO).
+  // When true: tank filter is visible and T1/T2 balances are shown in the Balance column.
+  const isTankedMaterial = (() => {
+    if (selectedMaterialId === "all") return false;
+    const mat = materials?.find(m => String(m.id) === selectedMaterialId);
+    return mat ? /bitumen|ldo/i.test(mat.name) : false;
+  })();
 
   // Filter out old equipment_issue entries (legacy - no longer created) and calculate running balances
   const processedLedger = useMemo(() => {
@@ -355,6 +366,8 @@ export default function PlantStock() {
 
     // ── Main accumulation loop ──────────────────────────────────────────────────
     const mainRows: ProcessedLedgerEntry[] = [];
+    const t1Balances: Record<string, number> = {};
+    const t2Balances: Record<string, number> = {};
 
     for (const entry of sorted) {
       // Skip rebuild delta rows entirely — their quantity is absorbed below
@@ -362,6 +375,8 @@ export default function PlantStock() {
 
       const key = `${entry.materialId}-${entry.partyId ?? 0}`;
       if (groupBalances[key] === undefined) groupBalances[key] = 0;
+      if (t1Balances[key] === undefined) t1Balances[key] = 0;
+      if (t2Balances[key] === undefined) t2Balances[key] = 0;
 
       let convertedIn  = getConvertedQty(entry, entry.quantityIn);
       let convertedOut = getConvertedQty(entry, entry.quantityOut);
@@ -384,7 +399,19 @@ export default function PlantStock() {
 
       groupBalances[key] = roundBalance(groupBalances[key] + convertedIn - convertedOut);
 
-      const row: ProcessedLedgerEntry = { ...entry, calculatedBalance: groupBalances[key] };
+      // Per-tank running balances — only entries with an explicit tankNumber move a tank balance
+      if (entry.tankNumber === 1) {
+        t1Balances[key] = roundBalance(t1Balances[key] + convertedIn - convertedOut);
+      } else if (entry.tankNumber === 2) {
+        t2Balances[key] = roundBalance(t2Balances[key] + convertedIn - convertedOut);
+      }
+
+      const row: ProcessedLedgerEntry = {
+        ...entry,
+        calculatedBalance: groupBalances[key],
+        t1BalanceAfter: t1Balances[key],
+        t2BalanceAfter: t2Balances[key],
+      };
       if (rawDelta !== 0) {
         row.quantityOut = Math.max(0, originalRawOut + rawDelta);
         row._mergedDelta = rawDelta;
@@ -397,7 +424,7 @@ export default function PlantStock() {
     return [...syntheticRows, ...mainRows];
   }, [ledger, balanceAsOf, materials, dateFrom]);
 
-  // For display, reverse to show most recent first and filter by transaction type + issuedTo search
+  // For display, reverse to show most recent first and filter by transaction type + issuedTo search + tank
   const ledgerForDisplay = useMemo(() => {
     let entries = [...processedLedger].reverse();
     if (selectedTransactionType !== "all") {
@@ -409,8 +436,13 @@ export default function PlantStock() {
       // Always keep synthetic opening-balance rows for context; apply text filter to real entries only
       entries = entries.filter(e => e.transactionType === 'opening_balance' || (e.notes || "").toLowerCase().includes(q));
     }
+    if (isTankedMaterial && selectedTank !== "all") {
+      const tankNum = Number(selectedTank);
+      // Keep opening_balance rows for context; only show real entries matching the selected tank
+      entries = entries.filter(e => e.transactionType === 'opening_balance' || e.tankNumber === tankNum);
+    }
     return entries;
-  }, [processedLedger, selectedTransactionType, issuedToFilter]);
+  }, [processedLedger, selectedTransactionType, issuedToFilter, isTankedMaterial, selectedTank]);
 
   // Calculate totals for filtered ledger data - with UOM conversion (exclude synthetic opening_balance rows)
   const ledgerTotals = useMemo(() => {
@@ -1198,6 +1230,21 @@ export default function PlantStock() {
                   data-testid="input-issued-to-filter"
                 />
               </div>
+              {isTankedMaterial && (
+                <div>
+                  <Label>Tank</Label>
+                  <Select value={selectedTank} onValueChange={(v) => setSelectedTank(v as "all" | "1" | "2")}>
+                    <SelectTrigger data-testid="select-filter-tank">
+                      <SelectValue placeholder="All Tanks" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Tanks</SelectItem>
+                      <SelectItem value="1">Tank 1</SelectItem>
+                      <SelectItem value="2">Tank 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -1575,6 +1622,12 @@ export default function PlantStock() {
                                 {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
                               </span>
                             </div>
+                            {!isBF && isTankedMaterial && ((entry.t1BalanceAfter ?? 0) !== 0 || (entry.t2BalanceAfter ?? 0) !== 0) && (
+                              <div className="flex items-center justify-end gap-2 mt-0.5 text-xs font-normal">
+                                <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)}</span>
+                                <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)}</span>
+                              </div>
+                            )}
                             {displayBalance < -1e-9 && !isBF && (
                               <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
                             )}
