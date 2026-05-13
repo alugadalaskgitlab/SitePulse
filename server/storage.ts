@@ -4599,32 +4599,48 @@ export class DatabaseStorage implements IStorage {
       refId: number,
     ) => {
       if (Math.abs(delta) < 0.0001) return;
-      if (delta > 0) {
-        await db.insert(stockLedger).values({
-          date,
-          partyId,
-          materialId,
-          transactionType: 'dispatch',
-          quantityOut: delta,
-          balanceAfter: 0,
-          uom: 'Ton',
-          notes: `Aggregate dispatch (${partyLabel}) [rebuild delta]`,
-          referenceId: refId,
-        });
-      } else {
-        await db.insert(stockLedger).values({
-          date,
-          partyId,
-          materialId,
-          transactionType: 'adjustment',
-          quantityIn: -delta,
-          balanceAfter: 0,
-          uom: 'Ton',
-          notes: `Aggregate dispatch reversal (${partyLabel}) [rebuild delta]`,
-          referenceId: refId,
-        });
+      try {
+        if (delta > 0) {
+          await db.execute(sql`
+            INSERT INTO stock_ledger
+              (date, party_id, material_id, transaction_type,
+               quantity_out, balance_after, uom, notes, reference_id)
+            VALUES
+              (${date}, ${partyId}, ${materialId}, 'dispatch',
+               ${delta}, 0, 'Ton', ${`Aggregate dispatch (${partyLabel}) [rebuild delta]`}, ${refId})
+            ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+              WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+            DO UPDATE SET
+              quantity_out  = EXCLUDED.quantity_out,
+              date          = EXCLUDED.date,
+              notes         = EXCLUDED.notes,
+              balance_after = 0
+          `);
+        } else {
+          await db.execute(sql`
+            INSERT INTO stock_ledger
+              (date, party_id, material_id, transaction_type,
+               quantity_in, balance_after, uom, notes, reference_id)
+            VALUES
+              (${date}, ${partyId}, ${materialId}, 'adjustment',
+               ${-delta}, 0, 'Ton', ${`Aggregate dispatch reversal (${partyLabel}) [rebuild delta]`}, ${refId})
+            ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+              WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+            DO UPDATE SET
+              quantity_in   = EXCLUDED.quantity_in,
+              date          = EXCLUDED.date,
+              notes         = EXCLUDED.notes,
+              balance_after = 0
+          `);
+        }
+        ledgerRowsCreated++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isUniqueViolation = typeof (err as any)?.code === 'string' && (err as any).code === '23505';
+        const label = isUniqueViolation ? 'unique-constraint conflict' : 'DB error';
+        console.error(`[LedgerRebuild] insertLegacyDeltaEntry ${label} — dispatch #${refId} mat #${materialId} party ${partyId ?? 'null'}: ${msg}`);
+        errors.push(`Legacy delta insert ${label} (dispatch #${refId}, mat #${materialId}): ${msg}`);
       }
-      ledgerRowsCreated++;
     };
 
     // Current components keyed by materialId for fast lookup
