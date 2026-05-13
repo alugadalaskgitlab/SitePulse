@@ -472,6 +472,14 @@ export default function PlantDispatches() {
       }
     }
   }, [editId, dispatches, autoEditDone]);
+
+  // When the page was opened via a deep-link ?edit= (e.g. from the stock ledger),
+  // navigate back to the origin page once the user closes the dialog.
+  useEffect(() => {
+    if (autoEditDone && !dialogOpen) {
+      setLocation(backLink);
+    }
+  }, [autoEditDone, dialogOpen]);
   const handleExportExcelClick = () => exportToExcel();
   const handleExportPdfClick = () => exportToPDF();
   const handlePrintClick = () => handlePrint();

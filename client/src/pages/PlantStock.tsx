@@ -455,9 +455,10 @@ export default function PlantStock() {
     }
     if (isTankedMaterial && selectedTank !== "all") {
       const tankNum = Number(selectedTank);
-      // Keep the synthetic B/F row but remap its balance to the selected tank's opening balance.
-      // All real entries are filtered to only show those belonging to the chosen tank.
-      entries = entries.filter(e => e.transactionType === 'opening_balance' || e.tankNumber === tankNum).map(e => {
+      // Keep the synthetic B/F row, entries matching the chosen tank, AND entries with no
+      // tankNumber at all (untagged consumptions like equipment-usage or un-backfilled dispatches
+      // must not disappear — they affect the overall balance and the user should see them).
+      entries = entries.filter(e => e.transactionType === 'opening_balance' || e.tankNumber === tankNum || e.tankNumber == null).map(e => {
         if (e.transactionType !== 'opening_balance') return e;
         // For the B/F row: use the per-tank opening balance so the running total is coherent
         const tankBalance = tankNum === 1 ? (e.t1BalanceAfter ?? 0) : (e.t2BalanceAfter ?? 0);
@@ -1628,12 +1629,12 @@ export default function PlantStock() {
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
-                                <Link href={`/plant/material-receipts?edit=${entry.referenceId}`}>
+                                <Link href={appendPlantContext(`/plant/material-receipts?edit=${entry.referenceId}`, { defaultTab: "stock" })}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'dispatch' && entry.referenceId != null && !entry._mergedDelta && (
-                                <Link href={`/plant/dispatches?edit=${entry.referenceId}`}>
+                                <Link href={appendPlantContext(`/plant/dispatches?edit=${entry.referenceId}`, { defaultTab: "stock" })}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
                                 </Link>
                               )}
