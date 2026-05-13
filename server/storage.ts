@@ -1037,6 +1037,30 @@ export class StockShortageError extends Error {
   }
 }
 
+/**
+ * Safely extract the rows array from a raw db.execute() result.
+ *
+ * node-postgres returns a QueryResult object ({ rows: T[], rowCount, ... }).
+ * Code that array-destructures the result directly (`const [row] = await db.execute(...)`)
+ * will always receive `undefined` because QueryResult is not iterable, silently
+ * returning wrong/empty data.  Use this helper for every db.execute(sql`SELECT …`)
+ * call so misuse throws loudly at the point of failure rather than causing silent
+ * data corruption downstream.
+ */
+function execSelectRows<T = Record<string, unknown>>(result: unknown, context = "db.execute SELECT"): T[] {
+  if (result !== null && typeof result === "object" && "rows" in result && Array.isArray((result as { rows: unknown[] }).rows)) {
+    return (result as { rows: T[] }).rows;
+  }
+  // If the result is already iterable (e.g. Drizzle ORM returns arrays for typed
+  // queries), fall through gracefully rather than throwing.
+  if (Array.isArray(result)) {
+    return result as T[];
+  }
+  throw new Error(
+    `${context}: expected a QueryResult with a .rows array but received: ${JSON.stringify(result)?.slice(0, 200)}`
+  );
+}
+
 export class DatabaseStorage implements IStorage {
   async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]> {
     let conditions = [];
@@ -10106,7 +10130,7 @@ export class DatabaseStorage implements IStorage {
           HAVING COUNT(*) > 1
         ) t
       `);
-      const groupRow = (countResult as unknown as { rows: { cnt: string }[] }).rows?.[0];
+      const groupRow = execSelectRows<{ cnt: string }>(countResult, "deduplicateStockLedgerDispatchRows: count")?.[0];
       const groupsFixed = parseInt(groupRow?.cnt ?? "0", 10);
 
       if (groupsFixed > 0) {
