@@ -6382,7 +6382,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-contractor", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertAdmin(req, res)) return;
       const { from, to } = req.body;
       if (!from || !to) return res.status(400).json({ message: "from and to are required" });
       const count = await storage.renameContractor(from, to);
@@ -6395,7 +6395,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-project", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertAdmin(req, res)) return;
       const { ids, to } = req.body;
       if (!Array.isArray(ids) || ids.length === 0 || !to) return res.status(400).json({ message: "ids and to are required" });
       let count = 0;
