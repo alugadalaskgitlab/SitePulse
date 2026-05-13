@@ -1539,11 +1539,6 @@ export default function PlantStock() {
                                   <ClipboardList className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" />
                                 </Link>
                               )}
-                              {!isBF && entry.tankNumber != null && (
-                                <span className={`px-1.5 py-0.5 text-xs font-semibold rounded-sm ${entry.tankNumber === 1 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'}`}>
-                                  T{entry.tankNumber}
-                                </span>
-                              )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
                                 <Link href={`/plant/material-receipts?edit=${entry.referenceId}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
@@ -1560,10 +1555,26 @@ export default function PlantStock() {
                             {isBF ? (displayBalance >= 0 ? displayBalance.toFixed(3) : '-') : (displayIn > 0 ? `${displayIn.toFixed(3)}` : '-')}
                           </td>
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
-                            {isBF ? (displayBalance < 0 ? Math.abs(displayBalance).toFixed(3) : '-') : (displayOut > 0 ? `${displayOut.toFixed(3)}` : '-')}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {!isBF && entry.tankNumber != null && displayOut > 0 && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'bg-white dark:bg-transparent border-current text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-transparent border-current text-purple-600 dark:text-purple-400'}`}>
+                                  T{entry.tankNumber}
+                                </span>
+                              )}
+                              {isBF ? (displayBalance < 0 ? Math.abs(displayBalance).toFixed(3) : '-') : (displayOut > 0 ? displayOut.toFixed(3) : '-')}
+                            </div>
                           </td>
                           <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 ? 'text-red-600 dark:text-red-400' : ''}`}>
-                            {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {!isBF && entry.tankNumber != null && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'border-blue-400 text-blue-600 dark:text-blue-400' : 'border-purple-400 text-purple-600 dark:text-purple-400'}`}>
+                                  T{entry.tankNumber}
+                                </span>
+                              )}
+                              <span>
+                                {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
+                              </span>
+                            </div>
                             {displayBalance < -1e-9 && !isBF && (
                               <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
                             )}
