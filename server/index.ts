@@ -133,6 +133,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r0 = await storage.backfillDispatchReferenceIds();
+    console.log(`Startup: backfillDispatchReferenceIds — updated: ${r0.updated}, skipped: ${r0.skipped}, errors: ${r0.errors}`);
+  } catch (e) {
+    console.error("Startup: backfillDispatchReferenceIds failed:", e);
+  }
+
+  try {
     const r2 = await storage.backfillDispatchNotes();
     console.log(`Startup: backfillDispatchNotes — updated: ${r2.updated}, skipped: ${r2.skipped}, errors: ${r2.errors}`);
   } catch (e) {

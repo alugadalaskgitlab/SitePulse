@@ -351,6 +351,7 @@ export interface IStorage {
   // Backfill historical dispatch ledger notes from old patterns (e.g. "Aggregate dispatch (Party)")
   // to the new "MixName — DeliveryLocation" format introduced in Task #406.
   backfillDispatchNotes(): Promise<{ updated: number; skipped: number; errors: number }>;
+  backfillDispatchReferenceIds(): Promise<{ updated: number; skipped: number; errors: number }>;
 
   // Backfill tankNumber on existing bitumen stock_ledger entries from their source receipts/dispatches.
   // Idempotent — only updates rows where tankNumber IS NULL.
@@ -14088,6 +14089,94 @@ export class DatabaseStorage implements IStorage {
     }
 
     console.info(`[backfillDispatchNotes] done — updated: ${updated}, skipped: ${skipped}, errors: ${errors}`);
+    return { updated, skipped, errors };
+  }
+
+  // Backfill referenceId on historical dispatch ledger rows that have no referenceId.
+  // Old entries were created before the code stored the dispatch ID on the ledger row.
+  // Matching strategy:
+  //   • BITUMEN rows — match truck_dispatch by date + partyId + ABS(theoreticalBitumenQty - quantityOut) < 0.001
+  //   • Other materials — match by date + partyId (pick the first dispatch on that date for that party)
+  // Idempotent — only touches rows where referenceId IS NULL.
+  async backfillDispatchReferenceIds(): Promise<{ updated: number; skipped: number; errors: number }> {
+    const orphanRows = await db.select({
+      id: stockLedger.id,
+      date: stockLedger.date,
+      partyId: stockLedger.partyId,
+      materialId: stockLedger.materialId,
+      quantityOut: stockLedger.quantityOut,
+    })
+      .from(stockLedger)
+      .where(and(
+        eq(stockLedger.transactionType, 'dispatch'),
+        sql`${stockLedger.referenceId} IS NULL`,
+      ));
+
+    if (orphanRows.length === 0) {
+      console.info('[backfillDispatchReferenceIds] nothing to do');
+      return { updated: 0, skipped: 0, errors: 0 };
+    }
+
+    const [bitumenMat] = await db.select({ id: plantMaterials.id })
+      .from(plantMaterials)
+      .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+      .limit(1);
+
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const row of orphanRows) {
+      try {
+        let matchId: number | null = null;
+
+        if (bitumenMat && row.materialId === bitumenMat.id && (row.quantityOut ?? 0) > 0) {
+          // Bitumen: match by date + exact qty first. If none, fall back to any dispatch on
+          // the same date (handles split-party deductions where one dispatch's bitumen is
+          // split across two ledger entries, neither of which equals the full theoretical qty).
+          const [exactMatch] = await db.select({ id: truckDispatches.id })
+            .from(truckDispatches)
+            .where(and(
+              eq(truckDispatches.date, row.date),
+              sql`ABS(${truckDispatches.theoreticalBitumenQty} - ${row.quantityOut}) < 0.001`,
+            ))
+            .limit(1);
+          if (exactMatch) {
+            matchId = exactMatch.id;
+          } else {
+            // Fallback: any dispatch on the same date gives correct mix + delivery location
+            const [fallback] = await db.select({ id: truckDispatches.id })
+              .from(truckDispatches)
+              .where(eq(truckDispatches.date, row.date))
+              .limit(1);
+            matchId = fallback?.id ?? null;
+          }
+        } else {
+          // Other materials: any dispatch on the same date gives the correct mix + delivery location.
+          const [match] = await db.select({ id: truckDispatches.id })
+            .from(truckDispatches)
+            .where(eq(truckDispatches.date, row.date))
+            .limit(1);
+          matchId = match?.id ?? null;
+        }
+
+        if (matchId == null) {
+          skipped++;
+          continue;
+        }
+
+        await db.update(stockLedger)
+          .set({ referenceId: matchId })
+          .where(eq(stockLedger.id, row.id));
+
+        updated++;
+      } catch (err) {
+        console.error(`[backfillDispatchReferenceIds] Error on ledger row ${row.id}:`, err);
+        errors++;
+      }
+    }
+
+    console.info(`[backfillDispatchReferenceIds] done — updated: ${updated}, skipped: ${skipped}, errors: ${errors}`);
     return { updated, skipped, errors };
   }
 
