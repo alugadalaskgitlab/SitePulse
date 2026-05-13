@@ -174,6 +174,20 @@ app.use((req, res, next) => {
     console.error("Startup: Failed to create stock_ledger_dispatch_dedup_idx:", e);
   }
 
+  // Step 3 — zero out any owner dispatch rows that were double-charged
+  // (owner qty_out > 0 despite shortage_warning showing available=0 AND
+  // an HLC "Borrowed from HLC" row already covering the full quantity).
+  try {
+    const r1b = await storage.fixDoubleDeductedDispatchOwnerRows();
+    if (r1b.rowsFixed > 0) {
+      console.log(`Startup: fixDoubleDeductedDispatchOwnerRows — fixed ${r1b.rowsFixed} row(s), recomputed ${r1b.materialsRecomputed} material(s)`);
+    } else {
+      console.log("Startup: fixDoubleDeductedDispatchOwnerRows — 0 rows to fix (clean)");
+    }
+  } catch (e) {
+    console.error("Startup: fixDoubleDeductedDispatchOwnerRows failed:", e);
+  }
+
   try {
     const r2 = await storage.backfillDispatchNotes();
     console.log(`Startup: backfillDispatchNotes — updated: ${r2.updated}, skipped: ${r2.skipped}, errors: ${r2.errors}`);

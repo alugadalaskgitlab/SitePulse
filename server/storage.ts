@@ -504,6 +504,13 @@ export interface IStorage {
   // Idempotent — no-op when no duplicates exist.
   deduplicateStockLedgerDispatchRows(): Promise<{ groupsFixed: number; rowsDeleted: number }>;
 
+  // Healer: find dispatch owner rows that were double-charged (owner has qty_out > 0 AND
+  // an HLC "Borrowed from HLC" row exists for the same reference+material, AND the
+  // dispatch's shortage_warning shows available=0 for that material).  Zeros out the
+  // owner's quantity_out and recomputes balance_after for every affected material.
+  // Idempotent — safe to re-run when no bad rows exist.
+  fixDoubleDeductedDispatchOwnerRows(): Promise<{ rowsFixed: number; materialsRecomputed: number }>;
+
   // Admin: list shift-log workers tagged UNKNOWN CONTRACTOR / OTHER, grouped by name
   listShiftLogManpowerNeedingReview(opts?: { dateFrom?: string; dateTo?: string; plantName?: string }): Promise<Array<{
     name: string;
@@ -10244,6 +10251,98 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (err) {
       console.error("deduplicateStockLedgerDispatchRows: error:", err);
+    }
+    return result;
+  }
+
+  async fixDoubleDeductedDispatchOwnerRows(): Promise<{ rowsFixed: number; materialsRecomputed: number }> {
+    // Detect and correct double-deduction: owner dispatch row has quantity_out > 0 while
+    // (a) an HLC "Borrowed from HLC" row exists for the same reference_id + material_id
+    //     with quantity_out > 0, AND
+    // (b) the dispatch's shortage_warning JSON shows available = 0 for that material.
+    //
+    // Both conditions together prove the owner should have been written as a 0-qty marker
+    // row (entire quantity borrowed from HLC) but was mistakenly written with a positive
+    // quantity_out, creating a phantom negative balance for the owner.
+    //
+    // Fix: zero out quantity_out on the offending owner rows.  Then recompute
+    // balance_after for each affected material via the window-function UPDATE.
+    const result = { rowsFixed: 0, materialsRecomputed: 0 };
+    try {
+      // Step 1: find candidates — owner rows to zero out.
+      const candidateResult = await db.execute(sql`
+        SELECT sl.id, sl.material_id
+        FROM stock_ledger sl
+        INNER JOIN truck_dispatches td ON td.id = sl.reference_id
+        WHERE sl.transaction_type = 'dispatch'
+          AND sl.reference_id IS NOT NULL
+          AND sl.quantity_out > 0
+          -- owner row: notes do NOT contain the HLC borrow marker
+          AND (sl.notes IS NULL OR sl.notes NOT LIKE '%Borrowed from HLC%')
+          -- an HLC borrowed row exists for the same dispatch + material
+          AND EXISTS (
+            SELECT 1 FROM stock_ledger hlc
+            WHERE hlc.reference_id = sl.reference_id
+              AND hlc.material_id  = sl.material_id
+              AND hlc.transaction_type = 'dispatch'
+              AND hlc.quantity_out > 0
+              AND hlc.notes LIKE '%Borrowed from HLC%'
+          )
+          -- shortage_warning JSON shows available = 0 for this material.
+          -- Guard: only attempt JSONB cast when keys are properly double-quoted
+          -- (some old rows store JS-style unquoted keys that are not valid JSONB).
+          AND td.shortage_warning IS NOT NULL
+          AND td.shortage_warning LIKE '%"materialId"%'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(td.shortage_warning::jsonb) elem
+            WHERE (elem->>'materialId')::int = sl.material_id
+              AND (elem->>'available')::float = 0
+          )
+      `);
+
+      const candidates = execSelectRows<{ id: string; material_id: string }>(
+        candidateResult,
+        "fixDoubleDeductedDispatchOwnerRows: SELECT candidates"
+      ) ?? [];
+
+      if (candidates.length === 0) {
+        console.log("fixDoubleDeductedDispatchOwnerRows: 0 rows to fix (clean)");
+        return result;
+      }
+
+      const candidateIds = candidates.map(r => parseInt(r.id, 10));
+      const affectedMatIds = [...new Set(candidates.map(r => parseInt(r.material_id, 10)))];
+
+      console.log(
+        `fixDoubleDeductedDispatchOwnerRows: zeroing ${candidateIds.length} owner row(s) ` +
+        `(ids: ${candidateIds.join(", ")}) for material(s): ${affectedMatIds.join(", ")}`
+      );
+
+      // Step 2: zero out quantity_out on all candidate rows.
+      const updateResult = await db.execute(sql`
+        UPDATE stock_ledger
+        SET quantity_out = 0,
+            balance_after = 0
+        WHERE id = ANY(${candidateIds}::int[])
+      `);
+      result.rowsFixed = execDmlRowCount(updateResult, "fixDoubleDeductedDispatchOwnerRows: UPDATE stock_ledger");
+
+      // Step 3: recompute running balance_after for each affected material.
+      for (const matId of affectedMatIds) {
+        await this.recomputeBalanceAfterForMaterial(matId);
+        result.materialsRecomputed++;
+      }
+
+      // Step 4: sync stock_balances summary table.
+      await this.reconcileStockBalancesFromLedger();
+
+      console.log(
+        `fixDoubleDeductedDispatchOwnerRows: fixed ${result.rowsFixed} row(s), ` +
+        `recomputed ${result.materialsRecomputed} material(s)`
+      );
+    } catch (err) {
+      console.error("fixDoubleDeductedDispatchOwnerRows: error:", err);
     }
     return result;
   }
