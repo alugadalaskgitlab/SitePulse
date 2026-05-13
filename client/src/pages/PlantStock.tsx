@@ -1539,6 +1539,11 @@ export default function PlantStock() {
                                   <ClipboardList className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" />
                                 </Link>
                               )}
+                              {!isBF && entry.tankNumber != null && (
+                                <span className={`px-1.5 py-0.5 text-xs font-semibold rounded-sm ${entry.tankNumber === 1 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'}`}>
+                                  T{entry.tankNumber}
+                                </span>
+                              )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
                                 <Link href={`/plant/material-receipts?edit=${entry.referenceId}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />

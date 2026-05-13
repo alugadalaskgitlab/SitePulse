@@ -140,6 +140,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r3 = await storage.backfillBitumenTankNumbers();
+    console.log(`Startup: backfillBitumenTankNumbers — updated: ${r3.updated}, errors: ${r3.errors}`);
+  } catch (e) {
+    console.error("Startup: backfillBitumenTankNumbers failed:", e);
+  }
+
+  try {
     const result = await storage.migrate6mmDownUomFix();
     console.log(`Startup: ${result.message}`);
   } catch (e) {

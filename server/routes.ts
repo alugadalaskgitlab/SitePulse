@@ -2787,6 +2787,17 @@ export async function registerRoutes(
     }
   });
 
+  // Per-tank bitumen balance — returns { tank1: MT, tank2: MT }
+  app.get("/api/plant-module/bitumen-tank-balances", async (req, res) => {
+    try {
+      const partyId = req.query.partyId !== undefined ? Number(req.query.partyId) : undefined;
+      const result = await storage.getBitumenTankBalances(partyId ?? null);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch bitumen tank balances" });
+    }
+  });
+
   // Party Supply Obligation Statement
   app.get("/api/plant-module/party-statement", requireAuth, async (req, res) => {
     try {

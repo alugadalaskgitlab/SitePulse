@@ -458,6 +458,7 @@ export const stockLedger = pgTable("stock_ledger", {
   balanceAfter: real("balance_after"),
   uom: text("uom"),
   notes: text("notes"),
+  tankNumber: integer("tank_number"), // For bitumen: which physical tank (1 or 2) this movement belongs to
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("stock_ledger_date_idx").on(table.date),

@@ -352,6 +352,14 @@ export interface IStorage {
   // to the new "MixName — DeliveryLocation" format introduced in Task #406.
   backfillDispatchNotes(): Promise<{ updated: number; skipped: number; errors: number }>;
 
+  // Backfill tankNumber on existing bitumen stock_ledger entries from their source receipts/dispatches.
+  // Idempotent — only updates rows where tankNumber IS NULL.
+  backfillBitumenTankNumbers(): Promise<{ updated: number; errors: number }>;
+
+  // Compute per-tank bitumen balance from the stock_ledger.
+  // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
+  getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }>;
+
   // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
   rebuildDispatchLedgerForTemplate(opts: {
     templateId: number;
@@ -2162,6 +2170,7 @@ export class DatabaseStorage implements IStorage {
         balanceAfter: newBalance,
         uom: stockUom,
         notes: conversionNote,
+        tankNumber: receipt.tankNumber ?? null,
       });
 
       // Task #490 — If this is an LDO or DIESEL receipt going to a specific tank,
@@ -2277,6 +2286,7 @@ export class DatabaseStorage implements IStorage {
         ? `From ${updates.supplier || existing.supplier || 'Supplier'} (${newQuantity} ${newUom} converted to ${newStockQuantity.toFixed(3)} ${newStockUom})`
         : updates.supplier || existing.supplier ? `From ${updates.supplier || existing.supplier}` : undefined;
       
+      const receiptTankNumber = receipt.tankNumber !== undefined ? receipt.tankNumber : existing.tankNumber;
       await tx.insert(stockLedger).values({
         date: receipt.date ?? existing.date,
         partyId: newTargetPartyId,
@@ -2287,6 +2297,7 @@ export class DatabaseStorage implements IStorage {
         balanceAfter: finalBalance,
         uom: newStockUom,
         notes: conversionNote,
+        tankNumber: receiptTankNumber ?? null,
       });
 
       // Task #490 — Sync the linked ldo_flow_readings receipt row.
@@ -2569,6 +2580,17 @@ export class DatabaseStorage implements IStorage {
         .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
         .limit(1);
       if (bitumenMat) await this.recomputeBalanceAfterForMaterial(bitumenMat.id);
+    }
+
+    // Sync tankNumber on bitumen ledger entries if bitumenTankNumber changed.
+    if (dispatch.bitumenTankNumber !== undefined) {
+      await db.update(stockLedger)
+        .set({ tankNumber: dispatch.bitumenTankNumber })
+        .where(and(
+          eq(stockLedger.transactionType, "dispatch"),
+          eq(stockLedger.referenceId, id),
+          sql`${stockLedger.tankNumber} IS DISTINCT FROM ${dispatch.bitumenTankNumber}`,
+        ));
     }
 
     return (await db.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1))[0];
@@ -3947,7 +3969,7 @@ export class DatabaseStorage implements IStorage {
       // If the dispatch UOM differs from the balance UOM, the quantity is converted
       // using the material's conversion factor before deducting (e.g. Ton dispatch
       // from a CFT-denominated opening balance like 6MM Down).
-      const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string) => {
+      const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string, tankNum?: number | null) => {
         const condition = pId === null 
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
@@ -3997,6 +4019,7 @@ export class DatabaseStorage implements IStorage {
           balanceAfter: newBalance,
           uom: deductUom,
           notes,
+          tankNumber: tankNum ?? null,
         }).returning({ id: stockLedger.id });
         if (insertedRow?.id) insertedLedgerIds.push(insertedRow.id);
         
@@ -4017,11 +4040,11 @@ export class DatabaseStorage implements IStorage {
         dispatchData.deliveryLocation?.trim() || null,
       ].filter(Boolean).join(" — ");
 
-      // Build the consumption plan: list of {matId, qty, uom, label}
-      type Plan = { matId: number; qty: number; uom: string; label: string };
+      // Build the consumption plan: list of {matId, qty, uom, label, tankNumber?}
+      type Plan = { matId: number; qty: number; uom: string; label: string; tankNumber?: number | null };
       const plan: Plan[] = [];
       if (bitumenMaterial && theoreticalBitumenQty > 0) {
-        plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: mixLabel });
+        plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: mixLabel, tankNumber: dispatchData.bitumenTankNumber ?? 1 });
       }
       // LDO is NOT deducted from store stock via dispatch.
       // Actual LDO consumption is tracked through the tank (heating session / plant log / dip reading).
@@ -4112,7 +4135,7 @@ export class DatabaseStorage implements IStorage {
         const ownerBal = normalizeBalance(rawBal, balUom, item.uom, item.matId);
         const fromOwner = Math.min(Math.max(ownerBal, 0), item.qty);
         if (fromOwner > 0) {
-          await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label);
+          await deductFromSource(partyId, item.matId, fromOwner, item.uom, item.label, item.tankNumber);
         }
         const remaining = +(item.qty - fromOwner).toFixed(9);
         if (remaining > 0) {
@@ -4132,13 +4155,14 @@ export class DatabaseStorage implements IStorage {
                 balanceAfter: Math.max(ownerBal, 0),
                 uom: item.uom,
                 notes: item.label,
+                tankNumber: item.tankNumber ?? null,
               }).returning({ id: stockLedger.id });
               if (markerRow?.id) insertedLedgerIds.push(markerRow.id);
             }
-            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from HLC)`);
+            await deductFromSource(hlcPartyId, item.matId, remaining, item.uom, `${item.label} (Borrowed from HLC)`, item.tankNumber);
           } else {
             // Owner IS HLC, or no HLC found — record the shortfall against the owner so the ledger remains complete.
-            await deductFromSource(partyId, item.matId, remaining, item.uom, `${item.label} (${ownerPartyName} — short)`);
+            await deductFromSource(partyId, item.matId, remaining, item.uom, `${item.label} (${ownerPartyName} — short)`, item.tankNumber);
           }
           shortages.push({ materialId: item.matId, required: item.qty, available: Math.max(ownerBal, 0) });
         }
@@ -14113,6 +14137,127 @@ export class DatabaseStorage implements IStorage {
       applied: true,
       message: `migrate6mmDownUomFix: corrected 9450 CFT → 425.25 Ton, reconciled stock balances, recomputed ${recomputed.updated} balance_after row(s).`,
     };
+  }
+
+  // Compute per-tank bitumen balance from stock_ledger entries tagged with tankNumber.
+  // Optionally scoped to a partyId (or all parties if null/undefined).
+  async getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }> {
+    const [bitumenMat] = await db.select({ id: plantMaterials.id })
+      .from(plantMaterials)
+      .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+      .limit(1);
+    if (!bitumenMat) return { tank1: 0, tank2: 0 };
+
+    const conditions: ReturnType<typeof and>[] = [
+      eq(stockLedger.materialId, bitumenMat.id),
+      sql`${stockLedger.tankNumber} IS NOT NULL`,
+    ];
+    if (partyId != null) {
+      conditions.push(eq(stockLedger.partyId, partyId));
+    }
+
+    const rows = await db.select({
+      tankNumber: stockLedger.tankNumber,
+      quantityIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+      quantityOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+    })
+      .from(stockLedger)
+      .where(and(...conditions))
+      .groupBy(stockLedger.tankNumber);
+
+    let tank1 = 0;
+    let tank2 = 0;
+    for (const row of rows) {
+      const net = Number(row.quantityIn) - Number(row.quantityOut);
+      if (row.tankNumber === 1) tank1 = net;
+      else if (row.tankNumber === 2) tank2 = net;
+    }
+    return { tank1, tank2 };
+  }
+
+  // Backfill tankNumber on existing bitumen stock_ledger entries that have no tankNumber yet.
+  // Dispatch rows: tankNumber comes from truck_dispatches.bitumen_tank_number via referenceId.
+  // Receipt rows: tankNumber comes from material_receipts.tank_number via referenceId.
+  // Idempotent — only touches rows where tankNumber IS NULL.
+  async backfillBitumenTankNumbers(): Promise<{ updated: number; errors: number }> {
+    const [bitumenMat] = await db.select({ id: plantMaterials.id })
+      .from(plantMaterials)
+      .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+      .limit(1);
+    if (!bitumenMat) return { updated: 0, errors: 0 };
+
+    let updated = 0;
+    let errors = 0;
+
+    // Backfill dispatch rows
+    try {
+      const dispatchRows = await db.select({
+        ledgerId: stockLedger.id,
+        referenceId: stockLedger.referenceId,
+      })
+        .from(stockLedger)
+        .where(and(
+          eq(stockLedger.materialId, bitumenMat.id),
+          eq(stockLedger.transactionType, "dispatch"),
+          sql`${stockLedger.tankNumber} IS NULL`,
+          sql`${stockLedger.referenceId} IS NOT NULL`,
+        ));
+
+      for (const row of dispatchRows) {
+        try {
+          const [dispatch] = await db.select({ bitumenTankNumber: truckDispatches.bitumenTankNumber })
+            .from(truckDispatches)
+            .where(eq(truckDispatches.id, row.referenceId!))
+            .limit(1);
+          if (dispatch?.bitumenTankNumber != null) {
+            await db.update(stockLedger)
+              .set({ tankNumber: dispatch.bitumenTankNumber })
+              .where(eq(stockLedger.id, row.ledgerId));
+            updated++;
+          }
+        } catch {
+          errors++;
+        }
+      }
+    } catch (e) {
+      errors++;
+    }
+
+    // Backfill receipt rows
+    try {
+      const receiptRows = await db.select({
+        ledgerId: stockLedger.id,
+        referenceId: stockLedger.referenceId,
+      })
+        .from(stockLedger)
+        .where(and(
+          eq(stockLedger.materialId, bitumenMat.id),
+          eq(stockLedger.transactionType, "receipt"),
+          sql`${stockLedger.tankNumber} IS NULL`,
+          sql`${stockLedger.referenceId} IS NOT NULL`,
+        ));
+
+      for (const row of receiptRows) {
+        try {
+          const [receipt] = await db.select({ tankNumber: materialReceipts.tankNumber })
+            .from(materialReceipts)
+            .where(eq(materialReceipts.id, row.referenceId!))
+            .limit(1);
+          if (receipt?.tankNumber != null) {
+            await db.update(stockLedger)
+              .set({ tankNumber: receipt.tankNumber })
+              .where(eq(stockLedger.id, row.ledgerId));
+            updated++;
+          }
+        } catch {
+          errors++;
+        }
+      }
+    } catch (e) {
+      errors++;
+    }
+
+    return { updated, errors };
   }
 }
 
