@@ -201,11 +201,21 @@ import {
 //       ✗ const [row] = await db.execute(sql`SELECT …`);  // always undefined!
 //
 //   DML (INSERT / UPDATE / DELETE / DDL)
-//                   →  access .rowCount directly via a cast:
-//                       (result as { rowCount?: number }).rowCount ?? 0
-//                       or just result.rowCount when the type is inferred.
+//                   →  use execDmlRowCount(result, context?) to extract the
+//                       affected-row count.  The helper accepts both the raw
+//                       QueryResult from db.execute() and the typed result
+//                       objects returned by Drizzle ORM's .delete()/.update(),
+//                       throws loudly when the shape is unexpected, and
+//                       eliminates scattered (result as { rowCount?: number })
+//                       casts throughout the file.
 //
-// The execSelectRows helper is defined just above the DatabaseStorage class.
+//       ✓ const n = execDmlRowCount(
+//             await db.execute(sql`DELETE FROM foo WHERE …`),
+//             "myMethod: delete"
+//           );
+//       ✗ (result as { rowCount?: number }).rowCount ?? 0  // scattered cast
+//
+// Both helpers are defined just above the DatabaseStorage class.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Task #434 — Maximum acceptable divergence between LDO flow-meter consumption
@@ -1084,6 +1094,37 @@ function execSelectRows<T = Record<string, unknown>>(result: unknown, context = 
   }
   throw new Error(
     `${context}: expected a QueryResult with a .rows array but received: ${JSON.stringify(result)?.slice(0, 200)}`
+  );
+}
+
+/**
+ * Safely extract the affected-row count from a raw db.execute() DML result or
+ * from a Drizzle ORM typed DML result (DELETE / INSERT / UPDATE).
+ *
+ * node-postgres places the count in QueryResult.rowCount (number | null).
+ * Drizzle ORM typed queries expose the same field but TypeScript sometimes
+ * infers a broader type.  Using this helper gives a single, explicit extraction
+ * point that:
+ *   - returns 0 when rowCount is null/undefined (e.g. DDL statements)
+ *   - throws when the result shape is completely unexpected so bugs surface
+ *     immediately rather than silently returning 0
+ *
+ * Usage:
+ *   const n = execDmlRowCount(await db.execute(sql`DELETE FROM foo WHERE …`), "myMethod");
+ */
+function execDmlRowCount(result: unknown, context = "db.execute DML"): number {
+  if (result !== null && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if ("rowCount" in r) {
+      if (r.rowCount === null || r.rowCount === undefined) return 0;
+      if (typeof r.rowCount === "number") return r.rowCount;
+      throw new Error(
+        `${context}: .rowCount has unexpected type "${typeof r.rowCount}" (value: ${JSON.stringify(r.rowCount)?.slice(0, 80)})`
+      );
+    }
+  }
+  throw new Error(
+    `${context}: expected a DML result with a .rowCount field but received: ${JSON.stringify(result)?.slice(0, 200)}`
   );
 }
 
@@ -4522,7 +4563,7 @@ export class DatabaseStorage implements IStorage {
                   AND transaction_type = 'dispatch'
                   AND reference_id     IS NULL
               `);
-              const n = (orphanDel as { rowCount?: number }).rowCount ?? 0;
+              const n = execDmlRowCount(orphanDel, "rebuildLedgerForTemplate: orphan DELETE stock_ledger (owner)");
               ledgerRowsDeleted += n;
               if (n > 0) allAffectedMatIds.add(comp.materialId);
             }
@@ -4536,7 +4577,7 @@ export class DatabaseStorage implements IStorage {
                   AND transaction_type = 'dispatch'
                   AND reference_id     IS NULL
               `);
-              const nh = (orphanDelHlc as { rowCount?: number }).rowCount ?? 0;
+              const nh = execDmlRowCount(orphanDelHlc, "rebuildLedgerForTemplate: orphan DELETE stock_ledger (HLC)");
               ledgerRowsDeleted += nh;
               if (nh > 0) allAffectedMatIds.add(comp.materialId);
             }
@@ -5109,7 +5150,7 @@ export class DatabaseStorage implements IStorage {
       WHERE sl.id = r.id
         AND sl.balance_after IS DISTINCT FROM ROUND(r.nb::numeric, 6)
     `);
-    return { updated: (result as { rowCount?: number }).rowCount ?? 0 };
+    return { updated: execDmlRowCount(result, "recomputeBalanceAfterForMaterial: UPDATE stock_ledger") };
   }
 
   async reconcileStockBalancesFromLedger(): Promise<{ updated: number; created: number; errors: number }> {
@@ -5264,7 +5305,7 @@ export class DatabaseStorage implements IStorage {
           sql`(${stockLedger.quantityOut} IS DISTINCT FROM ${u.qty}
             OR ${stockLedger.referenceId} IS DISTINCT FROM ${u.refId})`,
         ));
-      hlcEntriesUpdated += (res as { rowCount?: number }).rowCount ?? 0;
+      hlcEntriesUpdated += execDmlRowCount(res, "applyHlcMay2025Correction: UPDATE stock_ledger HLC entry");
     }
 
     const alreadyApplied = markersInserted === 0 && hlcEntriesUpdated === 0;
@@ -5290,7 +5331,7 @@ export class DatabaseStorage implements IStorage {
         AND sb.balance IS DISTINCT FROM lt.balance
     `);
     const reconciled = {
-      updated: (reconcileResult as { rowCount?: number }).rowCount ?? 0,
+      updated: execDmlRowCount(reconcileResult, "applyHlcMay2025Correction: UPDATE stock_balances"),
       created: 0,
       errors: 0,
     };
@@ -9575,7 +9616,7 @@ export class DatabaseStorage implements IStorage {
       const res = await db.update(plantShiftLogs)
         .set({ lockStatus: "unlocked" })
         .where(eq(plantShiftLogs.lockStatus, "locked"));
-      result.updated = (res as { rowCount?: number }).rowCount ?? 0;
+      result.updated = execDmlRowCount(res, "backfillShiftLogLockStatus: UPDATE plant_shift_logs");
     } catch (err) {
       console.error("backfillShiftLogLockStatus: Fatal error:", err);
       result.errors++;
@@ -9789,7 +9830,7 @@ export class DatabaseStorage implements IStorage {
           GROUP BY date, tank_number, reading_type, plant_name
         )
       `);
-      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      const removed = execDmlRowCount(result, "deduplicateBitumenDipReadings: DELETE bitumen_dip_readings");
       if (removed > 0) {
         console.log(`deduplicateBitumenDipReadings: removed ${removed} duplicate dip row(s)`);
       }
@@ -9818,7 +9859,7 @@ export class DatabaseStorage implements IStorage {
           GROUP BY date, tank_number, reading_type, plant_name
         )
       `);
-      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      const removed = execDmlRowCount(result, "deduplicateLdoDipReadings: DELETE ldo_dip_readings");
       if (removed > 0) {
         console.log(`deduplicateLdoDipReadings: removed ${removed} duplicate dip row(s)`);
       }
@@ -9849,7 +9890,7 @@ export class DatabaseStorage implements IStorage {
         )
         AND reading_type NOT IN ('receipt')
       `);
-      const removed = (result as { rowCount?: number }).rowCount ?? 0;
+      const removed = execDmlRowCount(result, "deduplicateLdoFlowSlotReadings: DELETE ldo_flow_readings");
       if (removed > 0) {
         console.log(`deduplicateLdoFlowSlotReadings: removed ${removed} duplicate slot row(s)`);
       }
@@ -10196,7 +10237,7 @@ export class DatabaseStorage implements IStorage {
               HAVING COUNT(*) > 1
             )
         `);
-        const rowsDeleted = (deleted as { rowCount?: number }).rowCount ?? 0;
+        const rowsDeleted = execDmlRowCount(deleted, "deduplicateStockLedgerDispatchRows: DELETE stock_ledger duplicates");
         result.groupsFixed = groupsFixed;
         result.rowsDeleted = rowsDeleted;
         console.log(`deduplicateStockLedgerDispatchRows: fixed ${groupsFixed} groups, removed ${rowsDeleted} duplicate dispatch rows`);
@@ -11820,7 +11861,7 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(state::jsonb->'jobs'->0->>'contractor') IS NOT NULL
         AND TRIM(state::jsonb->'jobs'->0->>'contractor') <> ''
     `);
-    return { updated: result.rowCount ?? 0 };
+    return { updated: execDmlRowCount(result, "fixNullContractorLabels: UPDATE mix_estimates") };
   }
 
   async fixLabourContractorCasing(): Promise<{ updated: number }> {
@@ -11830,7 +11871,7 @@ export class DatabaseStorage implements IStorage {
       WHERE contractor IS NOT NULL
         AND contractor <> UPPER(TRIM(contractor))
     `);
-    return { updated: result.rowCount ?? 0 };
+    return { updated: execDmlRowCount(result, "fixLabourContractorCasing: UPDATE labour_logs") };
   }
 
   async renameContractor(from: string, to: string): Promise<number> {
@@ -11839,7 +11880,7 @@ export class DatabaseStorage implements IStorage {
       SET contractor = UPPER(TRIM(${to}))
       WHERE UPPER(TRIM(contractor)) = UPPER(TRIM(${from}))
     `);
-    return result.rowCount ?? 0;
+    return execDmlRowCount(result, "renameContractor: UPDATE mix_estimates");
   }
 
   async getMixEstimates(): Promise<MixEstimate[]> {
@@ -11866,7 +11907,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMixEstimate(id: number): Promise<boolean> {
     const result = await db.delete(mixEstimates).where(eq(mixEstimates.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return execDmlRowCount(result, "deleteMixEstimate") > 0;
   }
 
   async getPriceScenarios(estimateId: number): Promise<PriceScenario[]> {
@@ -11902,7 +11943,7 @@ export class DatabaseStorage implements IStorage {
 
   async deletePriceScenario(id: number): Promise<boolean> {
     const result = await db.delete(priceScenarios).where(eq(priceScenarios.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return execDmlRowCount(result, "deletePriceScenario") > 0;
   }
 
   async getConcreteEstimates(): Promise<ConcreteEstimate[]> {
@@ -11929,7 +11970,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteConcreteEstimate(id: number): Promise<boolean> {
     const result = await db.delete(concreteEstimates).where(eq(concreteEstimates.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return execDmlRowCount(result, "deleteConcreteEstimate") > 0;
   }
 
   async getConcreteEstimatesV2(): Promise<ConcreteEstimateV2[]> {
@@ -11956,7 +11997,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteConcreteEstimateV2(id: number): Promise<boolean> {
     const result = await db.delete(concreteEstimatesV2).where(eq(concreteEstimatesV2.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return execDmlRowCount(result, "deleteConcreteEstimateV2") > 0;
   }
 
   // ============================================
