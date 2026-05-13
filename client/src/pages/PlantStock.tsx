@@ -991,6 +991,15 @@ export default function PlantStock() {
       }
     };
     
+    const isPrintRowTanked = (matId: number) => {
+      const mat = materials?.find(m => m.id === matId);
+      return mat ? /bitumen|ldo/i.test(mat.name) : false;
+    };
+    const printLedgerRows = [...ledgerForDisplay].reverse();
+    const printHasTankedRows = printLedgerRows
+      .filter(e => e.transactionType !== 'opening_balance')
+      .some(e => isPrintRowTanked(e.materialId));
+
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -1071,10 +1080,11 @@ export default function PlantStock() {
                 <th class="text-right">Out</th>
                 <th class="text-right">Balance</th>
                 <th>UOM</th>
+                ${printHasTankedRows ? '<th class="text-right">T1 Balance</th><th class="text-right">T2 Balance</th>' : ''}
               </tr>
             </thead>
             <tbody>
-              ${[...ledgerForDisplay].reverse().map(entry => {
+              ${printLedgerRows.map(entry => {
                 const convData = getConvertedEntryData(entry);
                 const isBF = entry.transactionType === 'opening_balance';
                 const mDelta = entry._mergedDelta;
@@ -1099,6 +1109,13 @@ export default function PlantStock() {
                   : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
                   ? entry.notes.replace('Issue to ', '').split(' - ')[0]
                   : entry.notes || '-';
+                const tanked = isPrintRowTanked(entry.materialId);
+                const t1Cell = printHasTankedRows
+                  ? `<td class="text-right">${tanked && entry.t1BalanceAfter != null ? entry.t1BalanceAfter.toFixed(3) : ''}</td>`
+                  : '';
+                const t2Cell = printHasTankedRows
+                  ? `<td class="text-right">${tanked && entry.t2BalanceAfter != null ? entry.t2BalanceAfter.toFixed(3) : ''}</td>`
+                  : '';
                 return `
                 <tr${isBF ? ' class="bf-row"' : ''}>
                   <td>${entry.date}</td>
@@ -1110,6 +1127,7 @@ export default function PlantStock() {
                   <td class="text-right text-red">${convData.displayOut > 0 ? convData.displayOut.toFixed(3) : '-'}</td>
                   <td class="text-right"><strong>${convData.displayBalance.toFixed(3)}</strong></td>
                   <td>${convData.balanceUom}</td>
+                  ${t1Cell}${t2Cell}
                 </tr>`;
               }).join('')}
             </tbody>
