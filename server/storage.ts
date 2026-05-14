@@ -10402,20 +10402,58 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // 1. Phase A (SQL): find owner rows matching either Case A or Case B.
-      //    • no_receipts = 1  → Case A (owner never received this material)
-      //    • no_receipts = 0  → Case B candidate; shortage_warning passed to TS for parsing
+      // 1. Phase A (SQL): two separate sub-queries, UNIONed.
+      //
+      //    Case A (no_receipts=1): owner has NEVER received this material.
+      //      The material belongs entirely to HLC; these rows must be DELETED
+      //      (qty_out may be 0 or >0 — both are phantom and must go).
+      //
+      //    Case B (no_receipts=0): owner HAS receipts but their stock was zero
+      //      at dispatch time (shortage_warning confirms available=0).
+      //      These rows are zeroed (kept as a 0-qty marker in the party ledger).
+      //
+      //    borrow_party_id fetched via correlated sub-query for HLC verification.
       //    shortage_warning fetched as text to avoid JSONB cast errors on legacy rows.
-      //    borrow_party_id fetched for HLC verification in Phase B.
       const phaseAResult = await db.execute(sql`
+        -- Case A: owner has no receipts → delete (any qty_out)
         SELECT
           sl.id,
           sl.material_id,
-          CASE WHEN NOT EXISTS (
+          1 AS no_receipts,
+          NULL::text AS shortage_warning,
+          (SELECT hlc2.party_id FROM stock_ledger hlc2
+           WHERE hlc2.reference_id     = sl.reference_id
+             AND hlc2.material_id      = sl.material_id
+             AND hlc2.transaction_type = 'dispatch'
+             AND hlc2.quantity_out     > 0
+             AND hlc2.notes LIKE '%Borrowed from HLC%'
+           LIMIT 1) AS borrow_party_id
+        FROM stock_ledger sl
+        WHERE sl.transaction_type  = 'dispatch'
+          AND sl.reference_id      IS NOT NULL
+          AND sl.party_id          IS NOT NULL
+          AND (sl.notes IS NULL OR sl.notes NOT LIKE '%Borrowed from HLC%')
+          AND NOT EXISTS (
             SELECT 1 FROM material_receipts mr
             WHERE mr.party_id    = sl.party_id
               AND mr.material_id = sl.material_id
-          ) THEN 1 ELSE 0 END AS no_receipts,
+          )
+          AND EXISTS (
+            SELECT 1 FROM stock_ledger hlc
+            WHERE hlc.reference_id     = sl.reference_id
+              AND hlc.material_id      = sl.material_id
+              AND hlc.transaction_type = 'dispatch'
+              AND hlc.quantity_out     > 0
+              AND hlc.notes LIKE '%Borrowed from HLC%'
+          )
+
+        UNION ALL
+
+        -- Case B: owner has receipts but stock was zero → zero out (qty_out > 0 only)
+        SELECT
+          sl.id,
+          sl.material_id,
+          0 AS no_receipts,
           td.shortage_warning,
           (SELECT hlc2.party_id FROM stock_ledger hlc2
            WHERE hlc2.reference_id     = sl.reference_id
@@ -10430,9 +10468,12 @@ export class DatabaseStorage implements IStorage {
           AND sl.reference_id      IS NOT NULL
           AND sl.quantity_out      > 0
           AND sl.party_id          IS NOT NULL
-          -- Not itself a borrow row
           AND (sl.notes IS NULL OR sl.notes NOT LIKE '%Borrowed from HLC%')
-          -- An HLC borrow row must exist for the same dispatch + material
+          AND EXISTS (
+            SELECT 1 FROM material_receipts mr
+            WHERE mr.party_id    = sl.party_id
+              AND mr.material_id = sl.material_id
+          )
           AND EXISTS (
             SELECT 1 FROM stock_ledger hlc
             WHERE hlc.reference_id     = sl.reference_id
@@ -10441,18 +10482,8 @@ export class DatabaseStorage implements IStorage {
               AND hlc.quantity_out     > 0
               AND hlc.notes LIKE '%Borrowed from HLC%'
           )
-          -- At least one detection condition must apply:
-          AND (
-            -- Case A: owner has no receipts for this material
-            NOT EXISTS (
-              SELECT 1 FROM material_receipts mr
-              WHERE mr.party_id    = sl.party_id
-                AND mr.material_id = sl.material_id
-            )
-            OR
-            -- Case B: shortage_warning present and parseable — check available=0 in TS
-            (td.shortage_warning IS NOT NULL AND td.shortage_warning LIKE '%"materialId"%')
-          )
+          AND td.shortage_warning IS NOT NULL
+          AND td.shortage_warning LIKE '%"materialId"%'
       `);
 
       const phaseARows = execSelectRows<{
@@ -10470,9 +10501,10 @@ export class DatabaseStorage implements IStorage {
 
       // 2. Phase B (TypeScript): final confirmation per-row.
       //    • Verify borrow row's party_id is an HLC-family party (when IDs resolved).
-      //    • Case A rows (no_receipts=1): accepted immediately — no shortage_warning needed.
-      //    • Case B rows (no_receipts=0): parse shortage_warning and require available=0.
-      const confirmedIds: number[] = [];
+      //    • Case A (no_receipts=1): accepted immediately — DELETE these.
+      //    • Case B (no_receipts=0): parse shortage_warning, require available=0 — ZERO these.
+      const caseAIds: number[] = [];  // will be DELETED
+      const caseBIds: number[] = [];  // will be zeroed
       const affectedMatIdSet = new Set<number>();
 
       for (const row of phaseARows) {
@@ -10489,8 +10521,8 @@ export class DatabaseStorage implements IStorage {
         const noReceipts = Number(row.no_receipts) === 1;
 
         if (noReceipts) {
-          // Case A: owner never received this material — always erroneous.
-          confirmedIds.push(rowId);
+          // Case A: owner never received this material — row must be deleted entirely.
+          caseAIds.push(rowId);
           affectedMatIdSet.add(matId);
         } else {
           // Case B: owner has receipts; confirm via shortage_warning available=0.
@@ -10506,31 +10538,50 @@ export class DatabaseStorage implements IStorage {
           }
           const entry = shortages.find(s => s.materialId === matId);
           if (entry && Number(entry.available) === 0) {
-            confirmedIds.push(rowId);
+            caseBIds.push(rowId);
             affectedMatIdSet.add(matId);
           }
         }
       }
 
-      if (confirmedIds.length === 0) {
+      if (caseAIds.length === 0 && caseBIds.length === 0) {
         console.log("fixDoubleDeductedDispatchOwnerRows: 0 rows confirmed after Phase B check (clean)");
         return result;
       }
 
       const affectedMatIds = [...affectedMatIdSet];
-      console.log(
-        `fixDoubleDeductedDispatchOwnerRows: zeroing ${confirmedIds.length} owner row(s) ` +
-        `(ids: ${confirmedIds.join(", ")}) for material(s): ${affectedMatIds.join(", ")}`
-      );
+      if (caseAIds.length > 0) {
+        console.log(
+          `fixDoubleDeductedDispatchOwnerRows: deleting ${caseAIds.length} no-receipt owner row(s) ` +
+          `(ids: ${caseAIds.join(", ")}) for material(s): ${affectedMatIds.join(", ")}`
+        );
+      }
+      if (caseBIds.length > 0) {
+        console.log(
+          `fixDoubleDeductedDispatchOwnerRows: zeroing ${caseBIds.length} exhausted-stock owner row(s) ` +
+          `(ids: ${caseBIds.join(", ")}) for material(s): ${affectedMatIds.join(", ")}`
+        );
+      }
 
-      // 3. Zero out quantity_out on confirmed rows.
-      const updateResult = await db.execute(sql`
-        UPDATE stock_ledger
-        SET quantity_out = 0,
-            balance_after = 0
-        WHERE id = ANY(${confirmedIds}::int[])
-      `);
-      result.rowsFixed = execDmlRowCount(updateResult, "fixDoubleDeductedDispatchOwnerRows: UPDATE stock_ledger");
+      // 3a. DELETE Case A rows — party never received this material; row should not exist.
+      if (caseAIds.length > 0) {
+        const deleteResult = await db.execute(sql`
+          DELETE FROM stock_ledger WHERE id = ANY(${caseAIds}::int[])
+        `);
+        result.rowsFixed += execDmlRowCount(deleteResult, "fixDoubleDeductedDispatchOwnerRows: DELETE Case A stock_ledger");
+      }
+
+      // 3b. ZERO Case B rows — party has receipts but stock was fully exhausted;
+      //     keep a 0-qty marker so the party ledger still shows the dispatch.
+      if (caseBIds.length > 0) {
+        const updateResult = await db.execute(sql`
+          UPDATE stock_ledger
+          SET quantity_out = 0,
+              balance_after = 0
+          WHERE id = ANY(${caseBIds}::int[])
+        `);
+        result.rowsFixed += execDmlRowCount(updateResult, "fixDoubleDeductedDispatchOwnerRows: ZERO Case B stock_ledger");
+      }
 
       // 4. Recompute running balance_after for each affected material.
       for (const matId of affectedMatIds) {
