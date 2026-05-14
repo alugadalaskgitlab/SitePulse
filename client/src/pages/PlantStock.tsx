@@ -1834,10 +1834,12 @@ export default function PlantStock() {
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 text-xs rounded ${
-                              entry.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
-                              'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                              isBF && selectedPartyId === "all"
+                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                : entry.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
+                                'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                             }`}>
-                              {getPartyName(entry.partyId)}
+                              {isBF && selectedPartyId === "all" ? "All Parties" : getPartyName(entry.partyId)}
                             </span>
                           </td>
                           <td className="p-3">
