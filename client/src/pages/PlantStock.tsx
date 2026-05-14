@@ -34,6 +34,7 @@ type StockBalanceAsOf = {
 
 type ProcessedLedgerEntry = StockLedgerEntry & {
   calculatedBalance: number;
+  partyBalance?: number;
   t1BalanceAfter?: number;
   t2BalanceAfter?: number;
   isSynthetic?: boolean;
@@ -228,6 +229,10 @@ export default function PlantStock() {
   // Filter out old equipment_issue entries (legacy - no longer created) and calculate running balances
   const processedLedger = useMemo(() => {
     if (!ledger) return [];
+
+    // In all-party mode the global physical running balance uses materialId as key;
+    // per-party mode uses materialId-partyId (original behaviour).
+    const isAllParty = selectedPartyId === "all";
     
     // Exclude old equipment_issue entries - they are legacy and should not affect calculations
     const validEntries = ledger.filter(e => e.transactionType !== 'equipment_issue');
@@ -282,7 +287,10 @@ export default function PlantStock() {
     
     // When a date filter is applied, seed running balances from the balance-as-of aggregate
     // (server-side SUM query). Returns zeros until the aggregate resolves, then updates.
+    // groupBalances: keyed by matKey (all-party mode) or partyKey (single-party mode)
     const groupBalances: Record<string, number> = {};
+    // partyBalances: always keyed by partyKey — secondary attribution tracked in all-party mode
+    const partyBalances: Record<string, number> = {};
 
     // Per-tank opening balances derived from the aggregate (for B/F row when filtering by tank)
     const t1GroupBalances: Record<string, number> = {};
@@ -291,54 +299,94 @@ export default function PlantStock() {
     if (dateFrom && balanceAsOf) {
       // Use the efficient server-side aggregate — one row per (material, party, uom)
       balanceAsOf.forEach(row => {
-        const key = `${row.materialId}-${row.partyId ?? 0}`;
-        if (groupBalances[key] === undefined) groupBalances[key] = 0;
+        const partyKey = `${row.materialId}-${row.partyId ?? 0}`;
+        const matKey = String(row.materialId);
+        const globalKey = isAllParty ? matKey : partyKey;
         const material = materials?.find(m => m.id === row.materialId);
         const factor = (material?.conversionFactor && material?.conversionFromUom && material?.conversionToUom &&
           row.uom?.toUpperCase() === material.conversionFromUom.toUpperCase())
           ? material.conversionFactor : 1;
-        groupBalances[key] = roundBalance(groupBalances[key] + (row.totalIn * factor) - (row.totalOut * factor));
-        // Per-tank opening balances (also apply conversion factor)
-        if (t1GroupBalances[key] === undefined) t1GroupBalances[key] = 0;
-        if (t2GroupBalances[key] === undefined) t2GroupBalances[key] = 0;
-        t1GroupBalances[key] = roundBalance(t1GroupBalances[key] + (row.t1TotalIn * factor) - (row.t1TotalOut * factor));
-        t2GroupBalances[key] = roundBalance(t2GroupBalances[key] + (row.t2TotalIn * factor) - (row.t2TotalOut * factor));
+        const contribution = roundBalance((row.totalIn * factor) - (row.totalOut * factor));
+        if (groupBalances[globalKey] === undefined) groupBalances[globalKey] = 0;
+        groupBalances[globalKey] = roundBalance(groupBalances[globalKey] + contribution);
+        // Always maintain per-party attribution (for Party Balance column in all-party mode)
+        if (partyBalances[partyKey] === undefined) partyBalances[partyKey] = 0;
+        partyBalances[partyKey] = roundBalance(partyBalances[partyKey] + contribution);
+        // Per-tank opening balances (also apply conversion factor, use globalKey)
+        if (t1GroupBalances[globalKey] === undefined) t1GroupBalances[globalKey] = 0;
+        if (t2GroupBalances[globalKey] === undefined) t2GroupBalances[globalKey] = 0;
+        t1GroupBalances[globalKey] = roundBalance(t1GroupBalances[globalKey] + (row.t1TotalIn * factor) - (row.t1TotalOut * factor));
+        t2GroupBalances[globalKey] = roundBalance(t2GroupBalances[globalKey] + (row.t2TotalIn * factor) - (row.t2TotalOut * factor));
       });
     }
 
-    // Build synthetic opening-balance rows (one per material+party group) so the
-    // ledger table always shows a "B/F" line when a date filter is active.
+    // Build synthetic opening-balance rows so the ledger always shows a "B/F" line
+    // when a date filter is active.
+    // All-party mode → one combined row per material (global opening balance).
+    // Party mode     → one row per material+party group (original behaviour).
     const syntheticRows: ProcessedLedgerEntry[] = [];
 
     if (dateFrom && balanceAsOf) {
-      const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
-      for (const key of filteredGroups) {
-        const [materialIdStr, partyIdStr] = key.split('-');
-        const materialId = Number(materialIdStr);
-        const partyId = Number(partyIdStr) === 0 ? null : Number(partyIdStr);
-        const openingBalance = groupBalances[key] ?? 0;
-        const t1Opening = t1GroupBalances[key] ?? 0;
-        const t2Opening = t2GroupBalances[key] ?? 0;
-        const material = materials?.find(m => m.id === materialId);
-        const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
-        syntheticRows.push({
-          id: -(materialId * 10000 + (partyId ?? 0)),
-          date: dateFrom,
-          partyId,
-          materialId,
-          transactionType: 'opening_balance',
-          referenceId: null,
-          quantityIn: openingBalance >= 0 ? openingBalance : null,
-          quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
-          balanceAfter: openingBalance,
-          uom: targetUom,
-          notes: `Opening balance (B/F) as of ${dateFrom}`,
-          createdAt: null,
-          calculatedBalance: openingBalance,
-          t1BalanceAfter: t1Opening,
-          t2BalanceAfter: t2Opening,
-          isSynthetic: true,
-        } as ProcessedLedgerEntry);
+      if (isAllParty) {
+        const materialGroups = new Set(sorted.map(e => e.materialId));
+        for (const materialId of materialGroups) {
+          const matKey = String(materialId);
+          const openingBalance = groupBalances[matKey] ?? 0;
+          const t1Opening = t1GroupBalances[matKey] ?? 0;
+          const t2Opening = t2GroupBalances[matKey] ?? 0;
+          const material = materials?.find(m => m.id === materialId);
+          const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
+          syntheticRows.push({
+            id: -(materialId * 10000),
+            date: dateFrom,
+            partyId: null,
+            materialId,
+            transactionType: 'opening_balance',
+            referenceId: null,
+            quantityIn: openingBalance >= 0 ? openingBalance : null,
+            quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
+            balanceAfter: openingBalance,
+            uom: targetUom,
+            notes: `Opening balance (B/F) as of ${dateFrom} — all parties combined`,
+            createdAt: null,
+            calculatedBalance: openingBalance,
+            partyBalance: openingBalance,
+            t1BalanceAfter: t1Opening,
+            t2BalanceAfter: t2Opening,
+            isSynthetic: true,
+          } as ProcessedLedgerEntry);
+        }
+      } else {
+        const filteredGroups = new Set(sorted.map(e => `${e.materialId}-${e.partyId ?? 0}`));
+        for (const key of filteredGroups) {
+          const [materialIdStr, partyIdStr] = key.split('-');
+          const materialId = Number(materialIdStr);
+          const partyId = Number(partyIdStr) === 0 ? null : Number(partyIdStr);
+          const openingBalance = groupBalances[key] ?? 0;
+          const t1Opening = t1GroupBalances[key] ?? 0;
+          const t2Opening = t2GroupBalances[key] ?? 0;
+          const material = materials?.find(m => m.id === materialId);
+          const targetUom = material?.conversionToUom || material?.defaultUom || 'Ton';
+          syntheticRows.push({
+            id: -(materialId * 10000 + (partyId ?? 0)),
+            date: dateFrom,
+            partyId,
+            materialId,
+            transactionType: 'opening_balance',
+            referenceId: null,
+            quantityIn: openingBalance >= 0 ? openingBalance : null,
+            quantityOut: openingBalance < 0 ? Math.abs(openingBalance) : null,
+            balanceAfter: openingBalance,
+            uom: targetUom,
+            notes: `Opening balance (B/F) as of ${dateFrom}`,
+            createdAt: null,
+            calculatedBalance: openingBalance,
+            partyBalance: openingBalance,
+            t1BalanceAfter: t1Opening,
+            t2BalanceAfter: t2Opening,
+            isSynthetic: true,
+          } as ProcessedLedgerEntry);
+        }
       }
     }
 
@@ -390,10 +438,13 @@ export default function PlantStock() {
       // Skip rebuild delta rows entirely — their quantity is absorbed below
       if (ledgerDeltaIds.has(entry.id)) continue;
 
-      const key = `${entry.materialId}-${entry.partyId ?? 0}`;
-      if (groupBalances[key] === undefined) groupBalances[key] = 0;
-      if (t1Balances[key] === undefined) t1Balances[key] = 0;
-      if (t2Balances[key] === undefined) t2Balances[key] = 0;
+      const partyKey = `${entry.materialId}-${entry.partyId ?? 0}`;
+      const globalKey = isAllParty ? String(entry.materialId) : partyKey;
+
+      if (groupBalances[globalKey] === undefined) groupBalances[globalKey] = 0;
+      if (partyBalances[partyKey] === undefined) partyBalances[partyKey] = 0;
+      if (t1Balances[globalKey] === undefined) t1Balances[globalKey] = 0;
+      if (t2Balances[globalKey] === undefined) t2Balances[globalKey] = 0;
 
       let convertedIn  = getConvertedQty(entry, entry.quantityIn);
       let convertedOut = getConvertedQty(entry, entry.quantityOut);
@@ -414,20 +465,22 @@ export default function PlantStock() {
         }
       }
 
-      groupBalances[key] = roundBalance(groupBalances[key] + convertedIn - convertedOut);
+      groupBalances[globalKey] = roundBalance(groupBalances[globalKey] + convertedIn - convertedOut);
+      partyBalances[partyKey]  = roundBalance(partyBalances[partyKey]  + convertedIn - convertedOut);
 
       // Per-tank running balances — only entries with an explicit tankNumber move a tank balance
       if (entry.tankNumber === 1) {
-        t1Balances[key] = roundBalance(t1Balances[key] + convertedIn - convertedOut);
+        t1Balances[globalKey] = roundBalance(t1Balances[globalKey] + convertedIn - convertedOut);
       } else if (entry.tankNumber === 2) {
-        t2Balances[key] = roundBalance(t2Balances[key] + convertedIn - convertedOut);
+        t2Balances[globalKey] = roundBalance(t2Balances[globalKey] + convertedIn - convertedOut);
       }
 
       const row: ProcessedLedgerEntry = {
         ...entry,
-        calculatedBalance: groupBalances[key],
-        t1BalanceAfter: t1Balances[key],
-        t2BalanceAfter: t2Balances[key],
+        calculatedBalance: groupBalances[globalKey],
+        partyBalance: partyBalances[partyKey],
+        t1BalanceAfter: t1Balances[globalKey],
+        t2BalanceAfter: t2Balances[globalKey],
       };
       if (rawDelta !== 0) {
         row.quantityOut = Math.max(0, originalRawOut + rawDelta);
@@ -439,7 +492,7 @@ export default function PlantStock() {
 
     // Synthetic rows come first (oldest); they appear last when the display reverses the array
     return [...syntheticRows, ...mainRows];
-  }, [ledger, balanceAsOf, materials, dateFrom]);
+  }, [ledger, balanceAsOf, materials, dateFrom, selectedPartyId]);
 
   // For display, reverse to show most recent first and filter by transaction type + issuedTo search + tank
   const ledgerForDisplay = useMemo(() => {
@@ -1405,7 +1458,71 @@ export default function PlantStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {stockSummary.map((item, idx) => {
+                      {selectedPartyId === "all" ? (() => {
+                        // Merge per-party rows into one global row per material, with indented breakdown
+                        const matMap = new Map<number, typeof stockSummary[0] & { _rows: typeof stockSummary }>();
+                        for (const item of stockSummary) {
+                          if (!matMap.has(item.materialId)) {
+                            matMap.set(item.materialId, { ...item, partyName: 'All Parties', partyId: null, _rows: [item] });
+                          } else {
+                            const g = matMap.get(item.materialId)!;
+                            g.openingStock += item.openingStock;
+                            g.received += item.received;
+                            g.consumed += item.consumed;
+                            g._rows.push(item);
+                          }
+                        }
+                        for (const g of matMap.values()) {
+                          g.closing = Math.round((g.openingStock + g.received - g.consumed) * 1e9) / 1e9;
+                        }
+                        return Array.from(matMap.values()).flatMap((global, gIdx) => {
+                          const rows = [];
+                          rows.push(
+                            <tr key={`g-${gIdx}`} className="border-b bg-muted/20 font-semibold">
+                              <td className="py-3 px-2 font-semibold">{global.materialName}</td>
+                              <td className="py-3 px-2">
+                                <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                  All Parties
+                                </span>
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                {dateFrom && balanceAsOfLoading ? (
+                                  <div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto animate-pulse" />
+                                ) : global.openingStock.toFixed(3)}
+                              </td>
+                              <td className="py-3 px-2 text-right text-green-600 dark:text-green-400">+{global.received.toFixed(3)}</td>
+                              <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">-{global.consumed.toFixed(3)}</td>
+                              <td className="py-3 px-2 text-right font-bold">{global.closing.toFixed(3)}</td>
+                              <td className="py-3 px-2">{global.uom}</td>
+                            </tr>
+                          );
+                          global._rows.forEach((item, idx) => {
+                            rows.push(
+                              <tr key={`g-${gIdx}-p-${idx}`} className="border-b last:border-0 text-muted-foreground">
+                                <td className="py-2 pl-6 pr-2 text-xs">↳ {item.materialName}</td>
+                                <td className="py-2 px-2">
+                                  <span className={`px-2 py-0.5 text-xs rounded ${
+                                    item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                                    'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                                  }`}>
+                                    {item.partyName}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-right text-xs">
+                                  {dateFrom && balanceAsOfLoading ? (
+                                    <div className="h-3 w-12 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto animate-pulse" />
+                                  ) : item.openingStock.toFixed(3)}
+                                </td>
+                                <td className="py-2 px-2 text-right text-xs text-green-600 dark:text-green-400">+{item.received.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-right text-xs text-red-600 dark:text-red-400">-{item.consumed.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-right text-xs font-medium">{item.closing.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-xs">{item.uom}</td>
+                              </tr>
+                            );
+                          });
+                          return rows;
+                        });
+                      })() : stockSummary.map((item, idx) => {
                         const hasConversion = item.conversionFactor && item.convertedClosing !== null;
                         return (
                           <tr key={idx} className="border-b last:border-0">
@@ -1469,7 +1586,109 @@ export default function PlantStock() {
               ) : !filteredBalances?.length ? (
                 <p className="text-muted-foreground text-center py-8">No stock balances found.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-6">
+                  {selectedPartyId === "all" ? (() => {
+                    // Build global aggregate per material, then show per-party cards grouped below
+                    const matMap = new Map<number, { materialId: number; materialName: string; uom: string; totalReceipts: number; totalIssues: number; balance: number }>();
+                    for (const b of filteredBalances) {
+                      if (!matMap.has(b.materialId)) {
+                        matMap.set(b.materialId, { materialId: b.materialId, materialName: b.materialName, uom: b.uom, totalReceipts: b.totalReceipts, totalIssues: b.totalIssues, balance: b.balance });
+                      } else {
+                        const g = matMap.get(b.materialId)!;
+                        g.totalReceipts += b.totalReceipts;
+                        g.totalIssues += b.totalIssues;
+                        g.balance = Math.round((g.balance + b.balance) * 1e9) / 1e9;
+                      }
+                    }
+                    return Array.from(matMap.values()).map((global) => {
+                      const partyCards = filteredBalances.filter(b => b.materialId === global.materialId);
+                      return (
+                        <div key={global.materialId}>
+                          {/* Global aggregate card */}
+                          <div
+                            className={`p-4 rounded-lg border mb-3 ${
+                              global.balance < 10
+                                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                : 'bg-primary/5 border-primary/30'
+                            }`}
+                            data-testid={`card-global-balance-${global.materialId}`}
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <h3 className="font-semibold text-foreground">{global.materialName}</h3>
+                              <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                                GLOBAL PHYSICAL
+                              </span>
+                            </div>
+                            {global.balance < 0 && (
+                              <p className="text-xs text-red-500 dark:text-red-400 mb-2">
+                                Global balance is negative — check for missing receipts.
+                              </p>
+                            )}
+                            <div className={`text-2xl font-bold mb-3 ${
+                              global.balance < 0 ? 'text-red-600 dark:text-red-400' :
+                              global.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
+                            }`}>
+                              {Math.abs(global.balance) < 1e-9 ? '0.000' : global.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{global.uom}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
+                                <div className="text-xs text-muted-foreground">Total Receipts</div>
+                                <div className="font-semibold text-green-600 dark:text-green-400">+{global.totalReceipts.toFixed(3)}</div>
+                              </div>
+                              <div className="bg-red-50 dark:bg-red-900/20 rounded p-2">
+                                <div className="text-xs text-muted-foreground">Total Issues</div>
+                                <div className="font-semibold text-red-600 dark:text-red-400">-{global.totalIssues.toFixed(3)}</div>
+                              </div>
+                            </div>
+                          </div>
+                          {/* Per-party breakdown cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 border-l-2 border-primary/20">
+                            {partyCards.map((b, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() => jumpToLedger(b.materialId, b.partyId)}
+                                className={`p-3 rounded-lg border cursor-pointer transition-all hover-elevate ${
+                                  b.balance < 0
+                                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                    : 'bg-card border-border hover:border-primary/30'
+                                }`}
+                                data-testid={`card-balance-${b.materialId}-${b.partyId}`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className={`px-2 py-0.5 text-xs rounded ${
+                                    b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                                    'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                                  }`}>
+                                    {b.partyName}
+                                  </span>
+                                  {b.balance < 0 && (
+                                    <span className="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
+                                  )}
+                                </div>
+                                <div className={`text-lg font-bold mb-2 ${b.balance < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
+                                  {Math.abs(b.balance) < 1e-9 ? '0.000' : b.balance.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{b.uom}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span className="text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(3)}</span>
+                                  <span className="text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(3)}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={(e) => { e.stopPropagation(); jumpToLedger(b.materialId, b.partyId); }}
+                                    data-testid={`button-view-ledger-${b.materialId}-${b.partyId}`}
+                                  >
+                                    Ledger
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })() : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredBalances.map((b, idx) => (
                     <div 
                       key={idx}
@@ -1544,6 +1763,8 @@ export default function PlantStock() {
                       </div>
                     </div>
                   ))}
+                  </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -1577,7 +1798,10 @@ export default function PlantStock() {
                         <th className="text-left p-3 font-semibold">Issued To</th>
                         <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In</th>
                         <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out</th>
-                        <th className="text-right p-3 font-semibold">Balance</th>
+                        <th className="text-right p-3 font-semibold">{selectedPartyId === "all" ? "Global Balance" : "Balance"}</th>
+                        {selectedPartyId === "all" && (
+                          <th className="text-right p-3 font-semibold text-muted-foreground">Party Balance</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -1591,6 +1815,7 @@ export default function PlantStock() {
                           <td className="p-3 text-right"><div className="h-4 w-14 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
                           <td className="p-3 text-right"><div className="h-4 w-6 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
                           <td className="p-3 text-right"><div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>
+                          {selectedPartyId === "all" && <td className="p-3 text-right"><div className="h-4 w-16 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto" /></td>}
                         </tr>
                       )}
                       {ledgerForDisplay.slice(0, 100).filter(entry => {
@@ -1724,6 +1949,26 @@ export default function PlantStock() {
                               <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
                             )}
                           </td>
+                          {selectedPartyId === "all" && (() => {
+                            const pb = entry.partyBalance ?? 0;
+                            const isPartyNeg = pb < -1e-9;
+                            return (
+                              <td className={`p-3 text-right text-sm ${isPartyNeg ? 'text-red-500 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                {isBF ? (
+                                  <span className="text-xs italic">combined</span>
+                                ) : (
+                                  <>
+                                    <span className={isPartyNeg ? 'font-semibold' : ''}>
+                                      {Math.abs(pb) < 1e-9 ? '0.000' : pb.toFixed(3)}
+                                    </span>
+                                    {isPartyNeg && (
+                                      <span className="ml-1 px-1 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 font-medium">borrowed</span>
+                                    )}
+                                  </>
+                                )}
+                              </td>
+                            );
+                          })()}
                         </tr>
                         );
                       })}
@@ -1740,6 +1985,7 @@ export default function PlantStock() {
                         <td className="p-3 text-right font-bold">
                           Net: {ledgerTotals.netChange >= 0 ? '+' : ''}{ledgerTotals.netChange.toFixed(3)}
                         </td>
+                        {selectedPartyId === "all" && <td />}
                       </tr>
                     </tfoot>
                   </table>
