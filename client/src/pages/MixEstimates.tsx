@@ -88,6 +88,16 @@ export default function MixEstimates({ embedded = false }: Props) {
     queryKey: ["/api/mix-estimates"],
   });
 
+  const { data: usersDirectory = [] } = useQuery<{ id: number; fullName: string }[]>({
+    queryKey: ["/api/users/directory"],
+  });
+
+  const userNameById = useMemo(() => {
+    const map: Record<number, string> = {};
+    usersDirectory.forEach((u) => { map[u.id] = u.fullName; });
+    return map;
+  }, [usersDirectory]);
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/mix-estimates/${id}`),
     onSuccess: () => {
@@ -421,6 +431,15 @@ export default function MixEstimates({ embedded = false }: Props) {
                                     <Calendar className="w-3 h-3" />
                                     {fmtDate(est.updatedAt)}
                                   </span>
+                                  {est.createdBy && userNameById[est.createdBy] ? (
+                                    <span className="block text-right text-muted-foreground/70 mt-0.5" data-testid={`text-owner-site-${est.id}-${idx}`}>
+                                      by {userNameById[est.createdBy]}
+                                    </span>
+                                  ) : !est.createdBy ? (
+                                    <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-xs" data-testid={`text-owner-site-${est.id}-${idx}`}>
+                                      unassigned owner
+                                    </span>
+                                  ) : null}
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center justify-end gap-1.5">
@@ -471,6 +490,15 @@ export default function MixEstimates({ embedded = false }: Props) {
                                   <Calendar className="w-3 h-3" />
                                   {fmtDate(est.updatedAt)}
                                 </span>
+                                {est.createdBy && userNameById[est.createdBy] ? (
+                                  <span className="block text-right text-muted-foreground/70 mt-0.5" data-testid={`text-owner-${est.id}`}>
+                                    by {userNameById[est.createdBy]}
+                                  </span>
+                                ) : !est.createdBy ? (
+                                  <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-xs" data-testid={`text-owner-${est.id}`}>
+                                    unassigned owner
+                                  </span>
+                                ) : null}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center justify-end gap-1.5">

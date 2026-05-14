@@ -1551,6 +1551,7 @@ export const mixEstimates = pgTable("mix_estimates", {
   totalAmt: real("total_amt").default(0),
   contractorList: text("contractor_list").default(""),
   contractor: text("contractor"),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1583,6 +1584,7 @@ export const concreteEstimates = pgTable("concrete_estimates", {
   state: text("state").notNull(),
   totalCum: real("total_cum"),
   totalAmt: real("total_amt"),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1599,6 +1601,7 @@ export const concreteEstimatesV2 = pgTable("concrete_estimates_v2", {
   state: text("state").notNull(),
   totalLengthM: real("total_length_m"),
   totalRmAmt: real("total_rm_amt"),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

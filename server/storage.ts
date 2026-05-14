@@ -812,6 +812,7 @@ export interface IStorage {
     existingBill: { id: number; billNo: string; status: string } | null;
   }[]>;
 
+  getUsersDirectory(): Promise<{ id: number; fullName: string }[]>;
   getMixEstimates(): Promise<MixEstimate[]>;
   getMixEstimate(id: number): Promise<MixEstimate | undefined>;
   createMixEstimate(data: InsertMixEstimate): Promise<MixEstimate>;
@@ -12237,6 +12238,11 @@ export class DatabaseStorage implements IStorage {
       WHERE UPPER(TRIM(contractor)) = UPPER(TRIM(${from}))
     `);
     return execDmlRowCount(result, "renameContractor: UPDATE mix_estimates");
+  }
+
+  async getUsersDirectory(): Promise<{ id: number; fullName: string }[]> {
+    const rows = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.isActive, true)).orderBy(users.fullName);
+    return rows;
   }
 
   async getMixEstimates(): Promise<MixEstimate[]> {

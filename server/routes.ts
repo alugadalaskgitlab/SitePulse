@@ -6251,6 +6251,18 @@ export async function registerRoutes(
     }
   });
 
+  // ====== USERS DIRECTORY ======
+  app.get("/api/users/directory", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const directory = await storage.getUsersDirectory();
+      res.json(directory);
+    } catch (err) {
+      console.error("Error fetching users directory:", err);
+      res.status(500).json({ message: "Failed to fetch users directory" });
+    }
+  });
+
   // ====== MIX ESTIMATES ======
   app.get("/api/mix-estimates", async (_req, res) => {
     try {
@@ -6279,7 +6291,8 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "admin_settings")) return;
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
-      const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
+      const createdBy = req.authUser?.id ?? null;
+      const estimate = await storage.createMixEstimate({ name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null, createdBy });
       res.status(201).json(estimate);
     } catch (err) {
       console.error("Error creating mix estimate:", err);
@@ -6291,6 +6304,13 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
+      const existing = await storage.getMixEstimate(id);
+      if (!existing) return res.status(404).json({ message: "Estimate not found" });
+      const isAdmin = req.authUser?.isAdmin ?? false;
+      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ message: "You can only edit your own estimates" });
+      }
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const estimate = await storage.updateMixEstimate(id, { name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
@@ -6446,7 +6466,8 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "admin_settings")) return;
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
-      const estimate = await storage.createConcreteEstimate({ name, contractor: contractor || null, structureType: structureType || null, grade: grade || null, state, totalCum: totalCum || null, totalAmt: totalAmt || null });
+      const createdBy = req.authUser?.id ?? null;
+      const estimate = await storage.createConcreteEstimate({ name, contractor: contractor || null, structureType: structureType || null, grade: grade || null, state, totalCum: totalCum || null, totalAmt: totalAmt || null, createdBy });
       res.status(201).json(estimate);
     } catch (err) {
       console.error("Error creating concrete estimate:", err);
@@ -6458,6 +6479,13 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
+      const existing = await storage.getConcreteEstimate(id);
+      if (!existing) return res.status(404).json({ message: "Estimate not found" });
+      const isAdmin = req.authUser?.isAdmin ?? false;
+      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ message: "You can only edit your own estimates" });
+      }
       const { name, contractor, structureType, grade, state, totalCum, totalAmt } = req.body;
       const estimate = await storage.updateConcreteEstimate(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, grade: grade || null, ...(state ? { state } : {}), totalCum: totalCum || null, totalAmt: totalAmt || null });
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
@@ -6512,7 +6540,8 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "admin_settings")) return;
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
-      const estimate = await storage.createConcreteEstimateV2({ name, contractor: contractor || null, structureType: structureType || null, state, totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
+      const createdBy = req.authUser?.id ?? null;
+      const estimate = await storage.createConcreteEstimateV2({ name, contractor: contractor || null, structureType: structureType || null, state, totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null, createdBy });
       res.status(201).json(estimate);
     } catch (err) {
       console.error("Error creating concrete v2 estimate:", err);
@@ -6524,6 +6553,13 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "admin_settings")) return;
       const id = parseInt(req.params.id);
+      const existing = await storage.getConcreteEstimateV2(id);
+      if (!existing) return res.status(404).json({ message: "Estimate not found" });
+      const isAdmin = req.authUser?.isAdmin ?? false;
+      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ message: "You can only edit your own estimates" });
+      }
       const { name, contractor, structureType, state, totalLengthM, totalRmAmt } = req.body;
       const estimate = await storage.updateConcreteEstimateV2(id, { ...(name ? { name } : {}), contractor: contractor || null, structureType: structureType || null, ...(state ? { state } : {}), totalLengthM: totalLengthM || null, totalRmAmt: totalRmAmt || null });
       if (!estimate) return res.status(404).json({ message: "Estimate not found" });
