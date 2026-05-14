@@ -10564,23 +10564,25 @@ export class DatabaseStorage implements IStorage {
       }
 
       // 3a. DELETE Case A rows — party never received this material; row should not exist.
+      //     Use Drizzle ORM inArray() to avoid the `ANY(array::int[])` cast error
+      //     that occurs when a JS array is bound via the sql`` template literal.
       if (caseAIds.length > 0) {
-        const deleteResult = await db.execute(sql`
-          DELETE FROM stock_ledger WHERE id = ANY(${caseAIds}::int[])
-        `);
-        result.rowsFixed += execDmlRowCount(deleteResult, "fixDoubleDeductedDispatchOwnerRows: DELETE Case A stock_ledger");
+        const deleted = await db.delete(stockLedger)
+          .where(inArray(stockLedger.id, caseAIds))
+          .returning({ id: stockLedger.id });
+        result.rowsFixed += deleted.length;
+        console.log(`fixDoubleDeductedDispatchOwnerRows: deleted ${deleted.length} Case A row(s)`);
       }
 
       // 3b. ZERO Case B rows — party has receipts but stock was fully exhausted;
       //     keep a 0-qty marker so the party ledger still shows the dispatch.
       if (caseBIds.length > 0) {
-        const updateResult = await db.execute(sql`
-          UPDATE stock_ledger
-          SET quantity_out = 0,
-              balance_after = 0
-          WHERE id = ANY(${caseBIds}::int[])
-        `);
-        result.rowsFixed += execDmlRowCount(updateResult, "fixDoubleDeductedDispatchOwnerRows: ZERO Case B stock_ledger");
+        const zeroed = await db.update(stockLedger)
+          .set({ quantityOut: 0, balanceAfter: 0 })
+          .where(inArray(stockLedger.id, caseBIds))
+          .returning({ id: stockLedger.id });
+        result.rowsFixed += zeroed.length;
+        console.log(`fixDoubleDeductedDispatchOwnerRows: zeroed ${zeroed.length} Case B row(s)`);
       }
 
       // 4. Recompute running balance_after for each affected material.
