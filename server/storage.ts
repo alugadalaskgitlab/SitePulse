@@ -10392,6 +10392,15 @@ export class DatabaseStorage implements IStorage {
         "fixDoubleDeductedDispatchOwnerRows: hlc party lookup"
       ) ?? [];
       const hlcPartyIds = hlcPartyRows.map(r => parseInt(r.id, 10)).filter(id => !isNaN(id));
+      if (hlcPartyIds.length === 0) {
+        console.warn(
+          "fixDoubleDeductedDispatchOwnerRows: WARNING — no HLC-family parties found in the parties table " +
+          "(expected at least one name matching %HLC% or %HIGH LANE%). " +
+          "The borrow-party safety check (Phase B step a) will be SKIPPED for all candidate rows, " +
+          "meaning any row with a 'Borrowed from HLC' notes marker will proceed to fix regardless of party_id. " +
+          "Verify that the HLC party exists and that its name matches the ILIKE patterns."
+        );
+      }
 
       // 1. Phase A (SQL): find owner rows matching either Case A or Case B.
       //    • no_receipts = 1  → Case A (owner never received this material)
