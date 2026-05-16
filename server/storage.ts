@@ -406,6 +406,7 @@ export interface IStorage {
   // Backfill tankNumber on existing bitumen stock_ledger entries from their source receipts/dispatches.
   // Idempotent — only updates rows where tankNumber IS NULL.
   backfillBitumenTankNumbers(): Promise<{ updated: number; errors: number }>;
+  backfillMissingDispatchBitumenRows(): Promise<{ created: number; skipped: number; errors: number }>;
 
   // Compute per-tank bitumen balance from the stock_ledger.
   // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
@@ -14885,6 +14886,152 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { updated, errors };
+  }
+
+  // Backfill bitumen stock_ledger deduction rows that are missing for dispatches
+  // which have aggregate rows but no bitumen row.  This situation arises when:
+  //   a) A dispatch was originally created by a code path that omitted the bitumen write, OR
+  //   b) The Ledger Rebuild tool (aggregate-only by design) was run after the initial
+  //      dispatch creation, leaving aggregate rows present but bitumen rows absent.
+  //
+  // Logic:
+  //   1. Find all truck_dispatches whose mix_template has bitumen_percent > 0, that
+  //      have at least one stock_ledger dispatch row (so they were processed), but
+  //      have NO stock_ledger row for bitumen (material_id = bitumenMatId).
+  //   2. For each: calculate the bitumen qty (actual_bitumen_qty if set, else theoretical).
+  //   3. Charge the owner party if they have bitumen receipts, otherwise charge HLC.
+  //   4. Insert using ON CONFLICT DO NOTHING — safe to re-run on every startup.
+  //   5. After all inserts: recompute balance_after and reconcile stock_balances.
+  async backfillMissingDispatchBitumenRows(): Promise<{ created: number; skipped: number; errors: number }> {
+    const result = { created: 0, skipped: 0, errors: 0 };
+
+    const [bitumenMat] = await db.select({ id: plantMaterials.id, defaultUom: plantMaterials.defaultUom })
+      .from(plantMaterials)
+      .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+      .limit(1);
+    if (!bitumenMat) {
+      console.log("backfillMissingDispatchBitumenRows: no BITUMEN material found, skipping");
+      return result;
+    }
+
+    const [hlcParty] = await db.select({ id: parties.id })
+      .from(parties)
+      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC' OR ${parties.name} ILIKE '%HIGH LANE%'`)
+      .limit(1);
+    const hlcPartyId = hlcParty?.id ?? null;
+
+    const candidates = execSelectRows<{
+      id: string; date: string; party_id: string | null;
+      load_weight: string; actual_bitumen_qty: string | null;
+      bitumen_tank_number: string | null;
+      bitumen_percent: string; template_name: string;
+    }>(
+      await db.execute(sql`
+        SELECT
+          td.id,
+          td.date,
+          td.party_id,
+          td.load_weight,
+          td.actual_bitumen_qty,
+          td.bitumen_tank_number,
+          mt.bitumen_percent,
+          mt.name AS template_name
+        FROM truck_dispatches td
+        JOIN mix_templates mt ON mt.id = td.mix_template_id
+        WHERE mt.bitumen_percent > 0
+          AND td.party_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM stock_ledger sl
+            WHERE sl.reference_id      = td.id
+              AND sl.transaction_type  = 'dispatch'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM stock_ledger sl
+            WHERE sl.reference_id     = td.id
+              AND sl.transaction_type = 'dispatch'
+              AND sl.material_id      = ${bitumenMat.id}
+          )
+      `),
+      "backfillMissingDispatchBitumenRows: candidate SELECT"
+    );
+
+    if (!candidates || candidates.length === 0) {
+      return result;
+    }
+
+    console.log(`backfillMissingDispatchBitumenRows: found ${candidates.length} dispatch(es) missing bitumen ledger row`);
+
+    const partyIdsInScope = [...new Set(
+      candidates.map(r => r.party_id ? parseInt(r.party_id) : null).filter((id): id is number => id !== null && !isNaN(id))
+    )];
+
+    const bitumenReceiptRows = partyIdsInScope.length > 0
+      ? await db.select({ partyId: materialReceipts.partyId })
+          .from(materialReceipts)
+          .where(and(
+            inArray(materialReceipts.partyId, partyIdsInScope),
+            eq(materialReceipts.materialId, bitumenMat.id)
+          ))
+      : [];
+    const partiesWithBitumenReceipts = new Set(bitumenReceiptRows.map(r => r.partyId));
+
+    const allPartiesList = await db.select({ id: parties.id, name: parties.name }).from(parties);
+    const partyNameMap = new Map(allPartiesList.map(p => [p.id, p.name]));
+
+    const bitumenUom = bitumenMat.defaultUom || 'MT';
+
+    for (const row of candidates) {
+      try {
+        const dispatchId = parseInt(row.id);
+        const partyId = row.party_id ? parseInt(row.party_id) : null;
+        if (partyId === null || isNaN(partyId)) { result.skipped++; continue; }
+
+        const loadWeight  = parseFloat(row.load_weight) || 0;
+        const bitumenPct  = parseFloat(row.bitumen_percent) || 0;
+        const theoretical = (loadWeight * bitumenPct) / 100;
+        const qty = (row.actual_bitumen_qty && parseFloat(row.actual_bitumen_qty) > 0)
+          ? parseFloat(row.actual_bitumen_qty)
+          : theoretical;
+
+        if (qty <= 0) { result.skipped++; continue; }
+
+        const tankNum = row.bitumen_tank_number ? parseInt(row.bitumen_tank_number) : 1;
+        const chargePartyId = partiesWithBitumenReceipts.has(partyId) ? partyId : hlcPartyId;
+        if (chargePartyId === null) {
+          console.warn(`backfillMissingDispatchBitumenRows: dispatch #${dispatchId} — no HLC party found and owner (${partyId}) has no bitumen receipts, skipping`);
+          result.skipped++;
+          continue;
+        }
+
+        const chargePartyName = partyNameMap.get(chargePartyId) ?? `Party #${chargePartyId}`;
+        const notes = `${row.template_name.trim()} — ${chargePartyName} [backfilled]`;
+
+        await db.execute(sql`
+          INSERT INTO stock_ledger
+            (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id, tank_number)
+          VALUES
+            (${row.date}, ${chargePartyId}, ${bitumenMat.id}, 'dispatch',
+             ${qty}, 0, ${bitumenUom}, ${notes}, ${dispatchId}, ${tankNum})
+          ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+            WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+          DO NOTHING
+        `);
+
+        console.log(`backfillMissingDispatchBitumenRows: created bitumen row for dispatch #${dispatchId} — ${qty} ${bitumenUom} → party ${chargePartyId} (${chargePartyName})`);
+        result.created++;
+      } catch (e) {
+        console.error(`backfillMissingDispatchBitumenRows: error on dispatch #${row.id}:`, e);
+        result.errors++;
+      }
+    }
+
+    if (result.created > 0) {
+      await this.recomputeBalanceAfterForMaterial(bitumenMat.id);
+      await this.reconcileStockBalancesFromLedger();
+      console.log(`backfillMissingDispatchBitumenRows: done — created ${result.created}, skipped ${result.skipped}, errors ${result.errors}. Balances recomputed.`);
+    }
+
+    return result;
   }
 }
 

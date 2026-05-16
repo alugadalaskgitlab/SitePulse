@@ -203,6 +203,17 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r4 = await storage.backfillMissingDispatchBitumenRows();
+    if (r4.created > 0) {
+      console.log(`Startup: backfillMissingDispatchBitumenRows — created: ${r4.created}, skipped: ${r4.skipped}, errors: ${r4.errors}`);
+    } else {
+      console.log(`Startup: backfillMissingDispatchBitumenRows — 0 rows needed (clean), skipped: ${r4.skipped}, errors: ${r4.errors}`);
+    }
+  } catch (e) {
+    console.error("Startup: backfillMissingDispatchBitumenRows failed:", e);
+  }
+
+  try {
     const result = await storage.migrate6mmDownUomFix();
     console.log(`Startup: ${result.message}`);
   } catch (e) {
