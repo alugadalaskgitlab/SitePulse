@@ -228,9 +228,10 @@ export default function VendorBills() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, sectionVisible, isAdmin } = useAuth();
   const canCreate = sectionCan("vendor_bills", "create");
   const canEdit = sectionCan("vendor_bills", "edit");
+  const canViewBills = sectionVisible("vendor_bills");
   const canDelete = isAdmin;
   const canExport = sectionCan("vendor_bills", "view_reports");
 
@@ -1118,7 +1119,7 @@ export default function VendorBills() {
 
   const handlePrint = (bill: VendorBillWithItems) => {
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-    const hasSuppliedOrTransporter = (canCreate || canEdit) && bill.items.some((it: any) => it.suppliedTo || it.transporter);
+    const hasSuppliedOrTransporter = canViewBills && bill.items.some((it: any) => it.suppliedTo || it.transporter);
     const catSubs = computeCategorySubTotals(bill.items);
     const shouldGroup = catSubs.length > 1;
     const printCategories = ["equipment", "material", "transport", "labour", "other"];
@@ -1616,7 +1617,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
-              const hasSuppliedOrTransporter = canCreate || canEdit;
+              const hasSuppliedOrTransporter = canViewBills;
               const totalColSpan = hasLead ? (hasSuppliedOrTransporter ? 12 : 10) : (hasSuppliedOrTransporter ? 11 : 9);
               const labelColSpan = hasLead ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
@@ -2320,7 +2321,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-              const hasSuppliedOrTransporter = (canCreate || canEdit) && bill.items.some((it: any) => it.suppliedTo || it.transporter);
+              const hasSuppliedOrTransporter = canViewBills && bill.items.some((it: any) => it.suppliedTo || it.transporter);
               const totalCols = hasLead ? (hasSuppliedOrTransporter ? 11 : 9) : (hasSuppliedOrTransporter ? 10 : 8);
               const labelCols = hasLead ? (hasSuppliedOrTransporter ? 9 : 7) : (hasSuppliedOrTransporter ? 8 : 6);
               const catSubs = computeCategorySubTotals(bill.items);
