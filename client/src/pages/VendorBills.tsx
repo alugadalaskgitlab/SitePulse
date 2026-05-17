@@ -252,7 +252,7 @@ export default function VendorBills() {
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
-    { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null },
+    { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null },
   ]);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
@@ -445,7 +445,7 @@ export default function VendorBills() {
     setPeriodFrom("");
     setPeriodTo("");
     setNotes("");
-    setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null }]);
+    setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null }]);
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
     setGstRateEquipment(0);
@@ -499,8 +499,8 @@ export default function VendorBills() {
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
-        suppliedTo: (item as any).suppliedTo ?? null,
-        transporter: (item as any).transporter ?? null,
+        suppliedTo: item.suppliedTo ?? null,
+        transporter: item.transporter ?? null,
       }))
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
@@ -1119,7 +1119,7 @@ export default function VendorBills() {
 
   const handlePrint = (bill: VendorBillWithItems) => {
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-    const hasSuppliedOrTransporter = bill.items.some((it: any) => it.suppliedTo || it.transporter);
+    const hasSuppliedOrTransporter = (canCreate || canEdit) && bill.items.some((it: any) => it.suppliedTo || it.transporter);
     const catSubs = computeCategorySubTotals(bill.items);
     const shouldGroup = catSubs.length > 1;
     const printCategories = ["equipment", "material", "transport", "labour", "other"];
@@ -1617,7 +1617,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
-              const hasSuppliedOrTransporter = lineItems.some(i => i.suppliedTo || i.transporter);
+              const hasSuppliedOrTransporter = (canCreate || canEdit) && lineItems.some(i => i.suppliedTo || i.transporter);
               const totalColSpan = hasLead ? (hasSuppliedOrTransporter ? 12 : 10) : (hasSuppliedOrTransporter ? 11 : 9);
               const labelColSpan = hasLead ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
@@ -2321,7 +2321,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-              const hasSuppliedOrTransporter = bill.items.some((it: any) => it.suppliedTo || it.transporter);
+              const hasSuppliedOrTransporter = (canCreate || canEdit) && bill.items.some((it: any) => it.suppliedTo || it.transporter);
               const totalCols = hasLead ? (hasSuppliedOrTransporter ? 11 : 9) : (hasSuppliedOrTransporter ? 10 : 8);
               const labelCols = hasLead ? (hasSuppliedOrTransporter ? 9 : 7) : (hasSuppliedOrTransporter ? 8 : 6);
               const catSubs = computeCategorySubTotals(bill.items);

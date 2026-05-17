@@ -8599,8 +8599,8 @@ export class DatabaseStorage implements IStorage {
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
-            suppliedTo: (item as any).suppliedTo ?? null,
-            transporter: (item as any).transporter ?? null,
+            suppliedTo: item.suppliedTo ?? null,
+            transporter: item.transporter ?? null,
           }))
         ).returning();
       }
@@ -8663,8 +8663,8 @@ export class DatabaseStorage implements IStorage {
             equipmentId: item.equipmentId,
             leadDistance: item.leadDistance ?? null,
             siteName: (item as any).siteName?.toUpperCase() || null,
-            suppliedTo: (item as any).suppliedTo ?? null,
-            transporter: (item as any).transporter ?? null,
+            suppliedTo: item.suppliedTo ?? null,
+            transporter: item.transporter ?? null,
           }))
         ).returning();
       }
