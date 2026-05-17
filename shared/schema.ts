@@ -1506,6 +1506,8 @@ export const vendorBillItems = pgTable("vendor_bill_items", {
   equipmentId: integer("equipment_id"),
   leadDistance: real("lead_distance"),
   siteName: text("site_name"),
+  suppliedTo: text("supplied_to"),
+  transporter: text("transporter"),
 });
 
 export const vendorBillsRelations = relations(vendorBills, ({ many }) => ({

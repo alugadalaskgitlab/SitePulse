@@ -9005,9 +9005,12 @@ export class DatabaseStorage implements IStorage {
         quantity: materialReceipts.quantity,
         uom: materialReceipts.uom,
         materialName: plantMaterials.name,
+        partyName: parties.name,
+        receiptTransporter: materialReceipts.transporter,
       })
       .from(materialReceipts)
       .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
+      .leftJoin(parties, eq(parties.id, materialReceipts.partyId))
       .where(and(
         vendorMatchSql(materialReceipts.supplier),
         gte(materialReceipts.date, periodFrom),
@@ -9024,6 +9027,8 @@ export class DatabaseStorage implements IStorage {
             unit: row.uom || "NOS",
             source: "auto",
             siteName: "PLANT",
+            suppliedTo: row.partyName ?? null,
+            transporter: row.receiptTransporter ?? null,
           });
         }
       }
@@ -9105,9 +9110,11 @@ export class DatabaseStorage implements IStorage {
         uom: materialReceipts.uom,
         challanNumber: materialReceipts.challanNumber,
         vehicleNumber: materialReceipts.vehicleNumber,
+        partyName: parties.name,
       })
       .from(materialReceipts)
       .innerJoin(plantMaterials, eq(plantMaterials.id, materialReceipts.materialId))
+      .leftJoin(parties, eq(parties.id, materialReceipts.partyId))
       .where(and(
         vendorMatchSql(materialReceipts.transporter),
         gte(materialReceipts.date, periodFrom),
@@ -9125,6 +9132,7 @@ export class DatabaseStorage implements IStorage {
           unit: "TRIP",
           source: "auto",
           siteName: "PLANT",
+          suppliedTo: row.partyName ?? null,
         });
       }
     }
