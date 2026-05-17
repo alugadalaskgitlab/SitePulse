@@ -244,6 +244,7 @@ export default function VendorBills() {
   const [filterVendor, setFilterVendor] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [filterParty, setFilterParty] = useState("all");
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
@@ -1035,6 +1036,13 @@ export default function VendorBills() {
     setShowDeleteConfirm(true);
   };
 
+  const partyNames = useMemo(() => {
+    if (!bills) return [];
+    const set = new Set<string>();
+    bills.forEach(bill => bill.items?.forEach((it: any) => { if (it.suppliedTo) set.add(it.suppliedTo); }));
+    return Array.from(set).sort();
+  }, [bills]);
+
   const filteredBills = useMemo(() => {
     if (!bills) return [];
     return bills.filter(bill => {
@@ -1047,9 +1055,10 @@ export default function VendorBills() {
         const target = filterCategory === "combined" ? "all" : filterCategory;
         if (bt !== target) return false;
       }
+      if (filterParty !== "all" && !bill.items?.some((it: any) => it.suppliedTo === filterParty)) return false;
       return true;
     });
-  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory]);
+  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty]);
 
   const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
 
@@ -2847,13 +2856,36 @@ export default function VendorBills() {
                 )}
               </div>
             </div>
+            {canViewBills && partyNames.length > 0 && (
+              <div>
+                <Label className="text-xs uppercase">Supplied To</Label>
+                <div className="flex items-center gap-1">
+                  <Select value={filterParty} onValueChange={setFilterParty}>
+                    <SelectTrigger data-testid="filter-party" className="flex-1">
+                      <SelectValue placeholder="ALL PARTIES" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL PARTIES</SelectItem>
+                      {partyNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {filterParty !== "all" && (
+                    <Button size="icon" variant="ghost" onClick={() => setFilterParty("all")} data-testid="button-clear-party">
+                      <X className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all") && (
+          {(filterDateFrom || filterDateTo || filterVendor !== "all" || filterStatus !== "all" || filterCategory !== "all" || filterParty !== "all") && (
             <div className="flex justify-end mt-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); }}
+                onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterVendor("all"); setFilterStatus("all"); setFilterCategory("all"); setFilterParty("all"); }}
                 data-testid="button-clear-all-filters"
               >
                 <X className="w-3 h-3 mr-1" />
