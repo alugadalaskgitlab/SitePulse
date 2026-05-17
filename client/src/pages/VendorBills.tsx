@@ -1626,7 +1626,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
-              const hasSuppliedOrTransporter = canViewBills;
+              const hasSuppliedOrTransporter = canViewBills && lineItems.some(i => i.suppliedTo || i.transporter);
               const totalColSpan = hasLead ? (hasSuppliedOrTransporter ? 12 : 10) : (hasSuppliedOrTransporter ? 11 : 9);
               const labelColSpan = hasLead ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
