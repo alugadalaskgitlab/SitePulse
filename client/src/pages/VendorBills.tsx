@@ -499,6 +499,8 @@ export default function VendorBills() {
         equipmentId: item.equipmentId || null,
         leadDistance: item.leadDistance ?? null,
         siteName: inferSiteNameFromDescription(item.description, item.siteName) || null,
+        suppliedTo: (item as any).suppliedTo ?? null,
+        transporter: (item as any).transporter ?? null,
       }))
     );
     setAdjustmentLabel((bill as any).adjustmentLabel || "");
@@ -1117,12 +1119,13 @@ export default function VendorBills() {
 
   const handlePrint = (bill: VendorBillWithItems) => {
     const hasLeadDistance = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
+    const hasSuppliedOrTransporter = bill.items.some((it: any) => it.suppliedTo || it.transporter);
     const catSubs = computeCategorySubTotals(bill.items);
     const shouldGroup = catSubs.length > 1;
     const printCategories = ["equipment", "material", "transport", "labour", "other"];
     const printCatLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
-    const colCount = hasLeadDistance ? 11 : 10;
-    const labelColCount = hasLeadDistance ? 10 : 9;
+    const colCount = hasLeadDistance ? (hasSuppliedOrTransporter ? 11 : 9) : (hasSuppliedOrTransporter ? 10 : 8);
+    const labelColCount = hasLeadDistance ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
 
     const renderPrintRow = (item: any, i: number) => {
       const badge = parseSiteBadge(item);
@@ -1133,8 +1136,7 @@ export default function VendorBills() {
         <td>${escHtml(formatDate(item.date))}</td>
         <td style="text-align:center">${item.category ? escHtml(getCategoryLabel(item.category).toUpperCase()) : "-"}</td>
         <td>${escHtml(item.description)}${siteHtml}</td>
-        <td>${item.suppliedTo ? escHtml(item.suppliedTo) : "—"}</td>
-        <td>${item.transporter ? escHtml(item.transporter) : "—"}</td>
+        ${hasSuppliedOrTransporter ? `<td>${item.suppliedTo ? escHtml(item.suppliedTo) : "—"}</td><td>${item.transporter ? escHtml(item.transporter) : "—"}</td>` : ""}
         <td style="text-align:center">${formatQty(item.qty)}</td>
         <td style="text-align:center">${item.unit || ""}</td>
         ${hasLeadDistance ? `<td style="text-align:center">${item.leadDistance ? `${formatQty(item.leadDistance)} (RT: ${formatQty(item.leadDistance * 2)})` : "-"}</td>` : ""}
@@ -1236,7 +1238,7 @@ export default function VendorBills() {
         ${bill.periodFrom && bill.periodTo ? `<div class="item"><div class="label">Period</div><div class="value">${escHtml(formatDate(bill.periodFrom))} to ${escHtml(formatDate(bill.periodTo))}</div></div>` : ""}
         <div class="item"><div class="label">Status</div><div class="value"><span class="status-badge">${escHtml(bill.status.toUpperCase())}</span></div></div>
       </div>
-      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th>Supplied To</th><th>Transporter</th><th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th>${hasSuppliedOrTransporter ? "<th>Supplied To</th><th>Transporter</th>" : ""}<th>Qty</th><th>Unit</th>${hasLeadDistance ? "<th>Lead (KM)</th>" : ""}<th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot>
         <tr class="summary-row"><td colspan="${hasLeadDistance ? 5 : 4}" style="text-align:right">TOTAL ITEMS: ${totalItems}</td><td style="text-align:center">${formatQty(totalQty)}</td><td colspan="${hasLeadDistance ? 4 : 3}"></td></tr>
@@ -1615,8 +1617,9 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
-              const totalColSpan = hasLead ? 12 : 11;
-              const labelColSpan = hasLead ? 10 : 9;
+              const hasSuppliedOrTransporter = lineItems.some(i => i.suppliedTo || i.transporter);
+              const totalColSpan = hasLead ? (hasSuppliedOrTransporter ? 12 : 10) : (hasSuppliedOrTransporter ? 11 : 9);
+              const labelColSpan = hasLead ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
               const catLabels: Record<string, string> = { equipment: "EQUIPMENT", material: "MATERIAL", transport: "TRANSPORT", labour: "LABOUR", other: "OTHER" };
               const shouldGroup = computeCategorySubTotals(lineItems).length > 1;
@@ -1708,12 +1711,16 @@ export default function VendorBills() {
                       />
                     )}
                   </td>
-                  <td className="px-2 py-1.5">
-                    <span className="text-xs text-muted-foreground" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <span className="text-xs text-muted-foreground" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
-                  </td>
+                  {hasSuppliedOrTransporter && (
+                    <td className="px-2 py-1.5">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
+                    </td>
+                  )}
+                  {hasSuppliedOrTransporter && (
+                    <td className="px-2 py-1.5">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
+                    </td>
+                  )}
                   <td className="px-2 py-1.5">
                     {item.category === "transport" ? (
                       <div className="space-y-0.5">
@@ -1849,8 +1856,8 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left w-28">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
                       <th className="px-2 py-2 text-left">Description</th>
-                      <th className="px-2 py-2 text-left w-28">Supplied To</th>
-                      <th className="px-2 py-2 text-left w-28">Transporter</th>
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied To</th>}
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-20">Unit</th>
                       {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
@@ -2314,8 +2321,9 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = bill.items.some((it: any) => it.leadDistance && it.leadDistance > 0);
-              const totalCols = hasLead ? 11 : 10;
-              const labelCols = hasLead ? 9 : 8;
+              const hasSuppliedOrTransporter = bill.items.some((it: any) => it.suppliedTo || it.transporter);
+              const totalCols = hasLead ? (hasSuppliedOrTransporter ? 11 : 9) : (hasSuppliedOrTransporter ? 10 : 8);
+              const labelCols = hasLead ? (hasSuppliedOrTransporter ? 9 : 7) : (hasSuppliedOrTransporter ? 8 : 6);
               const catSubs = computeCategorySubTotals(bill.items);
               const shouldGroup = catSubs.length > 1;
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
@@ -2360,8 +2368,8 @@ export default function VendorBills() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>}
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>}
                   <td className="px-2 py-2 text-xs">{formatQty(item.qty)}</td>
                   <td className="px-2 py-2 text-xs">{item.unit}</td>
                   {hasLead && (
@@ -2386,8 +2394,8 @@ export default function VendorBills() {
                       <th className="px-2 py-2 text-left w-24">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
                       <th className="px-2 py-2 text-left">Description</th>
-                      <th className="px-2 py-2 text-left w-28">Supplied To</th>
-                      <th className="px-2 py-2 text-left w-28">Transporter</th>
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Supplied To</th>}
+                      {hasSuppliedOrTransporter && <th className="px-2 py-2 text-left w-28">Transporter</th>}
                       <th className="px-2 py-2 text-left w-24">Qty</th>
                       <th className="px-2 py-2 text-left w-16">Unit</th>
                       {hasLead && <th className="px-2 py-2 text-left w-28">Lead (KM)</th>}
