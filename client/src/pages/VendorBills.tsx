@@ -251,9 +251,8 @@ export default function VendorBills() {
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
   const [notes, setNotes] = useState("");
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null },
-  ]);
+  const defaultManualItem: LineItem = { date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null };
+  const [lineItems, setLineItems] = useState<LineItem[]>(isAdmin ? [defaultManualItem] : []);
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
   const [gstRateEquipment, setGstRateEquipment] = useState<number>(0);
@@ -445,7 +444,7 @@ export default function VendorBills() {
     setPeriodFrom("");
     setPeriodTo("");
     setNotes("");
-    setLineItems([{ date: "", category: "equipment", description: "", qty: 0, unit: "HRS", rate: 0, amount: 0, source: "manual", equipmentId: null, leadDistance: null, suppliedTo: null, transporter: null }]);
+    setLineItems(isAdmin ? [defaultManualItem] : []);
     setAdjustmentLabel("");
     setAdjustmentAmount(0);
     setGstRateEquipment(0);
@@ -1617,7 +1616,7 @@ export default function VendorBills() {
           <CardContent className="p-0 overflow-x-auto">
             {(() => {
               const hasLead = billType === "transport" || lineItems.some(i => i.leadDistance !== null);
-              const hasSuppliedOrTransporter = (canCreate || canEdit) && lineItems.some(i => i.suppliedTo || i.transporter);
+              const hasSuppliedOrTransporter = canCreate || canEdit;
               const totalColSpan = hasLead ? (hasSuppliedOrTransporter ? 12 : 10) : (hasSuppliedOrTransporter ? 11 : 9);
               const labelColSpan = hasLead ? (hasSuppliedOrTransporter ? 10 : 8) : (hasSuppliedOrTransporter ? 9 : 7);
               const categories = ["equipment", "material", "transport", "labour", "other"] as const;
