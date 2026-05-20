@@ -32,6 +32,14 @@ export function useOrigin() {
     opts: { defaultTab?: PlantTab; forceTab?: PlantTab; role?: string | null } = {},
   ): string => {
     if (isFromPortal) return "/";
+    const returnTo = sp.get("returnTo");
+    if (returnTo) {
+      try {
+        return decodeURIComponent(returnTo);
+      } catch {
+        // fall through to default behaviour
+      }
+    }
     const tab = opts.forceTab
       ?? (urlTab && PLANT_TAB_VALUES.has(urlTab)
         ? urlTab

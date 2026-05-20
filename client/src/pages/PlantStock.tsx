@@ -1906,12 +1906,12 @@ export default function PlantStock() {
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
-                                <Link href={appendPlantContext(`/plant/material-receipts?edit=${entry.referenceId}`, { defaultTab: "stock" })}>
+                                <Link href={`/plant/material-receipts?edit=${entry.referenceId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'dispatch' && entry.referenceId != null && !entry._mergedDelta && (
-                                <Link href={appendPlantContext(`/plant/dispatches?edit=${entry.referenceId}`, { defaultTab: "stock" })}>
+                                <Link href={`/plant/dispatches?edit=${entry.referenceId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
                                 </Link>
                               )}
