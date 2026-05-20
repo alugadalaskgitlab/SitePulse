@@ -1922,7 +1922,7 @@ export default function PlantStock() {
                           </td>
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
                             <div className="flex items-center justify-end gap-1.5">
-                              {!isBF && entry.tankNumber != null && displayOut > 0 && (
+                              {!isBF && isTankedMaterial && entry.tankNumber != null && displayOut > 0 && (
                                 <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'bg-white dark:bg-transparent border-current text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-transparent border-current text-purple-600 dark:text-purple-400'}`}>
                                   T{entry.tankNumber}
                                 </span>
@@ -1932,7 +1932,7 @@ export default function PlantStock() {
                           </td>
                           <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 ? 'text-red-600 dark:text-red-400' : ''}`}>
                             <div className="flex items-center justify-end gap-1.5">
-                              {!isBF && entry.tankNumber != null && (
+                              {!isBF && isTankedMaterial && entry.tankNumber != null && (
                                 <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'border-blue-400 text-blue-600 dark:text-blue-400' : 'border-purple-400 text-purple-600 dark:text-purple-400'}`}>
                                   T{entry.tankNumber}
                                 </span>
