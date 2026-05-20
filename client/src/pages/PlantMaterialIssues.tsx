@@ -49,8 +49,14 @@ export default function PlantMaterialIssues() {
     const v = params.get("highlight");
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
+  const returnTo = useMemo(() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("returnTo");
+    return (v && v.startsWith("/")) ? v : null;
+  }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
   const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
+  const dialogOpenedForReturnRef = useRef<boolean>(false);
   useEffect(() => {
     if (highlightId != null) {
       setLocalHighlightId(highlightId);
@@ -166,6 +172,19 @@ export default function PlantMaterialIssues() {
       return () => clearTimeout(timer);
     }
   }, [localHighlightId, issues]);
+
+  useEffect(() => {
+    if (dialogOpen && returnTo) {
+      dialogOpenedForReturnRef.current = true;
+    }
+  }, [dialogOpen, returnTo]);
+
+  useEffect(() => {
+    if (!dialogOpen && dialogOpenedForReturnRef.current) {
+      dialogOpenedForReturnRef.current = false;
+      if (returnTo) setLocation(returnTo);
+    }
+  }, [dialogOpen]);
 
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],

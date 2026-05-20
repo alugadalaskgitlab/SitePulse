@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Layers, Package, Loader2, Search, Calendar, Download, Printer, RefreshCw, ArrowRightLeft, MoveHorizontal, X, RotateCcw, ClipboardList, GitCompare, ExternalLink } from "lucide-react";
 import { format, subDays } from "date-fns";
@@ -50,6 +50,32 @@ export default function PlantStock() {
   const { getPlantBackLink, appendPlantContext } = useOrigin();
   const queryClient = useQueryClient();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
+
+  const searchString = useSearch();
+  const scrollToId = useMemo(() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("scrollTo");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
+
+  const scrollTargetCallbackRef = useCallback((node: HTMLTableRowElement | null) => {
+    if (!node || scrollToId == null) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    node.classList.add("bg-yellow-100", "dark:bg-yellow-900/30");
+    setTimeout(() => {
+      node.classList.remove("bg-yellow-100", "dark:bg-yellow-900/30");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("scrollTo");
+      history.replaceState(null, "", url.toString());
+    }, 2000);
+  }, [scrollToId]);
+
+  const buildLedgerReturnTo = (entryId: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("scrollTo", String(entryId));
+    return encodeURIComponent(url.pathname + url.search);
+  };
+
   // Filter state — persisted across visits in localStorage so the page
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
@@ -1829,7 +1855,12 @@ export default function PlantStock() {
                         const isBF = entry.transactionType === 'opening_balance';
                         
                         return (
-                        <tr key={entry.id} className={`border-b ${isBF ? 'bg-amber-50 dark:bg-amber-900/20 font-semibold' : 'hover:bg-muted/30'}`}>
+                        <tr
+                          key={entry.id}
+                          data-row-id={entry.id}
+                          ref={entry.id === scrollToId ? scrollTargetCallbackRef : undefined}
+                          className={`border-b ${isBF ? 'bg-amber-50 dark:bg-amber-900/20 font-semibold' : 'hover:bg-muted/30'}`}
+                        >
                           <td className="p-3">{entry.date}</td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
                           <td className="p-3">
@@ -1906,13 +1937,28 @@ export default function PlantStock() {
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
-                                <Link href={`/plant/material-receipts?edit=${entry.referenceId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                <Link href={`/plant/material-receipts?edit=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'dispatch' && entry.referenceId != null && !entry._mergedDelta && (
-                                <Link href={`/plant/dispatches?edit=${entry.referenceId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                <Link href={`/plant/dispatches?edit=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'issue' && entry.referenceId != null && (
+                                <Link href={`/plant/material-issues?highlight=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this issue" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'return' && entry.referenceId != null && (
+                                <Link href={`/plant/material-returns?highlight=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this return" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'transfer' && entry.referenceId != null && (
+                                <Link href={`/plant/stock-transfer?returnTo=${buildLedgerReturnTo(entry.id)}`}>
+                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View stock transfer" />
                                 </Link>
                               )}
                             </div>

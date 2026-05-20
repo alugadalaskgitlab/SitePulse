@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, Download, Printer, RotateCcw, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -27,6 +27,26 @@ export default function PlantMaterialReturns() {
   const canEdit = sectionCan("plant_stock", "edit");
   const canExport = sectionCan("plant_stock", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
+  const searchString = useSearch();
+  const [, setLocation] = useLocation();
+  const highlightId = useMemo(() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("highlight");
+    return v ? parseInt(v, 10) : null;
+  }, [searchString]);
+  const returnTo = useMemo(() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("returnTo");
+    return (v && v.startsWith("/")) ? v : null;
+  }, [searchString]);
+  const highlightRowRef = useRef<HTMLDivElement | null>(null);
+  const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
+  const dialogOpenedForReturnRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (highlightId != null) setLocalHighlightId(highlightId);
+  }, [highlightId]);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [editingReturn, setEditingReturn] = useState<MaterialReturn | null>(null);
@@ -47,6 +67,32 @@ export default function PlantMaterialReturns() {
   const { data: returns, isLoading } = useQuery<MaterialReturn[]>({
     queryKey: ["/api/plant-module/material-returns"],
   });
+
+  useEffect(() => {
+    if (localHighlightId != null && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlight");
+        history.replaceState(null, "", url.toString());
+        setLocalHighlightId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [localHighlightId, returns]);
+
+  useEffect(() => {
+    if (dialogOpen && returnTo) {
+      dialogOpenedForReturnRef.current = true;
+    }
+  }, [dialogOpen, returnTo]);
+
+  useEffect(() => {
+    if (!dialogOpen && dialogOpenedForReturnRef.current) {
+      dialogOpenedForReturnRef.current = false;
+      if (returnTo) setLocation(returnTo);
+    }
+  }, [dialogOpen]);
 
   const { data: issues } = useQuery<MaterialIssue[]>({
     queryKey: ["/api/plant-module/material-issues"],
@@ -591,7 +637,8 @@ export default function PlantMaterialReturns() {
           {filteredReturns.map((ret) => {
             const linkedIssue = issues?.find(i => i.id === ret.originalIssueId);
             return (
-              <Card key={ret.id} className="hover-elevate" data-testid={`card-return-${ret.id}`}>
+              <div key={ret.id} ref={ret.id === localHighlightId ? highlightRowRef : null}>
+              <Card className={`hover-elevate transition-all duration-500 ${ret.id === localHighlightId ? "ring-2 ring-yellow-400 dark:ring-yellow-600 bg-yellow-50 dark:bg-yellow-900/20" : ""}`} data-testid={`card-return-${ret.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -640,6 +687,7 @@ export default function PlantMaterialReturns() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             );
           })}
         </div>
