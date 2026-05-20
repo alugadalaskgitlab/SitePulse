@@ -413,6 +413,11 @@ export interface IStorage {
   // Idempotent via app_settings guard. Safe to run on every startup.
   backfillMissingDispatchAggregateRows(): Promise<{ applied: boolean; templatesProcessed: number; dispatchesFixed: number; ledgerRowsCreated: number; errors: string[] }>;
 
+  // Remove dispatch ledger rows whose material no longer appears in the dispatch's
+  // theoreticalAggregates (ghost rows left behind after template component changes).
+  // Idempotent via app_settings guard. Safe to run on every startup.
+  cleanupGhostDispatchLedgerRows(): Promise<{ applied: boolean; deleted: number; errors: string[] }>;
+
   // Compute per-tank bitumen balance from the stock_ledger.
   // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
   getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }>;
@@ -4620,6 +4625,32 @@ export class DatabaseStorage implements IStorage {
           }
         } catch { /* ignore */ }
       }
+
+      // Also scan actual ledger rows for these dispatches to catch ghost materials
+      // from old template versions that no longer appear in theoreticalAggregates.
+      // This handles the case where a template component (e.g. 20MM) was removed
+      // after a rebuild had already created ledger rows for it — without this scan
+      // those rows would be invisible to the delete and persist as orphans.
+      {
+        const allMats = await db.select({ id: plantMaterials.id, name: plantMaterials.name }).from(plantMaterials);
+        const nonAggMatIdSet = new Set(
+          allMats
+            .filter(m => isLdoOrDieselMaterial(m.name) || ['BITUMEN', 'EMULSION'].includes(m.name.toUpperCase().trim()))
+            .map(m => m.id)
+        );
+        const existingMatRows = await db
+          .select({ materialId: stockLedger.materialId })
+          .from(stockLedger)
+          .where(and(
+            inArray(stockLedger.referenceId, linkedIds),
+            eq(stockLedger.transactionType, 'dispatch')
+          ));
+        existingMatRows.forEach(r => {
+          if (r.materialId != null && !nonAggMatIdSet.has(r.materialId))
+            safeDeleteMatIds.add(r.materialId);
+        });
+      }
+
       const safeDeleteMatIdsArr = [...safeDeleteMatIds];
 
       const deleted = await db.delete(stockLedger)
@@ -15155,6 +15186,64 @@ export class DatabaseStorage implements IStorage {
 
     await this.setSetting(SETTING_KEY, '1');
     return { applied: true, templatesProcessed, dispatchesFixed, ledgerRowsCreated, errors };
+  }
+
+  async cleanupGhostDispatchLedgerRows(): Promise<{ applied: boolean; deleted: number; errors: string[] }> {
+    // IDEMPOTENCY: category (A) DATA-CONDITION CHECK + category (B) IDEMPOTENT OPERATION.
+    // Removes stock_ledger dispatch rows whose material_id does not appear in the
+    // linked dispatch's theoreticalAggregates. These are "ghost" rows left behind when
+    // a template's component list changes (e.g. 20MM removed, DUST added) after a
+    // Ledger Rebuild had already written rows for the old component set.
+    //
+    // Safe to re-run: the DELETE is driven by a fresh SELECT of current ghost rows,
+    // so a spurious re-run after flag deletion is a no-op if ghosts are already gone.
+    const SETTING_KEY = 'cleanupGhostDispatchLedgerRows_applied';
+    const alreadyApplied = await this.getSetting(SETTING_KEY);
+    if (alreadyApplied === '1') {
+      return { applied: false, deleted: 0, errors: [] };
+    }
+
+    const allMaterials = await db.select().from(plantMaterials);
+    const nonAggMatIds = allMaterials
+      .filter(m => isLdoOrDieselMaterial(m.name) || ['BITUMEN', 'EMULSION'].includes(m.name.toUpperCase().trim()))
+      .map(m => m.id);
+
+    // Find dispatch ledger rows where the material is NOT in the dispatch's
+    // theoreticalAggregates JSON and is not a non-aggregate material (bitumen/LDO/diesel).
+    const ghostResult = await db.execute(sql`
+      SELECT sl.id, sl.material_id, sl.reference_id
+      FROM stock_ledger sl
+      JOIN truck_dispatches td ON td.id = sl.reference_id
+      WHERE sl.transaction_type = 'dispatch'
+        AND sl.reference_id IS NOT NULL
+        AND td.theoretical_aggregates IS NOT NULL
+        ${nonAggMatIds.length > 0
+          ? sql`AND sl.material_id NOT IN (${sql.join(nonAggMatIds.map(id => sql`${id}`), sql`, `)})`
+          : sql``}
+        AND NOT (td.theoretical_aggregates::jsonb ? sl.material_id::text)
+    `);
+
+    const rows = execSelectRows<{ id: number; material_id: number; reference_id: number }>(
+      ghostResult, 'cleanupGhostDispatchLedgerRows: find ghosts'
+    );
+
+    if (rows.length === 0) {
+      await this.setSetting(SETTING_KEY, '1');
+      return { applied: true, deleted: 0, errors: [] };
+    }
+
+    const ghostIds = rows.map(r => Number(r.id));
+    const affectedMaterialIds = [...new Set(rows.map(r => Number(r.material_id)))];
+
+    await db.delete(stockLedger).where(inArray(stockLedger.id, ghostIds));
+
+    for (const matId of affectedMaterialIds) {
+      await this.recomputeBalanceAfterForMaterial(matId);
+    }
+    await this.reconcileStockBalancesFromLedger();
+
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, deleted: ghostIds.length, errors: [] };
   }
 }
 

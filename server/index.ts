@@ -298,6 +298,21 @@ app.use((req, res, next) => {
     console.error("Startup: backfillMissingDispatchAggregateRows failed:", e);
   }
 
+  try {
+    const r = await storage.cleanupGhostDispatchLedgerRows();
+    if (r.applied) {
+      if (r.deleted > 0) {
+        console.log(`Startup: cleanupGhostDispatchLedgerRows — deleted ${r.deleted} ghost ledger row(s)`);
+      } else {
+        console.log("Startup: cleanupGhostDispatchLedgerRows — nothing to clean (no ghost rows found)");
+      }
+    } else {
+      console.log("Startup: cleanupGhostDispatchLedgerRows — already applied, skipping.");
+    }
+  } catch (e) {
+    console.error("Startup: cleanupGhostDispatchLedgerRows failed:", e);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
