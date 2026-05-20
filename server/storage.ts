@@ -408,6 +408,11 @@ export interface IStorage {
   backfillBitumenTankNumbers(): Promise<{ updated: number; errors: number }>;
   backfillMissingDispatchBitumenRows(): Promise<{ created: number; skipped: number; errors: number }>;
 
+  // One-time migration: rebuild aggregate stock_ledger rows for dispatches that
+  // have stock_deducted=1 but are missing aggregate consumption entries.
+  // Idempotent via app_settings guard. Safe to run on every startup.
+  backfillMissingDispatchAggregateRows(): Promise<{ applied: boolean; templatesProcessed: number; dispatchesFixed: number; ledgerRowsCreated: number; errors: string[] }>;
+
   // Compute per-tank bitumen balance from the stock_ledger.
   // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
   getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }>;
@@ -15044,6 +15049,75 @@ export class DatabaseStorage implements IStorage {
     }
 
     return result;
+  }
+
+  async backfillMissingDispatchAggregateRows(): Promise<{ applied: boolean; templatesProcessed: number; dispatchesFixed: number; ledgerRowsCreated: number; errors: string[] }> {
+    const SETTING_KEY = 'backfillMissingDispatchAggregateRows_applied';
+    const alreadyApplied = await this.getSetting(SETTING_KEY);
+    if (alreadyApplied === '1') {
+      return { applied: false, templatesProcessed: 0, dispatchesFixed: 0, ledgerRowsCreated: 0, errors: [] };
+    }
+
+    // Find all aggregate material IDs (exclude bitumen, LDO, diesel)
+    const allMaterials = await db.select().from(plantMaterials);
+    const nonAggregateMaterialIds = allMaterials
+      .filter(m => isLdoOrDieselMaterial(m.name) || m.name.toUpperCase().trim() === 'BITUMEN')
+      .map(m => m.id);
+
+    // Find dispatches with stock_deducted=1 that have zero positive aggregate rows
+    // linked via reference_id. Group by template to find earliest missing date.
+    const affectedRows = await db.execute(sql`
+      SELECT td.mix_template_id, MIN(td.date) AS earliest_date, COUNT(*)::int AS missing_count
+      FROM truck_dispatches td
+      WHERE td.stock_deducted = 1
+        AND td.mix_template_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM stock_ledger sl
+          WHERE sl.reference_id = td.id
+            AND sl.transaction_type = 'dispatch'
+            ${nonAggregateMaterialIds.length > 0
+              ? sql`AND sl.material_id NOT IN (${sql.join(nonAggregateMaterialIds.map(id => sql`${id}`), sql`, `)})`
+              : sql``}
+            AND sl.quantity_out > 0
+        )
+        AND EXISTS (
+          SELECT 1 FROM mix_template_components mtc
+          WHERE mtc.template_id = td.mix_template_id
+        )
+      GROUP BY td.mix_template_id
+    `);
+
+    const rows = execSelectRows<{ mix_template_id: number; earliest_date: string; missing_count: number }>(
+      affectedRows, 'backfillMissingDispatchAggregateRows: find affected'
+    );
+
+    if (rows.length === 0) {
+      await this.setSetting(SETTING_KEY, '1');
+      return { applied: true, templatesProcessed: 0, dispatchesFixed: 0, ledgerRowsCreated: 0, errors: [] };
+    }
+
+    let templatesProcessed = 0;
+    let dispatchesFixed = 0;
+    let ledgerRowsCreated = 0;
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      const templateId = Number(row.mix_template_id);
+      const fromDateTime = `${row.earliest_date}T00:00`;
+      try {
+        const result = await this.rebuildDispatchLedgerForTemplate({ templateId, fromDateTime });
+        templatesProcessed++;
+        dispatchesFixed += result.dispatches;
+        ledgerRowsCreated += result.ledgerRowsCreated;
+        if (result.errors.length > 0) errors.push(...result.errors.map(e => `[template ${templateId}] ${e}`));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`[template ${templateId}] ${msg}`);
+      }
+    }
+
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, templatesProcessed, dispatchesFixed, ledgerRowsCreated, errors };
   }
 }
 

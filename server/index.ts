@@ -250,6 +250,21 @@ app.use((req, res, next) => {
     console.error("Startup: purgeOrphanedDeletionReversals failed:", e);
   }
 
+  try {
+    const r = await storage.backfillMissingDispatchAggregateRows();
+    if (r.applied) {
+      if (r.dispatchesFixed > 0) {
+        console.log(`Startup: backfillMissingDispatchAggregateRows — fixed ${r.dispatchesFixed} dispatch(es) across ${r.templatesProcessed} template(s), created ${r.ledgerRowsCreated} ledger row(s)${r.errors.length ? `, ${r.errors.length} error(s)` : ""}`);
+      } else {
+        console.log("Startup: backfillMissingDispatchAggregateRows — nothing to fix (clean)");
+      }
+    } else {
+      console.log("Startup: backfillMissingDispatchAggregateRows — already applied, skipping.");
+    }
+  } catch (e) {
+    console.error("Startup: backfillMissingDispatchAggregateRows failed:", e);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
