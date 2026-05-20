@@ -9841,6 +9841,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
+    // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+    // Primary guard: app_settings key "backfill_ldo_flow_from_heating_sessions_v1".
+    // If that key is deleted (e.g. after a manual DB reset), this migration re-runs
+    // on the next startup.  Re-running is safe: for every heating session the body
+    // deletes any existing ldo_flow_readings rows tagged with that session's ID, then
+    // re-inserts them from the session's current meter values.  The net result is
+    // identical to the original run — no rows are duplicated and no manual readings
+    // (which have a NULL sourceHeatingSessionId) are touched.
     const MIGRATION_FLAG = "backfill_ldo_flow_from_heating_sessions_v1";
     const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
     if (existing.length > 0) {
@@ -9947,6 +9955,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deduplicateBitumenDipReadings(): Promise<{ removed: number }> {
+    // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+    // Primary guard: app_settings key "deduplicate_bitumen_dip_readings_v1".
+    // If that key is deleted, re-running is safe: the DELETE keeps only MIN(id)
+    // per (date, tank_number, reading_type, plant_name) group, which is a no-op
+    // on an already-deduplicated table (zero rows match the NOT IN clause).
     const MIGRATION_FLAG = "deduplicate_bitumen_dip_readings_v1";
     const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
     if (existing.length > 0) {
@@ -9976,6 +9989,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deduplicateLdoDipReadings(): Promise<{ removed: number }> {
+    // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+    // Primary guard: app_settings key "deduplicate_ldo_dip_readings_v1".
+    // If that key is deleted, re-running is safe: the DELETE keeps only MIN(id)
+    // per (date, tank_number, reading_type, plant_name) group — a no-op when
+    // the table is already clean.
     const MIGRATION_FLAG = "deduplicate_ldo_dip_readings_v1";
     const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
     if (existing.length > 0) {
@@ -10005,6 +10023,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deduplicateLdoFlowSlotReadings(): Promise<{ removed: number }> {
+    // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+    // Primary guard: app_settings key "deduplicate_ldo_flow_slot_readings_v1".
+    // If that key is deleted, re-running is safe: the DELETE keeps only MIN(id)
+    // per (date, tank_number, reading_type, plant_name) for non-receipt rows —
+    // a no-op when the table is already clean.
     const MIGRATION_FLAG = "deduplicate_ldo_flow_slot_readings_v1";
     const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
     if (existing.length > 0) {
@@ -15052,6 +15075,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async backfillMissingDispatchAggregateRows(): Promise<{ applied: boolean; templatesProcessed: number; dispatchesFixed: number; ledgerRowsCreated: number; errors: string[] }> {
+    // IDEMPOTENCY: category (A) — DATA-CONDITION CHECK  +  category (B) — IDEMPOTENT OPERATION.
+    // Primary guard: app_settings key "backfillMissingDispatchAggregateRows_applied" (via getSetting).
+    //
+    // Secondary guard (data condition): even if the flag is absent the body opens
+    // with a SELECT that finds dispatches (stock_deducted=1) that have no positive
+    // aggregate stock_ledger rows linked via reference_id.  If all aggregate rows
+    // already exist (the normal post-migration state) that query returns zero rows,
+    // the flag is re-written, and the method returns early without touching any data.
+    //
+    // Therefore: a spurious re-run caused by a deleted app_settings flag is safe —
+    // no duplicate ledger rows are created as long as the aggregate rows laid down
+    // by the original run are still present.  The only scenario where re-running
+    // causes harm is if aggregate ledger rows were intentionally deleted between the
+    // original run and the re-run; that scenario requires manual intervention anyway.
     const SETTING_KEY = 'backfillMissingDispatchAggregateRows_applied';
     const alreadyApplied = await this.getSetting(SETTING_KEY);
     if (alreadyApplied === '1') {

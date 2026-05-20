@@ -70,6 +70,39 @@ app.use((req, res, next) => {
   initPush();
   await registerRoutes(httpServer, app);
 
+  // ── Startup migration / backfill orchestration ───────────────────────────
+  //
+  // IDEMPOTENCY STRATEGY
+  // ====================
+  // Every migration below is meant to run once and never again.  The primary
+  // guard is a row in `app_settings` (key → timestamp/sentinel value) that is
+  // written after a successful run.  On subsequent startups the flag is found
+  // and the body is skipped immediately.
+  //
+  // RISK: manual DB reset / seed
+  // ----------------------------
+  // If `app_settings` is truncated or the relevant key is deleted (e.g. during
+  // a database seed or manual reset), every flagged migration will re-execute
+  // on the next startup.  Each migration therefore must satisfy ONE of these
+  // additional safety properties so a spurious re-run causes no harm:
+  //
+  //   (A) DATA-CONDITION CHECK  — the migration queries the actual data first
+  //       and only writes if the condition that prompted it still holds.
+  //       Example: backfillMissingDispatchAggregateRows checks for dispatches
+  //       that are genuinely missing aggregate ledger rows.
+  //
+  //   (B) IDEMPOTENT OPERATION  — the SQL is inherently a no-op when re-run
+  //       against already-migrated data.  Example: the deduplication helpers
+  //       use DELETE … WHERE id NOT IN (SELECT MIN(id) …), which deletes zero
+  //       rows when the table is already clean.
+  //
+  //   (C) DOCUMENTED RISK  — re-running could have a side-effect, but the
+  //       effect is bounded and explicitly documented so it is understood.
+  //
+  // Each method in storage.ts and auth.ts carries an inline comment identifying
+  // which category applies and why a silent re-run is (or is not) dangerous.
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     await storage.resetAllSequences();
     console.log("Startup: All database sequences reset successfully");

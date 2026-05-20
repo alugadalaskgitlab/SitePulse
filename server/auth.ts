@@ -684,6 +684,11 @@ const SPLIT_PERMS_FLAG = "perm_v278_split_done";
 const PHONE_LOGIN_MIGRATION_FLAG = "phone_login_v280_done";
 
 export async function migrateEmailPhoneSchema(): Promise<{ skipped: boolean }> {
+  // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+  // Primary guard: app_settings key stored in PHONE_LOGIN_MIGRATION_FLAG.
+  // This migration performs no data writes — it only records that the schema
+  // transition has been acknowledged.  If the flag is deleted and it re-runs,
+  // it simply inserts the flag again with no side-effects.
   const existing = await db.select().from(appSettings).where(eq(appSettings.key, PHONE_LOGIN_MIGRATION_FLAG));
   if (existing.length > 0) {
     console.log("migrateEmailPhoneSchema: already applied, skipping.");
@@ -700,6 +705,11 @@ export async function migrateEmailPhoneSchema(): Promise<{ skipped: boolean }> {
 const PLANT_SUB_PERMS_FLAG = "perm_v313_plant_sub_perms_done";
 
 export async function backfillPlantSubPermissions(): Promise<{ inserted: number; skipped: boolean }> {
+  // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
+  // Primary guard: app_settings key stored in PLANT_SUB_PERMS_FLAG.
+  // The INSERT uses ON CONFLICT DO NOTHING, so re-running after the flag is
+  // deleted inserts zero rows (the permission rows already exist) and merely
+  // re-writes the flag.  No data is duplicated or overwritten.
   const existing = await db.select().from(appSettings).where(eq(appSettings.key, PLANT_SUB_PERMS_FLAG));
   if (existing.length > 0) {
     console.log("backfillPlantSubPermissions: already applied, skipping.");
@@ -726,6 +736,23 @@ export async function backfillPlantSubPermissions(): Promise<{ inserted: number;
 }
 
 export async function backfillSplitPermissions(): Promise<{ deleteUpdated: number; exportUpdated: number; skipped: boolean }> {
+  // IDEMPOTENCY: category (C) — DOCUMENTED RISK.
+  // Primary guard: app_settings key stored in SPLIT_PERMS_FLAG.
+  //
+  // If the flag is deleted and this migration re-runs, the UPDATE logic is:
+  //   can_delete ← can_edit   WHERE can_delete = false AND can_edit = true
+  //   can_export ← can_view_reports  WHERE can_export = false AND can_view_reports = true
+  //
+  // RISK: if an admin intentionally set can_delete=false while can_edit=true
+  // (a deliberate "edit but no delete" split) AFTER the original migration ran,
+  // a spurious re-run would silently re-set can_delete=true for those rows,
+  // undoing the admin's intentional restriction.  The same applies to
+  // can_export / can_view_reports splits.
+  //
+  // Mitigation: this is bounded to users that have can_edit=true but
+  // can_delete=false at the time of re-run.  If you need to perform a manual
+  // DB reset, preserve the app_settings migration flag row (key=SPLIT_PERMS_FLAG)
+  // or manually re-apply any intentional permission splits afterward.
   const existing = await db.select().from(appSettings).where(eq(appSettings.key, SPLIT_PERMS_FLAG));
   if (existing.length > 0) {
     console.log("backfillSplitPermissions: already applied, skipping.");
