@@ -33,12 +33,8 @@ export function useOrigin() {
   ): string => {
     if (isFromPortal) return "/";
     const returnTo = sp.get("returnTo");
-    if (returnTo) {
-      try {
-        return decodeURIComponent(returnTo);
-      } catch {
-        // fall through to default behaviour
-      }
+    if (returnTo && returnTo.startsWith("/")) {
+      return returnTo;
     }
     const tab = opts.forceTab
       ?? (urlTab && PLANT_TAB_VALUES.has(urlTab)
