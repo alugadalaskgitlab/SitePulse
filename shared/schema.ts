@@ -218,6 +218,7 @@ export const materialOpeningStocks = pgTable("material_opening_stocks", {
   quantity: real("quantity").notNull(),
   uom: text("uom").notNull(),
   date: date("date").notNull(), // Date of opening stock entry
+  tankNumber: integer("tank_number"), // For bitumen/LDO: which physical tank (1 or 2)
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });

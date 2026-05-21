@@ -112,7 +112,13 @@ app.use((req, res, next) => {
 
   try {
     await storage.ensureHeatingSessionDipColumns();
-  } catch (e) {
+  }
+
+    try {
+      await storage.ensureMaterialOpeningStockTankNumber();
+    } catch (e) {
+      console.error("Startup: Failed to ensure material opening stock tank_number column:", e);
+    } catch (e) {
     console.error("Startup: Failed to ensure heating session dip columns:", e);
   }
 

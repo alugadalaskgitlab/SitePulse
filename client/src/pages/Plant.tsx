@@ -1123,6 +1123,7 @@ function MaterialMaster() {
   const [stockPartyId, setStockPartyId] = useState<string>("");
   const [stockDate, setStockDate] = useState(new Date().toISOString().split('T')[0]);
   const [stockNotes, setStockNotes] = useState("");
+  const [stockTankNumber, setStockTankNumber] = useState<string>("");
   const [editingOpeningStock, setEditingOpeningStock] = useState<MaterialOpeningStock | null>(null);
   const [deleteOpeningStockId, setDeleteOpeningStockId] = useState<number | null>(null);
 
@@ -1249,6 +1250,7 @@ function MaterialMaster() {
     setStockPartyId("");
     setStockDate(new Date().toISOString().split('T')[0]);
     setStockNotes("");
+    setStockTankNumber("");
   };
 
   const openEdit = (material: PlantMaterial) => {
@@ -1288,6 +1290,7 @@ function MaterialMaster() {
       quantity: parseFloat(stockQuantity),
       uom: selectedMaterialForStock?.defaultUom || editingOpeningStock?.uom || "Ton",
       date: stockDate,
+      tankNumber: stockTankNumber ? Number(stockTankNumber) : null,
       notes: stockNotes || undefined,
     };
     if (editingOpeningStock) {
@@ -1309,6 +1312,7 @@ function MaterialMaster() {
     setStockQuantity(String(os.quantity));
     setStockDate(os.date);
     setStockNotes(os.notes || "");
+    setStockTankNumber(os.tankNumber ? String(os.tankNumber) : "");
     setSelectedMaterialForStock(materials?.find(m => m.id === os.materialId) || null);
     setOpeningStockDialogOpen(true);
   };
@@ -1435,7 +1439,7 @@ function MaterialMaster() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{getMaterialName(os.materialId)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}
+                      {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}{os.tankNumber ? ` | Tank ${os.tankNumber}` : ""}
                       {os.notes ? ` | ${os.notes}` : ""}
                     </p>
                   </div>
@@ -1515,6 +1519,26 @@ function MaterialMaster() {
                     data-testid="input-stock-notes"
                   />
                 </div>
+
+                  {(() => {
+                    const mat = selectedMaterialForStock ?? (editingOpeningStock ? materials?.find(m => m.id === editingOpeningStock.materialId) : null);
+                    const needsTank = mat?.category === "Bitumen" || mat?.name?.toUpperCase().includes("LDO");
+                    if (!needsTank) return null;
+                    return (
+                      <div>
+                        <Label>Tank Number</Label>
+                        <Select value={stockTankNumber} onValueChange={setStockTankNumber}>
+                          <SelectTrigger data-testid="select-stock-tank-number">
+                            <SelectValue placeholder="Select tank" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Tank 1</SelectItem>
+                            <SelectItem value="2">Tank 2</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })()}
                 
                 <Button 
                   onClick={handleOpeningStockSubmit} 

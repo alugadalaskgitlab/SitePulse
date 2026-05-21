@@ -496,6 +496,7 @@ export interface IStorage {
   // Ensures the 4 LDO dip columns added in Task #551 exist on bitumen_heating_sessions.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureHeatingSessionDipColumns(): Promise<void>;
+    ensureMaterialOpeningStockTankNumber(): Promise<void>;
 
   // Removes duplicate dip rows from bitumen_dip_readings before the unique index is enforced,
   // keeping the lowest id per (date, tank_number, reading_type, plant_name).
@@ -6683,7 +6684,10 @@ export class DatabaseStorage implements IStorage {
 
   // Material Opening Stocks
   async getMaterialOpeningStocks(filters?: { materialId?: number; partyId?: number }): Promise<MaterialOpeningStock[]> {
-    let conditions = [];
+    // Lazy migration: ensure tank_number column exists (added when opening balance tank support was added).
+      // Idempotent (IF NOT EXISTS). Runs on first call after a deployment until server restart picks it up.
+      try { await db.execute(sql.raw(`ALTER TABLE material_opening_stocks ADD COLUMN IF NOT EXISTS tank_number integer`)); } catch (_) {}
+          let conditions = [];
     if (filters?.materialId !== undefined) {
       conditions.push(eq(materialOpeningStocks.materialId, filters.materialId));
     }
@@ -6763,6 +6767,7 @@ export class DatabaseStorage implements IStorage {
         quantityIn: stockQuantity,
         balanceAfter: newBalance,
         uom: stockUom,
+        tankNumber: stock.tankNumber ?? null,
         notes: conversionNote,
       });
       
@@ -6859,6 +6864,7 @@ export class DatabaseStorage implements IStorage {
       
       const newDate = updates.date ?? original.date;
       const newNotes = updates.notes ?? original.notes;
+      const newTankNumber = updates.tankNumber !== undefined ? updates.tankNumber : (original.tankNumber ?? null);
       const conversionNote = newStockQuantity !== newQuantity
         ? `Opening stock entry (${newQuantity} ${newUom} converted to ${newStockQuantity.toFixed(3)} ${newStockUom})`
         : (newNotes ?? "Opening stock entry");
@@ -6872,6 +6878,7 @@ export class DatabaseStorage implements IStorage {
         quantityIn: newStockQuantity,
         balanceAfter: newBalance,
         uom: newStockUom,
+        tankNumber: newTankNumber,
         notes: conversionNote,
       });
       
@@ -9894,6 +9901,11 @@ export class DatabaseStorage implements IStorage {
     }
     console.log("ensureHeatingSessionDipColumns: columns verified/added");
   }
+
+    async ensureMaterialOpeningStockTankNumber(): Promise<void> {
+      await db.execute(sql.raw(`ALTER TABLE material_opening_stocks ADD COLUMN IF NOT EXISTS tank_number integer`));
+      console.log("ensureMaterialOpeningStockTankNumber: column verified/added");
+    }
 
   async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
     // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.
