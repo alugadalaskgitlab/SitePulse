@@ -3308,7 +3308,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var baseOverheadPerMT = (_sbv ? _sbv.overheadPerMT : (mixRates[0]?(mixRates[0].overhead||0):0));
-    var fullCoatCost = primeArea*rawBasePrimePerSqm + tackArea*rawBaseTackPerSqm;
+    var fullCoatCost = primeArea*basePrimePerSqm + tackArea*baseTackPerSqm;
     var fullJobCost = fullCoatCost;
     var basePlantCost=0, baseTransCost=0, baseLayCost=0, baseOverheadCost=0;
     Object.keys(mixQty).forEach(function(mn){
@@ -3322,10 +3322,10 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       baseOverheadCost += vol*baseOverheadPerMT;
       fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
     });
-    var basePrimeCost = primeArea*rawBasePrimePerSqm;
-    var baseTackCost = tackArea*rawBaseTackPerSqm;
+    var basePrimeCost = primeArea*basePrimePerSqm;
+    var baseTackCost = tackArea*baseTackPerSqm;
 
-    var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:rawBasePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:rawBaseTackPerSqm);
+    var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:basePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:baseTackPerSqm);
     var inScopeCost = inScopeCoatCost;
       var _useScopeAutoForCost = _scopeActive && Object.keys(_scopeAutoRates).length > 0;
       Object.keys(mixQty).forEach(function(mn){
@@ -3475,12 +3475,12 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         }
         mixItemCosts[mn]={baseCostPerCUM:baseCPM*mix.density,revCostPerCUM:revCPM*mix.density};
       });
-    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawBasePrimePerSqm;
-    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawBaseTackPerSqm;
+    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : basePrimePerSqm;
+    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : baseTackPerSqm;
     var revPrimeCPS = basePrimeCPS, revTackCPS = baseTackCPS;
     if(hasRevised){
-      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawPrimePerSqm;
-      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawTackPerSqm;
+      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : primePerSqm;
+      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : tackPerSqm;
     }
 
     siteRows.push({
