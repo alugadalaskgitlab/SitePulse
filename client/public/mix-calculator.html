@@ -651,6 +651,7 @@ var _isAdmin = (_mixRole === 'admin');
 var aggBasis = 'MT';
 var activeMixIdx = 0;
 var breakdownOpen = false;
+var _scopeAutoRates = {}; // keyed by sanitized mix name; updated by updateScopeAutoRatesCache()
 
 var mixTypes = [
   { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
@@ -786,6 +787,24 @@ function scopeRateChanged(siteId, field, val, totalMT, totalCUM){
     if(mtEl) mtEl.value = contractRates[siteId+'__SCOPE_MT']||'';
   }
   saveState();
+}
+function scopeMixRateChanged(key, val){
+  var v = parseFloat(val);
+  if(isNaN(v) || String(val).trim()===''){
+    delete contractRates[key];
+    delete contractRates[key+'__MAN'];
+  } else {
+    contractRates[key] = v;
+    contractRates[key+'__MAN'] = 1;
+  }
+  saveState();
+  recalc();
+}
+function scopeMixRateReset(key){
+  delete contractRates[key];
+  delete contractRates[key+'__MAN'];
+  saveState();
+  recalc();
 }
 function revisedPriceChanged(key, val){
   var v = parseFloat(val);
@@ -1969,6 +1988,7 @@ function recalc(){
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
   updateEquipBadges();
   renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, revisedProcPrices);
+  updateScopeAutoRatesCache();
   renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates, scenarioBaseVals);
   renderScopeQuotation();
   saveState();
@@ -3168,10 +3188,25 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     if(sMode==='itemised'){
       var sAdj = cr[sId+'__ADJ_AMT']||0;
       if(sRevMode==='scopeRate'){
-        var sb=cr[sId+'__SCOPE_BASIS']||'mt', smt=cr[sId+'__SCOPE_MT']||0, scm=cr[sId+'__SCOPE_CUM']||0, sr=0;
-        if(sb==='cum'&&scm>0&&sTotalSiteCUM>0){sr=scm*sTotalSiteCUM;ok=true;}
-        else if(smt>0&&sTotalSiteMT>0){sr=smt*sTotalSiteMT;ok=true;}
-        if(ok||sAdj!==0){ok=true;base=sr;}
+        // Per-mix rate: sum(rate_mn x MT_mn) for each mix type
+        var _hasMixRate=false,_perMixRev=0;
+        Object.keys(sMixQty).forEach(function(mn){
+          var mq=sMixQty[mn];
+          var mt=(mixTypes[mq.mixIdx]||mixTypes[0]);
+          var mixMT=mt.density>0?mq.cum*mt.density:0;
+          var san=_sanitizeMn(mn);
+          var manKey=sId+'__SCOPE_MT__'+san;
+          var rate=cr[manKey]!=null?cr[manKey]:_scopeAutoRates[san];
+          if(rate!=null&&rate>0&&mixMT>0){_perMixRev+=rate*mixMT;_hasMixRate=true;}
+        });
+        if(_hasMixRate){base=_perMixRev;ok=true;}
+        else{
+          var sb=cr[sId+'__SCOPE_BASIS']||'mt',smt=cr[sId+'__SCOPE_MT']||0,scm=cr[sId+'__SCOPE_CUM']||0,sr=0;
+          if(sb==='cum'&&scm>0&&sTotalSiteCUM>0){sr=scm*sTotalSiteCUM;ok=true;}
+          else if(smt>0&&sTotalSiteMT>0){sr=smt*sTotalSiteMT;ok=true;}
+          if(ok)base=sr;
+        }
+        if(ok||sAdj!==0){ok=true;if(base==null)base=0;}
       } else {
         var r=0;
         Object.keys(sMixQty).forEach(function(mn){
@@ -3293,14 +3328,19 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
 
     var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:rawBasePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:rawBaseTackPerSqm);
     var inScopeCost = inScopeCoatCost;
-    Object.keys(mixQty).forEach(function(mn){
-      var mq=mixQty[mn];
-      var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
-      var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
-      var _ohd = baseOverheadPerMT;
-      inScopeCost += mq.cum*((_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+_ohd)*mix.density;
-    });
+      var _useScopeAutoForCost = _scopeActive && Object.keys(_scopeAutoRates).length > 0;
+      Object.keys(mixQty).forEach(function(mn){
+        var mq=mixQty[mn];
+        var mix=mixTypes[mq.mixIdx]||mixTypes[0];
+        var san=_sanitizeMn(mn);
+        if(_useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
+          inScopeCost += (_scopeAutoRates[san]/_smf)*mq.cum*mix.density;
+        } else {
+          var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
+          var _ec=_effCPM(baseSiteTransPerMT,false,mr.bitumen);
+          inScopeCost += mq.cum*((_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+baseOverheadPerMT)*mix.density;
+        }
+      });
 
     var scCoatCost = primeArea*primePerSqm + tackArea*tackPerSqm;
     var revInScopeCost = inScopeCost;
@@ -3320,11 +3360,16 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var _rl = rmr.laying!=null?rmr.laying:layPerMT;
         revLayCost += mq.cum*_rl*mix.density;
         revOverheadCost += mq.cum*(rmr.overhead||0)*mix.density;
-        var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
-        var _rohd = rmr.overhead||0;
-        if(_ecr!=null) revInScopeCost += mq.cum*(_ecr+_rohd)*mix.density;
-        else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl+_rohd)*mix.density;
-      });
+        var san=_sanitizeMn(mn);
+          if(_useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
+            revInScopeCost += (_scopeAutoRates[san]/_smf)*mq.cum*mix.density;
+          } else {
+            var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
+            var _rohd = rmr.overhead||0;
+            if(_ecr!=null) revInScopeCost += mq.cum*(_ecr+_rohd)*mix.density;
+            else revInScopeCost += mq.cum*(rmr.exPlant+siteTransPerMT+_rl+_rohd)*mix.density;
+          }
+        });
     }
 
     var revFullJobCost = revPlantCost + revTransCost + revLayCost + revOverheadCost + revPrimeCost + revTackCost;
@@ -3400,34 +3445,37 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     var _deltaCost = _scenarioCost - _baseCost;
 
     var mixItemCosts = {};
-    Object.keys(mixQty).forEach(function(mn){
-      var mq=mixQty[mn];
-      var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
-      var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      var baseCPM;
-      if(_useScope){
-        var _ec = _effCPM(baseSiteTransPerMT, false, mr.bitumen);
-        baseCPM = (_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+baseOverheadPerMT;
-      } else {
-        baseCPM = (mr.exPlant+baseSiteTransPerMT+baseLayPerMT)+baseOverheadPerMT;
-      }
-      var baseCPC = baseCPM * mix.density;
-      var revCPC = baseCPC;
-      if(hasRevised && revisedMixRates){
-        var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
-        var _rl = rmr.laying!=null?rmr.laying:layPerMT;
-        var _rohd = rmr.overhead||0;
-        var revCPM;
-        if(_useScope){
-          var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
-          revCPM = (_ecr!=null?_ecr:(rmr.exPlant+siteTransPerMT+_rl))+_rohd;
+      Object.keys(mixQty).forEach(function(mn){
+        var mq=mixQty[mn];
+        var mix=mixTypes[mq.mixIdx]||mixTypes[0];
+        var san=_sanitizeMn(mn);
+        var baseCPM, revCPM;
+        if(_useScope && _useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
+          baseCPM = _scopeAutoRates[san]/_smf;
+          revCPM  = baseCPM;
         } else {
-          revCPM = (rmr.exPlant+siteTransPerMT+_rl)+_rohd;
+          var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
+          if(_useScope){
+            var _ec=_effCPM(baseSiteTransPerMT,false,mr.bitumen);
+            baseCPM=(_ec!=null?_ec:(mr.exPlant+baseSiteTransPerMT+baseLayPerMT))+baseOverheadPerMT;
+          } else {
+            baseCPM=(mr.exPlant+baseSiteTransPerMT+baseLayPerMT)+baseOverheadPerMT;
+          }
+          revCPM=baseCPM;
+          if(hasRevised && revisedMixRates){
+            var rmr=revisedMixRates[mq.mixIdx]||revisedMixRates[0];
+            var _rl=rmr.laying!=null?rmr.laying:layPerMT;
+            var _rohd=rmr.overhead||0;
+            if(_useScope){
+              var _ecr=_effCPM(siteTransPerMT,true,rmr.bitumen);
+              revCPM=(_ecr!=null?_ecr:(rmr.exPlant+siteTransPerMT+_rl))+_rohd;
+            } else {
+              revCPM=(rmr.exPlant+siteTransPerMT+_rl)+_rohd;
+            }
+          }
         }
-        revCPC = revCPM * mix.density;
-      }
-      mixItemCosts[mn] = {baseCostPerCUM: baseCPC, revCostPerCUM: revCPC};
-    });
+        mixItemCosts[mn]={baseCostPerCUM:baseCPM*mix.density,revCostPerCUM:revCPM*mix.density};
+      });
     var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawBasePrimePerSqm;
     var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawBaseTackPerSqm;
     var revPrimeCPS = basePrimeCPS, revTackCPS = baseTackCPS;
@@ -3518,26 +3566,39 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         }
         html+='</div>';
       } else {
-        var _sMt=contractRates[s.id+'__SCOPE_MT']||null;
-        var _sCum=contractRates[s.id+'__SCOPE_CUM']||null;
-        var _sBasis=contractRates[s.id+'__SCOPE_BASIS']||'mt';
-        html+='<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">';
-        html+='<div>';
-        html+='<label style="font-size:12px;font-weight:600;color:#4338ca;display:block;margin-bottom:3px">Scope Rate ₹/MT'+(_sBasis==='mt'?' <span style="font-size:11px;color:#6366f1">(driver)</span>':'')+'</label>';
-        html+='<input id="profitInput_'+s.id+'__SCOPE_MT" type="number" value="'+(_sMt!=null?_sMt:'')+'" placeholder="e.g. 800" oninput="scopeRateChanged(\''+s.id+'\',\'mt\',this.value,'+row.totalSiteMT+','+row.totalSiteCUM+')" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(_sMt?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
-        html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">Site: '+fmtR(row.totalSiteMT)+' MT</div>';
-        html+='</div>';
-        html+='<div>';
-        html+='<label style="font-size:12px;font-weight:600;color:#4338ca;display:block;margin-bottom:3px">Scope Rate ₹/CUM'+(_sBasis==='cum'?' <span style="font-size:11px;color:#6366f1">(driver)</span>':'')+'</label>';
-        html+='<input id="profitInput_'+s.id+'__SCOPE_CUM" type="number" value="'+(_sCum!=null?_sCum:'')+'" placeholder="e.g. 1800" oninput="scopeRateChanged(\''+s.id+'\',\'cum\',this.value,'+row.totalSiteMT+','+row.totalSiteCUM+')" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+(_sCum?'#6366f1':'#d1d5db')+';border-radius:4px;font-size:13px;font-weight:600">';
-        html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">Site: '+fmtR(row.totalSiteCUM)+' CUM</div>';
-        html+='</div>';
-        if(row.revenue!=null){
-          html+='<div style="padding:4px 0"><div style="font-size:12px;color:#6b7280">Scope Revenue</div>';
-          html+='<div style="font-size:14px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round(row.revenue-(row.adjAmt||0)))+'</div></div>';
+          // Per-mix scope rate inputs (auto-filled from scope components, overridable)
+          var _anyScope = scopeState && (scopeState.groups.mixing||scopeState.groups.transport||scopeState.groups.spraying||scopeState.groups.paving);
+          var _mxNames = Object.keys(row.mixQty);
+          html+='<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">';
+          _mxNames.forEach(function(mn){
+            var mq=row.mixQty[mn];
+            var mix=mixTypes[mq.mixIdx]||mixTypes[0];
+            var mixMT=mix.density>0?mq.cum*mix.density:0;
+            var san=_sanitizeMn(mn);
+            var manKey=s.id+'__SCOPE_MT__'+san;
+            var isManual=contractRates[manKey+'__MAN']===1||contractRates[manKey+'__MAN']==="1";
+            var autoRate=_scopeAutoRates[san]!=null?_scopeAutoRates[san]:null;
+            var manualRate=contractRates[manKey]!=null?contractRates[manKey]:null;
+            var displayVal=isManual&&manualRate!=null?manualRate:(autoRate!=null?autoRate:'');
+            var borderCol=isManual?'#16a34a':(autoRate!=null&&_anyScope?'#d97706':'#d1d5db');
+            var autoTag=!isManual&&autoRate!=null&&_anyScope?' <span style="font-size:11px;color:#d97706;font-weight:600">(auto)</span>':'';
+            html+='<div>';
+            html+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">';
+            html+='<label style="font-size:12px;font-weight:700;color:#4338ca;margin:0">'+esc(mn)+'</label>';
+            html+='<label style="font-size:12px;font-weight:600;color:#4338ca;margin:0"> Scope ₹/MT'+autoTag+'</label>';
+            if(isManual) html+='<button onclick="scopeMixRateReset(\''+manKey+'\')" title="Reset to auto" style="font-size:11px;color:#6b7280;background:none;border:none;cursor:pointer;padding:0 3px;line-height:1">↺</button>';
+            html+='</div>';
+            html+='<input id="profitInput_'+manKey+'" type="number" value="'+(displayVal!==''?fmtR(Number(displayVal)):'')+'" placeholder="'+(autoRate!=null?fmtR(autoRate):'—')+'" oninput="scopeMixRateChanged(\''+manKey+'\',this.value)" onblur="recalc()" style="width:120px;text-align:right;padding:5px 8px;border:1px solid '+borderCol+';border-radius:4px;font-size:13px;font-weight:600">';
+            var cumEq=mix.density>0&&displayVal!==''?Math.round(Number(displayVal)*mix.density*100)/100:null;
+            html+='<div style="font-size:12px;color:#6b7280;margin-top:2px">'+fmtR(mixMT)+' MT'+(cumEq!=null?' &nbsp;≈ ₹'+fmtR(cumEq)+'/CUM':'')+' </div>';
+            html+='</div>';
+          });
+          if(row.hasRev){
+            html+='<div style="padding:4px 0"><div style="font-size:12px;color:#6b7280">Scope Revenue</div>';
+            html+='<div style="font-size:14px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round((row.revenue||0)-(row.adjAmt||0)))+'</div></div>';
+          }
+          html+='</div>';
         }
-        html+='</div>';
-      }
 
       var adjKey=s.id+'__ADJ_AMT', noteKey=s.id+'__ADJ_NOTE';
       var adjVal=contractRates[adjKey]!=null?contractRates[adjKey]:null;
@@ -4188,9 +4249,74 @@ function renderScopeAlwaysRow(label, val, unit){
   return row;
 }
 
-function renderScopeQuotation(){
+function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
+
+  function computeMixScopeRate(mType, sc, aggLandedVal, bitPriceVal, scopeMarginPct){
+    var sg=scopeState.groups, sm=scopeState.mixing||{}, sp=scopeState.paving||{};
+    var mf=1+(parseFloat(scopeMarginPct)||0)/100;
+    var mixBitumen   =(sg.mixing&&sm.bitumen)   ?(mType.binderPct/100*1000*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&sm.aggregate) ?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*aggLandedVal):0;
+    var mixCost=0;
+    if(sg.mixing){
+      if(sm.hotmixHire) mixCost+=sc.hotmixHire||0;
+      if(sm.ldo)        mixCost+=sc.ldo||0;
+      if(sm.dgHire)     mixCost+=sc.dgHire||0;
+      if(sm.dgHsd)      mixCost+=sc.dgHsd||0;
+      if(sm.jcbHire)    mixCost+=sc.jcbHire||0;
+      if(sm.jcbHsd)     mixCost+=sc.jcbHsd||0;
+      if(sm.tipperHire) mixCost+=sc.tipperHire||0;
+      if(sm.tipperHsd)  mixCost+=sc.tipperHsd||0;
+      mixCost+=mixBitumen;
+      mixCost+=mixAggregate;
+      (sc.customEquip||[]).forEach(function(ce){
+        if(ce.isLaying||!ce.enabled) return;
+        if(sm[ce.id+'Hire']) mixCost+=ce.hire||0;
+        if(sm[ce.id+'Hsd'])  mixCost+=ce.hsd||0;
+      });
+      mixCost+=sc.crewPerMT||0;
+    }
+    var transCost=sg.transport?(sc.transPerMT||0):0;
+    var pavCost=0;
+    if(sg.paving){
+      if(sp.paverHire)  pavCost+=sc.paverHire||0;
+      if(sp.paverHsd)   pavCost+=sc.paverHsd||0;
+      if(sp.rollerHire) pavCost+=sc.rollerHire||0;
+      if(sp.rollerHsd)  pavCost+=sc.rollerHsd||0;
+      if(sc.ptrEnabled){
+        if(sp.ptrHire) pavCost+=sc.ptrHire||0;
+        if(sp.ptrHsd)  pavCost+=sc.ptrHsd||0;
+      }
+      (sc.customEquip||[]).forEach(function(ce){
+        if(!ce.isLaying||!ce.enabled) return;
+        if(sp[ce.id+'Hire']) pavCost+=ce.hire||0;
+        if(sp[ce.id+'Hsd'])  pavCost+=ce.hsd||0;
+      });
+      pavCost+=sc.layCrewPerMT||0;
+    }
+    return Math.round((mixCost+transCost+pavCost)*mf*100)/100;
+  }
+
+  function updateScopeAutoRatesCache(){
+    var sg=scopeState?scopeState.groups:{};
+    var anyActive=sg.mixing||sg.transport||sg.spraying||sg.paving;
+    _scopeAutoRates={};
+    if(!anyActive) return;
+    var sc=calcScopeComponents();
+    var scopeMarginPct=parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
+    var aggLandedEl=document.getElementById('aggLanded');
+    var aggLandedVal=aggLandedEl?parseFloat(aggLandedEl.value)||0:0;
+    var bitPriceEl=document.getElementById('bitPrice');
+    var bitPriceVal=bitPriceEl?parseFloat(bitPriceEl.value)||0:0;
+    mixTypes.forEach(function(mType){
+      var san=_sanitizeMn(mType.name);
+      _scopeAutoRates[san]=computeMixScopeRate(mType,sc,aggLandedVal,bitPriceVal,scopeMarginPct);
+    });
+  }
+
+  function renderScopeQuotation(){
   var g = scopeState.groups;
   if(!g.mixing && !g.transport && !g.spraying && !g.paving) return;
+  updateScopeAutoRatesCache();
   var sc = calcScopeComponents();
   var scopeMargin = parseFloat(document.getElementById('scopeMarginPct').value)||0;
   var showMix  = g.mixing, showTrans = g.transport, showSpray = g.spraying, showPav = g.paving;
@@ -4356,7 +4482,27 @@ function renderScopeQuotation(){
   if(showPav)  outHtml += '<div class="scope-out-item"><div class="scope-out-label">Paving &amp; Rolling</div><div class="scope-out-val">'+fmtR(pavBase)+' <span>/MT</span></div></div>';
   outHtml += '</div>';
 
-  // --- Grand total box ---
+    // --- Per-mix rate breakdown ---
+    var _hasAutoRates = mixTypes.some(function(mt){ return _scopeAutoRates[_sanitizeMn(mt.name)]>0; });
+    if(_hasAutoRates){
+      outHtml += '<div style="margin-top:10px;padding:8px 12px;background:rgba(255,255,255,0.55);border-radius:6px;border:1px solid rgba(180,130,0,0.25)">';
+      outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:6px">Rate per Mix Type — auto-fills Estimate Manager</div>';
+      outHtml += '<div style="display:flex;flex-wrap:wrap;gap:10px">';
+      mixTypes.forEach(function(mType){
+        var san=_sanitizeMn(mType.name);
+        var rate=_scopeAutoRates[san];
+        if(!rate) return;
+        var cumRate=mType.density>0?Math.round(rate*mType.density*100)/100:null;
+        outHtml += '<div class="scope-out-item" style="min-width:100px">';
+        outHtml += '<div class="scope-out-label" style="font-weight:700">'+esc(mType.name)+'</div>';
+        outHtml += '<div class="scope-out-val" style="font-size:17px">'+fmtR(rate)+' <span>/MT</span></div>';
+        if(cumRate) outHtml += '<div style="font-size:10px;color:var(--gray-500);margin-top:2px">≈ ₹'+fmtR(cumRate)+'/CUM</div>';
+        outHtml += '</div>';
+      });
+      outHtml += '</div></div>';
+    }
+
+    // --- Grand total box ---
   if(grandScopeTotal > 0){
     outHtml += '<div style="margin-top:14px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px">';
     outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#15803d;margin-bottom:10px">'
