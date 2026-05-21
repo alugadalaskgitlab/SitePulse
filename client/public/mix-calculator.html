@@ -709,6 +709,8 @@ var equipDefs = [
 
 // New structure: sites with nested jobs
 var sites = [];
+var _wTransPerMT = 0;
+var _preGrandMT = 0; // total MT from all estimator jobs (used in scope transport label)
 var siteCounter = 0;
 var jobCounter = 0;
 var contractRates = {};
@@ -1787,27 +1789,33 @@ function recalc(){
   var mobCost = n('mobCost');
   var demobCost = n('demobCost');
   var preGrandMT = 0;
-  sites.forEach(function(s){ s.jobs.forEach(function(j){
-    var isGeo = j.basis==='GEOMETRY';
-    var jCum;
-    if(isGeo){
-      jCum = (j.length||0)*(j.width||0)*(j.thickness||0)/1000;
-    } else {
-      jCum = j.volume||0;
-    }
-    (j.mixes||[]).forEach(function(mx){
-      var mt = mixTypes[mx.mixIdx]||mixTypes[0];
-      if(!mt) return;
-      var qmt = parseFloat(mx.qty_mt);
-      if(qmt>0){
-        preGrandMT += qmt;
-      } else if(jCum>0 && mt.density>0){
-        preGrandMT += jCum * mt.density;
-      }
+    var preTotalTransCost = 0;
+    sites.forEach(function(s){
+      var _siteLead = (s.transLead!=null&&s.transLead>0) ? s.transLead : transDist;
+      var _sTransPMT = transPayload>0 ? (_siteLead*2*transRate/transPayload) : 0;
+      s.jobs.forEach(function(j){
+        var isGeo = j.basis==='GEOMETRY';
+        var jCum;
+        if(isGeo){
+          jCum = (j.length||0)*(j.width||0)*(j.thickness||0)/1000;
+        } else {
+          jCum = j.volume||0;
+        }
+        (j.mixes||[]).forEach(function(mx){
+          var mt = mixTypes[mx.mixIdx]||mixTypes[0];
+          if(!mt) return;
+          var qmt = parseFloat(mx.qty_mt);
+          var jmt = qmt>0 ? qmt : (jCum>0&&mt.density>0 ? jCum*mt.density : 0);
+          preGrandMT += jmt;
+          preTotalTransCost += _sTransPMT * jmt;
+        });
+      });
     });
-  }); });
-  var overheadLumpSum = mobCost + demobCost;
-  var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
+    _wTransPerMT = preGrandMT > 0 ? preTotalTransCost / preGrandMT : transPerMT;
+  _preGrandMT = preGrandMT;
+    if(preGrandMT > 0) document.getElementById('transDerived').value = fmt(_wTransPerMT);
+    var overheadLumpSum = mobCost + demobCost;
+    var overheadPerMT = preGrandMT > 0 ? overheadLumpSum / preGrandMT : 0;
   var ohTotalEl = document.getElementById('overheadTotalDisplay');
   var ohPerMtEl = document.getElementById('overheadPerMtDisplay');
   if(overheadLumpSum > 0){
@@ -1850,7 +1858,7 @@ function recalc(){
     var aggCostPerMT = aggFrac*aggLanded;
     var bitCostPerMT = bitFrac*1000*bitPrice;
     var plantSubtotal = aggCostPerMT+bitCostPerMT+plantEquipPerMT+fuelTotal+crewPerMT;
-    var allCostBeforeMargin = plantSubtotal+transPerMT+layPerMT+overheadPerMT;
+    var allCostBeforeMargin = plantSubtotal+_wTransPerMT+layPerMT+overheadPerMT;
     var marginAmt = allCostBeforeMargin*marginPct/100;
     var exPlant = plantSubtotal;
     var finalLaid = allCostBeforeMargin+marginAmt;
@@ -1860,7 +1868,7 @@ function recalc(){
       equipment:plantEquipPerMT, plantHsd:plantHsdPerMT,
       ldo:ldoPerMT, boilerProd:boilerProdPerMT, boilerPreheat:boilerPreheatPerMT,
       fuel:fuelTotal, crew:crewPerMT, overhead:overheadPerMT, margin:marginAmt,
-      exPlant:exPlant, transport:transPerMT, laying:layPerMT, finalLaid:finalLaid,
+      exPlant:exPlant, transport:_wTransPerMT, laying:layPerMT, finalLaid:finalLaid,
       perCum:finalLaid*m.density,
       hotmix:(eqCosts.hotmix||{}).hire||0,
       dg:(eqCosts.dg||{}).hire||0,
@@ -1911,9 +1919,9 @@ function recalc(){
       var bitFrac = m.binderPct/100;
       var revBitCostPerMT = bitFrac*1000*revBitPrice;
       var ps = aggFrac*revAggLanded + revBitCostPerMT + plantEquipPerMT + revFuelTotal + crewPerMT;
-      var allBM = ps+transPerMT+revLayPerMT+overheadPerMT;
+      var allBM = ps+_wTransPerMT+revLayPerMT+overheadPerMT;
       var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:transPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:revBitCostPerMT};
+      return {name:m.name, density:m.density, exPlant:exP, transport:_wTransPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:revBitCostPerMT};
     });
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
   }
@@ -2467,7 +2475,11 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
     html+='<span><span class="jt-label">Lay</span> <span class="jt-value">₹'+fmtI(Math.round(grandLay))+'</span></span>';
     html+='<span><span class="jt-label">Prime</span> <span class="jt-value">₹'+fmtI(Math.round(grandPrime))+'</span></span>';
     html+='<span><span class="jt-label">Tack</span> <span class="jt-value">₹'+fmtI(Math.round(grandTack))+'</span></span>';
-    html+='<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(grandTotal))+'</span>';
+    var _combinedMixPerMT  = grandMT>0 ? (grandTotal-grandPrime-grandTack)/grandMT : 0;
+      var _combinedFullPerMT = grandMT>0 ? grandTotal/grandMT : 0;
+      html+='<span><span class="jt-label">Mix ₹/MT</span> <span class="jt-value" title="Weighted avg (plant+trans+pav incl margin) across all mixes">₹'+fmtI(Math.round(_combinedMixPerMT))+'</span></span>';
+      html+='<span><span class="jt-label">Full ₹/MT</span> <span class="jt-value" title="Total incl prime+tack amortised per MT">₹'+fmtI(Math.round(_combinedFullPerMT))+'</span></span>';
+      html+='<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(grandTotal))+'</span>';
     html+='</div>';
     totalsDiv.innerHTML=html;
   } else { totalsDiv.innerHTML=''; }
@@ -3308,7 +3320,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var baseOverheadPerMT = (_sbv ? _sbv.overheadPerMT : (mixRates[0]?(mixRates[0].overhead||0):0));
-    var fullCoatCost = primeArea*basePrimePerSqm + tackArea*baseTackPerSqm;
+    var fullCoatCost = primeArea*rawBasePrimePerSqm + tackArea*rawBaseTackPerSqm;
     var fullJobCost = fullCoatCost;
     var basePlantCost=0, baseTransCost=0, baseLayCost=0, baseOverheadCost=0;
     Object.keys(mixQty).forEach(function(mn){
@@ -3322,10 +3334,10 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       baseOverheadCost += vol*baseOverheadPerMT;
       fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
     });
-    var basePrimeCost = primeArea*basePrimePerSqm;
-    var baseTackCost = tackArea*baseTackPerSqm;
+    var basePrimeCost = primeArea*rawBasePrimePerSqm;
+    var baseTackCost = tackArea*rawBaseTackPerSqm;
 
-    var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:basePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:baseTackPerSqm);
+    var inScopeCoatCost = primeArea*(_scopeActive?_sPrimeRaw:rawBasePrimePerSqm) + tackArea*(_scopeActive?_sTackRaw:rawBaseTackPerSqm);
     var inScopeCost = inScopeCoatCost;
       var _useScopeAutoForCost = _scopeActive && Object.keys(_scopeAutoRates).length > 0;
       Object.keys(mixQty).forEach(function(mn){
@@ -3475,12 +3487,12 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         }
         mixItemCosts[mn]={baseCostPerCUM:baseCPM*mix.density,revCostPerCUM:revCPM*mix.density};
       });
-    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : basePrimePerSqm;
-    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : baseTackPerSqm;
+    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawBasePrimePerSqm;
+    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawBaseTackPerSqm;
     var revPrimeCPS = basePrimeCPS, revTackCPS = baseTackCPS;
     if(hasRevised){
-      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : primePerSqm;
-      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : tackPerSqm;
+      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawPrimePerSqm;
+      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawTackPerSqm;
     }
 
     siteRows.push({
@@ -4131,7 +4143,7 @@ function calcScopeComponentsFromInputs(inp, eqDefs, mTypes){
   var tackSp   = _v('tackSpray'),  tackP  = _v('tackPrice'),  tackDil  = _v('tackDilution')||1;
   var layCrewD = _v('layCrew');
   var transDist= _v('transDist'), transRate= _v('transRate'), transPayload= _v('transPayload');
-  var transPerMT = transPayload>0 ? (transDist*2*transRate/transPayload) : 0;
+  var transPerMT = inp._wTransOverride || (transPayload>0 ? (transDist*2*transRate/transPayload) : 0);
 
   function _findEq(id){ return eqDefs.find(function(e){return e.id===id;}); }
   var hotmixEq=_findEq('hotmix'), dgEq=_findEq('dg'), jcbEq=_findEq('jcb'), tipperEq=_findEq('tipper');
@@ -4222,6 +4234,7 @@ function calcScopeComponents(){
   var inp = {};
   PERSIST_INPUTS.forEach(function(id){ var el=document.getElementById(id); if(el) inp[id]=el.value; });
   inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  if(_wTransPerMT > 0) inp._wTransOverride = _wTransPerMT;
   return calcScopeComponentsFromInputs(inp, equipDefs, mixTypes);
 }
 
@@ -4355,9 +4368,12 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     var tRow = document.createElement('div');
     tRow.className = 'scope-row';
     tRow.innerHTML =
-      '<span style="font-size:13px;color:var(--gray-700);flex:1">Transport to Site' +
-      ' <span style="font-size:11px;color:var(--gray-400)">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span></span>' +
-      '<span class="sc-amt">'+fmtR(sc.transPerMT)+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
+        '<span style="font-size:13px;color:var(--gray-700);flex:1">Transport to Site' +
+        (_wTransPerMT > 0 && _preGrandMT > 0
+          ? ' <span style="font-size:11px;color:var(--gray-400)">(weighted avg from estimator site leads)</span>'
+          : ' <span style="font-size:11px;color:var(--gray-400)">(lead '+n('transDist')+' km × 2 × ₹'+n('transRate')+'/km ÷ '+n('transPayload')+' MT)</span>') +
+        '</span>' +
+        '<span class="sc-amt">'+fmtR(sc.transPerMT)+' <span style="font-size:11px;font-weight:400;color:var(--gray-400)">/MT</span></span>';
     transCont.appendChild(tRow);
   }
 
