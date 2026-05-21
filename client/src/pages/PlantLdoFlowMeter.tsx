@@ -426,63 +426,6 @@ export default function PlantLdoFlowMeter() {
     };
   }, [readings]);
 
-  const varianceData = useMemo(() => {
-    if (!dispatches) return [];
-    const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
-    for (const d of dispatches) {
-      if (filterDateFrom && d.date < filterDateFrom) continue;
-      if (filterDateTo && d.date > filterDateTo) continue;
-      if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoreticalLdo: 0 };
-      dispatchByDate[d.date].production += d.loadWeight || 0;
-      dispatchByDate[d.date].theoreticalLdo += d.theoreticalLdoQty || 0;
-    }
-    const result: {
-      date: string;
-      production: number;
-      theoretical: number;
-      actualT1: number | null;
-      actualT2: number | null;
-      actualTotal: number;
-      variance: number;
-      variancePercent: number | null;
-      status: "SAVING" | "LOSS" | "OK";
-    }[] = [];
-
-    // Use dip daily summary (official) or flow meter daily summary depending on toggle
-    const activeSummary = officialMethod === "dip"
-      ? dipDailySummary.map(d => ({
-          date: d.date,
-          t1Consumption: d.t1Consumption,
-          t2Consumption: d.t2Consumption,
-          totalConsumption: d.totalConsumed ?? 0,
-        }))
-      : dailySummary.map(d => ({
-          date: d.date,
-          t1Consumption: d.t1Consumption,
-          t2Consumption: d.t2Consumption,
-          totalConsumption: d.totalConsumption,
-        }));
-
-    for (const day of activeSummary) {
-      const dd = dispatchByDate[day.date];
-      if (!dd || day.totalConsumption === 0) continue;
-      const variance = day.totalConsumption - dd.theoreticalLdo;
-      const variancePercent = dd.theoreticalLdo > 0 ? Math.round((variance / dd.theoreticalLdo) * 1000) / 10 : null;
-      const status: "SAVING" | "LOSS" | "OK" = dd.theoreticalLdo === 0 ? "OK" : variance < 0 ? "SAVING" : variance > 0 ? "LOSS" : "OK";
-      result.push({
-        date: day.date,
-        production: dd.production,
-        theoretical: dd.theoreticalLdo,
-        actualT1: day.t1Consumption,
-        actualT2: day.t2Consumption,
-        actualTotal: day.totalConsumption,
-        variance,
-        variancePercent,
-        status,
-      });
-    }
-    return result.slice(0, 10);
-  }, [dispatches, dailySummary, dipDailySummary, officialMethod, filterDateFrom, filterDateTo]);
 
   const { data: dipReadings, isLoading: dipLoading } = useQuery<LdoDipReading[]>({
     queryKey: ["/api/plant-module/ldo-dip-readings"],
@@ -642,6 +585,65 @@ export default function PlantLdoFlowMeter() {
       };
     });
   }, [dipReadings, ldoReceiptsByDate]);
+
+  const varianceData = useMemo(() => {
+    if (!dispatches) return [];
+    const dispatchByDate: Record<string, { production: number; theoreticalLdo: number }> = {};
+    for (const d of dispatches) {
+      if (filterDateFrom && d.date < filterDateFrom) continue;
+      if (filterDateTo && d.date > filterDateTo) continue;
+      if (!dispatchByDate[d.date]) dispatchByDate[d.date] = { production: 0, theoreticalLdo: 0 };
+      dispatchByDate[d.date].production += d.loadWeight || 0;
+      dispatchByDate[d.date].theoreticalLdo += d.theoreticalLdoQty || 0;
+    }
+    const result: {
+      date: string;
+      production: number;
+      theoretical: number;
+      actualT1: number | null;
+      actualT2: number | null;
+      actualTotal: number;
+      variance: number;
+      variancePercent: number | null;
+      status: "SAVING" | "LOSS" | "OK";
+    }[] = [];
+
+    // Use dip daily summary (official) or flow meter daily summary depending on toggle
+    const activeSummary = officialMethod === "dip"
+      ? dipDailySummary.map(d => ({
+          date: d.date,
+          t1Consumption: d.t1Consumption,
+          t2Consumption: d.t2Consumption,
+          totalConsumption: d.totalConsumed ?? 0,
+        }))
+      : dailySummary.map(d => ({
+          date: d.date,
+          t1Consumption: d.t1Consumption,
+          t2Consumption: d.t2Consumption,
+          totalConsumption: d.totalConsumption,
+        }));
+
+    for (const day of activeSummary) {
+      const dd = dispatchByDate[day.date];
+      if (!dd || day.totalConsumption === 0) continue;
+      const variance = day.totalConsumption - dd.theoreticalLdo;
+      const variancePercent = dd.theoreticalLdo > 0 ? Math.round((variance / dd.theoreticalLdo) * 1000) / 10 : null;
+      const status: "SAVING" | "LOSS" | "OK" = dd.theoreticalLdo === 0 ? "OK" : variance < 0 ? "SAVING" : variance > 0 ? "LOSS" : "OK";
+      result.push({
+        date: day.date,
+        production: dd.production,
+        theoretical: dd.theoreticalLdo,
+        actualT1: day.t1Consumption,
+        actualT2: day.t2Consumption,
+        actualTotal: day.totalConsumption,
+        variance,
+        variancePercent,
+        status,
+      });
+    }
+    return result.slice(0, 10);
+  }, [dispatches, dailySummary, dipDailySummary, officialMethod, filterDateFrom, filterDateTo]);
+
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
