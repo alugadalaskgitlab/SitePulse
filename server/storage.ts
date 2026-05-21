@@ -420,7 +420,7 @@ export interface IStorage {
 
   // Compute per-tank bitumen balance from the stock_ledger.
   // Returns { tank1: number, tank2: number } in MT, optionally scoped by partyId.
-  getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }>;
+  getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number; total: number }>;
 
   // Rebuild aggregate dispatch ledger entries for a template from a date+time cutoff
   rebuildDispatchLedgerForTemplate(opts: {
@@ -2756,6 +2756,30 @@ export class DatabaseStorage implements IStorage {
           eq(stockLedger.referenceId, id),
           sql`${stockLedger.tankNumber} IS DISTINCT FROM ${dispatch.bitumenTankNumber}`,
         ));
+    }
+
+    // Sync notes on non-system ledger dispatch entries when deliveryLocation changes.
+    // createDispatch writes notes as "TemplateName — DeliveryLocation"; edits must mirror that.
+    if (dispatch.deliveryLocation !== undefined) {
+      const [updatedDisp] = await db
+        .select({ mixTemplateId: truckDispatches.mixTemplateId, deliveryLocation: truckDispatches.deliveryLocation })
+        .from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1);
+      if (updatedDisp?.mixTemplateId) {
+        const [tpl] = await db.select({ name: mixTemplates.name })
+          .from(mixTemplates).where(eq(mixTemplates.id, updatedDisp.mixTemplateId)).limit(1);
+        if (tpl) {
+          const newMixLabel = [tpl.name.trim(), updatedDisp.deliveryLocation?.trim() || null]
+            .filter(Boolean).join(" \u2014 ");
+          await db.update(stockLedger)
+            .set({ notes: newMixLabel })
+            .where(and(
+              eq(stockLedger.transactionType, "dispatch"),
+              eq(stockLedger.referenceId, id),
+              sql`${stockLedger.notes} NOT LIKE '%[backfilled]%'`,
+              sql`${stockLedger.notes} NOT LIKE '%[rebuild delta%'`,
+            ));
+        }
+      }
     }
 
     return (await db.select().from(truckDispatches).where(eq(truckDispatches.id, id)).limit(1))[0];
@@ -14838,39 +14862,57 @@ export class DatabaseStorage implements IStorage {
 
   // Compute per-tank bitumen balance from stock_ledger entries tagged with tankNumber.
   // Optionally scoped to a partyId (or all parties if null/undefined).
-  async getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number }> {
-    const [bitumenMat] = await db.select({ id: plantMaterials.id })
-      .from(plantMaterials)
-      .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
-      .limit(1);
-    if (!bitumenMat) return { tank1: 0, tank2: 0 };
+  async getBitumenTankBalances(partyId?: number | null): Promise<{ tank1: number; tank2: number; total: number }> {
+      const [bitumenMat] = await db.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(${plantMaterials.name}) LIKE '%BITUMEN%'`)
+        .limit(1);
+      if (!bitumenMat) return { tank1: 0, tank2: 0, total: 0 };
 
-    const conditions: ReturnType<typeof and>[] = [
-      eq(stockLedger.materialId, bitumenMat.id),
-      sql`${stockLedger.tankNumber} IS NOT NULL`,
-    ];
-    if (partyId != null) {
-      conditions.push(eq(stockLedger.partyId, partyId));
+      // Per-tank balance — only rows with a tank number assigned (guidance for tank selector)
+      const perTankConditions: ReturnType<typeof and>[] = [
+        eq(stockLedger.materialId, bitumenMat.id),
+        sql`${stockLedger.tankNumber} IS NOT NULL`,
+      ];
+      if (partyId != null) {
+        perTankConditions.push(eq(stockLedger.partyId, partyId));
+      }
+
+      const rows = await db.select({
+        tankNumber: stockLedger.tankNumber,
+        quantityIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+        quantityOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+      })
+        .from(stockLedger)
+        .where(and(...perTankConditions))
+        .groupBy(stockLedger.tankNumber);
+
+      let tank1 = 0;
+      let tank2 = 0;
+      for (const row of rows) {
+        const net = Number(row.quantityIn) - Number(row.quantityOut);
+        if (row.tankNumber === 1) tank1 = net;
+        else if (row.tankNumber === 2) tank2 = net;
+      }
+
+      // True total: all rows regardless of tankNumber (includes older entries without tank assigned).
+      // This is the correct "is there enough stock?" figure for the dispatch warning.
+      const totalConditions: ReturnType<typeof and>[] = [
+        eq(stockLedger.materialId, bitumenMat.id),
+      ];
+      if (partyId != null) {
+        totalConditions.push(eq(stockLedger.partyId, partyId));
+      }
+      const [totalRow] = await db.select({
+        quantityIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
+        quantityOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
+      })
+        .from(stockLedger)
+        .where(and(...totalConditions));
+      const total = totalRow ? Number(totalRow.quantityIn) - Number(totalRow.quantityOut) : 0;
+
+      return { tank1, tank2, total };
     }
-
-    const rows = await db.select({
-      tankNumber: stockLedger.tankNumber,
-      quantityIn: sql<number>`COALESCE(SUM(${stockLedger.quantityIn}), 0)`,
-      quantityOut: sql<number>`COALESCE(SUM(${stockLedger.quantityOut}), 0)`,
-    })
-      .from(stockLedger)
-      .where(and(...conditions))
-      .groupBy(stockLedger.tankNumber);
-
-    let tank1 = 0;
-    let tank2 = 0;
-    for (const row of rows) {
-      const net = Number(row.quantityIn) - Number(row.quantityOut);
-      if (row.tankNumber === 1) tank1 = net;
-      else if (row.tankNumber === 2) tank2 = net;
-    }
-    return { tank1, tank2 };
-  }
 
   // Backfill tankNumber on existing bitumen stock_ledger entries that have no tankNumber yet.
   // Dispatch rows: tankNumber comes from truck_dispatches.bitumen_tank_number via referenceId.

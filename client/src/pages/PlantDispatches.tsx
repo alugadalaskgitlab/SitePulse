@@ -157,13 +157,10 @@ export default function PlantDispatches() {
     queryKey: ["/api/plant-module/parties"],
   });
 
-  const { data: bitumenTankBalances } = useQuery<{ tank1: number; tank2: number }>({
-    queryKey: ["/api/plant-module/bitumen-tank-balances", partyId],
+  const { data: bitumenTankBalances } = useQuery<{ tank1: number; tank2: number; total: number }>({
+    queryKey: ["/api/plant-module/bitumen-tank-balances"],
     queryFn: async () => {
-      const url = partyId
-        ? `/api/plant-module/bitumen-tank-balances?partyId=${partyId}`
-        : `/api/plant-module/bitumen-tank-balances`;
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(`/api/plant-module/bitumen-tank-balances`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch bitumen tank balances");
       return res.json();
     },
@@ -1016,27 +1013,28 @@ export default function PlantDispatches() {
                   </Select>
                   {(() => {
                     if (!bitumenTankBalances || !theoreticalValues) return null;
-                    const selectedBalance = bitumenTankNumber === "1" ? bitumenTankBalances.tank1 : bitumenTankBalances.tank2;
-                    const otherTankNum = bitumenTankNumber === "1" ? "2" : "1";
-                    const otherBalance = bitumenTankNumber === "1" ? bitumenTankBalances.tank2 : bitumenTankBalances.tank1;
-                    const needed = theoreticalValues.bitumenQty;
-                    if (needed <= 0) return null;
-                    if (selectedBalance < needed) {
-                      return (
-                        <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-xs text-amber-800 dark:text-amber-300">
-                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                          <span>
-                            Tank {bitumenTankNumber} has only <strong>{selectedBalance.toFixed(3)} MT</strong> — need {needed.toFixed(3)} MT.
-                            {otherBalance >= needed
-                              ? <> Switch to <strong>Tank {otherTankNum}</strong> ({otherBalance.toFixed(3)} MT available).</>
-                              : <> Tank {otherTankNum} also low ({otherBalance.toFixed(3)} MT). Check stock.</>
-                            }
-                          </span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
+                    const totalAvailable = bitumenTankBalances.total;
+                      const selectedBalance = bitumenTankNumber === "1" ? bitumenTankBalances.tank1 : bitumenTankBalances.tank2;
+                      const otherTankNum = bitumenTankNumber === "1" ? "2" : "1";
+                      const otherBalance = bitumenTankNumber === "1" ? bitumenTankBalances.tank2 : bitumenTankBalances.tank1;
+                      const needed = theoreticalValues.bitumenQty;
+                      if (needed <= 0) return null;
+                      if (totalAvailable < needed) {
+                        return (
+                          <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-xs text-amber-800 dark:text-amber-300">
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                            <span>
+                              Total bitumen stock is only <strong>{totalAvailable.toFixed(3)} MT</strong> — need {needed.toFixed(3)} MT.
+                              {(selectedBalance < needed && otherBalance >= needed)
+                                ? <> Tank {otherTankNum} ({otherBalance.toFixed(3)} MT) may have enough — verify levels.</>
+                                : <> Check physical tank levels.</>
+                              }
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                 </div>
                 <div>
                   <Label>LDO Tank</Label>

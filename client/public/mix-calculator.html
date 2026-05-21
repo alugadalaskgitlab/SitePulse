@@ -3421,8 +3421,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     }
 
     var _useScope = (mode === 'itemised' && revMode === 'scopeRate');
-    var _baseCost = _useScope ? inScopeCost : fullJobCost;
-    var _scenarioCost = _useScope ? (hasRevised ? revInScopeCost : inScopeCost) : (hasRevised ? revFullJobCost : fullJobCost);
+    var _baseCost = _scopeActive ? inScopeCost : fullJobCost;
+    var _scenarioCost = _scopeActive ? (hasRevised ? revInScopeCost : inScopeCost) : (hasRevised ? revFullJobCost : fullJobCost);
     var _adjustment = adjAmt || 0;
     var _baseRevenue = hasRev ? revenue : null;
     if(scenarioMode) _baseRevenue = revenue;
@@ -3487,12 +3487,12 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         }
         mixItemCosts[mn]={baseCostPerCUM:baseCPM*mix.density,revCostPerCUM:revCPM*mix.density};
       });
-    var basePrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawBasePrimePerSqm;
-    var baseTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawBaseTackPerSqm;
+    var basePrimeCPS = _scopeActive ? _sPrimeRaw : rawBasePrimePerSqm;
+    var baseTackCPS = _scopeActive ? _sTackRaw : rawBaseTackPerSqm;
     var revPrimeCPS = basePrimeCPS, revTackCPS = baseTackCPS;
     if(hasRevised){
-      revPrimeCPS = (_scopeActive && _useScope) ? _sPrimeRaw : rawPrimePerSqm;
-      revTackCPS = (_scopeActive && _useScope) ? _sTackRaw : rawTackPerSqm;
+      revPrimeCPS = _scopeActive ? _sPrimeRaw : rawPrimePerSqm;
+      revTackCPS = _scopeActive ? _sTackRaw : rawTackPerSqm;
     }
 
     siteRows.push({

@@ -2019,12 +2019,19 @@ export default function PlantStock() {
                           {selectedPartyId === "all" && (() => {
                             const pb = entry.partyBalance ?? 0;
                             const isPartyNeg = pb < -1e-9;
+                            const rowPartyName = entry.partyId ? (parties?.find((p: any) => p.id === entry.partyId)?.name ?? '') : '';
+                            const rowPartyAbbr = rowPartyName
+                              ? rowPartyName.split(/[\s\-]+/).filter(Boolean).map((w: string) => w[0]).join('').slice(0, 3).toUpperCase()
+                              : '';
                             return (
                               <td className={`p-3 text-right text-sm ${isPartyNeg ? 'text-red-500 dark:text-red-400' : 'text-muted-foreground'}`}>
                                 {isBF ? (
                                   <span className="text-xs italic">combined</span>
                                 ) : (
                                   <>
+                                    {rowPartyAbbr && (
+                                      <span className="mr-1 px-1 py-0.5 text-xs rounded bg-muted text-muted-foreground font-mono" title={rowPartyName}>{rowPartyAbbr}</span>
+                                    )}
                                     <span className={isPartyNeg ? 'font-semibold' : ''}>
                                       {Math.abs(pb) < 1e-9 ? '0.000' : pb.toFixed(3)}
                                     </span>
