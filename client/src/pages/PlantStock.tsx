@@ -2000,16 +2000,9 @@ export default function PlantStock() {
                             </div>
                           </td>
                           <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 ? 'text-red-600 dark:text-red-400' : ''}`}>
-                            <div className="flex items-center justify-end gap-1.5">
-                              {!isBF && isTankedMaterial && entry.tankNumber != null && (
-                                <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'border-blue-400 text-blue-600 dark:text-blue-400' : 'border-purple-400 text-purple-600 dark:text-purple-400'}`}>
-                                  T{entry.tankNumber}
-                                </span>
-                              )}
-                              <span>
-                                {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
-                              </span>
-                            </div>
+                            <span>
+                              {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
+                            </span>
                             {!isBF && isTankedMaterial && ((entry.t1BalanceAfter ?? 0) !== 0 || (entry.t2BalanceAfter ?? 0) !== 0) && (
                               <div className="flex items-center justify-end gap-2 mt-0.5 text-xs font-normal">
                                 <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
