@@ -3333,7 +3333,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var mix=mixTypes[mq.mixIdx]||mixTypes[0];
         var san=_sanitizeMn(mn);
         if(_useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
-          inScopeCost += (_scopeAutoRates[san]/_smf)*mq.cum*mix.density;
+          inScopeCost += (_scopeAutoRates[san]/_smf + baseOverheadPerMT)*mq.cum*mix.density;
         } else {
           var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
           var _ec=_effCPM(baseSiteTransPerMT,false,mr.bitumen);
@@ -3361,7 +3361,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         revOverheadCost += mq.cum*(rmr.overhead||0)*mix.density;
         var san=_sanitizeMn(mn);
           if(_useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
-            revInScopeCost += (_scopeAutoRates[san]/_smf)*mq.cum*mix.density;
+            revInScopeCost += (_scopeAutoRates[san]/_smf + baseOverheadPerMT)*mq.cum*mix.density;
           } else {
             var _ecr = _effCPM(siteTransPerMT, true, rmr.bitumen);
             var _rohd = rmr.overhead||0;
@@ -3450,7 +3450,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         var san=_sanitizeMn(mn);
         var baseCPM, revCPM;
         if(_useScope && _useScopeAutoForCost && _scopeAutoRates[san]!=null && _smf>0){
-          baseCPM = _scopeAutoRates[san]/_smf;
+          baseCPM = _scopeAutoRates[san]/_smf + baseOverheadPerMT;
           revCPM  = baseCPM;
         } else {
           var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
