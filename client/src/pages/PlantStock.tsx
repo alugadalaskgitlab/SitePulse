@@ -88,14 +88,14 @@ export default function PlantStock() {
     return PLANT_STOCK_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
   const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
-    "plant-stock:last-filters:v1",
+    "plant-stock:last-filters:v2",
     {
       dateFrom: "",
       dateTo: "",
       selectedPartyId: "all",
       selectedMaterialId: "all",
       selectedTransactionType: "all",
-      issuedToFilter: "",
+      issuedToFilter: "all",
     },
     { shouldHydrate: !urlHasStockFilterParams },
   );
@@ -527,10 +527,13 @@ export default function PlantStock() {
       // Always keep synthetic opening_balance rows — they're context, not real transactions
       entries = entries.filter(e => e.transactionType === selectedTransactionType || e.transactionType === 'opening_balance');
     }
-    if (issuedToFilter.trim()) {
-      const q = issuedToFilter.trim().toLowerCase();
-      // Always keep synthetic opening-balance rows for context; apply text filter to real entries only
-      entries = entries.filter(e => e.transactionType === 'opening_balance' || (e.notes || "").toLowerCase().includes(q));
+    if (issuedToFilter !== "all") {
+      // Keep all non-dispatch rows (receipts, issues, opening balance, etc.) unchanged;
+      // only filter dispatch rows by their delivery location.
+      entries = entries.filter(e =>
+        e.transactionType !== 'dispatch' ||
+        (e.notes || "").includes(" \u2014 " + issuedToFilter)
+      );
     }
     if (isTankedMaterial && selectedTank !== "all") {
       const tankNum = Number(selectedTank);
@@ -552,6 +555,21 @@ export default function PlantStock() {
     }
     return entries;
   }, [processedLedger, selectedTransactionType, issuedToFilter, isTankedMaterial, selectedTank]);
+
+  // Distinct delivery locations from dispatch entries for the "Dispatched To" dropdown
+  const dispatchedToOptions = useMemo(() => {
+    const locs = new Set<string>();
+    for (const entry of processedLedger) {
+      if (entry.transactionType === 'dispatch' && entry.notes) {
+        const sep = entry.notes.indexOf(' \u2014 ');
+        if (sep !== -1) {
+          const loc = entry.notes.slice(sep + 3).trim();
+          if (loc) locs.add(loc);
+        }
+      }
+    }
+    return [...locs].sort();
+  }, [processedLedger]);
 
   // Calculate totals for filtered ledger data - with UOM conversion (exclude synthetic opening_balance rows)
   const ledgerTotals = useMemo(() => {
@@ -1317,7 +1335,7 @@ export default function PlantStock() {
               <Search className="w-5 h-5" />
               Filters
             </CardTitle>
-            {(dateFrom || dateTo || selectedPartyId !== "all" || selectedMaterialId !== "all" || selectedTransactionType !== "all" || issuedToFilter.trim()) && (
+            {(dateFrom || dateTo || selectedPartyId !== "all" || selectedMaterialId !== "all" || selectedTransactionType !== "all" || issuedToFilter !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1393,13 +1411,18 @@ export default function PlantStock() {
           {activeTab === "ledger" && (
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label>Issued / Equipment (search notes)</Label>
-                <Input
-                  value={issuedToFilter}
-                  onChange={(e) => setIssuedToFilter(e.target.value)}
-                  placeholder="e.g. 600 KVA, JCB, Hot Oil..."
-                  data-testid="input-issued-to-filter"
-                />
+                <Label>Dispatched To</Label>
+                <Select value={issuedToFilter} onValueChange={setIssuedToFilter}>
+                  <SelectTrigger data-testid="select-filter-dispatched-to">
+                    <SelectValue placeholder="All Sites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sites</SelectItem>
+                    {dispatchedToOptions.map(loc => (
+                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {isTankedMaterial && (
                 <div>
