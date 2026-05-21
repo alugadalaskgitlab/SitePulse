@@ -1955,10 +1955,13 @@ export default function PlantStock() {
                                 })()}
                               </span>
                               {!isBF && (entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage') && (
-                                <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}`}>
-                                  <ClipboardList className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" />
-                                </Link>
-                              )}
+                                  <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
+                                      <ClipboardList className="w-3.5 h-3.5" />
+                                      <span>View</span>
+                                    </span>
+                                  </Link>
+                                )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
                                 <Link href={`/plant/material-receipts?edit=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
