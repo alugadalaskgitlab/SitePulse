@@ -16,6 +16,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
+  import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
