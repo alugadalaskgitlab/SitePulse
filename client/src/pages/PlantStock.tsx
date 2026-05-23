@@ -1255,6 +1255,26 @@ export default function PlantStock() {
   const handlePrintClick = () => handlePrint();
   const handleReconcileClick = () => reconcileMutation.mutate();
 
+    const fixOrphanMutation = useMutation({
+      mutationFn: async () => {
+        const res = await apiRequest("POST", "/api/admin/fix-orphan-stock-balances", {});
+        return res.json();
+      },
+      onSuccess: (data: { fixed: number; details: { party: string; material: string; corrected: number; uom: string }[] }) => {
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
+        if (data.fixed === 0) {
+          toast({ title: "No orphan balances found", description: "All negative balances have backing ledger entries." });
+        } else {
+          const lines = data.details.map(d => `${d.party} – ${d.material}: +${d.corrected.toFixed(3)} ${d.uom}`).join(", ");
+          toast({ title: `${data.fixed} orphan balance${data.fixed > 1 ? "s" : ""} fixed`, description: lines });
+        }
+      },
+      onError: (err: any) => {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      },
+    });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <NegativeBalanceBannerMulti
@@ -1291,6 +1311,24 @@ export default function PlantStock() {
                 <RefreshCw className="w-4 h-4" />
               )}
               Reconcile Data
+            </Button>
+          )}
+          {canReconcile && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+              onClick={() => fixOrphanMutation.mutate()}
+              disabled={fixOrphanMutation.isPending}
+              data-testid="button-fix-orphan-balances"
+              title="Find negative stock balances with no backing ledger entries and zero them out"
+            >
+              {fixOrphanMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Fix Phantom Balances
             </Button>
           )}
           {canExport && (
@@ -1985,6 +2023,14 @@ export default function PlantStock() {
                               {!isBF && entry.transactionType === 'transfer' && entry.referenceId != null && (
                                 <Link href={`/plant/stock-transfer?returnTo=${buildLedgerReturnTo(entry.id)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View stock transfer" />
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'direct_purchase' && (
+                                <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
+                                    <ClipboardList className="w-3.5 h-3.5" />
+                                    <span>View</span>
+                                  </span>
                                 </Link>
                               )}
                             </div>

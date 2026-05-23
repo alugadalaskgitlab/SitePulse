@@ -4069,6 +4069,9 @@ export class DatabaseStorage implements IStorage {
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
       const previousBalance = existing?.balance ?? 0;
       const adjustment = data.physicalQty - previousBalance;
+      // Always use the existing balance's UOM so the ledger stays consistent.
+      // The caller's uom is only a fallback when no balance row exists yet.
+      const effectiveUom = existing?.uom ?? data.uom;
 
       // Update or create the party's balance
       if (existing) {
@@ -4077,7 +4080,7 @@ export class DatabaseStorage implements IStorage {
           .where(eq(stockBalances.id, existing.id));
       } else {
         await tx.insert(stockBalances).values({
-          partyId: data.partyId, materialId: data.materialId, balance: data.physicalQty, uom: data.uom,
+          partyId: data.partyId, materialId: data.materialId, balance: data.physicalQty, uom: effectiveUom,
         });
       }
 
@@ -4090,7 +4093,7 @@ export class DatabaseStorage implements IStorage {
         quantityIn: adjustment > 0 ? adjustment : 0,
         quantityOut: adjustment < 0 ? Math.abs(adjustment) : 0,
         balanceAfter: data.physicalQty,
-        uom: data.uom,
+        uom: effectiveUom,
         notes: `Physical stock correction by ${data.correctedBy}. ${data.notes}`,
       }).returning();
 
@@ -4098,7 +4101,54 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // Enhanced truck dispatch with automatic stock deduction
+  // Fix orphan stock-balance rows: negative balances with zero backing ledger entries.
+    // For each such row, inserts a corrective 'adjustment' ledger entry and zeros the balance.
+    async fixOrphanStockBalances(): Promise<{ fixed: number; details: { party: string; material: string; corrected: number; uom: string }[] }> {
+      return db.transaction(async (tx) => {
+        // Find all negative balance rows that have no ledger entries at all
+        const orphans = await tx.execute(sql`
+          SELECT sb.id, sb.party_id, sb.material_id, sb.balance, sb.uom,
+                 p.name AS party_name, pm.name AS material_name
+          FROM stock_balances sb
+          JOIN parties p ON p.id = sb.party_id
+          JOIN plant_materials pm ON pm.id = sb.material_id
+          WHERE sb.balance < -0.0001
+            AND NOT EXISTS (
+              SELECT 1 FROM stock_ledger sl
+              WHERE sl.party_id = sb.party_id
+                AND sl.material_id = sb.material_id
+            )
+        `);
+
+        const details: { party: string; material: string; corrected: number; uom: string }[] = [];
+        const today = new Date().toISOString().slice(0, 10);
+
+        for (const row of orphans.rows as any[]) {
+          const absBalance = Math.abs(Number(row.balance));
+          // Insert a corrective adjustment entry (In = abs(negative), balance → 0)
+          await tx.insert(stockLedger).values({
+            date: today,
+            partyId: row.party_id,
+            materialId: row.material_id,
+            transactionType: 'adjustment',
+            quantityIn: absBalance,
+            quantityOut: 0,
+            balanceAfter: 0,
+            uom: row.uom,
+            notes: `Orphan balance correction by admin. ${row.party_name} had ${row.balance} ${row.uom} ${row.material_name} with no backing ledger entries — phantom balance zeroed.`,
+          });
+          // Zero the stock balance
+          await tx.update(stockBalances)
+            .set({ balance: 0, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, row.id));
+          details.push({ party: row.party_name, material: row.material_name, corrected: absBalance, uom: row.uom });
+        }
+
+        return { fixed: details.length, details };
+      });
+    }
+
+    // Enhanced truck dispatch with automatic stock deduction
   // Returns the saved dispatch on success; throws StockShortageError when
   // the owner has insufficient stock and the caller did not opt in to HLC borrow.
   async createTruckDispatchWithStockDeduction(

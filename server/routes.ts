@@ -6251,7 +6251,18 @@ export async function registerRoutes(
     }
   });
 
-  // ====== USERS DIRECTORY ======
+  app.post("/api/admin/fix-orphan-stock-balances", async (req, res) => {
+      try {
+        if (!assertAdmin(req, res)) return;
+        const result = await storage.fixOrphanStockBalances();
+        res.json(result);
+      } catch (err) {
+        console.error("Error fixing orphan stock balances:", err);
+        res.status(500).json({ message: "Failed to fix orphan balances", error: String(err) });
+      }
+    });
+
+    // ====== USERS DIRECTORY ======
   app.get("/api/users/directory", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
