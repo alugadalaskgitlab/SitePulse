@@ -6206,49 +6206,48 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // LDO/DIESEL issued to a tank is a store→tank TRANSFER: skip store stock deduction
-      // and stock_ledger write.  The tank tracker is updated via ldo_flow_readings below.
-      const isIssueTankLdo = issue.ldoTankNumber != null && material && isLdoOrDieselMaterial(material.name);
-
-      if (!isIssueTankLdo) {
-        // Update stock balance (reduce)
-        const condition = stockPartyId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
-          : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, issue.materialId));
-        
-        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-        const newBalance = (existing?.balance || 0) - stockQuantity;
-        
-        if (existing) {
-          await tx.update(stockBalances)
-            .set({ balance: newBalance, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existing.id));
-        } else {
-          await tx.insert(stockBalances).values({
+      // Always deduct from main stock and write a ledger entry — including when issuing
+        // LDO/DIESEL to a tank. The ldo_flow_readings handles tank-level tracking separately.
+        {
+          // Update stock balance (reduce)
+          const condition = stockPartyId === null 
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
+            : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, issue.materialId));
+          
+          const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+          const newBalance = (existing?.balance || 0) - stockQuantity;
+          
+          if (existing) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existing.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: stockPartyId,
+              materialId: issue.materialId,
+              balance: newBalance,
+              uom: stockUom,
+            });
+          }
+          
+          // Add ledger entry with converted quantity
+          const ldoTankNote = issue.ldoTankNumber != null ? ` → LDO Tank ${issue.ldoTankNumber}` : '';
+          const conversionNote = stockQuantity !== issue.quantity
+            ? `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote} (${issue.quantity} ${issue.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
+            : `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote}`;
+          
+          await tx.insert(stockLedger).values({
+            date: issue.date,
             partyId: stockPartyId,
             materialId: issue.materialId,
-            balance: newBalance,
+            transactionType: "issue",
+            referenceId: result.id,
+            quantityOut: stockQuantity,
+            balanceAfter: newBalance,
             uom: stockUom,
+            notes: conversionNote,
           });
         }
-        
-        // Add ledger entry with converted quantity
-        const conversionNote = stockQuantity !== issue.quantity
-          ? `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''} (${issue.quantity} ${issue.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
-          : `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}`;
-        
-        await tx.insert(stockLedger).values({
-          date: issue.date,
-          partyId: stockPartyId,
-          materialId: issue.materialId,
-          transactionType: "issue",
-          referenceId: result.id,
-          quantityOut: stockQuantity,
-          balanceAfter: newBalance,
-          uom: stockUom,
-          notes: conversionNote,
-        });
-      }
 
       // When LDO or DIESEL is issued directly to a tank, auto-create a receipt row
       // in ldo_flow_readings so the tank tracker sees the fill.
@@ -6303,23 +6302,26 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      // LDO/DIESEL→tank issues are transfers (no store stock impact).
-      const wasIssueTankLdo = original.ldoTankNumber != null && origMaterial && isLdoOrDieselMaterial(origMaterial.name);
+      // Reverse original stock impact only if there was a ledger entry for this issue.
+        // (Pre-fix LDO-tank issues had no ledger entry — no reversal needed for those.)
+        const [existingIssueLedger] = await tx.select({ id: stockLedger.id })
+          .from(stockLedger)
+          .where(and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id)))
+          .limit(1);
 
-      if (!wasIssueTankLdo) {
-        // Reverse original stock impact (add back the converted quantity)
-        const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
-        const origCondition = originalStockPartyId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
-          : and(eq(stockBalances.partyId, originalStockPartyId), eq(stockBalances.materialId, original.materialId));
-        
-        const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
-        if (origBal) {
-          await tx.update(stockBalances)
-            .set({ balance: origBal.balance + origStockQuantity, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, origBal.id));
+        if (existingIssueLedger != null) {
+          const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
+          const origCondition = originalStockPartyId === null 
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
+            : and(eq(stockBalances.partyId, originalStockPartyId), eq(stockBalances.materialId, original.materialId));
+          
+          const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
+          if (origBal) {
+            await tx.update(stockBalances)
+              .set({ balance: origBal.balance + origStockQuantity, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, origBal.id));
+          }
         }
-      }
       
       // Update the issue record
       const [result] = await tx.update(materialIssues).set(updates).where(eq(materialIssues.id, id)).returning();
@@ -6351,47 +6353,47 @@ export class DatabaseStorage implements IStorage {
         and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
       );
 
-      const isNowIssueTankLdo = (issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber) != null
-        && newMaterial && isLdoOrDieselMaterial(newMaterial.name);
-
-      if (!isNowIssueTankLdo) {
-        // Apply new stock impact
-        const newCondition = newStockPartyId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
-          : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
-        
-        const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-        const newBalance = (newBal?.balance || 0) - newStockQuantity;
-        
-        if (newBal) {
-          await tx.update(stockBalances)
-            .set({ balance: newBalance, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, newBal.id));
-        } else {
-          await tx.insert(stockBalances).values({
+      // Always apply new stock impact and write ledger entry (including LDO-tank issues).
+        {
+          const newCondition = newStockPartyId === null 
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
+            : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
+          
+          const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
+          const newBalance = (newBal?.balance || 0) - newStockQuantity;
+          
+          if (newBal) {
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, newBal.id));
+          } else {
+            await tx.insert(stockBalances).values({
+              partyId: newStockPartyId,
+              materialId: newMaterialId,
+              balance: newBalance,
+              uom: newStockUom,
+            });
+          }
+          
+          const newLdoTankNote = (issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber) != null
+            ? ` → LDO Tank ${issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber}`
+            : '';
+          const conversionNote = newStockQuantity !== newQuantity
+            ? `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
+            : `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote}`;
+          
+          await tx.insert(stockLedger).values({
+            date: newDate,
             partyId: newStockPartyId,
             materialId: newMaterialId,
-            balance: newBalance,
+            transactionType: "issue",
+            referenceId: result.id,
+            quantityOut: newStockQuantity,
+            balanceAfter: newBalance,
             uom: newStockUom,
+            notes: conversionNote,
           });
         }
-        
-        const conversionNote = newStockQuantity !== newQuantity
-          ? `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
-          : `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}`;
-        
-        await tx.insert(stockLedger).values({
-          date: newDate,
-          partyId: newStockPartyId,
-          materialId: newMaterialId,
-          transactionType: "issue",
-          referenceId: result.id,
-          quantityOut: newStockQuantity,
-          balanceAfter: newBalance,
-          uom: newStockUom,
-          notes: conversionNote,
-        });
-      }
 
       // Sync linked ldo_flow_readings receipt row: drop old then re-insert.
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialIssueId, id));
@@ -6435,28 +6437,26 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // LDO/DIESEL→tank issues are transfers: skip stock balance restoration.
-      const isIssueTankLdo = issue.ldoTankNumber != null && material && isLdoOrDieselMaterial(material.name);
-
-      if (!isIssueTankLdo) {
-        // Reverse stock balance with converted quantity
-        const stockPartyId = issue.isPlantCommon ? null : issue.partyId;
-        const condition = stockPartyId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
-          : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, issue.materialId));
-        
-        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-        if (existing) {
-          const newBalance = existing.balance + stockQuantity;
-          await tx.update(stockBalances)
-            .set({ balance: newBalance, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existing.id));
+      // Always restore stock balance and delete ledger entry on issue deletion.
+        {
+          // Reverse stock balance with converted quantity
+          const stockPartyId = issue.isPlantCommon ? null : issue.partyId;
+          const condition = stockPartyId === null 
+            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
+            : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, issue.materialId));
+          
+          const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+          if (existing) {
+            const newBalance = existing.balance + stockQuantity;
+            await tx.update(stockBalances)
+              .set({ balance: newBalance, lastUpdated: new Date() })
+              .where(eq(stockBalances.id, existing.id));
+          }
+          
+          await tx.delete(stockLedger).where(
+            and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
+          );
         }
-        
-        await tx.delete(stockLedger).where(
-          and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
-        );
-      }
 
       // Remove linked ldo_flow_readings receipt row if present.
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceMaterialIssueId, id));
@@ -15349,6 +15349,81 @@ export class DatabaseStorage implements IStorage {
     await this.setSetting(SETTING_KEY, '1');
     return { applied: true, deleted: ghostIds.length, errors: [] };
   }
+    // Idempotent startup migration: create missing stock_ledger "issue" entries for
+    // material_issues that were issued to an LDO/DIESEL tank (pre-fix, these were skipped).
+    async backfillLdoTankIssueLedger(): Promise<{ created: number; skipped: number; errors: number }> {
+      const result = { created: 0, skipped: 0, errors: 0 };
+      return db.transaction(async (tx) => {
+        const candidates = await tx.execute(sql`
+          SELECT mi.id, mi.date, mi.material_id, mi.quantity, mi.uom,
+                 mi.is_plant_common, mi.party_id, mi.issued_to, mi.purpose,
+                 mi.ldo_tank_number,
+                 pm.name AS material_name,
+                 pm.conversion_factor, pm.conversion_from_uom, pm.conversion_to_uom
+          FROM material_issues mi
+          JOIN plant_materials pm ON pm.id = mi.material_id
+          WHERE mi.ldo_tank_number IS NOT NULL
+            AND (LOWER(pm.name) LIKE '%diesel%' OR LOWER(pm.name) LIKE '%ldo%')
+            AND NOT EXISTS (
+              SELECT 1 FROM stock_ledger sl
+              WHERE sl.transaction_type = 'issue'
+                AND sl.reference_id = mi.id
+            )
+          ORDER BY mi.date, mi.id
+        `);
+
+        for (const row of candidates.rows as any[]) {
+          try {
+            let stockQty = Number(row.quantity);
+            let stockUom = row.uom;
+            if (row.conversion_factor && row.conversion_from_uom && row.conversion_to_uom) {
+              if (String(row.uom).toUpperCase() === String(row.conversion_from_uom).toUpperCase()) {
+                stockQty = Number(row.quantity) * Number(row.conversion_factor);
+                stockUom = row.conversion_to_uom;
+              }
+            }
+            const stockPartyId = row.is_plant_common ? null : row.party_id;
+            const cond = stockPartyId === null
+              ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, row.material_id))
+              : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, row.material_id));
+
+            const [existing] = await tx.select().from(stockBalances).where(cond).limit(1);
+            const newBalance = (existing?.balance ?? 0) - stockQty;
+
+            if (existing) {
+              await tx.update(stockBalances)
+                .set({ balance: newBalance, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, existing.id));
+            } else {
+              await tx.insert(stockBalances).values({
+                partyId: stockPartyId,
+                materialId: row.material_id,
+                balance: newBalance,
+                uom: stockUom,
+              });
+            }
+
+            const note = `Issue to ${row.issued_to}${row.purpose ? ` - ${row.purpose}` : ''} → LDO Tank ${row.ldo_tank_number} (backfilled)`;
+            await tx.insert(stockLedger).values({
+              date: row.date,
+              partyId: stockPartyId,
+              materialId: row.material_id,
+              transactionType: 'issue',
+              referenceId: row.id,
+              quantityOut: stockQty,
+              balanceAfter: newBalance,
+              uom: stockUom,
+              notes: note,
+            });
+            result.created++;
+          } catch (e) {
+            console.error(`backfillLdoTankIssueLedger: error on issue #${row.id}:`, e);
+            result.errors++;
+          }
+        }
+        return result;
+      });
+    }
 }
 
 export const storage = new DatabaseStorage();
