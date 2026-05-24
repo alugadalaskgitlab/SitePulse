@@ -345,6 +345,13 @@ app.use((req, res, next) => {
       console.error("Startup: fixLdoDataIssues failed:", e);
     }
 
+    try {
+      const r2 = await storage.fixHlcLdoStockBalance();
+      console.log(`Startup: ${r2.message}`);
+    } catch (e) {
+      console.error("Startup: fixHlcLdoStockBalance failed:", e);
+    }
+
       try {
       const r = await storage.backfillLdoTankIssueLedger();
       if (r.created > 0) {

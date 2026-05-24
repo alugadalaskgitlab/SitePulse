@@ -15459,6 +15459,47 @@ export class DatabaseStorage implements IStorage {
         return { applied: true, message: 'fixLdoDataIssues: UOM corrected MT->Liters on March 15 ledger entries and HLC stock_balance.' };
       });
     }
+    // One-time migration: recompute HLC LDO stock_balance from ledger totals.
+    // Sums all quantity_in (receipts, adjustments in) minus quantity_out (dispatches, issues, adjustments out)
+    // for party_id=1 (HLC) + material_id=9 (LDO) and writes the result into stock_balances.
+    // Run AFTER fixLdoDataIssues so the UOM on the ledger rows is already correct.
+    async fixHlcLdoStockBalance(): Promise<{ applied: boolean; message: string; computed?: number }> {
+      const SETTING_KEY = 'fixHlcLdoStockBalance_v1';
+      const already = await this.getSetting(SETTING_KEY);
+      if (already) return { applied: false, message: 'fixHlcLdoStockBalance: already applied, skipping.' };
+
+      return db.transaction(async (tx) => {
+        // Compute balance from full ledger history
+        const result = await tx.execute(sql`
+          SELECT
+            COALESCE(SUM(quantity_in), 0) - COALESCE(SUM(quantity_out), 0) AS computed_balance
+          FROM stock_ledger
+          WHERE party_id = 1
+            AND material_id = 9
+        `);
+
+        const computed = parseFloat((result.rows[0] as any).computed_balance ?? '0');
+
+        // Upsert the stock_balance row
+        await tx.execute(sql`
+          INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
+          VALUES (1, 9, ${computed}, 'Liters', NOW())
+          ON CONFLICT (party_id, material_id)
+          DO UPDATE SET
+            balance = ${computed},
+            uom = 'Liters',
+            last_updated = NOW()
+        `);
+
+        await this.setSetting(SETTING_KEY, '1');
+        return {
+          applied: true,
+          computed,
+          message: `fixHlcLdoStockBalance: HLC LDO stock_balance set to ${computed.toFixed(3)} Liters (computed from ledger).`,
+        };
+      });
+    }
+  
 }
 
 export const storage = new DatabaseStorage();
