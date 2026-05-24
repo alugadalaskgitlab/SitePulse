@@ -15425,6 +15425,65 @@ export class DatabaseStorage implements IStorage {
         return result;
       });
     }
+    // One-time idempotent migration: fix LDO data issues introduced by UOM confusion and wrong party.
+    //  1. March 15 adjustment ledger entries (id 17991, 17992): UOM MT → Liters
+    //  2. Vatpally 6000L LDO receipt (material_receipts id 70, ledger id 26750): party_id 6 → 1 (HLC)
+    //  3. HLC stock_balance for LDO: UOM MT → Liters, balance += 6000 (absorbs the Vatpally receipt)
+    //  4. Vatpally stock_balance for LDO: set to 0
+    async fixLdoDataIssues(): Promise<{ applied: boolean; message: string }> {
+      const SETTING_KEY = 'fixLdoDataIssues_applied';
+      const already = await this.getSetting(SETTING_KEY);
+      if (already) return { applied: false, message: 'fixLdoDataIssues: already applied, skipping.' };
+
+      return db.transaction(async (tx) => {
+        // 1. Fix UOM on the two March adjustment entries
+        await tx.execute(sql`
+          UPDATE stock_ledger
+          SET uom = 'Liters'
+          WHERE id IN (17991, 17992)
+            AND uom = 'MT'
+        `);
+
+        // 2a. Reassign Vatpally LDO ledger receipt → HLC (party_id 1)
+        await tx.execute(sql`
+          UPDATE stock_ledger
+          SET party_id = 1
+          WHERE id = 26750
+            AND party_id = 6
+        `);
+
+        // 2b. Reassign material_receipts row → HLC
+        await tx.execute(sql`
+          UPDATE material_receipts
+          SET party_id = 1
+          WHERE id = 70
+            AND party_id = 6
+        `);
+
+        // 3. Fix HLC stock_balance: UOM MT → Liters, add the 6000L absorbed from Vatpally
+        await tx.execute(sql`
+          UPDATE stock_balances
+          SET uom = 'Liters',
+              balance = balance + 6000,
+              last_updated = NOW()
+          WHERE party_id = 1
+            AND material_id = (SELECT id FROM plant_materials WHERE LOWER(name) LIKE '%ldo%' LIMIT 1)
+            AND uom = 'MT'
+        `);
+
+        // 4. Zero out Vatpally's LDO stock balance (the 6000L moved to HLC above)
+        await tx.execute(sql`
+          UPDATE stock_balances
+          SET balance = 0,
+              last_updated = NOW()
+          WHERE party_id = 6
+            AND material_id = (SELECT id FROM plant_materials WHERE LOWER(name) LIKE '%ldo%' LIMIT 1)
+        `);
+
+        await this.setSetting(SETTING_KEY, '1');
+        return { applied: true, message: 'fixLdoDataIssues: UOM fixed, Vatpally 6000L reassigned to HLC, balances corrected.' };
+      });
+    }
 }
 
 export const storage = new DatabaseStorage();

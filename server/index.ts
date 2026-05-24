@@ -338,7 +338,14 @@ app.use((req, res, next) => {
       console.error("Startup: fixOrphanAdjustmentLedger failed:", e);
     }
 
-    try {
+  try {
+      const r = await storage.fixLdoDataIssues();
+      console.log(`Startup: ${r.message}`);
+    } catch (e) {
+      console.error("Startup: fixLdoDataIssues failed:", e);
+    }
+
+      try {
       const r = await storage.backfillLdoTankIssueLedger();
       if (r.created > 0) {
         console.log(`Startup: backfillLdoTankIssueLedger — created ${r.created} missing ledger entrie(s) for LDO-tank diesel issues${r.errors > 0 ? `, ${r.errors} error(s)` : ''}`);
