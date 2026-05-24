@@ -4125,17 +4125,18 @@ export class DatabaseStorage implements IStorage {
 
         for (const row of orphans.rows as any[]) {
           const absBalance = Math.abs(Number(row.balance));
-          // Insert a corrective adjustment entry (In = abs(negative), balance → 0)
+          // Insert a zero-movement marker (quantityIn=0): the phantom was never real stock,
+          // so recording an IN qty would inflate global stock totals.
           await tx.insert(stockLedger).values({
             date: today,
             partyId: row.party_id,
             materialId: row.material_id,
             transactionType: 'adjustment',
-            quantityIn: absBalance,
+            quantityIn: 0, // phantom — no real stock movement
             quantityOut: 0,
             balanceAfter: 0,
             uom: row.uom,
-            notes: `Orphan balance correction by admin. ${row.party_name} had ${row.balance} ${row.uom} ${row.material_name} with no backing ledger entries — phantom balance zeroed.`,
+            notes: `Orphan balance correction by admin. ${row.party_name} had ${row.balance} ${row.uom} ${row.material_name} with no backing ledger entries — phantom balance zeroed (no stock movement).`,
           });
           // Zero the stock balance
           await tx.update(stockBalances)

@@ -320,6 +320,25 @@ app.use((req, res, next) => {
   }
 
   try {
+      // Correct orphan-adjustment ledger entries that were wrongly inserted with quantity_in > 0.
+      // Those inflate the global stock total. Set quantity_in = 0 for any such rows.
+      const orphanFix = await db.execute(sql`
+        UPDATE stock_ledger
+        SET quantity_in = 0
+        WHERE transaction_type = 'adjustment'
+          AND notes ILIKE '%orphan balance correction%'
+          AND quantity_in > 0
+          AND quantity_out = 0
+      `);
+      const orphanFixCount = (orphanFix as any).rowCount ?? 0;
+      if (orphanFixCount > 0) {
+        console.log(`Startup: fixOrphanAdjustmentLedger — zeroed quantity_in on ${orphanFixCount} wrong adjustment row(s)`);
+      }
+    } catch (e) {
+      console.error("Startup: fixOrphanAdjustmentLedger failed:", e);
+    }
+
+    try {
       const r = await storage.backfillLdoTankIssueLedger();
       if (r.created > 0) {
         console.log(`Startup: backfillLdoTankIssueLedger — created ${r.created} missing ledger entrie(s) for LDO-tank diesel issues${r.errors > 0 ? `, ${r.errors} error(s)` : ''}`);
