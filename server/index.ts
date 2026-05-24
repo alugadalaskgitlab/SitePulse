@@ -352,6 +352,20 @@ app.use((req, res, next) => {
       console.error("Startup: fixHlcLdoStockBalance failed:", e);
     }
 
+  try {
+    const r3 = await storage.backfillLdoDispatchConsumption_v1();
+    console.log(`Startup: ${r3.message}`);
+  } catch (e) {
+    console.error("Startup: backfillLdoDispatchConsumption_v1 failed:", e);
+  }
+
+  try {
+    const r4 = await storage.fixAllLdoStockBalances_v1();
+    console.log(`Startup: ${r4.message}`);
+  } catch (e) {
+    console.error("Startup: fixAllLdoStockBalances_v1 failed:", e);
+  }
+
       try {
       const r = await storage.backfillLdoTankIssueLedger();
       if (r.created > 0) {

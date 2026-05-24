@@ -10312,21 +10312,8 @@ export class DatabaseStorage implements IStorage {
           console.log(`fixLdoStockDeductionErrors: backfilled missing receipt ledger for receipt id=${rcpt.id} (${stockQty} ${stockUom}, party=${targetPartyId})`);
         }
 
-        // ── 1. Remove stock_ledger 'dispatch' entries for LDO/DIESEL.
-        //       These were created by createTruckDispatchWithStockDeduction before the fix.
-        const badDispatchLedger = await tx.select({ id: stockLedger.id })
-          .from(stockLedger)
-          .where(and(
-            eq(stockLedger.transactionType, "dispatch"),
-            inArray(stockLedger.materialId, ldoMatIds)
-          ));
-
-        if (badDispatchLedger.length > 0) {
-          await tx.delete(stockLedger).where(inArray(stockLedger.id, badDispatchLedger.map(r => r.id)));
-          result.dispatchLedgerRemoved = badDispatchLedger.length;
-          console.log(`fixLdoStockDeductionErrors: removed ${badDispatchLedger.length} bad dispatch ledger entries`);
-        }
-
+        // ── 1. LDO/DIESEL dispatch entries are now intentionally tracked in the ledger
+        //       (backfilled by backfillLdoDispatchConsumption_v1). Do NOT delete them.
         // ── 2. Remove stock_ledger 'issue' entries for LDO/DIESEL→tank Material Issues.
         //       These are store→tank transfers and should NOT appear in the store ledger.
         const badIssueLedger = await tx.select({ id: stockLedger.id })
@@ -15481,16 +15468,17 @@ export class DatabaseStorage implements IStorage {
         const computed = parseFloat((result.rows[0] as any).computed_balance ?? '0');
 
         // Upsert the stock_balance row
-        await tx.execute(sql`
-          INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
-          VALUES (1, 9, ${computed}, 'Liters', NOW())
-          ON CONFLICT (party_id, material_id)
-          DO UPDATE SET
-            balance = ${computed},
-            uom = 'Liters',
-            last_updated = NOW()
+        // Update or insert HLC LDO balance (no unique constraint on party_id+material_id)
+        const upd1 = await tx.execute(sql`
+          UPDATE stock_balances SET balance = ${computed}, uom = 'Liters', last_updated = NOW()
+          WHERE party_id = 1 AND material_id = 9
         `);
-
+        if (((upd1 as any).rowCount ?? 0) === 0) {
+          await tx.execute(sql`
+            INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
+            VALUES (1, 9, ${computed}, 'Liters', NOW())
+          `);
+        }
         await this.setSetting(SETTING_KEY, '1');
         return {
           applied: true,
@@ -15498,6 +15486,98 @@ export class DatabaseStorage implements IStorage {
           message: `fixHlcLdoStockBalance: HLC LDO stock_balance set to ${computed.toFixed(3)} Liters (computed from ledger).`,
         };
       });
+    }
+  
+    // Backfill LDO dispatch consumption rows into stock_ledger.
+    // For every truck_dispatch with actual_ldo_qty > 0 that does NOT already have a
+    // matching stock_ledger row (transaction_type='dispatch', material_id=9, reference_id=dispatch.id),
+    // insert one quantity_out entry against the dispatch's party (stock owner).
+    async backfillLdoDispatchConsumption_v1(): Promise<{ applied: boolean; inserted: number; message: string }> {
+      const SETTING_KEY = 'backfillLdoDispatchConsumption_v1';
+      const already = await this.getSetting(SETTING_KEY);
+      if (already) return { applied: false, inserted: 0, message: 'backfillLdoDispatchConsumption_v1: already applied, skipping.' };
+
+      let inserted = 0;
+      await db.transaction(async (tx) => {
+        // Get all dispatches that used LDO
+        const dispatches = await tx.execute(sql`
+          SELECT id, date, party_id, actual_ldo_qty
+          FROM truck_dispatches
+          WHERE actual_ldo_qty > 0
+          ORDER BY date, id
+        `);
+
+        for (const row of (dispatches.rows as any[])) {
+          const dispatchId = row.id as number;
+          const partyId    = row.party_id as number;
+          const ldo        = parseFloat(row.actual_ldo_qty);
+          const date       = row.date as string;
+
+          // Check if ledger entry already exists
+          const exists = await tx.execute(sql`
+            SELECT id FROM stock_ledger
+            WHERE transaction_type = 'dispatch'
+              AND material_id = 9
+              AND reference_id = ${dispatchId}
+              AND party_id = ${partyId}
+            LIMIT 1
+          `);
+          if ((exists.rows as any[]).length > 0) continue;
+
+          await tx.execute(sql`
+            INSERT INTO stock_ledger
+              (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes)
+            VALUES
+              (${date}, ${partyId}, 9, 'dispatch', ${dispatchId}, 0, ${ldo}, 'Liters',
+               'LDO consumption backfilled from truck dispatch')
+          `);
+          inserted++;
+        }
+      });
+
+      await this.setSetting(SETTING_KEY, '1');
+      return { applied: true, inserted, message: `backfillLdoDispatchConsumption_v1: inserted ${inserted} LDO consumption row(s).` };
+    }
+
+    // Recompute stock_balances for ALL parties' LDO (material_id=9) from the full ledger.
+    // Runs after backfillLdoDispatchConsumption_v1 so dispatch rows are included in the sum.
+    async fixAllLdoStockBalances_v1(): Promise<{ applied: boolean; partiesFixed: number; message: string }> {
+      const SETTING_KEY = 'fixAllLdoStockBalances_v1';
+      const already = await this.getSetting(SETTING_KEY);
+      if (already) return { applied: false, partiesFixed: 0, message: 'fixAllLdoStockBalances_v1: already applied, skipping.' };
+
+      let partiesFixed = 0;
+      await db.transaction(async (tx) => {
+        // Sum ledger per party for LDO
+        const sums = await tx.execute(sql`
+          SELECT party_id,
+                 COALESCE(SUM(quantity_in), 0) - COALESCE(SUM(quantity_out), 0) AS net_balance
+          FROM stock_ledger
+          WHERE material_id = 9
+          GROUP BY party_id
+        `);
+
+        for (const row of (sums.rows as any[])) {
+          const partyId   = row.party_id as number | null;
+          const balance   = parseFloat(row.net_balance);
+
+          // Update or insert per party (no unique constraint on party_id+material_id)
+          const updRes = await tx.execute(sql`
+            UPDATE stock_balances SET balance = ${balance}, uom = 'Liters', last_updated = NOW()
+            WHERE ${partyId === null ? sql`party_id IS NULL` : sql`party_id = ${partyId}`} AND material_id = 9
+          `);
+          if (((updRes as any).rowCount ?? 0) === 0) {
+            await tx.execute(sql`
+              INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
+              VALUES (${partyId}, 9, ${balance}, 'Liters', NOW())
+            `);
+          }
+          console.log(`fixAllLdoStockBalances_v1: party_id=${partyId} → ${balance.toFixed(3)} Liters`);
+        }
+      });
+
+      await this.setSetting(SETTING_KEY, '1');
+      return { applied: true, partiesFixed, message: `fixAllLdoStockBalances_v1: recomputed ${partiesFixed} party LDO balance(s) from ledger.` };
     }
   
 }
