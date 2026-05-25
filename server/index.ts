@@ -366,6 +366,13 @@ app.use((req, res, next) => {
     console.error("Startup: fixAllLdoStockBalances_v1 failed:", e);
   }
 
+  try {
+    const r5 = await storage.rebuildLdoDispatchLedger_v1();
+    console.log(`Startup: ${r5.message}`);
+  } catch (e) {
+    console.error("Startup: rebuildLdoDispatchLedger_v1 failed:", e);
+  }
+
       try {
       const r = await storage.backfillLdoTankIssueLedger();
       if (r.created > 0) {

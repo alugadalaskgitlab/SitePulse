@@ -2736,6 +2736,49 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // Sync LDO stock ledger when LDO deduction qty changes (mirrors bitumen sync above)
+      const ldoQtyAffectingChange = dispatch.loadWeight !== undefined
+        || dispatch.actualLdoQty !== undefined
+        || dispatch.mixTemplateId !== undefined;
+
+      if (ldoQtyAffectingChange) {
+        const newEffectiveLdoQty = result.actualLdoQty ?? result.theoreticalLdoQty ?? 0;
+        const [ldoMat] = await tx.select({ id: plantMaterials.id })
+          .from(plantMaterials)
+          .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
+          .limit(1);
+
+        if (ldoMat) {
+          const ldoLedgerRows = await tx.select()
+            .from(stockLedger)
+            .where(and(
+              eq(stockLedger.transactionType, "dispatch"),
+              eq(stockLedger.referenceId, id),
+              eq(stockLedger.materialId, ldoMat.id),
+            ));
+
+          for (const row of ldoLedgerRows) {
+            const oldQty = row.quantityOut ?? 0;
+            const diff = oldQty - newEffectiveLdoQty; // positive = releasing stock back
+            if (Math.abs(diff) < 1e-9) continue;
+
+            await tx.update(stockLedger)
+              .set({ quantityOut: newEffectiveLdoQty })
+              .where(eq(stockLedger.id, row.id));
+
+            const condition = row.partyId === null
+              ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ldoMat.id))
+              : and(eq(stockBalances.partyId, row.partyId), eq(stockBalances.materialId, ldoMat.id));
+            const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
+            if (bal) {
+              await tx.update(stockBalances)
+                .set({ balance: bal.balance + diff, lastUpdated: new Date() })
+                .where(eq(stockBalances.id, bal.id));
+            }
+          }
+        }
+      }
+
       return result;
     });
 
@@ -4062,7 +4105,7 @@ export class DatabaseStorage implements IStorage {
     date: string;
     notes: string;
     correctedBy: string;
-  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number; ledgerEntry: StockLedgerEntry }> {
+  }): Promise<{ adjustment: number; previousBalance: number; newBalance: number}> {
     return db.transaction(async (tx) => {
       // Get the selected party's current balance for this material
       const condition = and(eq(stockBalances.partyId, data.partyId), eq(stockBalances.materialId, data.materialId));
@@ -4084,25 +4127,12 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
-      // Write ledger entry
-      const [entry] = await tx.insert(stockLedger).values({
-        date: data.date,
-        partyId: data.partyId,
-        materialId: data.materialId,
-        transactionType: "adjustment",
-        quantityIn: adjustment > 0 ? adjustment : 0,
-        quantityOut: adjustment < 0 ? Math.abs(adjustment) : 0,
-        balanceAfter: data.physicalQty,
-        uom: effectiveUom,
-        notes: `Physical stock correction by ${data.correctedBy}. ${data.notes}`,
-      }).returning();
-
-      return { adjustment, previousBalance, newBalance: data.physicalQty, ledgerEntry: entry };
+      return { adjustment, previousBalance, newBalance: data.physicalQty };
     });
   }
 
   // Fix orphan stock-balance rows: negative balances with zero backing ledger entries.
-    // For each such row, inserts a corrective 'adjustment' ledger entry and zeros the balance.
+    // For each such row, zeros the balance directly (no ledger entry — adjustments are not tracked in stock_ledger).
     async fixOrphanStockBalances(): Promise<{ fixed: number; details: { party: string; material: string; corrected: number; uom: string }[] }> {
       return db.transaction(async (tx) => {
         // Find all negative balance rows that have no ledger entries at all
@@ -4121,28 +4151,12 @@ export class DatabaseStorage implements IStorage {
         `);
 
         const details: { party: string; material: string; corrected: number; uom: string }[] = [];
-        const today = new Date().toISOString().slice(0, 10);
 
         for (const row of orphans.rows as any[]) {
-          const absBalance = Math.abs(Number(row.balance));
-          // Insert a zero-movement marker (quantityIn=0): the phantom was never real stock,
-          // so recording an IN qty would inflate global stock totals.
-          await tx.insert(stockLedger).values({
-            date: today,
-            partyId: row.party_id,
-            materialId: row.material_id,
-            transactionType: 'adjustment',
-            quantityIn: 0, // phantom — no real stock movement
-            quantityOut: 0,
-            balanceAfter: 0,
-            uom: row.uom,
-            notes: `Orphan balance correction by admin. ${row.party_name} had ${row.balance} ${row.uom} ${row.material_name} with no backing ledger entries — phantom balance zeroed (no stock movement).`,
-          });
-          // Zero the stock balance
           await tx.update(stockBalances)
             .set({ balance: 0, lastUpdated: new Date() })
             .where(eq(stockBalances.id, row.id));
-          details.push({ party: row.party_name, material: row.material_name, corrected: absBalance, uom: row.uom });
+          details.push({ party: row.party_name, material: row.material_name, corrected: Math.abs(Number(row.balance)), uom: row.uom });
         }
 
         return { fixed: details.length, details };
@@ -4292,9 +4306,11 @@ export class DatabaseStorage implements IStorage {
       if (bitumenMaterial && theoreticalBitumenQty > 0) {
         plan.push({ matId: bitumenMaterial.id, qty: theoreticalBitumenQty, uom: "Ton", label: mixLabel, tankNumber: dispatchData.bitumenTankNumber ?? 1 });
       }
-      // LDO is NOT deducted from store stock via dispatch.
-      // Actual LDO consumption is tracked through the tank (heating session / plant log / dip reading).
-      // Keeping ldoMaterial lookup above for theoretical reporting only — do not add to plan.
+      // LDO IS tracked in store stock via dispatch — same owner-first model as bitumen/aggregates.
+      const ldoQtyForPlan = (dispatchData as any).actualLdoQty ?? theoreticalLdoQty;
+      if (ldoMaterial && ldoQtyForPlan > 0) {
+        plan.push({ matId: ldoMaterial.id, qty: ldoQtyForPlan, uom: "Liters", label: mixLabel, tankNumber: (dispatchData as any).ldoTankNumber ?? null });
+      }
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
         if (qty > 0) plan.push({ matId, qty, uom: "Ton", label: mixLabel });
@@ -15580,6 +15596,94 @@ export class DatabaseStorage implements IStorage {
       return { applied: true, partiesFixed, message: `fixAllLdoStockBalances_v1: recomputed ${partiesFixed} party LDO balance(s) from ledger.` };
     }
   
+
+  // One-time migration: rebuild LDO dispatch ledger with correct party attribution and clean notes.
+  // Deletes all existing LDO 'dispatch' stock_ledger rows, then reinserts using owner-first logic
+  // (if party has LDO receipts → deduct from party; otherwise → deduct from HLC).
+  // Notes are set to the clean "MixTemplate — DeliveryLocation" format (no backfill/dip references).
+  // Also recomputes all party LDO stock_balances from the rebuilt ledger.
+  async rebuildLdoDispatchLedger_v1(): Promise<{ applied: boolean; message: string }> {
+    const SETTING_KEY = 'rebuildLdoDispatchLedger_v1';
+    const already = await this.getSetting(SETTING_KEY);
+    if (already === '1') return { applied: false, message: 'rebuildLdoDispatchLedger_v1: already applied.' };
+
+    await db.transaction(async (tx) => {
+      // Step 1: Delete ALL existing LDO dispatch ledger rows
+      await tx.execute(sql`DELETE FROM stock_ledger WHERE material_id = 9 AND transaction_type = 'dispatch'`);
+
+      // Step 2: Find HLC party id
+      const allParties = await tx.select().from(parties);
+      const hlcParty = allParties.find((p: any) => p.name?.toUpperCase() === 'HLC')
+        || allParties.find((p: any) => p.name?.toUpperCase().includes('HIGH LANE'))
+        || null;
+      const hlcPartyId = hlcParty?.id ?? null;
+
+      // Step 3: Get all dispatches that have LDO qty (actual or theoretical)
+      const dispatches = await tx.execute(sql`
+        SELECT td.id, td.date, td.party_id, td.actual_ldo_qty, td.theoretical_ldo_qty,
+               td.delivery_location,
+               mt.name AS mix_name
+        FROM truck_dispatches td
+        LEFT JOIN mix_templates mt ON mt.id = td.mix_template_id
+        WHERE COALESCE(td.actual_ldo_qty, td.theoretical_ldo_qty, 0) > 0
+        ORDER BY td.date, td.id
+      `);
+
+      // Step 4: For each dispatch, determine party and insert clean ledger row
+      for (const d of (dispatches.rows as any[])) {
+        const dispatchPartyId = d.party_id as number;
+        const ldo = parseFloat(d.actual_ldo_qty ?? d.theoretical_ldo_qty ?? 0);
+        if (!ldo || ldo <= 0) continue;
+
+        // Build clean notes label
+        const label = [d.mix_name, d.delivery_location?.trim() || null].filter(Boolean).join(' — ');
+
+        // Check if this party has ever received LDO (material_id=9)
+        const rcptCheck = await tx.execute(sql`
+          SELECT 1 FROM material_receipts WHERE party_id = ${dispatchPartyId} AND material_id = 9 LIMIT 1
+        `);
+        const partyHasLdoReceipts = (rcptCheck.rows as any[]).length > 0;
+
+        // Owner-first: if owner has receipts → deduct from owner; else → deduct from HLC
+        const targetPartyId = partyHasLdoReceipts ? dispatchPartyId : (hlcPartyId ?? dispatchPartyId);
+
+        await tx.execute(sql`
+          INSERT INTO stock_ledger (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes)
+          VALUES (${d.date}, ${targetPartyId}, 9, 'dispatch', ${d.id}, 0, ${ldo}, 'Liters', ${label || 'Dispatch'})
+        `);
+      }
+
+      // Step 5: Zero out ALL party LDO balances first, then recompute from rebuilt ledger
+      // (Zero-first prevents stale balances for parties no longer in the ledger)
+      await tx.execute(sql`UPDATE stock_balances SET balance = 0, uom = 'Liters', last_updated = NOW() WHERE material_id = 9`);
+
+      const sums = await tx.execute(sql`
+        SELECT party_id,
+               COALESCE(SUM(quantity_in),0) - COALESCE(SUM(quantity_out),0) AS net_balance
+        FROM stock_ledger
+        WHERE material_id = 9
+        GROUP BY party_id
+      `);
+
+      for (const row of (sums.rows as any[])) {
+        const pId    = row.party_id as number | null;
+        const bal    = parseFloat(row.net_balance);
+        const updRes = await tx.execute(sql`
+          UPDATE stock_balances SET balance = ${bal}, uom = 'Liters', last_updated = NOW()
+          WHERE ${pId === null ? sql`party_id IS NULL` : sql`party_id = ${pId}`} AND material_id = 9
+        `);
+        if (((updRes as any).rowCount ?? 0) === 0) {
+          await tx.execute(sql`
+            INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
+            VALUES (${pId}, 9, ${bal}, 'Liters', NOW())
+          `);
+        }
+      }
+    });
+
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, message: 'rebuildLdoDispatchLedger_v1: rebuilt LDO dispatch ledger with clean notes and correct party attribution.' };
+  }
 }
 
 export const storage = new DatabaseStorage();

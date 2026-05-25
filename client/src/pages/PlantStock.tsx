@@ -1690,12 +1690,15 @@ export default function PlantStock() {
                     }
                     return Array.from(matMap.values()).map((global) => {
                       const partyCards = filteredBalances.filter(b => b.materialId === global.materialId);
+                      const isGlobalTank = /bitumen|ldo/i.test(global.materialName);
                       return (
                         <div key={global.materialId}>
                           {/* Global aggregate card */}
                           <div
                             className={`p-4 rounded-lg border mb-3 ${
-                              global.balance < 10
+                              !isGlobalTank && global.balance < 0
+                                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+                                : !isGlobalTank && global.balance < 10
                                 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                                 : 'bg-primary/5 border-primary/30'
                             }`}
@@ -1704,17 +1707,17 @@ export default function PlantStock() {
                             <div className="flex items-start justify-between mb-2">
                               <h3 className="font-semibold text-foreground">{global.materialName}</h3>
                               <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
-                                GLOBAL PHYSICAL
+                                {isGlobalTank ? 'PHYSICAL TANK BALANCE' : 'BOOK / THEORETICAL BALANCE'}
                               </span>
                             </div>
-                            {global.balance < 0 && (
-                              <p className="text-xs text-red-500 dark:text-red-400 mb-2">
-                                Global balance is negative — check for missing receipts.
+                            {!isGlobalTank && global.balance < 0 && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                                Reconciliation Required — book balance based on theoretical dispatch consumption.
                               </p>
                             )}
                             <div className={`text-2xl font-bold mb-3 ${
-                              global.balance < 0 ? 'text-red-600 dark:text-red-400' :
-                              global.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
+                              !isGlobalTank && global.balance < 0 ? 'text-amber-600 dark:text-amber-400' :
+                              !isGlobalTank && global.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
                             }`}>
                               {Math.abs(global.balance) < 1e-9 ? '0.000' : global.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{global.uom}</span>
                             </div>
@@ -1736,7 +1739,7 @@ export default function PlantStock() {
                                 key={idx}
                                 onClick={() => jumpToLedger(b.materialId, b.partyId)}
                                 className={`p-3 rounded-lg border cursor-pointer transition-all hover-elevate ${
-                                  b.balance < 0
+                                  b.balance < 0 && !/bitumen|ldo/i.test(b.materialName)
                                     ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                                     : 'bg-card border-border hover:border-primary/30'
                                 }`}
@@ -1749,11 +1752,11 @@ export default function PlantStock() {
                                   }`}>
                                     {b.partyName}
                                   </span>
-                                  {b.balance < 0 && (
-                                    <span className="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
+                                  {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) && (
+                                    <span className="px-1.5 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
                                   )}
                                 </div>
-                                <div className={`text-lg font-bold mb-2 ${b.balance < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
+                                <div className={`text-lg font-bold mb-2 ${b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
                                   {Math.abs(b.balance) < 1e-9 ? '0.000' : b.balance.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{b.uom}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1782,17 +1785,19 @@ export default function PlantStock() {
                       key={idx}
                       onClick={() => jumpToLedger(b.materialId, b.partyId)}
                       className={`p-4 rounded-lg border cursor-pointer transition-all hover-elevate ${
-                        b.balance < 10 
-                          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                        b.balance < 0 && !/bitumen|ldo/i.test(b.materialName)
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700'
+                          : b.balance < 10 && !/bitumen|ldo/i.test(b.materialName)
+                          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                           : 'bg-card border-border hover:border-primary/30'
                       }`}
                       data-testid={`card-balance-${b.materialId}-${b.partyId}`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-foreground">{b.materialName}</h3>
-                        {b.balance < 0 ? (
-                          <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
-                            NEGATIVE
+                        {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? (
+                          <span className="px-2 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">
+                            RECON. REQUIRED
                           </span>
                         ) : b.balance < 10 ? (
                           <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
@@ -1800,15 +1805,15 @@ export default function PlantStock() {
                           </span>
                         ) : null}
                       </div>
-                      {b.balance < 0 && (
-                        <p className="text-xs text-red-500 dark:text-red-400 mb-2">
-                          Balance is negative — check for missing receipts or data entry errors.
+                      {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                          Reconciliation Required — book balance based on theoretical dispatch consumption. Enter opening stock in Material Masters to resolve.
                         </p>
                       )}
                       
                       <div className={`text-2xl font-bold ${b.convertedBalance !== null ? 'mb-1' : 'mb-3'} ${
-                        b.balance < 0 ? 'text-red-600 dark:text-red-400' : 
-                        b.balance < 10 ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
+                        b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? 'text-amber-600 dark:text-amber-400' : 
+                        b.balance < 10 && !/bitumen|ldo/i.test(b.materialName) ? 'text-amber-600 dark:text-amber-400' : 'text-primary'
                       }`}>
                         {Math.abs(b.balance) < 1e-9 ? '0.000' : b.balance.toFixed(3)} <span className="text-base font-normal text-muted-foreground">{b.uom}</span>
                       </div>
@@ -1886,7 +1891,7 @@ export default function PlantStock() {
                         <th className="text-left p-3 font-semibold">Issued To</th>
                         <th className="text-right p-3 font-semibold text-green-600 dark:text-green-400">In</th>
                         <th className="text-right p-3 font-semibold text-red-600 dark:text-red-400">Out</th>
-                        <th className="text-right p-3 font-semibold">{selectedPartyId === "all" ? "Global Balance" : "Balance"}</th>
+                        <th className="text-right p-3 font-semibold">{selectedPartyId === "all" ? "Global Balance" : isTankedMaterial ? "Physical Tank Balance" : "Book Balance"}</th>
                         {selectedPartyId === "all" && (
                           <th className="text-right p-3 font-semibold text-muted-foreground">Party Balance</th>
                         )}
@@ -2049,7 +2054,7 @@ export default function PlantStock() {
                               {isBF ? (displayBalance < 0 ? Math.abs(displayBalance).toFixed(3) : '-') : (displayOut > 0 ? displayOut.toFixed(3) : '-')}
                             </div>
                           </td>
-                          <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                          <td className={`p-3 text-right font-bold ${displayBalance < -1e-9 && !isTankedMaterial ? 'text-red-600 dark:text-red-400' : ''}`}>
                             <span>
                               {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
                             </span>
@@ -2059,8 +2064,8 @@ export default function PlantStock() {
                                 <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
                               </div>
                             )}
-                            {displayBalance < -1e-9 && !isBF && (
-                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">NEG</span>
+                            {displayBalance < -1e-9 && !isBF && !isTankedMaterial && (
+                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
                             )}
                           </td>
                           {selectedPartyId === "all" && (() => {
