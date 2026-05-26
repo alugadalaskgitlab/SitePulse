@@ -1066,7 +1066,7 @@ export default function PlantShiftLog() {
           <div className="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-600 p-4 flex gap-3 items-start" data-testid="banner-divergence-warnings">
             <span className="text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0">⚠</span>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm mb-1">LDO Reading Discrepancy Detected</p>
+              <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm mb-1">Flow meter variance from dip reading — stock computed from dip</p>
               <ul className="space-y-1">
                 {postSaveWarnings.map((w, i) => (
                   <li key={i} className="text-yellow-700 dark:text-yellow-400 text-sm" data-testid={`text-divergence-warning-${i}`}>{w}</li>

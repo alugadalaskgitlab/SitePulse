@@ -3269,6 +3269,20 @@ export async function registerRoutes(
   // Accessible to any authenticated user with plant_stock view rights.
   // ============================================
 
+  // LDO Contractor Consumption Report — theoretical norm-based LDO per contractor
+  app.get("/api/plant-module/ldo-reports/contractor", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_stock")) return;
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      const data = await storage.getLdoContractorConsumption({ dateFrom, dateTo });
+      res.json(data);
+    } catch (e) {
+      console.error("/api/plant-module/ldo-reports/contractor error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/plant-module/ldo-reconciliation", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_stock")) return;

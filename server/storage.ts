@@ -757,6 +757,8 @@ export interface IStorage {
   
   // Dispatch Variance Report
   getDispatchesWithVariance(filters?: { dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]>;
+  getLdoContractorConsumption(filters?: { dateFrom?: string; dateTo?: string }): Promise<Array<{ partyId: number | null; partyName: string; loads: number; totalMt: number; theoreticalLdoL: number; actualLdoL: number; }>>;
+
 
   // Personnel Master
   getPersonnel(includeInactive?: boolean): Promise<Personnel[]>;
@@ -6271,6 +6273,22 @@ export class DatabaseStorage implements IStorage {
             uom: stockUom,
             notes: conversionNote,
           });
+          // Store → Tank: also create a matching quantityIn entry so the tank balance increases.
+          // Total LDO stock is unchanged (store out = tank in), but T1/T2 balance reflects the fill.
+          if (isTankFill) {
+            await tx.insert(stockLedger).values({
+              date: issue.date,
+              partyId: stockPartyId,
+              materialId: issue.materialId,
+              transactionType: "tank_transfer",
+              referenceId: result.id,
+              quantityIn: stockQuantity,
+              quantityOut: 0,
+              uom: stockUom,
+              tankNumber: issue.ldoTankNumber,
+              notes: `Fill LDO Tank ${issue.ldoTankNumber} from Store (${stockQuantity.toFixed(1)} ${stockUom})`,
+            });
+          }
         }
 
       // When LDO or DIESEL is issued directly to a tank, auto-create a receipt row
@@ -6330,7 +6348,7 @@ export class DatabaseStorage implements IStorage {
         // (Pre-fix LDO-tank issues had no ledger entry — no reversal needed for those.)
         const [existingIssueLedger] = await tx.select({ id: stockLedger.id })
           .from(stockLedger)
-          .where(and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id)))
+          .where(and(inArray(stockLedger.transactionType, ["issue", "tank_transfer"]), eq(stockLedger.referenceId, id)))
           .limit(1);
 
         if (existingIssueLedger != null) {
@@ -6372,9 +6390,9 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      // Delete old ledger entry (regardless of LDO status — keeps ledger clean)
+      // Delete old ledger entries (issue + both legs of any tank_transfer — keeps ledger clean)
       await tx.delete(stockLedger).where(
-        and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
+        and(inArray(stockLedger.transactionType, ["issue", "tank_transfer"]), eq(stockLedger.referenceId, id))
       );
 
       // Always apply new stock impact and write ledger entry (including LDO-tank issues).
@@ -6399,24 +6417,40 @@ export class DatabaseStorage implements IStorage {
             });
           }
           
-          const newLdoTankNote = (issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber) != null
-            ? ` → LDO Tank ${issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber}`
-            : '';
+          const newLdoTankNum = issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber;
+          const isNewTankFill = newLdoTankNum != null && /^(ldo|diesel)$/i.test(newMaterial.name.trim());
+          const newLdoTankNote = newLdoTankNum != null ? ` → LDO Tank ${newLdoTankNum}` : '';
+          const verb = isNewTankFill ? 'Transfer to' : 'Issue to';
           const conversionNote = newStockQuantity !== newQuantity
-            ? `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
-            : `Issue to ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote}`;
+            ? `${verb} ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote} (${newQuantity} ${newUom} = ${newStockQuantity.toFixed(3)} ${newStockUom})`
+            : `${verb} ${newIssuedTo}${newPurpose ? ` - ${newPurpose}` : ''}${newLdoTankNote}`;
           
           await tx.insert(stockLedger).values({
             date: newDate,
             partyId: newStockPartyId,
             materialId: newMaterialId,
-            transactionType: "issue",
+            transactionType: isNewTankFill ? "tank_transfer" : "issue",
             referenceId: result.id,
             quantityOut: newStockQuantity,
             balanceAfter: newBalance,
             uom: newStockUom,
             notes: conversionNote,
           });
+          // Store → Tank: matching quantityIn so tank balance increases (net total unchanged).
+          if (isNewTankFill) {
+            await tx.insert(stockLedger).values({
+              date: newDate,
+              partyId: newStockPartyId,
+              materialId: newMaterialId,
+              transactionType: "tank_transfer",
+              referenceId: result.id,
+              quantityIn: newStockQuantity,
+              quantityOut: 0,
+              uom: newStockUom,
+              tankNumber: newLdoTankNum,
+              notes: `Fill LDO Tank ${newLdoTankNum} from Store (${newStockQuantity.toFixed(1)} ${newStockUom})`,
+            });
+          }
         }
 
       // Sync linked ldo_flow_readings receipt row: drop old then re-insert.
@@ -6478,7 +6512,7 @@ export class DatabaseStorage implements IStorage {
           }
           
           await tx.delete(stockLedger).where(
-            and(eq(stockLedger.transactionType, "issue"), eq(stockLedger.referenceId, id))
+            and(inArray(stockLedger.transactionType, ["issue", "tank_transfer"]), eq(stockLedger.referenceId, id))
           );
         }
 
@@ -7332,6 +7366,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get dispatches with actual consumption differing from theoretical (variance report)
+  async getLdoContractorConsumption(filters?: { dateFrom?: string; dateTo?: string }): Promise<Array<{ partyId: number | null; partyName: string; loads: number; totalMt: number; theoreticalLdoL: number; actualLdoL: number; }>> {
+    const conditions: any[] = [];
+    if (filters?.dateFrom) conditions.push(gte(truckDispatches.date, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(truckDispatches.date, filters.dateTo));
+
+    const rows = await db
+      .select({
+        partyId: truckDispatches.partyId,
+        partyName: parties.name,
+        loads: sql<number>`COUNT(*)::int`,
+        totalMt: sql<number>`SUM(${truckDispatches.loadWeight})`,
+        theoreticalLdoL: sql<number>`SUM(${truckDispatches.theoreticalLdoQty})`,
+        actualLdoL: sql<number>`SUM(COALESCE(${truckDispatches.actualLdoQty}, ${truckDispatches.theoreticalLdoQty}))`,
+      })
+      .from(truckDispatches)
+      .leftJoin(parties, eq(truckDispatches.partyId, parties.id))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .groupBy(truckDispatches.partyId, parties.name)
+      .orderBy(sql`SUM(${truckDispatches.theoreticalLdoQty}) DESC`);
+
+    return rows.map(r => ({
+      partyId: r.partyId,
+      partyName: r.partyName ?? "— (No party)",
+      loads: r.loads ?? 0,
+      totalMt: r.totalMt ?? 0,
+      theoreticalLdoL: r.theoreticalLdoL ?? 0,
+      actualLdoL: r.actualLdoL ?? 0,
+    }));
+  }
+
   async getDispatchesWithVariance(filters?: { dateFrom?: string; dateTo?: string }): Promise<TruckDispatch[]> {
     let conditions = [
       sql`(${truckDispatches.bitumenVariancePercent} IS NOT NULL AND ${truckDispatches.bitumenVariancePercent} != 0)
@@ -12724,7 +12788,7 @@ export class DatabaseStorage implements IStorage {
           `[ShiftLog #${log.id}] LDO ${label} divergence: meter=${meterConsumed.toFixed(0)} L, dip=${dipConsumed.toFixed(0)} L, diff=${diff.toFixed(0)} L`
         );
         divergenceWarnings.push(
-          `LDO ${label}: meter shows ${Math.round(meterConsumed)} L consumed but dip-stick shows ${Math.round(dipConsumed)} L — difference of ${Math.round(diff)} L exceeds threshold. Check for a measurement error or meter fault.`
+          `Flow meter variance from dip reading (LDO ${label}): meter shows ${Math.round(meterConsumed)} L but dip shows ${Math.round(dipConsumed)} L — variance ${Math.round(diff)} L. Physical stock is computed from dip.`
         );
       }
     };

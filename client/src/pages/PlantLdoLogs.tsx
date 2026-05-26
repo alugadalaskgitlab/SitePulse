@@ -7,9 +7,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap, Pencil, Users, BarChart3 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -145,6 +146,28 @@ export default function PlantLdoLogs() {
   const { data: logs, isLoading } = useQuery<LdoLog[]>({
     queryKey: ["/api/plant-module/ldo-logs"],
   });
+
+  const [ldoTab, setLdoTab] = useState<"actual" | "contractor" | "efficiency">("actual");
+  const [contractorFrom, setContractorFrom] = useState("");
+  const [contractorTo, setContractorTo] = useState("");
+
+  type ContractorRow = { partyId: number | null; partyName: string; loads: number; totalMt: number; theoreticalLdoL: number; actualLdoL: number };
+  const contractorQKey = ["/api/plant-module/ldo-reports/contractor", contractorFrom, contractorTo];
+  const { data: contractorData, isLoading: contractorLoading } = useQuery<ContractorRow[]>({
+    queryKey: contractorQKey,
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (contractorFrom) qs.set("dateFrom", contractorFrom);
+      if (contractorTo) qs.set("dateTo", contractorTo);
+      const res = await fetch(`/api/plant-module/ldo-reports/contractor?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error("fetch failed");
+      return res.json();
+    },
+    enabled: ldoTab === "contractor" || ldoTab === "efficiency",
+  });
+
+  const totalTheoretical = contractorData?.reduce((s, r) => s + r.theoreticalLdoL, 0) ?? 0;
+  const totalActualDip = logs?.reduce((s, l) => s + (l.ldoConsumed ?? 0), 0) ?? 0;
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
@@ -628,22 +651,6 @@ export default function PlantLdoLogs() {
         </Dialog>
       </div>
 
-      {canExport && (
-        <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!logs?.length} data-testid="button-export-excel">
-              <Download className="w-4 h-4" /> Export Excel
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!logs?.length} data-testid="button-export-pdf">
-              <Download className="w-4 h-4" /> Export PDF
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
-              <Printer className="w-4 h-4" /> Print
-            </Button>
-          </div>
-        </div>
-      )}
-
       <AlertDialog open={duplicateWarningOpen} onOpenChange={setDuplicateWarningOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -664,64 +671,239 @@ export default function PlantLdoLogs() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Droplets className="w-5 h-5" />
-            LDO Logs
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center p-8">
-              <Loader2 className="w-6 h-6 animate-spin" />
-            </div>
-          ) : !logs?.length ? (
-            <p className="text-muted-foreground text-center py-8">No LDO logs recorded yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {logs.map((log) => {
-                const variance = log.variance || 0;
-                const isExcess = variance < 0;
-                return (
-                  <div key={log.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">{log.date}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Production: {log.tonsProduced?.toFixed(3)} MT | Consumed: {log.ldoConsumed?.toFixed(3)} L
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Opening: {log.openingStock} L + Received: {log.ldoReceived} L | Closing: {log.closingStock} L
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Expected: {log.expectedLdo?.toFixed(3)} L (@ {DEFAULT_LDO_NORM} L/ton)
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/ton</p>
-                      <Badge variant="secondary" className="gap-1">
-                        {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {Math.abs(variance).toFixed(3)} L {isExcess ? "excess" : "saved"}
-                      </Badge>
-                      {canEdit && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 gap-1 text-xs"
-                          onClick={() => openEditDialog(log)}
-                          data-testid={`button-edit-ldo-log-${log.id}`}
-                        >
-                          <Pencil className="w-3 h-3" /> Edit
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+      <Tabs value={ldoTab} onValueChange={(v) => setLdoTab(v as typeof ldoTab)}>
+        <TabsList className="grid w-full grid-cols-3" data-testid="tabs-ldo-reports">
+          <TabsTrigger value="actual" className="gap-1.5" data-testid="tab-actual">
+            <Droplets className="w-4 h-4" /> Actual Consumption
+          </TabsTrigger>
+          <TabsTrigger value="contractor" className="gap-1.5" data-testid="tab-contractor">
+            <Users className="w-4 h-4" /> Contractor Norms
+          </TabsTrigger>
+          <TabsTrigger value="efficiency" className="gap-1.5" data-testid="tab-efficiency">
+            <BarChart3 className="w-4 h-4" /> Efficiency
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab A: Actual Dip-Based Consumption ── */}
+        <TabsContent value="actual" className="space-y-4 mt-4">
+          {canExport && (
+            <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
+              <p className="text-sm text-muted-foreground flex-1">Plant LDO logs — actual dip-based consumption (internal tracking)</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!logs?.length} data-testid="button-export-excel">
+                  <Download className="w-4 h-4" /> Export Excel
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!logs?.length} data-testid="button-export-pdf">
+                  <Download className="w-4 h-4" /> Export PDF
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
+                  <Printer className="w-4 h-4" /> Print
+                </Button>
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Droplets className="w-5 h-5" />
+                Actual Plant Consumption (Dip-Based)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+              ) : !logs?.length ? (
+                <p className="text-muted-foreground text-center py-8">No LDO logs recorded yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {logs.map((log) => {
+                    const variance = log.variance || 0;
+                    const isExcess = variance < 0;
+                    return (
+                      <div key={log.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{log.date}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Production: {log.tonsProduced?.toFixed(3)} MT | Consumed (dip): {log.ldoConsumed?.toFixed(3)} L
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Opening: {log.openingStock} L + Received: {log.ldoReceived} L | Closing: {log.closingStock} L
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Norm: {log.expectedLdo?.toFixed(3)} L (@ {DEFAULT_LDO_NORM} L/ton)
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/ton</p>
+                          <Badge variant="secondary" className="gap-1">
+                            {isExcess ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            {Math.abs(variance).toFixed(3)} L {isExcess ? "excess" : "saved"}
+                          </Badge>
+                          {canEdit && (
+                            <Button size="sm" variant="ghost" className="h-7 px-2 gap-1 text-xs"
+                              onClick={() => openEditDialog(log)} data-testid={`button-edit-ldo-log-${log.id}`}>
+                              <Pencil className="w-3 h-3" /> Edit
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab B: Contractor LDO Norm (Billing/Commercial) ── */}
+        <TabsContent value="contractor" className="space-y-4 mt-4">
+          <div className="flex flex-wrap items-center gap-3 p-4 rounded-lg bg-muted/50">
+            <p className="text-sm text-muted-foreground flex-1">Theoretical LDO billed to each contractor based on dispatch norms (MT × L/ton norm)</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input type="date" value={contractorFrom} onChange={e => setContractorFrom(e.target.value)} className="w-36 h-8 text-sm" placeholder="From" data-testid="input-contractor-from" />
+              <Input type="date" value={contractorTo} onChange={e => setContractorTo(e.target.value)} className="w-36 h-8 text-sm" placeholder="To" data-testid="input-contractor-to" />
+            </div>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Contractor LDO Consumption (Norm-Based)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {contractorLoading ? (
+                <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
+              ) : !contractorData?.length ? (
+                <p className="text-muted-foreground text-center py-8">No dispatch data found for the selected period.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground text-left">
+                        <th className="py-2 pr-4 font-medium">Contractor / Party</th>
+                        <th className="py-2 pr-4 font-medium text-right">Loads</th>
+                        <th className="py-2 pr-4 font-medium text-right">Production (MT)</th>
+                        <th className="py-2 pr-4 font-medium text-right">Theoretical LDO (L)</th>
+                        <th className="py-2 font-medium text-right">Actual LDO Billed (L)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contractorData.map((row, i) => (
+                        <tr key={i} className="border-b last:border-0 hover:bg-muted/50" data-testid={`row-contractor-ldo-${i}`}>
+                          <td className="py-2 pr-4 font-medium">{row.partyName}</td>
+                          <td className="py-2 pr-4 text-right">{row.loads}</td>
+                          <td className="py-2 pr-4 text-right">{row.totalMt.toFixed(2)}</td>
+                          <td className="py-2 pr-4 text-right">{row.theoreticalLdoL.toFixed(1)}</td>
+                          <td className="py-2 text-right">{row.actualLdoL.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 font-semibold">
+                        <td className="py-2 pr-4">Total</td>
+                        <td className="py-2 pr-4 text-right">{contractorData.reduce((s, r) => s + r.loads, 0)}</td>
+                        <td className="py-2 pr-4 text-right">{contractorData.reduce((s, r) => s + r.totalMt, 0).toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-right">{totalTheoretical.toFixed(1)}</td>
+                        <td className="py-2 text-right">{contractorData.reduce((s, r) => s + r.actualLdoL, 0).toFixed(1)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Contractor stock uses theoretical norms (MT × {DEFAULT_LDO_NORM} L/ton). Actual dip consumption is tracked separately as HLC internal.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab C: Efficiency / Variance (Theoretical vs Actual Dip) ── */}
+        <TabsContent value="efficiency" className="space-y-4 mt-4">
+          <div className="p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+            Variance = Contractor norm (theoretical dispatch-based) vs Actual plant consumption (dip-based).
+            Use the Contractor date range above to align periods.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-xs text-muted-foreground mb-1">Contractor Norm (Theoretical)</p>
+                <p className="text-2xl font-bold text-primary" data-testid="text-theoretical-total">{totalTheoretical.toFixed(1)} L</p>
+                <p className="text-xs text-muted-foreground mt-1">Sum of dispatch norms</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-xs text-muted-foreground mb-1">Actual Plant (Dip-Based)</p>
+                <p className="text-2xl font-bold text-primary" data-testid="text-actual-dip-total">{totalActualDip.toFixed(1)} L</p>
+                <p className="text-xs text-muted-foreground mt-1">Sum of LDO log entries</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-xs text-muted-foreground mb-1">Savings / Excess</p>
+                {totalTheoretical > 0 ? (
+                  <>
+                    <p className={`text-2xl font-bold ${totalTheoretical > totalActualDip ? "text-green-600 dark:text-green-400" : "text-destructive"}`}
+                      data-testid="text-variance-total">
+                      {(totalTheoretical - totalActualDip).toFixed(1)} L
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {totalTheoretical > totalActualDip ? "Actual less than norm — efficient" : "Actual exceeds norm — investigate"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground text-sm mt-2">Select contractor date range</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3 className="w-4 h-4" /> Per-Day Actual Efficiency
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!logs?.length ? (
+                <p className="text-muted-foreground text-center py-8">No LDO logs recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground text-left">
+                        <th className="py-2 pr-4 font-medium">Date</th>
+                        <th className="py-2 pr-4 font-medium text-right">Prod (MT)</th>
+                        <th className="py-2 pr-4 font-medium text-right">Norm (L)</th>
+                        <th className="py-2 pr-4 font-medium text-right">Actual Dip (L)</th>
+                        <th className="py-2 pr-4 font-medium text-right">Savings (L)</th>
+                        <th className="py-2 font-medium text-right">Efficiency (L/MT)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logs.map((log) => {
+                        const savings = (log.expectedLdo ?? 0) - (log.ldoConsumed ?? 0);
+                        return (
+                          <tr key={log.id} className="border-b last:border-0 hover:bg-muted/50">
+                            <td className="py-2 pr-4">{log.date}</td>
+                            <td className="py-2 pr-4 text-right">{log.tonsProduced?.toFixed(2) ?? "—"}</td>
+                            <td className="py-2 pr-4 text-right">{log.expectedLdo?.toFixed(1) ?? "—"}</td>
+                            <td className="py-2 pr-4 text-right">{log.ldoConsumed?.toFixed(1) ?? "—"}</td>
+                            <td className={`py-2 pr-4 text-right font-medium ${savings >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
+                              {savings >= 0 ? "+" : ""}{savings.toFixed(1)}
+                            </td>
+                            <td className="py-2 text-right">{log.efficiency?.toFixed(3) ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -1,0 +1,164 @@
+Please correct the LDO architecture as follows with minimum UI/code disturbance.
+
+The earlier logic mixed:
+
+* theoretical contractor consumption,
+* actual physical tank consumption,
+* flow meter readings,
+* heating sessions,
+* dispatch norms.
+
+These must now be separated properly.
+
+FINAL REQUIRED STRUCTURE:
+
+---
+
+1. CONTRACTOR / PARTY LDO ACCOUNTING
+
+---
+
+For contractor/party supplied LDO:
+
+Deduct contractor stock ONLY from theoretical dispatch norms.
+
+Example:
+44 MT × 6.25 L/MT = 275 L
+
+This theoretical quantity should reduce contractor ledger balance.
+
+This is contractual/commercial accounting.
+
+Do NOT reduce contractor stock from dip actuals.
+
+Do NOT expose actual plant efficiency/savings to contractor ledger.
+
+---
+
+2. HLC INTERNAL ACTUAL CONSUMPTION
+
+---
+
+Actual plant consumption must come ONLY from LDO Tank Tracker dip readings.
+
+Formula:
+
+Opening tank dip
+
+* receipts/transfers into tank
+
+- closing tank dip
+  = actual consumption
+
+This is INTERNAL operational tracking only.
+
+---
+
+3. STOCK LEDGER BEHAVIOR
+
+---
+
+LDO Stock Ledger should show only:
+
+1. Opening balances
+2. Receipts
+3. Transfers/issues between Store and Tanks
+4. One daily “Actual Consumption” posting from LDO Tracker
+5. Manual adjustments
+
+Do NOT separately post:
+
+* dispatch consumption
+* heating session consumption
+* flow meter consumption
+* shift log consumption
+* dip rows
+
+Only ONE consolidated daily actual consumption row should come from the LDO Tracker.
+
+---
+
+4. STORE → TANK TRANSFER
+
+---
+
+When issuing LDO from Store to Tank:
+
+* Store stock decreases
+* Tank stock increases
+* Total stock does NOT change
+* This is NOT consumption
+
+---
+
+5. DIRECT RECEIPTS TO TANK
+
+---
+
+If receipt is directly into Tank 1 or Tank 2:
+
+* increase that tank balance directly.
+
+---
+
+6. LDO TRACKER
+
+---
+
+LDO Tracker should remain the source of truth for physical stocks.
+
+Tracker should show:
+
+* opening dip
+* closing dip
+* receipts into tank
+* transfers into tank
+* actual dip consumption
+* flow meter reference
+* variance
+* physical tank balance
+
+---
+
+7. FLOW METER
+
+---
+
+Flow meter is reference only.
+
+Do NOT use flow meter for stock deduction.
+
+Rename mismatch warning to:
+
+“Flow meter variance from dip reading — physical stock computed from dip.”
+
+---
+
+8. REPORTS
+
+---
+
+Create/maintain 3 separate reporting views:
+
+A. Contractor Consumption Report
+(theoretical dispatch norm based)
+
+B. Actual Plant Consumption Report
+(dip-based actual)
+
+C. Variance / Efficiency Report
+(theoretical vs actual savings/loss)
+
+---
+
+9. IMPORTANT BUSINESS RULE
+
+---
+
+Contractor ledger uses theoretical norms.
+
+HLC internal tracker uses actual dip consumption.
+
+These two systems must remain separate.
+
+Do not merge them.
