@@ -6223,10 +6223,12 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Always deduct from main stock and write a ledger entry — including when issuing
-        // LDO/DIESEL to a tank. The ldo_flow_readings handles tank-level tracking separately.
+      // Deduct from main stock and write a ledger entry.
+        // When issuing LDO/DIESEL to a boiler/dryer tank (ldoTankNumber set), this is a
+        // store→tank TRANSFER, not consumption. Use "tank_transfer" type so the ledger
+        // shows it correctly and it is NOT counted as theoretical consumption.
+        // Actual LDO/Diesel consumption is tracked via shift log dip readings.
         {
-          // Update stock balance (reduce)
           const condition = stockPartyId === null 
             ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
             : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, issue.materialId));
@@ -6247,17 +6249,20 @@ export class DatabaseStorage implements IStorage {
             });
           }
           
-          // Add ledger entry with converted quantity
+          // LDO or Diesel issued directly into a boiler/dryer tank = store→tank transfer
+          const isTankFill = issue.ldoTankNumber != null && material &&
+            /^(ldo|diesel)$/i.test(material.name.trim());
           const ldoTankNote = issue.ldoTankNumber != null ? ` → LDO Tank ${issue.ldoTankNumber}` : '';
+          const verb = isTankFill ? 'Transfer to' : 'Issue to';
           const conversionNote = stockQuantity !== issue.quantity
-            ? `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote} (${issue.quantity} ${issue.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
-            : `Issue to ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote}`;
+            ? `${verb} ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote} (${issue.quantity} ${issue.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
+            : `${verb} ${issue.issuedTo}${issue.purpose ? ` - ${issue.purpose}` : ''}${ldoTankNote}`;
           
           await tx.insert(stockLedger).values({
             date: issue.date,
             partyId: stockPartyId,
             materialId: issue.materialId,
-            transactionType: "issue",
+            transactionType: isTankFill ? "tank_transfer" : "issue",
             referenceId: result.id,
             quantityOut: stockQuantity,
             balanceAfter: newBalance,

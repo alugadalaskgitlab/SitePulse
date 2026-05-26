@@ -272,6 +272,7 @@ export default function PlantStock() {
         case 'adjustment': return 3;
         case 'return': return 4;
         case 'transfer': return 4;
+        case 'tank_transfer': return 4;
         case 'direct_purchase': return 5;
         case 'equipment_usage': return 6;
         case 'dpr_equipment_usage': return 6;
@@ -682,6 +683,12 @@ export default function PlantStock() {
         if ((entry.quantityIn || 0) > 0) summaryMap[key].received += getConvertedQty(entry.quantityIn);
         if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
+      // Tank transfer: LDO/Diesel moved from store drums into boiler/dryer tank.
+      // This is a store→tank movement — treat the same as a regular inter-party transfer
+      // (stock leaves the drum store, but is NOT counted as theoretical consumption).
+      else if (entry.transactionType === "tank_transfer") {
+        if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
+      }
       // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
       else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
@@ -773,6 +780,10 @@ export default function PlantStock() {
       // Transfers: quantityIn = stock arriving (add to receipts), quantityOut = stock leaving (add to issues)
       if (entry.transactionType === "transfer") {
         if ((entry.quantityIn || 0) > 0) summaryMap[key].totalReceipts += getConvertedQty(entry.quantityIn);
+        if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
+      }
+      // Tank transfer: LDO/Diesel moved from store drums into boiler/dryer tank — reduces store balance
+      if (entry.transactionType === "tank_transfer") {
         if ((entry.quantityOut || 0) > 0) summaryMap[key].totalIssues += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Issues: dispatch, issue, equipment_usage, dpr_equipment_usage
@@ -888,7 +899,7 @@ export default function PlantStock() {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -994,6 +1005,7 @@ export default function PlantStock() {
           case 'receipt': return 'Receipt';
           case 'dispatch': return 'Dispatch';
           case 'issue': return 'Issue';
+          case 'tank_transfer': return '→ Boiler Tank';
           case 'opening': return 'Opening';
           case 'adjustment': return 'Adjustment';
           case 'return': return 'Return';
@@ -1084,6 +1096,7 @@ export default function PlantStock() {
         case 'receipt': return 'Receipt';
         case 'dispatch': return 'Dispatch';
         case 'issue': return 'Issue';
+        case 'tank_transfer': return '→ Boiler Tank';
         case 'opening': return 'Opening';
         case 'adjustment': return 'Adjustment';
         case 'equipment_usage': return 'Equip. Usage';
@@ -1210,6 +1223,8 @@ export default function PlantStock() {
                   ? entry.notes.replace('Direct purchase at ', '')
                   : entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to ')
                   ? entry.notes.replace('Issue to ', '').split(' - ')[0]
+                  : entry.transactionType === 'tank_transfer' && entry.notes?.startsWith('Transfer to ')
+                  ? entry.notes.replace('Transfer to ', '')
                   : entry.notes || '-';
                 const tanked = isPrintRowTanked(entry.materialId);
                 const t1Cell = printHasTankedRows
@@ -1432,6 +1447,7 @@ export default function PlantStock() {
                   <SelectItem value="dpr_equipment_usage">DPR Equip. Usage</SelectItem>
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
+                  <SelectItem value="tank_transfer">→ Boiler Tank</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
                   <SelectItem value="return">Return</SelectItem>
                   <SelectItem value="transfer">Transfer</SelectItem>
@@ -1953,6 +1969,8 @@ export default function PlantStock() {
                                 ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
                                 : entry.transactionType === 'issue'
                                 ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+                                : entry.transactionType === 'tank_transfer'
+                                ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage'
                                 ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
                                 : entry.transactionType === 'transfer'
@@ -1965,6 +1983,7 @@ export default function PlantStock() {
                                 : entry.transactionType === 'receipt' ? 'Receipt'
                                 : entry.transactionType === 'dispatch' ? 'Dispatch'
                                 : entry.transactionType === 'issue' ? 'Issue'
+                                : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank'
                                 : entry.transactionType === 'opening' ? 'Opening'
                                 : entry.transactionType === 'adjustment' ? 'Adjustment'
                                 : entry.transactionType === 'return' ? 'Return'
@@ -1995,6 +2014,8 @@ export default function PlantStock() {
                                     return entry.notes.replace('Direct purchase at ', '');
                                   if (entry.transactionType === 'issue' && entry.notes?.startsWith('Issue to '))
                                     return entry.notes.replace('Issue to ', '').split(' - ')[0];
+                                  if (entry.transactionType === 'tank_transfer' && entry.notes?.startsWith('Transfer to '))
+                                    return entry.notes.replace('Transfer to ', '');
                                   return entry.notes || '-';
                                 })()}
                               </span>
@@ -2016,7 +2037,7 @@ export default function PlantStock() {
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
                                 </Link>
                               )}
-                              {!isBF && entry.transactionType === 'issue' && entry.referenceId != null && (
+                              {!isBF && (entry.transactionType === 'issue' || entry.transactionType === 'tank_transfer') && entry.referenceId != null && (
                                 <Link href={`/plant/material-issues?highlight=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
                                   <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this issue" />
                                 </Link>
