@@ -276,6 +276,9 @@ export default function PlantStock() {
         case 'direct_purchase': return 5;
         case 'equipment_usage': return 6;
         case 'dpr_equipment_usage': return 6;
+        case 'ldo_dip_consumption': return 6;
+        case 'ldo_shift_consumption': return 6;
+        case 'ldo_heating_consumption': return 6;
         case 'issue': return 7;
         case 'dispatch': return 8;
         default: return 9;
@@ -689,8 +692,8 @@ export default function PlantStock() {
       else if (entry.transactionType === "tank_transfer") {
         if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
-      // Consumed: dispatch, issue, equipment_usage (equipment_issue excluded from processedLedger)
-      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage") {
+      // Consumed: dispatch, issue, equipment_usage, and LDO-specific meter consumption
+      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_shift_consumption" || entry.transactionType === "ldo_heating_consumption" || entry.transactionType === "ldo_dip_consumption") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Direct purchases bypass plant stock - tracked but no balance impact
@@ -1013,6 +1016,9 @@ export default function PlantStock() {
           case 'equipment_usage': return 'Equip. Usage';
           case 'dpr_equipment_usage': return 'DPR Equip. Usage';
           case 'direct_purchase': return 'Direct Site Purchase';
+          case 'ldo_shift_consumption': return 'LDO Shift Meter';
+          case 'ldo_heating_consumption': return 'LDO Heating';
+          case 'ldo_dip_consumption': return 'LDO Dip';
           case 'opening_balance': return 'B/F Opening Bal.';
           default: return type;
         }
@@ -1102,6 +1108,9 @@ export default function PlantStock() {
         case 'equipment_usage': return 'Equip. Usage';
         case 'dpr_equipment_usage': return 'DPR Equip. Usage';
         case 'direct_purchase': return 'Direct Site Purchase';
+        case 'ldo_shift_consumption': return 'LDO Shift Meter';
+        case 'ldo_heating_consumption': return 'LDO Heating';
+        case 'ldo_dip_consumption': return 'LDO Dip';
         default: return type;
       }
     };
@@ -1446,6 +1455,9 @@ export default function PlantStock() {
                   <SelectItem value="equipment_usage">Equip. Usage</SelectItem>
                   <SelectItem value="dpr_equipment_usage">DPR Equip. Usage</SelectItem>
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
+                  <SelectItem value="ldo_shift_consumption">LDO Shift Meter</SelectItem>
+                  <SelectItem value="ldo_heating_consumption">LDO Heating</SelectItem>
+                  <SelectItem value="ldo_dip_consumption">LDO Dip</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
                   <SelectItem value="tank_transfer">→ Boiler Tank</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>

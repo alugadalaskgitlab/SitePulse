@@ -4309,7 +4309,7 @@ export class DatabaseStorage implements IStorage {
       // LDO IS tracked in store stock via dispatch — same owner-first model as bitumen/aggregates.
       const ldoQtyForPlan = (dispatchData as any).actualLdoQty ?? theoreticalLdoQty;
       if (ldoMaterial && ldoQtyForPlan > 0) {
-        plan.push({ matId: ldoMaterial.id, qty: ldoQtyForPlan, uom: "Liters", label: mixLabel, tankNumber: (dispatchData as any).ldoTankNumber ?? null });
+        plan.push({ matId: ldoMaterial.id, qty: ldoQtyForPlan, uom: "Liters", label: mixLabel, tankNumber: (dispatchData as any).ldoTankNumber ?? 1 });
       }
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
@@ -10461,6 +10461,7 @@ export class DatabaseStorage implements IStorage {
             quantityOut: consumption,
             balanceAfter: newBalance,
             uom: "Liters",
+            tankNumber: pair.tankNumber ?? 1,
             notes: `${noteKey} Opening: ${Math.round(pair.opening.volumeLiters)}L, Closing: ${Math.round(pair.closing.volumeLiters)}L`,
           });
           result.balancesFixed++;
@@ -12623,6 +12624,43 @@ export class DatabaseStorage implements IStorage {
     pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime, closingQtyT2);
     if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
 
+    // Write ldo_shift_consumption to stock_ledger so the T1 physical tank balance
+    // decreases correctly. Both boiler meter (T1) and dryer meter (T2) draw from
+    // the same physical Tank 1, so we combine their deltas into one entry.
+    const totalShiftLdoConsumed = (closingQtyT1 ?? 0) + (closingQtyT2 ?? 0);
+    await tx.delete(stockLedger).where(and(
+      eq(stockLedger.transactionType, 'ldo_shift_consumption'),
+      eq(stockLedger.referenceId, log.id),
+    ));
+    if (totalShiftLdoConsumed > 0) {
+      const [ldoMatRow] = await tx.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+        .limit(1);
+      if (ldoMatRow) {
+        const [ldoBalRow] = await tx.select({ partyId: stockBalances.partyId })
+          .from(stockBalances)
+          .where(and(
+            eq(stockBalances.materialId, ldoMatRow.id),
+            eq(stockBalances.uom, 'Liters'),
+            sql`${stockBalances.partyId} IS NOT NULL`,
+          ))
+          .orderBy(desc(stockBalances.balance))
+          .limit(1);
+        await tx.insert(stockLedger).values({
+          date: log.date,
+          partyId: ldoBalRow?.partyId ?? null,
+          materialId: ldoMatRow.id,
+          transactionType: 'ldo_shift_consumption',
+          referenceId: log.id,
+          quantityOut: totalShiftLdoConsumed,
+          uom: 'Liters',
+          tankNumber: 1,
+          notes: `Shift meter (${log.date}): boiler+dryer ${totalShiftLdoConsumed.toFixed(1)}L from Tank 1`,
+        });
+      }
+    }
+
     const bitumenRows: any[] = [];
     const pushBitumen = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
       if (depth === null || depth === undefined) return;
@@ -12810,6 +12848,10 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, id));
       await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, id));
       await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, id));
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, 'ldo_shift_consumption'),
+        eq(stockLedger.referenceId, id),
+      ));
       await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, id));
       await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, id));
       await tx.delete(plantShiftLogVersions).where(eq(plantShiftLogVersions.shiftLogId, id));
@@ -13869,6 +13911,41 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
       }
 
+      // Write ldo_heating_consumption to stock_ledger so the T1 physical tank balance
+      // decreases correctly. LDO for heating always comes from physical Tank 1.
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, 'ldo_heating_consumption'),
+        eq(stockLedger.referenceId, saved.id),
+      ));
+      if ((saved.ldoTank1Consumed ?? 0) > 0) {
+        const [ldoMatRow] = await tx.select({ id: plantMaterials.id })
+          .from(plantMaterials)
+          .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+          .limit(1);
+        if (ldoMatRow) {
+          const [ldoBalRow] = await tx.select({ partyId: stockBalances.partyId })
+            .from(stockBalances)
+            .where(and(
+              eq(stockBalances.materialId, ldoMatRow.id),
+              eq(stockBalances.uom, 'Liters'),
+              sql`${stockBalances.partyId} IS NOT NULL`,
+            ))
+            .orderBy(desc(stockBalances.balance))
+            .limit(1);
+          await tx.insert(stockLedger).values({
+            date: saved.date,
+            partyId: ldoBalRow?.partyId ?? null,
+            materialId: ldoMatRow.id,
+            transactionType: 'ldo_heating_consumption',
+            referenceId: saved.id,
+            quantityOut: saved.ldoTank1Consumed!,
+            uom: 'Liters',
+            tankNumber: 1,
+            notes: `Heating session #${saved.id} (${saved.date}): ${saved.ldoTank1Consumed}L from Tank 1`,
+          });
+        }
+      }
+
       // LDO Dip sync: upsert opening/closing dip readings into ldo_dip_readings
       // keyed by sourceHeatingSessionId so they round-trip cleanly on edits.
       await tx.delete(ldoDipReadings)
@@ -13917,6 +13994,10 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(equipmentUsage).where(eq(equipmentUsage.sourceHeatingSessionId, id));
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceHeatingSessionId, id));
       await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceHeatingSessionId, id));
+      await tx.delete(stockLedger).where(and(
+        eq(stockLedger.transactionType, 'ldo_heating_consumption'),
+        eq(stockLedger.referenceId, id),
+      ));
       await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
       return result.length > 0;
@@ -15688,6 +15769,158 @@ export class DatabaseStorage implements IStorage {
 
     await this.setSetting(SETTING_KEY, '1');
     return { applied: true, message: 'rebuildLdoDispatchLedger_v1: rebuilt LDO dispatch ledger with clean notes and correct party attribution.' };
+  }
+
+  // ── One-time: stamp tank_number=1 on existing LDO dispatch ledger rows ────
+  // backfillLdoDispatchConsumption_v1 inserted these rows without tank_number.
+  // Every LDO dispatch draws from Tank 1, so a single UPDATE covers them all.
+  async fixLdoDispatchTankNumbers_v1(): Promise<{ applied: boolean; updated: number; message: string }> {
+    const SETTING_KEY = 'fixLdoDispatchTankNumbers_v1';
+    const already = await this.getSetting(SETTING_KEY);
+    if (already) return { applied: false, updated: 0, message: 'fixLdoDispatchTankNumbers_v1: already applied, skipping.' };
+
+    const result = await db.execute(sql`
+      UPDATE stock_ledger
+      SET tank_number = 1
+      WHERE transaction_type = 'dispatch'
+        AND material_id = (SELECT id FROM plant_materials WHERE UPPER(TRIM(name)) = 'LDO' LIMIT 1)
+        AND tank_number IS NULL
+    `);
+    const updated = (result as any).rowCount ?? 0;
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, updated, message: `fixLdoDispatchTankNumbers_v1: set tank_number=1 on ${updated} LDO dispatch row(s).` };
+  }
+
+  // ── One-time: create ldo_heating_consumption ledger entries for existing sessions ─
+  async backfillLdoHeatingConsumption_v1(): Promise<{ applied: boolean; inserted: number; message: string }> {
+    const SETTING_KEY = 'backfillLdoHeatingConsumption_v1';
+    const already = await this.getSetting(SETTING_KEY);
+    if (already) return { applied: false, inserted: 0, message: 'backfillLdoHeatingConsumption_v1: already applied, skipping.' };
+
+    let inserted = 0;
+    await db.transaction(async (tx) => {
+      const [ldoMat] = await tx.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+        .limit(1);
+      if (!ldoMat) return;
+
+      const [ldoBal] = await tx.select({ partyId: stockBalances.partyId })
+        .from(stockBalances)
+        .where(and(
+          eq(stockBalances.materialId, ldoMat.id),
+          eq(stockBalances.uom, 'Liters'),
+          sql`${stockBalances.partyId} IS NOT NULL`,
+        ))
+        .orderBy(desc(stockBalances.balance))
+        .limit(1);
+      const storePartyId = ldoBal?.partyId ?? null;
+
+      const sessions = await tx.select().from(bitumenHeatingSessions)
+        .where(sql`${bitumenHeatingSessions.ldoTank1Consumed} > 0`);
+
+      for (const session of sessions) {
+        const existing = await tx.select({ id: stockLedger.id })
+          .from(stockLedger)
+          .where(and(
+            eq(stockLedger.transactionType, 'ldo_heating_consumption'),
+            eq(stockLedger.referenceId, session.id),
+          ))
+          .limit(1);
+        if (existing.length > 0) continue;
+
+        await tx.insert(stockLedger).values({
+          date: session.date,
+          partyId: storePartyId,
+          materialId: ldoMat.id,
+          transactionType: 'ldo_heating_consumption',
+          referenceId: session.id,
+          quantityOut: session.ldoTank1Consumed!,
+          uom: 'Liters',
+          tankNumber: 1,
+          notes: `Heating session #${session.id} (${session.date}): ${session.ldoTank1Consumed}L from Tank 1`,
+        });
+        inserted++;
+      }
+    });
+
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, inserted, message: `backfillLdoHeatingConsumption_v1: inserted ${inserted} heating consumption row(s).` };
+  }
+
+  // ── One-time: create ldo_shift_consumption ledger entries for existing shift logs ─
+  // Both boiler meter (T1) and dryer meter (T2) draw from physical Tank 1.
+  async backfillLdoShiftMeterConsumption_v1(): Promise<{ applied: boolean; inserted: number; message: string }> {
+    const SETTING_KEY = 'backfillLdoShiftMeterConsumption_v1';
+    const already = await this.getSetting(SETTING_KEY);
+    if (already) return { applied: false, inserted: 0, message: 'backfillLdoShiftMeterConsumption_v1: already applied, skipping.' };
+
+    let inserted = 0;
+    await db.transaction(async (tx) => {
+      const [ldoMat] = await tx.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+        .limit(1);
+      if (!ldoMat) return;
+
+      const [ldoBal] = await tx.select({ partyId: stockBalances.partyId })
+        .from(stockBalances)
+        .where(and(
+          eq(stockBalances.materialId, ldoMat.id),
+          eq(stockBalances.uom, 'Liters'),
+          sql`${stockBalances.partyId} IS NOT NULL`,
+        ))
+        .orderBy(desc(stockBalances.balance))
+        .limit(1);
+      const storePartyId = ldoBal?.partyId ?? null;
+
+      const logs = await tx.select().from(plantShiftLogs);
+
+      for (const log of logs) {
+        // Replicate the same logic as _syncShiftLogReadings for closingQtyT1/T2:
+        // when dryerFedFrom=TANK_1, T2 meter qty is already included in T1's combined row.
+        const dryerFedFrom = log.dryerFedFrom;
+        const meterDeltaT1 = (log.ldoTank1OpeningMeter != null && log.ldoTank1ClosingMeter != null)
+          ? Math.max(0, log.ldoTank1ClosingMeter - log.ldoTank1OpeningMeter)
+          : 0;
+        const meterDeltaT2 = (log.ldoTank2OpeningMeter != null && log.ldoTank2ClosingMeter != null)
+          ? Math.max(0, log.ldoTank2ClosingMeter - log.ldoTank2OpeningMeter)
+          : 0;
+        // closingQtyT1 mirrors _syncShiftLogReadings: combined when dryerFedFrom=TANK_1
+        const closingQtyT1 = (dryerFedFrom === 'TANK_1' && meterDeltaT1 > 0 && meterDeltaT2 > 0)
+          ? meterDeltaT1 + meterDeltaT2
+          : meterDeltaT1;
+        // closingQtyT2 is null when dryerFedFrom=TANK_1; otherwise include it (still Tank 1 physically)
+        const closingQtyT2 = dryerFedFrom === 'TANK_1' ? 0 : meterDeltaT2;
+        const totalConsumed = closingQtyT1 + closingQtyT2;
+        if (totalConsumed <= 0) continue;
+
+        const existing = await tx.select({ id: stockLedger.id })
+          .from(stockLedger)
+          .where(and(
+            eq(stockLedger.transactionType, 'ldo_shift_consumption'),
+            eq(stockLedger.referenceId, log.id),
+          ))
+          .limit(1);
+        if (existing.length > 0) continue;
+
+        await tx.insert(stockLedger).values({
+          date: log.date,
+          partyId: storePartyId,
+          materialId: ldoMat.id,
+          transactionType: 'ldo_shift_consumption',
+          referenceId: log.id,
+          quantityOut: totalConsumed,
+          uom: 'Liters',
+          tankNumber: 1,
+          notes: `Shift meter (${log.date}): boiler+dryer ${totalConsumed.toFixed(1)}L from Tank 1`,
+        });
+        inserted++;
+      }
+    });
+
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, inserted, message: `backfillLdoShiftMeterConsumption_v1: inserted ${inserted} shift meter consumption row(s).` };
   }
 }
 

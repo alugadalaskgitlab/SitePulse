@@ -166,6 +166,30 @@ app.use((req, res, next) => {
     console.error("Startup: Failed to backfill LDO flow readings from material receipts:", e);
   }
 
+  // Stamp tank_number=1 on existing LDO dispatch rows that were backfilled without it
+  try {
+    const rd = await storage.fixLdoDispatchTankNumbers_v1();
+    console.log(`Startup: ${rd.message}`);
+  } catch (e) {
+    console.error("Startup: fixLdoDispatchTankNumbers_v1 failed:", e);
+  }
+
+  // Create ldo_heating_consumption ledger rows for existing heating sessions
+  try {
+    const rh = await storage.backfillLdoHeatingConsumption_v1();
+    console.log(`Startup: ${rh.message}`);
+  } catch (e) {
+    console.error("Startup: backfillLdoHeatingConsumption_v1 failed:", e);
+  }
+
+  // Create ldo_shift_consumption ledger rows for existing shift logs
+  try {
+    const rs = await storage.backfillLdoShiftMeterConsumption_v1();
+    console.log(`Startup: ${rs.message}`);
+  } catch (e) {
+    console.error("Startup: backfillLdoShiftMeterConsumption_v1 failed:", e);
+  }
+
   try {
     const r = await storage.fixLdoStockDeductionErrors();
     console.log(`Startup: fixLdoStockDeductionErrors — receiptsBackfilled=${r.receiptsBackfilled}, receiptLedgerRemoved=${r.receiptLedgerRemoved}, dispatchLedgerRemoved=${r.dispatchLedgerRemoved}, balancesFixed=${r.balancesFixed}, errors=${r.errors}`);
