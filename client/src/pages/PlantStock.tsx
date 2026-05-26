@@ -527,10 +527,38 @@ export default function PlantStock() {
 
   // For display, reverse to show most recent first and filter by transaction type + issuedTo search + tank
   const ledgerForDisplay = useMemo(() => {
-    let entries = [...processedLedger].reverse();
+    // Consolidate multiple ldo_dip_consumption rows for the same date into ONE clean daily row.
+    // processedLedger is oldest-first; after reversal the FIRST occurrence of a date = the row
+    // that was processed LAST = carries the correct end-of-day balance.
+    const preReversed = [...processedLedger].reverse();
+    const consolidated: typeof preReversed = [];
+    const seenDipDates = new Map<string, number>(); // date → index in consolidated
+    for (const entry of preReversed) {
+      if (entry.transactionType === 'ldo_dip_consumption') {
+        const key = `${entry.date}|${entry.materialId}|${entry.partyId ?? 0}`;
+        const idx = seenDipDates.get(key);
+        if (idx !== undefined) {
+          // Merge into the existing consolidated row (add to Out total)
+          const existing = consolidated[idx];
+          consolidated[idx] = { ...existing, quantityOut: (existing.quantityOut ?? 0) + (entry.quantityOut ?? 0) };
+        } else {
+          seenDipDates.set(key, consolidated.length);
+          consolidated.push({
+            ...entry,
+            notes: 'Actual Consumption from LDO Tracker (dip-based)',
+          });
+        }
+      } else {
+        consolidated.push(entry);
+      }
+    }
+
+    let entries = consolidated;
     if (selectedTransactionType !== "all") {
+      // "ldo_consumption" is the unified filter option covering ldo_dip_consumption
+      const filterType = selectedTransactionType === 'ldo_consumption' ? 'ldo_dip_consumption' : selectedTransactionType;
       // Always keep synthetic opening_balance rows — they're context, not real transactions
-      entries = entries.filter(e => e.transactionType === selectedTransactionType || e.transactionType === 'opening_balance');
+      entries = entries.filter(e => e.transactionType === filterType || e.transactionType === 'opening_balance');
     }
     if (issuedToFilter !== "all") {
       // Keep all non-dispatch rows (receipts, issues, opening balance, etc.) unchanged;
@@ -904,7 +932,7 @@ export default function PlantStock() {
           Date: entry.date,
           Material: getMaterialName(entry.materialId),
           "Stock Owner": getPartyName(entry.partyId),
-          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType,
+          Type: entry.transactionType === 'opening_balance' ? 'B/F Opening Bal.' : entry.transactionType === 'receipt' ? 'Receipt' : entry.transactionType === 'dispatch' ? 'Dispatch' : entry.transactionType === 'issue' ? 'Issue' : entry.transactionType === 'tank_transfer' ? '→ Boiler Tank' : entry.transactionType === 'opening' ? 'Opening' : entry.transactionType === 'adjustment' ? 'Adjustment' : entry.transactionType === 'return' ? 'Return' : entry.transactionType === 'transfer' ? 'Transfer' : entry.transactionType === 'equipment_usage' ? 'Equip. Usage' : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage' : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase' : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption' : entry.transactionType,
           "Issued To": entry.transactionType === 'equipment_usage' && entry.notes?.startsWith('Diesel issued to ') 
             ? entry.notes.replace('Diesel issued to ', '')
             : entry.transactionType === 'dpr_equipment_usage' && entry.notes?.startsWith('DPR diesel issued to ')
@@ -1457,9 +1485,7 @@ export default function PlantStock() {
                   <SelectItem value="equipment_usage">Equip. Usage</SelectItem>
                   <SelectItem value="dpr_equipment_usage">DPR Equip. Usage</SelectItem>
                   <SelectItem value="direct_purchase">Direct Site Purchase</SelectItem>
-                  <SelectItem value="ldo_shift_consumption">LDO Shift Meter</SelectItem>
-                  <SelectItem value="ldo_heating_consumption">LDO Heating</SelectItem>
-                  <SelectItem value="ldo_dip_consumption">LDO Dip</SelectItem>
+                  <SelectItem value="ldo_consumption">LDO Consumption</SelectItem>
                   <SelectItem value="issue">Issue</SelectItem>
                   <SelectItem value="tank_transfer">→ Boiler Tank</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
@@ -1987,8 +2013,8 @@ export default function PlantStock() {
                                 ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage'
                                 ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                                : entry.transactionType === 'ldo_shift_consumption' || entry.transactionType === 'ldo_heating_consumption' || entry.transactionType === 'ldo_dip_consumption'
-                                ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
+                                : entry.transactionType === 'ldo_dip_consumption'
+                                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
                                 : entry.transactionType === 'transfer'
                                 ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'direct_purchase'
@@ -2007,9 +2033,7 @@ export default function PlantStock() {
                                 : entry.transactionType === 'equipment_usage' ? 'Equip. Usage'
                                 : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage'
                                 : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase'
-                                : entry.transactionType === 'ldo_shift_consumption' ? 'LDO Shift Meter'
-                                : entry.transactionType === 'ldo_heating_consumption' ? 'LDO Heating'
-                                : entry.transactionType === 'ldo_dip_consumption' ? 'LDO Dip'
+                                : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption'
                                 : entry.transactionType;
                               return <span className={`px-2 py-0.5 text-xs rounded ${badgeClass}`}>{label}</span>;
                             })()}
@@ -2076,6 +2100,14 @@ export default function PlantStock() {
                                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
                                     <ClipboardList className="w-3.5 h-3.5" />
                                     <span>View</span>
+                                  </span>
+                                </Link>
+                              )}
+                              {!isBF && entry.transactionType === 'ldo_dip_consumption' && (
+                                <Link href={`/plant/ldo-logs`}>
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View detailed LDO consumption logs">
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>LDO Logs</span>
                                   </span>
                                 </Link>
                               )}
