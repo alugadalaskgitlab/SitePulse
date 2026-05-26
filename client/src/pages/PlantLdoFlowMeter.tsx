@@ -1167,8 +1167,8 @@ export default function PlantLdoFlowMeter() {
       <LdoUsableStockStrip
         tank1L={tankStock.tank1?.stockL ?? null}
         tank2L={tankStock.tank2?.stockL ?? null}
-        tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.date, time: tankStock.tank1.time } : undefined}
-        tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.date, time: tankStock.tank2.time } : undefined}
+        tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.lastReadingDate || tankStock.tank1.date, time: tankStock.tank1.lastReadingDate ? undefined : tankStock.tank1.time } : undefined}
+        tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.lastReadingDate || tankStock.tank2.date, time: tankStock.tank2.lastReadingDate ? undefined : tankStock.tank2.time } : undefined}
       />
 
       <NegativeBalanceBanner

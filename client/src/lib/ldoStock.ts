@@ -10,6 +10,7 @@ export type TankStockSummary = {
   stockL: number;
   date: string;
   time?: string;
+  lastReadingDate?: string;
 } | null;
 
 export function effectiveStockTank(r: Pick<LdoFlowReading, "tankNumber" | "dryerFedFrom">): number {
@@ -20,6 +21,13 @@ export function effectiveStockTank(r: Pick<LdoFlowReading, "tankNumber" | "dryer
 // Re-creates the per-tank stock balance starting from the most recent
 // manual "stock" entry, then applying receipts and consumption that
 // happened after it. Returns null when no stock baseline exists.
+//
+// Consumption pairing uses DATE-level grouping (first opening of the day,
+// last closing of the day) — identical to how dailySummary computes
+// consumption in the UI. Source-ID grouping was previously used but caused
+// readings from different shift-log IDs (or mixed manual/auto rows) to
+// never pair, leaving consumptionSince = 0 and the balance frozen at the
+// baseline value.
 export function computeTankStock(
   readings: LdoFlowReading[] | undefined | null,
   tankNum: number,
@@ -46,54 +54,56 @@ export function computeTankStock(
     .filter(r => r.readingType === "receipt" && `${r.date}T${r.time || "00:00"}` > stockDateTime)
     .reduce((s, r) => s + (r.quantityLiters || 0), 0);
 
-  // Consumption is grouped by *effective* stock tank (with dryer routing
-  // applied), then matched per-(date, sourceShiftLogId, sourceHeatingSessionId)
-  // so each meter pair is netted independently. Two shifts on the same day
-  // each contribute their own (closing − opening) instead of being collapsed
-  // into one min/max pair across both shifts.
-  type Pair = {
+  // ── Consumption: date-level pairing ──────────────────────────────────────
+  // For each date after the baseline: take the FIRST opening (earliest time)
+  // and the LAST closing (latest time) and compute closing − opening.
+  // This matches exactly how dailySummary computes daily consumption shown
+  // in the UI table, so the running stock balance and the table always agree.
+  //
+  // Dryer-source re-routing (dryerFedFrom) is applied via effectiveStockTank
+  // so that dryer readings fed from Tank-1 debit Tank-1's balance.
+  type DayPair = {
     openings: LdoFlowReading[];
     closings: LdoFlowReading[];
   };
-  const pairs = new Map<string, Pair>();
+  const byDate = new Map<string, DayPair>();
+
   for (const r of readings) {
     if (effectiveStockTank(r) !== tankNum) continue;
     if (r.readingType !== "opening" && r.readingType !== "closing") continue;
     if (r.date < latestStock.date) continue;
     if (r.date === latestStock.date && `${r.date}T${r.time || "00:00"}` <= stockDateTime) continue;
 
-    // Group by source row when present (one shift log = one pair). This keeps
-    // multi-shift days from collapsing across each other. Manual entries with
-    // no source default to date+tank grouping.
-    const groupKey = r.sourceShiftLogId != null
-      ? `S${r.sourceShiftLogId}::${r.tankNumber}`
-      : r.sourceHeatingSessionId != null
-        ? `H${r.sourceHeatingSessionId}::${r.tankNumber}`
-        : `D${r.date}::${r.tankNumber}`;
-    let p = pairs.get(groupKey);
-    if (!p) {
-      p = { openings: [], closings: [] };
-      pairs.set(groupKey, p);
+    let d = byDate.get(r.date);
+    if (!d) {
+      d = { openings: [], closings: [] };
+      byDate.set(r.date, d);
     }
-    if (r.readingType === "opening") p.openings.push(r);
-    else p.closings.push(r);
+    if (r.readingType === "opening") d.openings.push(r);
+    else d.closings.push(r);
   }
 
   let consumptionSince = 0;
-  pairs.forEach((p) => {
-    if (p.openings.length === 0 || p.closings.length === 0) return;
-    const openVal = p.openings.sort((a: LdoFlowReading, b: LdoFlowReading) =>
-      (a.time || "").localeCompare(b.time || ""))[0].meterReading;
-    const closeVal = p.closings.sort((a: LdoFlowReading, b: LdoFlowReading) =>
-      (b.time || "").localeCompare(a.time || ""))[0].meterReading;
-    const diff = closeVal - openVal;
-    if (diff > 0) consumptionSince += diff;
+  let lastReadingDate: string | undefined;
+
+  byDate.forEach((day, date) => {
+    if (day.openings.length === 0 || day.closings.length === 0) return;
+    const firstOpen = day.openings.sort((a, b) =>
+      (a.time || "").localeCompare(b.time || ""))[0];
+    const lastClose = day.closings.sort((a, b) =>
+      (b.time || "").localeCompare(a.time || ""))[0];
+    const diff = lastClose.meterReading - firstOpen.meterReading;
+    if (diff > 0) {
+      consumptionSince += diff;
+      if (!lastReadingDate || date > lastReadingDate) lastReadingDate = date;
+    }
   });
 
   return {
     stockL: stockL + receiptsSince - consumptionSince,
     date: latestStock.date,
     time: latestStock.time || undefined,
+    lastReadingDate,
   };
 }
 

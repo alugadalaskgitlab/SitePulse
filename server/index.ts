@@ -397,17 +397,6 @@ app.use((req, res, next) => {
     console.error("Startup: rebuildLdoDispatchLedger_v1 failed:", e);
   }
 
-      try {
-      const r = await storage.backfillLdoTankIssueLedger();
-      if (r.created > 0) {
-        console.log(`Startup: backfillLdoTankIssueLedger — created ${r.created} missing ledger entrie(s) for LDO-tank diesel issues${r.errors > 0 ? `, ${r.errors} error(s)` : ''}`);
-      } else {
-        console.log("Startup: backfillLdoTankIssueLedger — nothing to backfill (clean)");
-      }
-    } catch (e) {
-      console.error("Startup: backfillLdoTankIssueLedger failed:", e);
-    }
-
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
