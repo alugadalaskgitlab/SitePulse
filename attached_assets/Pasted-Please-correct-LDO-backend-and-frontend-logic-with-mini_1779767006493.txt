@@ -1,0 +1,57 @@
+Please correct LDO backend and frontend logic with minimum changes.
+
+The earlier instruction that LDO consumption should be calculated from dispatches + heating sessions + shift logs was wrong. Do not use multiple sources for stock deduction.
+
+Final required logic:
+
+1. LDO actual stock deduction must happen only from Plant Shift Log dip-based consumption.
+
+2. Dispatches must not deduct LDO stock.
+Dispatches should only show theoretical/norm LDO consumption for costing and variance.
+
+3. Heating Sessions must not deduct LDO stock.
+Heating sessions should only be operational records for pre-heating duration, boiler meter, hot oil temperature, L/hr analysis etc.
+
+4. Flow meter readings must not deduct LDO stock.
+Flow meter readings should be reference only because calibration is not reliable.
+
+5. Actual LDO consumption should be:
+Opening dip stock + receipts/transfers into tank during shift - closing dip stock.
+
+6. The physical tank stock balance should follow dip readings from Plant Shift Log.
+
+7. Material Receipts:
+- if received to Store, increase Store stock.
+- if received to Tank 1, increase Tank 1 stock.
+- if received to Tank 2, increase Tank 2 stock.
+Keep this existing receipt logic.
+
+8. Material Issue from Store to Tank:
+Treat only as internal transfer.
+- Store decreases.
+- selected Tank increases.
+- Total LDO stock does not change.
+- Do not mark it as consumption.
+
+9. Stock Ledger:
+Do not show dispatch/heating/flow meter entries as actual LDO stock deductions.
+Only show them as theoretical/operational/reference if needed.
+
+10. LDO Tracker:
+Show:
+- Dip-based consumption as official
+- Flow meter consumption as reference
+- Variance = flow meter consumption - dip consumption
+- Tank balance from dip-based calculation
+
+11. Mismatch warning:
+Do not show it as a fatal “meter mismatch” error.
+Rename it to:
+“Flow meter variance from dip reading — stock computed from dip.”
+
+12. Do not redesign the UI.
+Only correct the LDO deduction source and labels.
+
+One-line rule:
+LDO stock = receipts + transfers - Plant Shift Log dip consumption only.
+Dispatches, heating sessions and flow meters are reports/analytics only, not stock deduction sources.

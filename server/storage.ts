@@ -4309,7 +4309,9 @@ export class DatabaseStorage implements IStorage {
       // LDO IS tracked in store stock via dispatch — same owner-first model as bitumen/aggregates.
       const ldoQtyForPlan = (dispatchData as any).actualLdoQty ?? theoreticalLdoQty;
       if (ldoMaterial && ldoQtyForPlan > 0) {
-        plan.push({ matId: ldoMaterial.id, qty: ldoQtyForPlan, uom: "Liters", label: mixLabel, tankNumber: (dispatchData as any).ldoTankNumber ?? 1 });
+        // LDO dispatches are costing/variance reference only — do NOT deduct from stock.
+        // Actual LDO stock follows Plant Shift Log dip readings exclusively.
+        // plan.push removed intentionally for LDO.
       }
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
@@ -10334,8 +10336,9 @@ export class DatabaseStorage implements IStorage {
           console.log(`fixLdoStockDeductionErrors: backfilled missing receipt ledger for receipt id=${rcpt.id} (${stockQty} ${stockUom}, party=${targetPartyId})`);
         }
 
-        // ── 1. LDO/DIESEL dispatch entries are now intentionally tracked in the ledger
-        //       (backfilled by backfillLdoDispatchConsumption_v1). Do NOT delete them.
+        // ── 1. LDO dispatch entries must NOT be tracked as stock deductions.
+        //       Dispatches show theoretical/norm LDO qty for costing only.
+        //       Actual LDO stock follows dip readings exclusively (step 3 + 5).
         // ── 2. Remove stock_ledger 'issue' entries for LDO/DIESEL→tank Material Issues.
         //       These are store→tank transfers and should NOT appear in the store ledger.
         const badIssueLedger = await tx.select({ id: stockLedger.id })
@@ -10353,12 +10356,29 @@ export class DatabaseStorage implements IStorage {
           console.log(`fixLdoStockDeductionErrors: removed ${badIssueLedger.length} bad issue ledger entries (LDO→tank transfers)`);
         }
 
-        // ── 3. Remove ALL ldo_dip_consumption entries regardless of materialId.
-        //       Previous runs may have written them to the wrong material (e.g. Diesel instead of LDO).
-        //       We identify them by the note pattern [LDO_DIP_CONS: to be safe.
+        // ── 3. Remove ALL ldo_dip_consumption / ldo_shift_consumption / ldo_heating_consumption
+        //       entries — dip consumption is re-created from scratch in step 5; the other two
+        //       types must never exist (flow meter and heating are reference-only, not stock moves).
+        //       Also remove any LDO dispatch ledger entries — dispatches show theoretical LDO qty
+        //       for costing only and must NOT deduct stock (stock follows dip readings exclusively).
         await tx.delete(stockLedger).where(
           eq(stockLedger.transactionType, "ldo_dip_consumption")
         );
+        await tx.delete(stockLedger).where(
+          eq(stockLedger.transactionType, "ldo_shift_consumption")
+        );
+        await tx.delete(stockLedger).where(
+          eq(stockLedger.transactionType, "ldo_heating_consumption")
+        );
+        // Remove LDO-specific dispatch deduction rows (Diesel dispatch rows are untouched)
+        const ldoOnlyMat = ldoMaterials.find(m => m.name.trim().toUpperCase() === 'LDO');
+        if (ldoOnlyMat) {
+          await tx.delete(stockLedger).where(and(
+            eq(stockLedger.transactionType, "dispatch"),
+            eq(stockLedger.materialId, ldoOnlyMat.id),
+          ));
+          result.dispatchLedgerRemoved += 0; // tracked via result.receiptLedgerRemoved historically
+        }
 
         // ── 4. Recompute every stock_balance row for LDO/Diesel materials.
         //       Iterates balance rows (not ledger groups) so we also zero-out orphaned rows
@@ -12625,42 +12645,8 @@ export class DatabaseStorage implements IStorage {
     pushLdo(2, "closing", log.ldoTank2ClosingMeter, log.plantStopTime, closingQtyT2);
     if (ldoRows.length) await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
 
-    // Write ldo_shift_consumption to stock_ledger so the T1 physical tank balance
-    // decreases correctly. Both boiler meter (T1) and dryer meter (T2) draw from
-    // the same physical Tank 1, so we combine their deltas into one entry.
-    const totalShiftLdoConsumed = (closingQtyT1 ?? 0) + (closingQtyT2 ?? 0);
-    await tx.delete(stockLedger).where(and(
-      eq(stockLedger.transactionType, 'ldo_shift_consumption'),
-      eq(stockLedger.referenceId, log.id),
-    ));
-    if (totalShiftLdoConsumed > 0) {
-      const [ldoMatRow] = await tx.select({ id: plantMaterials.id })
-        .from(plantMaterials)
-        .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
-        .limit(1);
-      if (ldoMatRow) {
-        const [ldoBalRow] = await tx.select({ partyId: stockBalances.partyId })
-          .from(stockBalances)
-          .where(and(
-            eq(stockBalances.materialId, ldoMatRow.id),
-            eq(stockBalances.uom, 'Liters'),
-            sql`${stockBalances.partyId} IS NOT NULL`,
-          ))
-          .orderBy(desc(stockBalances.balance))
-          .limit(1);
-        await tx.insert(stockLedger).values({
-          date: log.date,
-          partyId: ldoBalRow?.partyId ?? null,
-          materialId: ldoMatRow.id,
-          transactionType: 'ldo_shift_consumption',
-          referenceId: log.id,
-          quantityOut: totalShiftLdoConsumed,
-          uom: 'Liters',
-          tankNumber: 1,
-          notes: `Shift meter (${log.date}): boiler+dryer ${totalShiftLdoConsumed.toFixed(1)}L from Tank 1`,
-        });
-      }
-    }
+    // Flow meter readings are reference-only — they do NOT deduct LDO stock.
+    // Actual LDO stock follows Plant Shift Log dip readings (ldo_dip_consumption).
 
     const bitumenRows: any[] = [];
     const pushBitumen = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
@@ -12849,10 +12835,6 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceShiftLogId, id));
       await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, id));
       await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, id));
-      await tx.delete(stockLedger).where(and(
-        eq(stockLedger.transactionType, 'ldo_shift_consumption'),
-        eq(stockLedger.referenceId, id),
-      ));
       await tx.delete(plantShiftLogManpower).where(eq(plantShiftLogManpower.shiftLogId, id));
       await tx.delete(plantShiftLogIdle).where(eq(plantShiftLogIdle.shiftLogId, id));
       await tx.delete(plantShiftLogVersions).where(eq(plantShiftLogVersions.shiftLogId, id));
@@ -13912,40 +13894,8 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(ldoFlowReadings).values(ldoRows).onConflictDoNothing();
       }
 
-      // Write ldo_heating_consumption to stock_ledger so the T1 physical tank balance
-      // decreases correctly. LDO for heating always comes from physical Tank 1.
-      await tx.delete(stockLedger).where(and(
-        eq(stockLedger.transactionType, 'ldo_heating_consumption'),
-        eq(stockLedger.referenceId, saved.id),
-      ));
-      if ((saved.ldoTank1Consumed ?? 0) > 0) {
-        const [ldoMatRow] = await tx.select({ id: plantMaterials.id })
-          .from(plantMaterials)
-          .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
-          .limit(1);
-        if (ldoMatRow) {
-          const [ldoBalRow] = await tx.select({ partyId: stockBalances.partyId })
-            .from(stockBalances)
-            .where(and(
-              eq(stockBalances.materialId, ldoMatRow.id),
-              eq(stockBalances.uom, 'Liters'),
-              sql`${stockBalances.partyId} IS NOT NULL`,
-            ))
-            .orderBy(desc(stockBalances.balance))
-            .limit(1);
-          await tx.insert(stockLedger).values({
-            date: saved.date,
-            partyId: ldoBalRow?.partyId ?? null,
-            materialId: ldoMatRow.id,
-            transactionType: 'ldo_heating_consumption',
-            referenceId: saved.id,
-            quantityOut: saved.ldoTank1Consumed!,
-            uom: 'Liters',
-            tankNumber: 1,
-            notes: `Heating session #${saved.id} (${saved.date}): ${saved.ldoTank1Consumed}L from Tank 1`,
-          });
-        }
-      }
+      // Heating sessions are operational records only — they do NOT deduct LDO stock.
+      // Actual LDO stock follows Plant Shift Log dip readings (ldo_dip_consumption).
 
       // LDO Dip sync: upsert opening/closing dip readings into ldo_dip_readings
       // keyed by sourceHeatingSessionId so they round-trip cleanly on edits.
@@ -13995,10 +13945,6 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(equipmentUsage).where(eq(equipmentUsage.sourceHeatingSessionId, id));
       await tx.delete(ldoFlowReadings).where(eq(ldoFlowReadings.sourceHeatingSessionId, id));
       await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceHeatingSessionId, id));
-      await tx.delete(stockLedger).where(and(
-        eq(stockLedger.transactionType, 'ldo_heating_consumption'),
-        eq(stockLedger.referenceId, id),
-      ));
       await tx.delete(plantHeatingSessionVersions).where(eq(plantHeatingSessionVersions.sessionId, id));
       const result = await tx.delete(bitumenHeatingSessions).where(eq(bitumenHeatingSessions.id, id)).returning();
       return result.length > 0;

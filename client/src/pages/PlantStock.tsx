@@ -692,8 +692,10 @@ export default function PlantStock() {
       else if (entry.transactionType === "tank_transfer") {
         if ((entry.quantityOut || 0) > 0) summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
-      // Consumed: dispatch, issue, equipment_usage, and LDO-specific meter consumption
-      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_shift_consumption" || entry.transactionType === "ldo_heating_consumption" || entry.transactionType === "ldo_dip_consumption") {
+      // Consumed: dispatch, issue, equipment_usage; ldo_dip_consumption is the only
+      // actual LDO deduction — flow meter (ldo_shift_consumption) and heating
+      // (ldo_heating_consumption) are reference-only and never created in the ledger.
+      else if (entry.transactionType === "dispatch" || entry.transactionType === "issue" || entry.transactionType === "equipment_usage" || entry.transactionType === "dpr_equipment_usage" || entry.transactionType === "ldo_dip_consumption") {
         summaryMap[key].consumed += getConvertedQty(Math.abs(entry.quantityOut || 0));
       }
       // Direct purchases bypass plant stock - tracked but no balance impact
