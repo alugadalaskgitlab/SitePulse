@@ -15575,10 +15575,10 @@ export class DatabaseStorage implements IStorage {
 
           await tx.execute(sql`
             INSERT INTO stock_ledger
-              (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes)
+              (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
             VALUES
               (${date}, ${partyId}, 9, 'dispatch', ${dispatchId}, 0, ${ldo}, 'Liters',
-               'LDO consumption backfilled from truck dispatch')
+               'LDO consumption backfilled from truck dispatch', 1)
           `);
           inserted++;
         }
@@ -15719,8 +15719,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── One-time: stamp tank_number=1 on existing LDO dispatch ledger rows ────
-  // backfillLdoDispatchConsumption_v1 inserted these rows without tank_number.
-  // Every LDO dispatch draws from Tank 1, so a single UPDATE covers them all.
+  // backfillLdoDispatchConsumption_v1 now inserts tank_number=1 directly, so on
+  // a clean install this migration is a no-op (the UPDATE will match 0 rows).
+  // Kept as a safety net for any rows inserted by older versions of the backfill.
   async fixLdoDispatchTankNumbers_v1(): Promise<{ applied: boolean; updated: number; message: string }> {
     const SETTING_KEY = 'fixLdoDispatchTankNumbers_v1';
     const already = await this.getSetting(SETTING_KEY);
