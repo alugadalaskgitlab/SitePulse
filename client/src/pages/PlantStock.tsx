@@ -1985,6 +1985,8 @@ export default function PlantStock() {
                                 ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage'
                                 ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                                : entry.transactionType === 'ldo_shift_consumption' || entry.transactionType === 'ldo_heating_consumption' || entry.transactionType === 'ldo_dip_consumption'
+                                ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
                                 : entry.transactionType === 'transfer'
                                 ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
                                 : entry.transactionType === 'direct_purchase'
@@ -2003,6 +2005,9 @@ export default function PlantStock() {
                                 : entry.transactionType === 'equipment_usage' ? 'Equip. Usage'
                                 : entry.transactionType === 'dpr_equipment_usage' ? 'DPR Equip. Usage'
                                 : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase'
+                                : entry.transactionType === 'ldo_shift_consumption' ? 'LDO Shift Meter'
+                                : entry.transactionType === 'ldo_heating_consumption' ? 'LDO Heating'
+                                : entry.transactionType === 'ldo_dip_consumption' ? 'LDO Dip'
                                 : entry.transactionType;
                               return <span className={`px-2 py-0.5 text-xs rounded ${badgeClass}`}>{label}</span>;
                             })()}

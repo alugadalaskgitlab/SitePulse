@@ -7743,6 +7743,7 @@ export class DatabaseStorage implements IStorage {
       quantityOut: consumption,
       balanceAfter: newBalance,
       uom: "Liters",
+      tankNumber: tankNumber ?? 1,
       notes: `${noteKey} Opening: ${Math.round(openingDip.volumeLiters)}L, Closing: ${Math.round(closingDip.volumeLiters)}L`,
     });
   }
