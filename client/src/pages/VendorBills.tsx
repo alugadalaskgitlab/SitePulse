@@ -30,7 +30,12 @@ const formatDate = (dateStr: string | null | undefined) => {
 const formatTimestamp = (ts: string | Date | null | undefined): string | null => {
   if (!ts) return null;
   try {
-    const d = new Date(ts as string);
+    let d: Date;
+    if (typeof ts === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(ts)) {
+      d = new Date(ts.replace(" ", "T") + "Z");
+    } else {
+      d = new Date(ts as string);
+    }
     if (Number.isNaN(d.getTime())) return String(ts);
     return format(d, "dd-MMM-yy HH:mm");
   } catch { return String(ts); }
