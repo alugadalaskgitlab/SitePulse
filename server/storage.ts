@@ -2192,10 +2192,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined> {
-    return db.transaction(async (tx) => {
+    // Fetch existing template BEFORE the transaction to detect ldoNorm changes.
+    // This read is safe outside the tx because we only use it to decide whether to
+    // run the resync; the transaction itself is the authoritative write boundary.
+    const [existing] = await db.select().from(mixTemplates).where(eq(mixTemplates.id, id)).limit(1);
+    const oldLdoNorm: number = (existing as any)?.ldoNorm ?? DEFAULT_LDO_NORM;
+
+    // Template update + LDO dispatch/ledger resync execute in one atomic transaction
+    // so that a resync failure rolls back the template change too — preventing the
+    // "template updated but ledger still stale" inconsistency this task targets.
+    const { result, ldoMatId, dispatchCount, ledgerRowsUpdated } = await db.transaction(async (tx) => {
+      // ── 1. Update the template and its components ──────────────────────────────
       const updates = { ...template };
       if (updates.name) updates.name = updates.name.toUpperCase();
-      const [result] = await tx.update(mixTemplates).set(updates).where(eq(mixTemplates.id, id)).returning();
+      const [updated] = await tx.update(mixTemplates).set(updates).where(eq(mixTemplates.id, id)).returning();
       if (components) {
         await tx.delete(mixTemplateComponents).where(eq(mixTemplateComponents.templateId, id));
         if (components.length) {
@@ -2204,8 +2214,95 @@ export class DatabaseStorage implements IStorage {
           );
         }
       }
-      return result;
+
+      // ── 2. If ldoNorm changed, re-sync all historical dispatches + ledger rows ─
+      const newLdoNorm: number = (updated as any)?.ldoNorm ?? DEFAULT_LDO_NORM;
+      if (!updated || Math.abs(newLdoNorm - oldLdoNorm) <= 1e-9) {
+        return { result: updated, ldoMatId: null, dispatchCount: 0, ledgerRowsUpdated: 0 };
+      }
+
+      const [ldoMat] = await tx.select({ id: plantMaterials.id })
+        .from(plantMaterials)
+        .where(sql`UPPER(${plantMaterials.name}) = 'LDO'`)
+        .limit(1);
+
+      const dispatches = await tx.select().from(truckDispatches)
+        .where(eq(truckDispatches.mixTemplateId, id));
+
+      let ledgerRowsUpdated = 0;
+
+      for (const dispatch of dispatches) {
+        const newTheoreticalLdoQty = dispatch.loadWeight * newLdoNorm;
+
+        // Detect whether the LDO actual was manually overridden: if actualLdoQty
+        // differs from the stored theoreticalLdoQty by more than a tiny epsilon, an
+        // operator set it explicitly and we must not overwrite it. When they match
+        // (or theoretical was never stored), the actual was defaulted to theoretical
+        // and should follow the new norm.
+        const oldTheoreticalLdoQty = dispatch.theoreticalLdoQty ?? (dispatch.loadWeight * oldLdoNorm);
+        const currentActualLdoQty = dispatch.actualLdoQty ?? oldTheoreticalLdoQty;
+        const ldoWasManuallySet = Math.abs(currentActualLdoQty - oldTheoreticalLdoQty) > 1e-6;
+
+        // Always update theoreticalLdoQty; update actual only when not manually overridden
+        const dispatchUpdate: Record<string, unknown> = { theoreticalLdoQty: newTheoreticalLdoQty };
+        if (!ldoWasManuallySet) {
+          dispatchUpdate.actualLdoQty = newTheoreticalLdoQty;
+        }
+        await tx.update(truckDispatches)
+          .set(dispatchUpdate)
+          .where(eq(truckDispatches.id, dispatch.id));
+
+        // Sync the LDO stock_ledger quantityOut for this dispatch when actual follows
+        // theoretical (manually-set actuals own their own ledger qty — leave them alone)
+        if (!ldoWasManuallySet && ldoMat) {
+          const ledgerRows = await tx.select()
+            .from(stockLedger)
+            .where(and(
+              eq(stockLedger.transactionType, "dispatch"),
+              eq(stockLedger.referenceId, dispatch.id),
+              eq(stockLedger.materialId, ldoMat.id),
+            ));
+
+          // A dispatch may have multiple LDO ledger rows: one for the owner's share
+          // and one for the HLC-borrowed remainder (owner-first model). Scale each
+          // row proportionally so the total converges to newTheoreticalLdoQty
+          // without corrupting the owner/HLC split ratio.
+          const oldLedgerTotal = ledgerRows.reduce((s, r) => s + (r.quantityOut ?? 0), 0);
+          if (oldLedgerTotal > 1e-9 && ledgerRows.length > 0) {
+            const scaleFactor = newTheoreticalLdoQty / oldLedgerTotal;
+            for (const row of ledgerRows) {
+              const newQty = +((row.quantityOut ?? 0) * scaleFactor).toFixed(9);
+              if (Math.abs((row.quantityOut ?? 0) - newQty) < 1e-9) continue;
+              await tx.update(stockLedger)
+                .set({ quantityOut: newQty })
+                .where(eq(stockLedger.id, row.id));
+              ledgerRowsUpdated++;
+            }
+          }
+        }
+      }
+
+      return {
+        result: updated,
+        ldoMatId: ldoMat?.id ?? null,
+        dispatchCount: dispatches.length,
+        ledgerRowsUpdated,
+      };
     });
+
+    // Recompute running balanceAfter for LDO (fixes the ledger display column) then
+    // reconcile stock_balances so the summary table stays consistent with the ledger.
+    // These helpers use db directly and must run after the transaction commits.
+    if (ldoMatId !== null) {
+      await this.recomputeBalanceAfterForMaterial(ldoMatId);
+      await this.reconcileStockBalancesFromLedger();
+      console.log(
+        `updateMixTemplate #${id}: ldoNorm ${oldLdoNorm}→${(result as any)?.ldoNorm ?? DEFAULT_LDO_NORM}, ` +
+        `dispatches=${dispatchCount}, ledgerRowsUpdated=${ledgerRowsUpdated}`
+      );
+    }
+
+    return result;
   }
 
   async deleteMixTemplate(id: number): Promise<boolean> {
