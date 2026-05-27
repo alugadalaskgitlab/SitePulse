@@ -27,6 +27,15 @@ const formatDate = (dateStr: string | null | undefined) => {
   } catch { return dateStr; }
 };
 
+const formatTimestamp = (ts: string | Date | null | undefined): string | null => {
+  if (!ts) return null;
+  try {
+    const d = new Date(ts as string);
+    if (Number.isNaN(d.getTime())) return String(ts);
+    return format(d, "dd-MMM-yy HH:mm");
+  } catch { return String(ts); }
+};
+
 type ViewMode = "list" | "form" | "detail";
 
 interface LineItem {
@@ -1323,25 +1332,47 @@ export default function VendorBills() {
     setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 30000);
   };
 
-  const renderStatusSteps = (currentStatus: string) => {
+  const renderStatusSteps = (currentStatus: string, meta?: {
+    createdAt?: string | Date | null;
+    verifiedAt?: string | null;
+    verifiedBy?: string | null;
+    approvedAt?: string | null;
+    approvedBy?: string | null;
+    paidAt?: string | null;
+  }) => {
     const currentIdx = STATUS_ORDER.indexOf(currentStatus as any);
+    const stepMeta: Record<string, { timestamp?: string | null; actor?: string | null }> = {
+      draft: { timestamp: meta?.createdAt ? formatTimestamp(meta.createdAt) : null },
+      verified: { timestamp: meta?.verifiedAt ? formatTimestamp(meta.verifiedAt) : null, actor: meta?.verifiedBy },
+      approved: { timestamp: meta?.approvedAt ? formatTimestamp(meta.approvedAt) : null, actor: meta?.approvedBy },
+      paid: { timestamp: meta?.paidAt ? formatTimestamp(meta.paidAt) : null },
+    };
     return (
-      <div className="flex items-center gap-1 flex-wrap" data-testid="status-steps">
+      <div className="flex items-start gap-1 flex-wrap" data-testid="status-steps">
         {STATUS_ORDER.map((step, idx) => {
           const isDone = idx < currentIdx;
           const isActive = idx === currentIdx;
+          const sm = stepMeta[step];
           return (
-            <div key={step} className="flex items-center gap-1">
-              {idx > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground" />}
-              <Badge
-                variant={isDone ? "default" : isActive ? "secondary" : "outline"}
-                className={`text-xs uppercase ${isDone ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 no-default-hover-elevate no-default-active-elevate" : ""}`}
-                data-testid={`status-step-${step}`}
-              >
-                {isDone && <Check className="w-3 h-3 mr-1" />}
-                {isActive && <Circle className="w-2 h-2 mr-1 fill-current" />}
-                {step}
-              </Badge>
+            <div key={step} className="flex items-start gap-1">
+              {idx > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground mt-1.5" />}
+              <div className="flex flex-col items-center gap-0.5">
+                <Badge
+                  variant={isDone ? "default" : isActive ? "secondary" : "outline"}
+                  className={`text-xs uppercase ${isDone ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 no-default-hover-elevate no-default-active-elevate" : ""}`}
+                  data-testid={`status-step-${step}`}
+                >
+                  {isDone && <Check className="w-3 h-3 mr-1" />}
+                  {isActive && <Circle className="w-2 h-2 mr-1 fill-current" />}
+                  {step}
+                </Badge>
+                {(isDone || isActive) && sm?.timestamp && (
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>
+                )}
+                {(isDone || isActive) && sm?.actor && (
+                  <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -2289,7 +2320,14 @@ export default function VendorBills() {
 
             <div className="border-t pt-4">
               <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Status Progress</p>
-              {renderStatusSteps(bill.status)}
+              {renderStatusSteps(bill.status, {
+                createdAt: bill.createdAt,
+                verifiedAt: bill.verifiedAt,
+                verifiedBy: bill.verifiedBy,
+                approvedAt: bill.approvedAt,
+                approvedBy: bill.approvedBy,
+                paidAt: bill.paidAt,
+              })}
             </div>
 
             <div className="flex gap-2 pt-2 flex-wrap">
