@@ -1160,15 +1160,14 @@ export default function PlantLdoFlowMeter() {
         </Link>
       </div>
 
-      {/* Task #255 — Header strip showing the live LDO usable-stock balance
-          per physical tank, plus the combined total. Numbers come from
-          `computeTankStock` so dryer-meter consumption tagged for Tank-1
-          rolls into the Tank-1 figure here. */}
+      {/* Header strip — shows DIP-BASED usable stock (physical measurement).
+          Flow-meter stock is shown inside each tank panel below as a reference.
+          latestDipTank1/2 are the most-recent dip readings sorted by date+time. */}
       <LdoUsableStockStrip
-        tank1L={tankStock.tank1?.stockL ?? null}
-        tank2L={tankStock.tank2?.stockL ?? null}
-        tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.lastReadingDate || tankStock.tank1.date, time: tankStock.tank1.lastReadingDate ? undefined : tankStock.tank1.time } : undefined}
-        tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.lastReadingDate || tankStock.tank2.date, time: tankStock.tank2.lastReadingDate ? undefined : tankStock.tank2.time } : undefined}
+        tank1L={latestDipTank1 ? getLdoUsableVolume(1, latestDipTank1.depthCm) : null}
+        tank2L={latestDipTank2 ? getLdoUsableVolume(2, latestDipTank2.depthCm) : null}
+        tank1AsOf={latestDipTank1 ? { date: latestDipTank1.date, time: latestDipTank1.time || undefined } : undefined}
+        tank2AsOf={latestDipTank2 ? { date: latestDipTank2.date, time: latestDipTank2.time || undefined } : undefined}
       />
 
       <NegativeBalanceBanner

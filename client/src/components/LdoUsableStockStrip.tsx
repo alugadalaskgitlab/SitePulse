@@ -1,10 +1,10 @@
 // Task #255 — Compact 3-card strip showing the live LDO usable-stock balance
-// per physical tank, plus the combined total. Used at the top of both
-// PlantLdoFlowMeter and PlantLdoLogs so operators always see the running
-// balance regardless of which page they're on.
+// per physical tank, plus the combined total. Values come from the latest
+// physical dip reading for each tank (NOT from the flow-meter ledger).
+// Used at the top of both PlantLdoFlowMeter and PlantLdoLogs.
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Gauge } from "lucide-react";
+import { Droplets } from "lucide-react";
 
 type AsOf = { date: string; time?: string };
 
@@ -37,7 +37,7 @@ export function LdoUsableStockStrip({ tank1L, tank2L, tank1AsOf, tank2AsOf }: Pr
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="ldo-usable-stock-strip">
       <StockCard
-        label="Tank 1 Balance"
+        label="Tank 1 Physical Stock"
         valueText={formatLiters(tank1L)}
         asOfText={formatAsOf(tank1AsOf)}
         toneClass="text-blue-700 dark:text-blue-300"
@@ -45,7 +45,7 @@ export function LdoUsableStockStrip({ tank1L, tank2L, tank1AsOf, tank2AsOf }: Pr
         valueTestId="text-stock-tank1"
       />
       <StockCard
-        label="Tank 2 Balance"
+        label="Tank 2 Physical Stock"
         valueText={formatLiters(tank2L)}
         asOfText={formatAsOf(tank2AsOf)}
         toneClass="text-amber-700 dark:text-amber-300"
@@ -80,7 +80,7 @@ function StockCard({
     <Card data-testid={testId}>
       <CardContent className="py-3">
         <div className="flex items-center gap-2 mb-1">
-          <Gauge className={`w-4 h-4 ${toneClass}`} />
+          <Droplets className={`w-4 h-4 ${toneClass}`} />
           <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
         </div>
         <div className={`font-bold ${emphasised ? "text-2xl" : "text-xl"} ${toneClass}`} data-testid={valueTestId}>

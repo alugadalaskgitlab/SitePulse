@@ -197,6 +197,20 @@ app.use((req, res, next) => {
     console.error("Startup: fixLdoStockDeductionErrors failed:", e);
   }
 
+  // Post a one-time physical stock correction aligning the book balance to the
+  // latest physical dip total if the gap exceeds 100 L.
+  // Idempotent via app_settings key "ldo_auto_physical_correction_v1".
+  try {
+    const rc = await storage.autoPostLdoPhysicalCorrection();
+    if (rc.posted) {
+      console.log(`Startup: autoPostLdoPhysicalCorrection — posted correction: book was ${rc.previousBalance?.toFixed(0)} L → physical ${rc.newBalance?.toFixed(0)} L (gap ${rc.adjustment?.toFixed(0)} L)`);
+    } else {
+      console.log(`Startup: autoPostLdoPhysicalCorrection — skipped: ${rc.reason}`);
+    }
+  } catch (e) {
+    console.error("Startup: autoPostLdoPhysicalCorrection failed:", e);
+  }
+
   try {
     const r0 = await storage.backfillDispatchReferenceIds();
     console.log(`Startup: backfillDispatchReferenceIds — updated: ${r0.updated}, skipped: ${r0.skipped}, errors: ${r0.errors}`);

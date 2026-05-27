@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,9 +18,10 @@ import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { LdoLog, LdoFlowReading } from "@shared/schema";
+import type { LdoLog, LdoFlowReading, LdoDipReading } from "@shared/schema";
 import { DEFAULT_LDO_NORM } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
+import { getLdoUsableVolume } from "@shared/ldo-dip-chart";
 import { LdoUsableStockStrip } from "@/components/LdoUsableStockStrip";
 
 type DailySummary = {
@@ -132,9 +133,31 @@ export default function PlantLdoLogs() {
     return () => controller.abort();
   }, [dialogOpen, date]);
 
-  // Task #255 — Pull the LDO flow-meter ledger so the header strip can
-  // show the live per-tank usable balance via `computeTankStock`. Same
-  // queryKey as PlantLdoFlowMeter so React Query reuses the cache.
+  // Task #255 — Pull dip readings (authoritative physical stock) for the header
+  // strip. Same queryKey as PlantLdoFlowMeter so React Query reuses the cache.
+  const { data: dipReadings } = useQuery<LdoDipReading[]>({
+    queryKey: ["/api/plant-module/ldo-dip-readings"],
+  });
+  const latestDipTank1 = useMemo(() => {
+    if (!dipReadings) return null;
+    const tank1 = dipReadings.filter(r => r.tankNumber === 1);
+    if (tank1.length === 0) return null;
+    return tank1.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [dipReadings]);
+  const latestDipTank2 = useMemo(() => {
+    if (!dipReadings) return null;
+    const tank2 = dipReadings.filter(r => r.tankNumber === 2);
+    if (tank2.length === 0) return null;
+    return tank2.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      return dc !== 0 ? dc : (b.time || "").localeCompare(a.time || "");
+    })[0];
+  }, [dipReadings]);
+
+  // Flow readings still needed for other computations on this page.
   const { data: flowReadings } = useQuery<LdoFlowReading[]>({
     queryKey: ["/api/plant-module/ldo-flow-readings"],
   });
@@ -512,10 +535,10 @@ export default function PlantLdoLogs() {
             which LDO screen they land on. */}
         <div className="w-full sm:w-auto sm:min-w-[28rem] order-last sm:order-none">
           <LdoUsableStockStrip
-            tank1L={tankStock.tank1?.stockL ?? null}
-            tank2L={tankStock.tank2?.stockL ?? null}
-            tank1AsOf={tankStock.tank1 ? { date: tankStock.tank1.lastReadingDate || tankStock.tank1.date, time: tankStock.tank1.lastReadingDate ? undefined : tankStock.tank1.time } : undefined}
-            tank2AsOf={tankStock.tank2 ? { date: tankStock.tank2.lastReadingDate || tankStock.tank2.date, time: tankStock.tank2.lastReadingDate ? undefined : tankStock.tank2.time } : undefined}
+            tank1L={latestDipTank1 ? getLdoUsableVolume(1, latestDipTank1.depthCm) : null}
+            tank2L={latestDipTank2 ? getLdoUsableVolume(2, latestDipTank2.depthCm) : null}
+            tank1AsOf={latestDipTank1 ? { date: latestDipTank1.date, time: latestDipTank1.time || undefined } : undefined}
+            tank2AsOf={latestDipTank2 ? { date: latestDipTank2.date, time: latestDipTank2.time || undefined } : undefined}
           />
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>

@@ -4133,6 +4133,80 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // Auto-post a physical stock correction entry for LDO when the book balance
+  // significantly exceeds the latest physical dip total. Runs once on startup
+  // (idempotency via app_settings key "ldo_auto_physical_correction_v1").
+  // Category (A): reads physical dip totals and only writes if gap > 100 L.
+  async autoPostLdoPhysicalCorrection(): Promise<{ posted: boolean; adjustment?: number; previousBalance?: number; newBalance?: number; reason?: string }> {
+    const MIGRATION_FLAG = "ldo_auto_physical_correction_v1";
+
+    // Idempotency guard
+    const [existing] = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing) return { posted: false, reason: "Already posted (idempotency flag set)" };
+
+    // Find LDO material
+    const [ldoMaterial] = await db.select().from(plantMaterials)
+      .where(sql`LOWER(${plantMaterials.name}) = 'ldo'`).limit(1);
+    if (!ldoMaterial) return { posted: false, reason: "LDO material not found" };
+
+    // Get latest dip reading per tank (DISTINCT ON pattern)
+    const latestDips = await db.execute(sql`
+      SELECT DISTINCT ON (tank_number) tank_number, volume_liters
+      FROM ldo_dip_readings
+      ORDER BY tank_number, date DESC, COALESCE(time, '00:00') DESC
+    `);
+    if (!latestDips.rows || latestDips.rows.length === 0) {
+      return { posted: false, reason: "No dip readings found" };
+    }
+    const physicalTotalL = (latestDips.rows as any[]).reduce((sum, r) => sum + Number(r.volume_liters || 0), 0);
+
+    // Find the party with the largest LDO balance (the main holding party)
+    const [mainBalance] = await db.select().from(stockBalances)
+      .where(eq(stockBalances.materialId, ldoMaterial.id))
+      .orderBy(desc(stockBalances.balance))
+      .limit(1);
+    if (!mainBalance) return { posted: false, reason: "No LDO stock balance found" };
+
+    const bookBalance = Number(mainBalance.balance);
+    const gap = bookBalance - physicalTotalL;
+
+    if (gap < 100) {
+      // Still set the flag so this check doesn't run again on every restart
+      await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: `skipped:gap=${gap.toFixed(0)}L` }).onConflictDoNothing();
+      return { posted: false, reason: `Gap ${gap.toFixed(0)} L is below threshold — no correction needed` };
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const effectiveUom = mainBalance.uom || "Liters";
+    const adjustment = physicalTotalL - bookBalance; // negative (writing down)
+
+    await db.transaction(async (tx) => {
+      // Insert a stock_ledger entry so the Transaction Ledger tab reflects the correction
+      await tx.insert(stockLedger).values({
+        date: today,
+        partyId: mainBalance.partyId,
+        materialId: ldoMaterial.id,
+        transactionType: "physical_correction" as any,
+        referenceId: null,
+        quantityIn: 0,
+        quantityOut: Math.abs(adjustment),
+        balanceAfter: physicalTotalL,
+        uom: effectiveUom,
+        notes: `Physical stock correction — dip total ${physicalTotalL.toFixed(0)} L (book was ${bookBalance.toFixed(0)} L, gap ${gap.toFixed(0)} L). Posted automatically on startup.`,
+      });
+
+      // Align the running balance
+      await tx.update(stockBalances)
+        .set({ balance: physicalTotalL, lastUpdated: new Date() })
+        .where(eq(stockBalances.id, mainBalance.id));
+
+      // Mark done
+      await tx.insert(appSettings).values({ key: MIGRATION_FLAG, value: new Date().toISOString() }).onConflictDoNothing();
+    });
+
+    return { posted: true, adjustment, previousBalance: bookBalance, newBalance: physicalTotalL };
+  }
+
   // Fix orphan stock-balance rows: negative balances with zero backing ledger entries.
     // For each such row, zeros the balance directly (no ledger entry — adjustments are not tracked in stock_ledger).
     async fixOrphanStockBalances(): Promise<{ fixed: number; details: { party: string; material: string; corrected: number; uom: string }[] }> {
