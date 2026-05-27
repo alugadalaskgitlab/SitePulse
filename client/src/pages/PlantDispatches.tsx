@@ -84,9 +84,9 @@ export default function PlantDispatches() {
   const [ownerName, setOwnerName] = useState("");
   const [driverName, setDriverName] = useState("");
   const [actualBitumenPercent, setActualBitumenPercent] = useState("");
-  const [actualLdoPerTon, setActualLdoPerTon] = useState("");
+  const [actualLdoLiters, setActualLdoLiters] = useState("");
   const [bitumenTankNumber, setBitumenTankNumber] = useState("1");
-  const [ldoTankNumber, setLdoTankNumber] = useState("2");
+  const [ldoTankNumber, setLdoTankNumber] = useState("1");
   const [transportEquipmentId, setTransportEquipmentId] = useState<number | null>(null);
   const [truckComboOpen, setTruckComboOpen] = useState(false);
   const [overrideTolerance, setOverrideTolerance] = useState(false);
@@ -105,14 +105,14 @@ export default function PlantDispatches() {
     ownerName: string;
     driverName: string;
     actualBitumenPercent: string;
-    actualLdoPerTon: string;
+    actualLdoLiters: string;
     bitumenTankNumber: string;
     ldoTankNumber: string;
   }
 
   const formData = useMemo<DispatchFormData>(() => ({
-    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon, bitumenTankNumber, ldoTankNumber
-  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoPerTon, bitumenTankNumber, ldoTankNumber]);
+    date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber
+  }), [date, time, partyId, mixTemplateId, truckNumber, loadWeight, deliveryLocation, ownerName, driverName, actualBitumenPercent, actualLdoLiters, bitumenTankNumber, ldoTankNumber]);
 
   const handleRestoreDraft = useCallback((data: DispatchFormData) => {
     setDate(data.date);
@@ -125,9 +125,9 @@ export default function PlantDispatches() {
     setOwnerName(data.ownerName || "");
     setDriverName(data.driverName || "");
     setActualBitumenPercent(data.actualBitumenPercent);
-    setActualLdoPerTon(data.actualLdoPerTon || "");
+    setActualLdoLiters(data.actualLdoLiters || "");
     setBitumenTankNumber(data.bitumenTankNumber || "1");
-    setLdoTankNumber(data.ldoTankNumber || "2");
+    setLdoTankNumber(data.ldoTankNumber || "1");
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<DispatchFormData>({
@@ -296,9 +296,9 @@ export default function PlantDispatches() {
     setOwnerName("");
     setDriverName("");
     setActualBitumenPercent("");
-    setActualLdoPerTon("");
+    setActualLdoLiters("");
     setBitumenTankNumber("1");
-    setLdoTankNumber("2");
+    setLdoTankNumber("1");
     setTransportEquipmentId(null);
     setEditingDispatch(null);
     setOverrideTolerance(false);
@@ -316,14 +316,9 @@ export default function PlantDispatches() {
     setOwnerName(dispatch.ownerName || "");
     setDriverName(dispatch.driverName || "");
     setActualBitumenPercent(dispatch.actualBitumenPercent ? String(dispatch.actualBitumenPercent) : "");
-    const weight = dispatch.loadWeight || 0;
-    if (dispatch.actualLdoQty && weight > 0) {
-      setActualLdoPerTon(String((dispatch.actualLdoQty / weight).toFixed(3)));
-    } else {
-      setActualLdoPerTon("");
-    }
+    setActualLdoLiters(dispatch.actualLdoQty != null ? String(dispatch.actualLdoQty) : "");
     setBitumenTankNumber(dispatch.bitumenTankNumber ? String(dispatch.bitumenTankNumber) : "1");
-    setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "2");
+    setLdoTankNumber(dispatch.ldoTankNumber ? String(dispatch.ldoTankNumber) : "1");
     setTransportEquipmentId(dispatch.transportEquipmentId || null);
     setOverrideTolerance(false);
     setDialogOpen(true);
@@ -367,9 +362,10 @@ export default function PlantDispatches() {
       }
     }
     
-    // Check LDO L/ton against theoretical norm (guard against divide-by-zero)
-    if (actualLdoPerTon && theoreticalValues.ldoNorm > 0) {
-      const actualRate = parseFloat(actualLdoPerTon);
+    // Check LDO against theoretical norm — derive L/ton from entered liters ÷ load weight
+    const weight = parseFloat(loadWeight) || 0;
+    if (actualLdoLiters && weight > 0 && theoreticalValues.ldoNorm > 0) {
+      const actualRate = parseFloat(actualLdoLiters) / weight;
       const variance = ((actualRate - theoreticalValues.ldoNorm) / theoreticalValues.ldoNorm) * 100;
       if (!isNaN(variance)) {
         if (Math.abs(variance) > TOLERANCE_PERCENT) {
@@ -381,7 +377,7 @@ export default function PlantDispatches() {
     }
     
     return result;
-  }, [theoreticalValues, actualBitumenPercent, actualLdoPerTon, TOLERANCE_PERCENT]);
+  }, [theoreticalValues, actualBitumenPercent, actualLdoLiters, loadWeight, TOLERANCE_PERCENT]);
   
   // Check if values exceed tolerance (block submission unless admin override is active)
   const hasToleranceViolation = validationStatus.bitumen === "error" || validationStatus.ldo === "error";
@@ -409,7 +405,7 @@ export default function PlantDispatches() {
     }
     
     const weight = parseFloat(loadWeight) || 0;
-    const computedActualLdoQty = (actualLdoPerTon && weight > 0) ? parseFloat(actualLdoPerTon) * weight : null;
+    const actualLdoQty = actualLdoLiters ? parseFloat(actualLdoLiters) : null;
 
     if (editingDispatch) {
       updateMutation.mutate({
@@ -425,10 +421,10 @@ export default function PlantDispatches() {
           ownerName: ownerName.toUpperCase() || null,
           driverName: driverName.toUpperCase() || null,
           actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
-          actualLdoQty: computedActualLdoQty,
+          actualLdoQty,
           adjustedBy: authenticatedRole,
           bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
-          ldoTankNumber: parseInt(ldoTankNumber) || 2,
+          ldoTankNumber: parseInt(ldoTankNumber) || 1,
           transportEquipmentId: transportEquipmentId || null,
           overrideTolerance: overrideTolerance || undefined,
         }
@@ -445,10 +441,11 @@ export default function PlantDispatches() {
         ownerName: ownerName.toUpperCase() || null,
         driverName: driverName.toUpperCase() || null,
         actualBitumenPercent: actualBitumenPercent ? parseFloat(actualBitumenPercent) : null,
-        actualLdoQty: computedActualLdoQty,
+        actualLdoQty,
         bitumenTankNumber: parseInt(bitumenTankNumber) || 1,
-        ldoTankNumber: parseInt(ldoTankNumber) || 2,
+        ldoTankNumber: parseInt(ldoTankNumber) || 1,
         transportEquipmentId: transportEquipmentId || null,
+        overrideTolerance: overrideTolerance || undefined,
       });
     }
   };
@@ -1047,6 +1044,12 @@ export default function PlantDispatches() {
                       <SelectItem value="2">Dryer Meter</SelectItem>
                     </SelectContent>
                   </Select>
+                  {theoreticalValues && (
+                    <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-theoretical-qty">
+                      Deduction: <span className="font-mono font-semibold text-foreground">{theoreticalValues.ldoQty.toFixed(1)} L</span>
+                      {" "}({theoreticalValues.ldoNorm} L/MT × {loadWeight} MT)
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1067,8 +1070,65 @@ export default function PlantDispatches() {
                   <p className="text-sm font-medium mb-2">Theoretical Consumption (from mix formula)</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>Bitumen: <span className="font-mono">{theoreticalValues.bitumenPercent}%</span> = <span className="font-mono">{theoreticalValues.bitumenQty.toFixed(3)} MT</span></div>
-                    <div>LDO: <span className="font-mono">{theoreticalValues.ldoNorm} L/MT</span> = <span className="font-mono">{theoreticalValues.ldoQty.toFixed(3)} L</span></div>
+                    <div>LDO: <span className="font-mono">{theoreticalValues.ldoNorm} L/MT</span> = <span className="font-mono font-semibold">{theoreticalValues.ldoQty.toFixed(1)} L</span></div>
                   </div>
+                </div>
+              )}
+
+              {/* Actual LDO override — accessible for both new and edit dispatches */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>
+                    Actual LDO (Liters){" "}
+                    <span className="font-normal text-muted-foreground text-xs">(optional)</span>
+                  </Label>
+                  {validationStatus.ldo !== "ok" && (
+                    <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-xs">
+                      {validationStatus.ldo === "error" ? "Exceeds ±10%" : "Variance"}
+                    </Badge>
+                  )}
+                </div>
+                <Input
+                  type="number"
+                  step="1"
+                  value={actualLdoLiters}
+                  onChange={(e) => setActualLdoLiters(e.target.value)}
+                  placeholder={theoreticalValues ? `Theoretical: ${theoreticalValues.ldoQty.toFixed(1)} L` : "Leave blank to use theoretical"}
+                  className={validationStatus.ldo === "error" ? "border-red-500" : validationStatus.ldo === "warning" ? "border-amber-500" : ""}
+                  data-testid="input-actual-ldo"
+                />
+                {actualLdoLiters && parseFloat(loadWeight) > 0 ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-actual-ldo-total">
+                    Rate: <span className="font-mono">{(parseFloat(actualLdoLiters) / parseFloat(loadWeight)).toFixed(2)} L/MT</span>
+                    {theoreticalValues && (
+                      <span className="ml-2">(norm {theoreticalValues.ldoNorm} L/MT)</span>
+                    )}
+                  </p>
+                ) : theoreticalValues ? (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Leave blank to use theoretical: <span className="font-mono">{theoreticalValues.ldoQty.toFixed(1)} L</span>
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Admin override for LDO tolerance on new dispatches */}
+              {!editingDispatch && validationStatus.ldo === "error" && isAdmin && (
+                <div className="p-2 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={overrideTolerance}
+                      onChange={(e) => setOverrideTolerance(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-orange-600"
+                      data-testid="checkbox-override-tolerance"
+                    />
+                    <span className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Admin Override — record this out-of-tolerance LDO value
+                      <span className="block text-xs font-normal text-orange-600 dark:text-orange-400 mt-0.5">
+                        The deviation will be flagged in the audit log for traceability.
+                      </span>
+                    </span>
+                  </label>
                 </div>
               )}
 
@@ -1098,31 +1158,6 @@ export default function PlantDispatches() {
                         className={validationStatus.bitumen === "error" ? "border-red-500" : validationStatus.bitumen === "warning" ? "border-amber-500" : ""}
                         data-testid="input-actual-bitumen" 
                       />
-                    </div>
-                    
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label>Actual LDO (L/ton)</Label>
-                        {validationStatus.ldo !== "ok" && (
-                          <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-xs">
-                            {validationStatus.ldo === "error" ? "Exceeds ±10%" : "Variance"}
-                          </Badge>
-                        )}
-                      </div>
-                      <Input 
-                        type="number" 
-                        step="0.1" 
-                        value={actualLdoPerTon} 
-                        onChange={(e) => setActualLdoPerTon(e.target.value)} 
-                        placeholder={theoreticalValues ? `Norm: ${theoreticalValues.ldoNorm} L/ton` : "Leave blank to use theoretical"} 
-                        className={validationStatus.ldo === "error" ? "border-red-500" : validationStatus.ldo === "warning" ? "border-amber-500" : ""}
-                        data-testid="input-actual-ldo" 
-                      />
-                      {actualLdoPerTon && parseFloat(loadWeight) > 0 && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Total: {(parseFloat(actualLdoPerTon) * parseFloat(loadWeight)).toFixed(3)} L for {loadWeight} MT
-                        </p>
-                      )}
                     </div>
                   </div>
                   
@@ -1472,7 +1507,7 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Tanks</span>
-                                <span className="font-medium text-sm">B{dispatch.bitumenTankNumber || 1} / L{dispatch.ldoTankNumber || 2}</span>
+                                <span className="font-medium text-sm">B{dispatch.bitumenTankNumber || 1} / L{dispatch.ldoTankNumber || 1}</span>
                               </div>
                               {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
                                 (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (
