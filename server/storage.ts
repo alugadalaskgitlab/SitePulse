@@ -407,6 +407,7 @@ export interface IStorage {
   // Idempotent — only updates rows where tankNumber IS NULL.
   backfillBitumenTankNumbers(): Promise<{ updated: number; errors: number }>;
   backfillMissingDispatchBitumenRows(): Promise<{ created: number; skipped: number; errors: number }>;
+  backfillMissingDispatchLdoRows(): Promise<{ created: number; skipped: number; errors: number }>;
 
   // One-time migration: rebuild aggregate stock_ledger rows for dispatches that
   // have stock_deducted=1 but are missing aggregate consumption entries.
@@ -15412,6 +15413,140 @@ export class DatabaseStorage implements IStorage {
       await this.recomputeBalanceAfterForMaterial(bitumenMat.id);
       await this.reconcileStockBalancesFromLedger();
       console.log(`backfillMissingDispatchBitumenRows: done — created ${result.created}, skipped ${result.skipped}, errors ${result.errors}. Balances recomputed.`);
+    }
+
+    return result;
+  }
+
+  // Mirror of backfillMissingDispatchBitumenRows for LDO.
+  // Logic:
+  //   1. Find all truck_dispatches where COALESCE(actual_ldo_qty, theoretical_ldo_qty, 0) > 0,
+  //      that have at least one stock_ledger dispatch row (so they were processed), but
+  //      have NO stock_ledger row for LDO (material_id = ldoMatId).
+  //   2. For each: use actual_ldo_qty if set and > 0, else theoretical_ldo_qty.
+  //   3. Charge the owner party if they have LDO receipts, otherwise charge HLC.
+  //   4. Insert using ON CONFLICT DO NOTHING — safe to re-run on every startup.
+  //   5. After all inserts: recompute balance_after and reconcile stock_balances.
+  async backfillMissingDispatchLdoRows(): Promise<{ created: number; skipped: number; errors: number }> {
+    const result = { created: 0, skipped: 0, errors: 0 };
+
+    const [ldoMat] = await db.select({ id: plantMaterials.id, defaultUom: plantMaterials.defaultUom })
+      .from(plantMaterials)
+      .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+      .limit(1);
+    if (!ldoMat) {
+      console.log("backfillMissingDispatchLdoRows: no LDO material found, skipping");
+      return result;
+    }
+
+    const [hlcParty] = await db.select({ id: parties.id })
+      .from(parties)
+      .where(sql`UPPER(TRIM(${parties.name})) = 'HLC' OR ${parties.name} ILIKE '%HIGH LANE%'`)
+      .limit(1);
+    const hlcPartyId = hlcParty?.id ?? null;
+
+    const candidates = execSelectRows<{
+      id: string; date: string; party_id: string | null;
+      actual_ldo_qty: string | null; theoretical_ldo_qty: string | null;
+      template_name: string;
+    }>(
+      await db.execute(sql`
+        SELECT
+          td.id,
+          td.date,
+          td.party_id,
+          td.actual_ldo_qty,
+          td.theoretical_ldo_qty,
+          COALESCE(mt.name, 'Dispatch') AS template_name
+        FROM truck_dispatches td
+        LEFT JOIN mix_templates mt ON mt.id = td.mix_template_id
+        WHERE COALESCE(td.actual_ldo_qty, td.theoretical_ldo_qty, 0) > 0
+          AND td.party_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM stock_ledger sl
+            WHERE sl.reference_id      = td.id
+              AND sl.transaction_type  = 'dispatch'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM stock_ledger sl
+            WHERE sl.reference_id     = td.id
+              AND sl.transaction_type = 'dispatch'
+              AND sl.material_id      = ${ldoMat.id}
+          )
+      `),
+      "backfillMissingDispatchLdoRows: candidate SELECT"
+    );
+
+    if (!candidates || candidates.length === 0) {
+      return result;
+    }
+
+    console.log(`backfillMissingDispatchLdoRows: found ${candidates.length} dispatch(es) missing LDO ledger row`);
+
+    const partyIdsInScope = [...new Set(
+      candidates.map(r => r.party_id ? parseInt(r.party_id) : null).filter((id): id is number => id !== null && !isNaN(id))
+    )];
+
+    const ldoReceiptRows = partyIdsInScope.length > 0
+      ? await db.select({ partyId: materialReceipts.partyId })
+          .from(materialReceipts)
+          .where(and(
+            inArray(materialReceipts.partyId, partyIdsInScope),
+            eq(materialReceipts.materialId, ldoMat.id)
+          ))
+      : [];
+    const partiesWithLdoReceipts = new Set(ldoReceiptRows.map(r => r.partyId));
+
+    const allPartiesList = await db.select({ id: parties.id, name: parties.name }).from(parties);
+    const partyNameMap = new Map(allPartiesList.map(p => [p.id, p.name]));
+
+    const ldoUom = ldoMat.defaultUom || 'Liters';
+
+    for (const row of candidates) {
+      try {
+        const dispatchId = parseInt(row.id);
+        const partyId = row.party_id ? parseInt(row.party_id) : null;
+        if (partyId === null || isNaN(partyId)) { result.skipped++; continue; }
+
+        const actualQty = row.actual_ldo_qty ? parseFloat(row.actual_ldo_qty) : 0;
+        const theoreticalQty = row.theoretical_ldo_qty ? parseFloat(row.theoretical_ldo_qty) : 0;
+        const qty = actualQty > 0 ? actualQty : theoreticalQty;
+
+        if (qty <= 0) { result.skipped++; continue; }
+
+        const chargePartyId = partiesWithLdoReceipts.has(partyId) ? partyId : hlcPartyId;
+        if (chargePartyId === null) {
+          console.warn(`backfillMissingDispatchLdoRows: dispatch #${dispatchId} — no HLC party found and owner (${partyId}) has no LDO receipts, skipping`);
+          result.skipped++;
+          continue;
+        }
+
+        const chargePartyName = partyNameMap.get(chargePartyId) ?? `Party #${chargePartyId}`;
+        const notes = `${row.template_name.trim()} — ${chargePartyName} [backfilled]`;
+
+        await db.execute(sql`
+          INSERT INTO stock_ledger
+            (date, party_id, material_id, transaction_type, quantity_out, balance_after, uom, notes, reference_id, tank_number)
+          VALUES
+            (${row.date}, ${chargePartyId}, ${ldoMat.id}, 'dispatch',
+             ${qty}, 0, ${ldoUom}, ${notes}, ${dispatchId}, 1)
+          ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+            WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+          DO NOTHING
+        `);
+
+        console.log(`backfillMissingDispatchLdoRows: created LDO row for dispatch #${dispatchId} — ${qty} ${ldoUom} → party ${chargePartyId} (${chargePartyName})`);
+        result.created++;
+      } catch (e) {
+        console.error(`backfillMissingDispatchLdoRows: error on dispatch #${row.id}:`, e);
+        result.errors++;
+      }
+    }
+
+    if (result.created > 0) {
+      await this.recomputeBalanceAfterForMaterial(ldoMat.id);
+      await this.reconcileStockBalancesFromLedger();
+      console.log(`backfillMissingDispatchLdoRows: done — created ${result.created}, skipped ${result.skipped}, errors ${result.errors}. Balances recomputed.`);
     }
 
     return result;

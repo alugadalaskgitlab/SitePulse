@@ -406,6 +406,17 @@ app.use((req, res, next) => {
     console.error("Startup: migrateLdoToDispatchModelOnly_v3 failed:", e);
   }
 
+  try {
+    const r7 = await storage.backfillMissingDispatchLdoRows();
+    if (r7.created > 0) {
+      console.log(`Startup: backfillMissingDispatchLdoRows — created: ${r7.created}, skipped: ${r7.skipped}, errors: ${r7.errors}`);
+    } else {
+      console.log(`Startup: backfillMissingDispatchLdoRows — 0 rows needed (clean), skipped: ${r7.skipped}, errors: ${r7.errors}`);
+    }
+  } catch (e) {
+    console.error("Startup: backfillMissingDispatchLdoRows failed:", e);
+  }
+
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
