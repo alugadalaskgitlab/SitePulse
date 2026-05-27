@@ -1041,7 +1041,6 @@ export default function PlantLdoFlowMeter() {
       "Dryer Meter Closing (L)": d.t2Closing?.meterReading ?? "",
       "Dryer Meter Consumption (L)": d.t2Consumption ?? "",
       "Total (L)": d.totalConsumption || "",
-      "Total (kg)": d.totalConsumptionKg ?? "",
     }));
     const ws2 = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, ws2, "Daily Summary");
@@ -1278,18 +1277,6 @@ export default function PlantLdoFlowMeter() {
                     <span className="ml-2">({latestFlow.date} {latestFlow.time || ""} - {latestFlow.readingType})</span>
                   </div>
                 )}
-                {stock && (
-                  <div className="pt-2 mt-2 border-t space-y-1">
-                    <div className="flex items-center gap-1">
-                      <Gauge className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase">Flow Meter Stock</span>
-                    </div>
-                    <div data-testid={`text-flow-stock-t${tankNum}`}>
-                      <span className="font-bold text-xl text-blue-700 dark:text-blue-300">{stock.stockL.toFixed(0)} L</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Based on stock entry of {stock.date} ± receipts & consumption</p>
-                  </div>
-                )}
               </CardContent>
             </Card>
           );
@@ -1317,21 +1304,6 @@ export default function PlantLdoFlowMeter() {
                   <span data-testid="text-combined-dip-stock">
                     <span className="font-semibold text-base">{((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L</span>
                   </span>
-                </div>
-              </>
-            )}
-            {(tankStock.tank1 || tankStock.tank2) && (
-              <>
-                <div className="flex items-center gap-1 mt-1">
-                  <Gauge className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase">Flow Meter Stock</span>
-                </div>
-                <div data-testid="text-combined-flow-stock">
-                  <span className="font-bold text-2xl text-blue-700 dark:text-blue-300">{((tankStock.tank1?.stockL || 0) + (tankStock.tank2?.stockL || 0)).toFixed(0)} L</span>
-                </div>
-                <div className="text-xs text-muted-foreground flex gap-3">
-                  <span>Boiler: {tankStock.tank1 ? `${tankStock.tank1.stockL.toFixed(0)} L` : "—"}</span>
-                  <span>Dryer: {tankStock.tank2 ? `${tankStock.tank2.stockL.toFixed(0)} L` : "—"}</span>
                 </div>
               </>
             )}
@@ -1558,7 +1530,7 @@ export default function PlantLdoFlowMeter() {
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                   <tr>
                     <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
                     <th colSpan={4} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler Meter</th>
@@ -1603,12 +1575,13 @@ export default function PlantLdoFlowMeter() {
       {dailySummary.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily Consumption Summary (Flow Meter)</CardTitle>
+            <CardTitle className="text-sm font-medium">Daily LDO Consumption — Flow Meter</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Shows actual LDO consumed per day per meter (opening → closing delta). Dryer meter is active; Boiler meter readings available when restored.</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                   <tr>
                     <th rowSpan={2} className="text-left p-2 border border-border align-bottom">Date</th>
                     <th colSpan={3} className="text-center p-2 border border-border bg-blue-100 dark:bg-blue-900 font-semibold">Boiler Meter</th>
@@ -1870,7 +1843,7 @@ export default function PlantLdoFlowMeter() {
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
                     <th className="text-right p-2">Production (MT)</th>
@@ -2023,13 +1996,12 @@ export default function PlantLdoFlowMeter() {
                       {isOpen && (
                         <div className="overflow-x-auto pt-1 pb-3">
                           <table className="w-full text-sm">
-                            <thead>
+                            <thead className="sticky top-0 z-10 bg-background">
                               <tr className="border-b">
                                 <th className="text-left p-2">Time</th>
                                 <th className="text-left p-2">Tank</th>
                                 <th className="text-right p-2">Depth (cm)</th>
                                 <th className="text-right p-2">Volume (L)</th>
-                                <th className="text-right p-2">Weight (kg)</th>
                                 <th className="text-left p-2">Type</th>
                                 <th className="text-left p-2">Source</th>
                                 <th className="text-left p-2">Notes</th>
@@ -2057,7 +2029,6 @@ export default function PlantLdoFlowMeter() {
                         </td>
                         <td className="p-2 text-right font-medium" data-testid={`text-dip-depth-${r.id}`}>{r.depthCm}</td>
                         <td className="p-2 text-right" data-testid={`text-dip-vol-${r.id}`}>{r.volumeLiters.toFixed(0)}</td>
-                        <td className="p-2 text-right" data-testid={`text-dip-wt-${r.id}`}>{r.weightKg.toFixed(0)}</td>
                         <td className="p-2">
                           <Badge variant="outline" data-testid={`badge-dip-type-${r.id}`}>
                             {r.readingType.charAt(0).toUpperCase() + r.readingType.slice(1)}
@@ -2198,7 +2169,7 @@ export default function PlantLdoFlowMeter() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                   <tr className="border-b">
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Time</th>
@@ -2411,11 +2382,6 @@ export default function PlantLdoFlowMeter() {
                   placeholder="e.g. 15000"
                   data-testid="input-meter-reading"
                 />
-                {meterReading && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    = {(parseFloat(meterReading) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
-                  </p>
-                )}
               </div>
             )}
 
@@ -2437,11 +2403,6 @@ export default function PlantLdoFlowMeter() {
                   placeholder="e.g. 5000"
                   data-testid="input-receipt-quantity"
                 />
-                {quantityLiters && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
-                  </p>
-                )}
               </div>
             )}
 
@@ -2457,11 +2418,6 @@ export default function PlantLdoFlowMeter() {
                   placeholder="e.g. 8000"
                   data-testid="input-stock-quantity"
                 />
-                {quantityLiters && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    = {(parseFloat(quantityLiters) * LDO_DENSITY_KG_PER_LITER).toFixed(3)} kg
-                  </p>
-                )}
               </div>
             )}
 

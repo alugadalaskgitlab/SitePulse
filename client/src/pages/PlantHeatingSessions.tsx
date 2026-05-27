@@ -1429,11 +1429,11 @@ export default function PlantHeatingSessions() {
                       <div className="text-sm font-medium text-muted-foreground pb-2">Start °C</div>
                       <div className="text-sm font-medium text-muted-foreground pb-2">End °C</div>
 
-                      <Label className="pb-2">Bitumen tank 1 (boiler)</Label>
+                      <Label className="pb-2">Bitumen tank 1</Label>
                       <Input type="number" step="0.1" value={form.bitumenTank1TempStart} onChange={e => setField("bitumenTank1TempStart", e.target.value)} data-testid="input-bit-t1-start" />
                       <Input type="number" step="0.1" value={form.bitumenTank1TempEnd} onChange={e => setField("bitumenTank1TempEnd", e.target.value)} data-testid="input-bit-t1-end" />
 
-                      <Label className="pb-2">Bitumen tank 2 (dryer)</Label>
+                      <Label className="pb-2">Bitumen tank 2</Label>
                       <Input type="number" step="0.1" value={form.bitumenTank2TempStart} onChange={e => setField("bitumenTank2TempStart", e.target.value)} data-testid="input-bit-t2-start" />
                       <Input type="number" step="0.1" value={form.bitumenTank2TempEnd} onChange={e => setField("bitumenTank2TempEnd", e.target.value)} data-testid="input-bit-t2-end" />
                     </div>
