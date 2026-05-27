@@ -2072,27 +2072,27 @@ export default function PlantStock() {
                                 )}
                               {!isBF && entry.transactionType === 'receipt' && entry.referenceId != null && (
                                 <Link href={`/plant/material-receipts?edit=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
+                                  <ExternalLink className="w-4 h-4 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this receipt" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'dispatch' && entry.referenceId != null && !entry._mergedDelta && (
                                 <Link href={`/plant/dispatches?edit=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
+                                  <ExternalLink className="w-4 h-4 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="Open & edit this dispatch" />
                                 </Link>
                               )}
                               {!isBF && (entry.transactionType === 'issue' || entry.transactionType === 'tank_transfer') && entry.referenceId != null && (
                                 <Link href={`/plant/material-issues?highlight=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this issue" />
+                                  <ExternalLink className="w-4 h-4 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this issue" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'return' && entry.referenceId != null && (
                                 <Link href={`/plant/material-returns?highlight=${entry.referenceId}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this return" />
+                                  <ExternalLink className="w-4 h-4 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View this return" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'transfer' && entry.referenceId != null && (
                                 <Link href={`/plant/stock-transfer?returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <ExternalLink className="w-3.5 h-3.5 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View stock transfer" />
+                                  <ExternalLink className="w-4 h-4 text-primary hover:text-primary/80 flex-shrink-0 cursor-pointer" title="View stock transfer" />
                                 </Link>
                               )}
                               {!isBF && entry.transactionType === 'direct_purchase' && (

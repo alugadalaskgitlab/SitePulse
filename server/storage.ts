@@ -4385,9 +4385,7 @@ export class DatabaseStorage implements IStorage {
       // LDO IS tracked in store stock via dispatch — same owner-first model as bitumen/aggregates.
       const ldoQtyForPlan = (dispatchData as any).actualLdoQty ?? theoreticalLdoQty;
       if (ldoMaterial && ldoQtyForPlan > 0) {
-        // LDO dispatches are costing/variance reference only — do NOT deduct from stock.
-        // Actual LDO stock follows Plant Shift Log dip readings exclusively.
-        // plan.push removed intentionally for LDO.
+        plan.push({ matId: ldoMaterial.id, qty: ldoQtyForPlan, uom: "Liters", label: mixLabel, tankNumber: (dispatchData as any).ldoTankNumber ?? 1 });
       }
       for (const [matIdStr, qty] of Object.entries(theoreticalAggregates)) {
         const matId = parseInt(matIdStr);
@@ -7790,17 +7788,23 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(ldoDipReadings.date), desc(ldoDipReadings.time));
   }
 
-  // Syncs the store-stock deduction for one (date, tankNumber, plantName) dip pair.
-  // Call this inside any transaction that creates/updates/deletes an ldo_dip_reading row.
-  // It reverses any existing ldo_dip_consumption ledger entry for the pair, then
-  // re-computes the current consumption (opening − closing volume) and writes a fresh
-  // deduction if the pair is complete and consumption > 0.
+  // LDO stock is now tracked exclusively via truck dispatch rows (owner-first model, mirroring
+  // bitumen). Physical dip readings are reference-only for the LDO Tracker pages and do NOT
+  // write to stock_ledger. This function is kept as a no-op so existing call-sites compile
+  // but produces no side-effects.
   private async _syncLdoDipConsumptionToStock(
-    tx: any,
-    date: string,
-    tankNumber: number,
-    plantName: string,
+    _tx: any,
+    _date: string,
+    _tankNumber: number,
+    _plantName: string,
   ): Promise<void> {
+    // No-op: LDO stock moves are written by truck dispatch (createTruckDispatch / updateTruckDispatch).
+    return;
+    // ── Dead code below — retained for reference only ──
+    const tx = _tx;
+    const date = _date;
+    const tankNumber = _tankNumber;
+    const plantName = _plantName;
     // Look up specifically the LDO material (NOT Diesel — tank dip readings are always LDO)
     const [ldoMat] = await tx.select({ id: plantMaterials.id })
       .from(plantMaterials)
@@ -16019,6 +16023,119 @@ export class DatabaseStorage implements IStorage {
 
     await this.setSetting(SETTING_KEY, '1');
     return { applied: true, inserted, message: `backfillLdoShiftMeterConsumption_v1: inserted ${inserted} shift meter consumption row(s).` };
+  }
+
+  // ── One-time: switch LDO stock tracking from dip-based to dispatch-based ────
+  // This migration is the definitive cutover to the new model where LDO stock
+  // ledger rows are written exclusively by truck_dispatches (same owner-first
+  // logic as bitumen). It:
+  //   1. Purges ALL ldo_dip_consumption / ldo_shift_consumption / ldo_heating_consumption rows
+  //   2. Purges ALL existing LDO 'dispatch' rows (rebuilt fresh below)
+  //   3. Rebuilds one clean 'dispatch' row per truck_dispatch with correct
+  //      party attribution (owner-first → HLC fallback) and clean notes
+  //      (no "[backfill]" suffix).  Uses ldoTankNumber from the dispatch row.
+  //   4. Recomputes ALL party LDO stock_balances from the rebuilt ledger.
+  // Idempotent via app_settings key 'migrateLdoToDispatchModelOnly_v2'.
+  async migrateLdoToDispatchModelOnly_v2(): Promise<{ applied: boolean; message: string }> {
+    const SETTING_KEY = 'migrateLdoToDispatchModelOnly_v2';
+    const already = await this.getSetting(SETTING_KEY);
+    if (already === '1') return { applied: false, message: 'migrateLdoToDispatchModelOnly_v2: already applied.' };
+
+    const [ldoMat] = await db.select({ id: plantMaterials.id, defaultUom: plantMaterials.defaultUom })
+      .from(plantMaterials)
+      .where(sql`UPPER(TRIM(${plantMaterials.name})) = 'LDO'`)
+      .limit(1);
+    if (!ldoMat) {
+      await this.setSetting(SETTING_KEY, '1');
+      return { applied: true, message: 'migrateLdoToDispatchModelOnly_v2: LDO material not found — nothing to do.' };
+    }
+    const ldoMatId = ldoMat.id;
+    const ldoUom = ldoMat.defaultUom || 'Liters';
+
+    const allPartiesList = await db.select({ id: parties.id, name: parties.name }).from(parties);
+    const hlcParty = allPartiesList.find((p: any) => p.name?.trim().toUpperCase() === 'HLC')
+      || allPartiesList.find((p: any) => p.name?.toUpperCase().includes('HIGH LANE'))
+      || null;
+    const hlcPartyId = hlcParty?.id ?? null;
+
+    await db.transaction(async (tx) => {
+      // Step 1 — purge all dip-based consumption rows (no longer stock moves)
+      await tx.execute(sql`DELETE FROM stock_ledger WHERE transaction_type = 'ldo_dip_consumption'`);
+      await tx.execute(sql`DELETE FROM stock_ledger WHERE transaction_type = 'ldo_shift_consumption'`);
+      await tx.execute(sql`DELETE FROM stock_ledger WHERE transaction_type = 'ldo_heating_consumption'`);
+
+      // Step 2 — purge existing LDO dispatch rows (rebuilt below with correct attribution)
+      await tx.execute(sql`DELETE FROM stock_ledger WHERE material_id = ${ldoMatId} AND transaction_type = 'dispatch'`);
+
+      // Step 3 — rebuild from truck_dispatches
+      const dispatches = await tx.execute(sql`
+        SELECT td.id, td.date, td.party_id,
+               COALESCE(td.actual_ldo_qty, td.theoretical_ldo_qty, 0) AS ldo_qty,
+               COALESCE(td.ldo_tank_number, 1) AS tank_num,
+               td.delivery_location,
+               mt.name AS mix_name
+        FROM truck_dispatches td
+        LEFT JOIN mix_templates mt ON mt.id = td.mix_template_id
+        WHERE COALESCE(td.actual_ldo_qty, td.theoretical_ldo_qty, 0) > 0
+          AND td.party_id IS NOT NULL
+        ORDER BY td.date, td.id
+      `);
+
+      for (const d of (dispatches.rows as any[])) {
+        const dispatchPartyId = d.party_id as number;
+        const ldo = parseFloat(d.ldo_qty ?? 0);
+        if (!ldo || ldo <= 0) continue;
+
+        // Clean label: "MixTemplate — DeliveryLocation" (no suffix)
+        const label = [d.mix_name?.trim(), d.delivery_location?.trim() || null]
+          .filter(Boolean).join(' — ') || 'Dispatch';
+
+        // Owner-first: deduct from owner if they have LDO receipts, else from HLC
+        const rcpt = await tx.execute(sql`
+          SELECT 1 FROM material_receipts WHERE party_id = ${dispatchPartyId} AND material_id = ${ldoMatId} LIMIT 1
+        `);
+        const ownerHasReceipts = (rcpt.rows as any[]).length > 0;
+        const targetPartyId = ownerHasReceipts ? dispatchPartyId : (hlcPartyId ?? dispatchPartyId);
+
+        await tx.execute(sql`
+          INSERT INTO stock_ledger
+            (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+          VALUES
+            (${d.date}, ${targetPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${ldo}, ${ldoUom}, ${label}, ${d.tank_num ?? 1})
+          ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+            WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+          DO NOTHING
+        `);
+      }
+
+      // Step 4 — recompute stock_balances for LDO from the rebuilt ledger
+      await tx.execute(sql`UPDATE stock_balances SET balance = 0, uom = ${ldoUom}, last_updated = NOW() WHERE material_id = ${ldoMatId}`);
+      const sums = await tx.execute(sql`
+        SELECT party_id,
+               COALESCE(SUM(quantity_in),0) - COALESCE(SUM(quantity_out),0) AS net_balance
+        FROM stock_ledger
+        WHERE material_id = ${ldoMatId}
+        GROUP BY party_id
+      `);
+      for (const row of (sums.rows as any[])) {
+        const pId = row.party_id as number | null;
+        const bal = parseFloat(row.net_balance);
+        const upd = await tx.execute(sql`
+          UPDATE stock_balances SET balance = ${bal}, uom = ${ldoUom}, last_updated = NOW()
+          WHERE ${pId === null ? sql`party_id IS NULL` : sql`party_id = ${pId}`} AND material_id = ${ldoMatId}
+        `);
+        if (((upd as any).rowCount ?? 0) === 0) {
+          await tx.execute(sql`
+            INSERT INTO stock_balances (party_id, material_id, balance, uom, last_updated)
+            VALUES (${pId}, ${ldoMatId}, ${bal}, ${ldoUom}, NOW())
+          `);
+        }
+      }
+    });
+
+    await this.recomputeBalanceAfterForMaterial(ldoMatId);
+    await this.setSetting(SETTING_KEY, '1');
+    return { applied: true, message: 'migrateLdoToDispatchModelOnly_v2: purged dip-based rows, rebuilt LDO dispatch ledger, recomputed all balances.' };
   }
 }
 
