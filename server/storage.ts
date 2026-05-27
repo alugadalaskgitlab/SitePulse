@@ -3747,18 +3747,23 @@ export class DatabaseStorage implements IStorage {
           id: truckDispatches.id,
           deliveryLocation: truckDispatches.deliveryLocation,
           theoreticalAggregates: truckDispatches.theoreticalAggregates,
+          theoreticalLdoQty: truckDispatches.theoreticalLdoQty,
+          actualLdoQty: truckDispatches.actualLdoQty,
         })
           .from(truckDispatches).where(inArray(truckDispatches.id, refIds))
       : [];
     const dispatchMeta = new Map(dispatches.map(d => [d.id, {
       deliveryLocation: d.deliveryLocation,
       theoreticalAggregates: d.theoreticalAggregates,
+      theoreticalLdoQty: d.theoreticalLdoQty,
+      actualLdoQty: d.actualLdoQty,
     }]));
 
-    // Resolve material UOM
-    const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom })
+    // Resolve material UOM and name (name is used below to detect LDO for templateQty fallback)
+    const [mat] = await db.select({ defaultUom: plantMaterials.defaultUom, conversionToUom: plantMaterials.conversionToUom, name: plantMaterials.name })
       .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
     const uom = mat?.conversionToUom || mat?.defaultUom || 'Ton';
+    const isLdoMaterial = mat?.name?.trim().toUpperCase() === 'LDO';
 
     // ── Pre-process: identify rebuild delta rows and build signed-delta maps ──────
     // Delta rows are written by insertLegacyDeltaEntry with notes containing
@@ -3903,6 +3908,10 @@ export class DatabaseStorage implements IStorage {
         // Resolve the full template quantity from theoreticalAggregates (updated by the rebuild).
         // This is the authoritative "how much of this material should have been consumed" value.
         // Falls back to netRequired for pre-rebuild legacy rows without aggregates data.
+        // For LDO specifically, theoreticalAggregates won't contain LDO (it only tracks
+        // stone aggregates), so we additionally fall back to theoreticalLdoQty / actualLdoQty
+        // from the dispatch record so the owner sees the FULL dispatch qty (not just their
+        // partial share) — needed for correct borrowed-from-HLC computation.
         let templateQty = netRequired;
         if (siteRefId != null) {
           const meta = dispatchMeta.get(siteRefId);
@@ -3915,6 +3924,14 @@ export class DatabaseStorage implements IStorage {
               const aggVal = agg[String(materialId)] ?? (agg as Record<number, number>)[materialId];
               if (aggVal != null && +aggVal > 0) templateQty = +aggVal;
             } catch { /* fallback to netRequired */ }
+          }
+          // LDO fallback: use effective LDO qty (actual if set, else theoretical) as the
+          // full-dispatch template qty so the own-vs-borrowed split is computed correctly.
+          if (isLdoMaterial && templateQty === netRequired && meta) {
+            const ldoDispatchQty = (meta.actualLdoQty != null && +meta.actualLdoQty > 0)
+              ? +meta.actualLdoQty
+              : (meta.theoreticalLdoQty != null && +meta.theoreticalLdoQty > 0 ? +meta.theoreticalLdoQty : 0);
+            if (ldoDispatchQty > 0) templateQty = ldoDispatchQty;
           }
         }
 
@@ -16035,11 +16052,13 @@ export class DatabaseStorage implements IStorage {
   //      party attribution (owner-first → HLC fallback) and clean notes
   //      (no "[backfill]" suffix).  Uses ldoTankNumber from the dispatch row.
   //   4. Recomputes ALL party LDO stock_balances from the rebuilt ledger.
-  // Idempotent via app_settings key 'migrateLdoToDispatchModelOnly_v2'.
-  async migrateLdoToDispatchModelOnly_v2(): Promise<{ applied: boolean; message: string }> {
-    const SETTING_KEY = 'migrateLdoToDispatchModelOnly_v2';
+  // Idempotent via app_settings key 'migrateLdoToDispatchModelOnly_v3'.
+  // v3 fixes: chronological owner-first/borrow-from-HLC with running balances,
+  //           0-qty marker rows carry reference_id = dispatch.id.
+  async migrateLdoToDispatchModelOnly_v3(): Promise<{ applied: boolean; message: string }> {
+    const SETTING_KEY = 'migrateLdoToDispatchModelOnly_v3';
     const already = await this.getSetting(SETTING_KEY);
-    if (already === '1') return { applied: false, message: 'migrateLdoToDispatchModelOnly_v2: already applied.' };
+    if (already === '1') return { applied: false, message: 'migrateLdoToDispatchModelOnly_v3: already applied.' };
 
     const [ldoMat] = await db.select({ id: plantMaterials.id, defaultUom: plantMaterials.defaultUom })
       .from(plantMaterials)
@@ -16047,7 +16066,7 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     if (!ldoMat) {
       await this.setSetting(SETTING_KEY, '1');
-      return { applied: true, message: 'migrateLdoToDispatchModelOnly_v2: LDO material not found — nothing to do.' };
+      return { applied: true, message: 'migrateLdoToDispatchModelOnly_v3: LDO material not found — nothing to do.' };
     }
     const ldoMatId = ldoMat.id;
     const ldoUom = ldoMat.defaultUom || 'Liters';
@@ -16064,14 +16083,37 @@ export class DatabaseStorage implements IStorage {
       await tx.execute(sql`DELETE FROM stock_ledger WHERE transaction_type = 'ldo_shift_consumption'`);
       await tx.execute(sql`DELETE FROM stock_ledger WHERE transaction_type = 'ldo_heating_consumption'`);
 
-      // Step 2 — purge existing LDO dispatch rows (rebuilt below with correct attribution)
+      // Step 2 — purge existing LDO dispatch rows (rebuilt chronologically below)
       await tx.execute(sql`DELETE FROM stock_ledger WHERE material_id = ${ldoMatId} AND transaction_type = 'dispatch'`);
 
-      // Step 3 — rebuild from truck_dispatches
+      // Step 3 — seed running balances from the remaining non-dispatch LDO ledger rows
+      // (receipts, openings, adjustments are still intact after step 2)
+      const nonDispatchSums = await tx.execute(sql`
+        SELECT party_id,
+               COALESCE(SUM(quantity_in), 0) - COALESCE(SUM(quantity_out), 0) AS net
+        FROM stock_ledger
+        WHERE material_id = ${ldoMatId}
+          AND transaction_type != 'dispatch'
+        GROUP BY party_id
+      `);
+      const runningBal = new Map<number | null, number>();
+      for (const row of (nonDispatchSums.rows as any[])) {
+        runningBal.set(row.party_id as number | null, parseFloat(row.net ?? 0));
+      }
+
+      // Step 4 — determine which parties have ever received LDO (owner-receipt check)
+      const ldoReceiptRows = await tx.execute(sql`
+        SELECT DISTINCT party_id FROM material_receipts WHERE material_id = ${ldoMatId}
+      `);
+      const partiesWithLdoReceipts = new Set(
+        (ldoReceiptRows.rows as any[]).map(r => r.party_id as number)
+      );
+
+      // Step 5 — rebuild dispatch rows chronologically applying owner-first/borrow-from-HLC
       const dispatches = await tx.execute(sql`
         SELECT td.id, td.date, td.party_id,
                COALESCE(td.actual_ldo_qty, td.theoretical_ldo_qty, 0) AS ldo_qty,
-               COALESCE(td.ldo_tank_number, 1) AS tank_num,
+               COALESCE(td.ldo_tank_number, 1)                         AS tank_num,
                td.delivery_location,
                mt.name AS mix_name
         FROM truck_dispatches td
@@ -16081,34 +16123,97 @@ export class DatabaseStorage implements IStorage {
         ORDER BY td.date, td.id
       `);
 
+      const getBal = (pId: number | null) => Math.max(0, runningBal.get(pId) ?? 0);
+      const deductBal = (pId: number | null, qty: number) =>
+        runningBal.set(pId, (runningBal.get(pId) ?? 0) - qty);
+
       for (const d of (dispatches.rows as any[])) {
         const dispatchPartyId = d.party_id as number;
         const ldo = parseFloat(d.ldo_qty ?? 0);
         if (!ldo || ldo <= 0) continue;
 
-        // Clean label: "MixTemplate — DeliveryLocation" (no suffix)
+        const tankNum = parseInt(d.tank_num ?? 1);
+        // Clean label: "MixTemplate — DeliveryLocation" (no "[backfill]" suffix)
         const label = [d.mix_name?.trim(), d.delivery_location?.trim() || null]
           .filter(Boolean).join(' — ') || 'Dispatch';
 
-        // Owner-first: deduct from owner if they have LDO receipts, else from HLC
-        const rcpt = await tx.execute(sql`
-          SELECT 1 FROM material_receipts WHERE party_id = ${dispatchPartyId} AND material_id = ${ldoMatId} LIMIT 1
-        `);
-        const ownerHasReceipts = (rcpt.rows as any[]).length > 0;
-        const targetPartyId = ownerHasReceipts ? dispatchPartyId : (hlcPartyId ?? dispatchPartyId);
+        if (!partiesWithLdoReceipts.has(dispatchPartyId)) {
+          // Owner has no LDO receipts — charge entire amount to HLC
+          const targetId = (hlcPartyId != null && hlcPartyId !== dispatchPartyId)
+            ? hlcPartyId
+            : dispatchPartyId;
+          await tx.execute(sql`
+            INSERT INTO stock_ledger
+              (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+            VALUES
+              (${d.date}, ${targetId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${ldo}, ${ldoUom}, ${label}, ${tankNum})
+            ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+              WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+            DO NOTHING
+          `);
+          deductBal(targetId, ldo);
+        } else {
+          // Owner has LDO receipts — owner-first, borrow shortfall from HLC
+          const ownerAvail = getBal(dispatchPartyId);
+          const fromOwner = +(Math.min(ownerAvail, ldo)).toFixed(9);
+          const remaining  = +(ldo - fromOwner).toFixed(9);
 
-        await tx.execute(sql`
-          INSERT INTO stock_ledger
-            (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
-          VALUES
-            (${d.date}, ${targetPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${ldo}, ${ldoUom}, ${label}, ${d.tank_num ?? 1})
-          ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
-            WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
-          DO NOTHING
-        `);
+          if (fromOwner > 1e-9) {
+            await tx.execute(sql`
+              INSERT INTO stock_ledger
+                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+              VALUES
+                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${fromOwner}, ${ldoUom}, ${label}, ${tankNum})
+              ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+                WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+              DO NOTHING
+            `);
+            deductBal(dispatchPartyId, fromOwner);
+          } else {
+            // Owner has zero available — insert 0-qty marker row so getPartyStatement
+            // can see this dispatch in the owner's ledger and compute borrowedFromHlc.
+            // Marker uses reference_id = dispatch.id (same as live dispatch code behaviour
+            // after insertedLedgerIds backfill).
+            await tx.execute(sql`
+              INSERT INTO stock_ledger
+                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+              VALUES
+                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, 0, ${ldoUom}, ${label}, ${tankNum})
+              ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+                WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+              DO NOTHING
+            `);
+          }
+
+          if (remaining > 1e-9 && hlcPartyId != null && hlcPartyId !== dispatchPartyId) {
+            const borrowLabel = `${label} (Borrowed from HLC)`;
+            await tx.execute(sql`
+              INSERT INTO stock_ledger
+                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+              VALUES
+                (${d.date}, ${hlcPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${remaining}, ${ldoUom}, ${borrowLabel}, ${tankNum})
+              ON CONFLICT (material_id, COALESCE(party_id, -1), reference_id)
+                WHERE transaction_type = 'dispatch' AND reference_id IS NOT NULL
+              DO NOTHING
+            `);
+            deductBal(hlcPartyId, remaining);
+          } else if (remaining > 1e-9) {
+            // Owner IS HLC or HLC not found — record remaining shortfall against owner
+            // Only reached when dispatchPartyId === hlcPartyId (HLC dispatching its own stock)
+            const shortLabel = `${label} (shortfall)`;
+            await tx.execute(sql`
+              INSERT INTO stock_ledger
+                (date, party_id, material_id, transaction_type, reference_id, quantity_in, quantity_out, uom, notes, tank_number)
+              VALUES
+                (${d.date}, ${dispatchPartyId}, ${ldoMatId}, 'dispatch', ${d.id}, 0, ${remaining}, ${ldoUom}, ${shortLabel}, ${tankNum})
+              ON CONFLICT DO NOTHING
+            `);
+            deductBal(dispatchPartyId, remaining);
+          }
+        }
       }
 
-      // Step 4 — recompute stock_balances for LDO from the rebuilt ledger
+      // Step 6 — recompute stock_balances for LDO from the rebuilt ledger
       await tx.execute(sql`UPDATE stock_balances SET balance = 0, uom = ${ldoUom}, last_updated = NOW() WHERE material_id = ${ldoMatId}`);
       const sums = await tx.execute(sql`
         SELECT party_id,
@@ -16135,7 +16240,7 @@ export class DatabaseStorage implements IStorage {
 
     await this.recomputeBalanceAfterForMaterial(ldoMatId);
     await this.setSetting(SETTING_KEY, '1');
-    return { applied: true, message: 'migrateLdoToDispatchModelOnly_v2: purged dip-based rows, rebuilt LDO dispatch ledger, recomputed all balances.' };
+    return { applied: true, message: 'migrateLdoToDispatchModelOnly_v3: purged dip-based rows, rebuilt LDO dispatch ledger with chronological owner-first routing, recomputed all balances.' };
   }
 }
 

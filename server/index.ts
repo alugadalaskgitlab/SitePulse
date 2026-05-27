@@ -400,10 +400,10 @@ app.use((req, res, next) => {
   // Definitive cutover: LDO stock moves are now written by truck dispatches only.
   // Purges dip/shift/heating consumption rows, rebuilds clean dispatch rows, recomputes balances.
   try {
-    const r6 = await (storage as any).migrateLdoToDispatchModelOnly_v2();
+    const r6 = await (storage as any).migrateLdoToDispatchModelOnly_v3();
     console.log(`Startup: ${r6.message}`);
   } catch (e) {
-    console.error("Startup: migrateLdoToDispatchModelOnly_v2 failed:", e);
+    console.error("Startup: migrateLdoToDispatchModelOnly_v3 failed:", e);
   }
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
