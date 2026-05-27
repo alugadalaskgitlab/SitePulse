@@ -9029,12 +9029,16 @@ export class DatabaseStorage implements IStorage {
       }
     };
 
-    const calcQty = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; numberOfTrips?: number | null; hoursOrKmRun?: number | null; entryType?: string | null }) => {
+    const calcQty = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; numberOfTrips?: number | null; hoursOrKmRun?: number | null; entryType?: string | null; openingReading?: number | null; closingReading?: number | null }) => {
       const et = (row.entryType || "").toLowerCase();
       if (et === "shifting") return 1;
       if (et === "trip_based" && row.numberOfTrips) return row.numberOfTrips;
       if (et === "daily") return 1;
       if (et === "monthly") return 1;
+      // Meter readings take priority over time-based hours when both are present
+      if (row.openingReading != null && row.closingReading != null && row.closingReading > row.openingReading) {
+        return Math.round((row.closingReading - row.openingReading) * 100) / 100;
+      }
       if (row.hoursWorked && row.hoursWorked > 0) return row.hoursWorked;
       if (row.hoursOrKmRun && row.hoursOrKmRun > 0) return row.hoursOrKmRun;
       if (row.startTime && row.endTime) {
@@ -9048,7 +9052,11 @@ export class DatabaseStorage implements IStorage {
       return 0;
     };
 
-    const calcHours = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; hoursOrKmRun?: number | null }) => {
+    const calcHours = (row: { hoursWorked?: number | null; startTime?: string | null; endTime?: string | null; hoursOrKmRun?: number | null; openingReading?: number | null; closingReading?: number | null }) => {
+      // Meter readings take priority over time-based hours when both are present
+      if (row.openingReading != null && row.closingReading != null && row.closingReading > row.openingReading) {
+        return Math.round((row.closingReading - row.openingReading) * 100) / 100;
+      }
       if (row.hoursWorked && row.hoursWorked > 0) return row.hoursWorked;
       if (row.hoursOrKmRun && row.hoursOrKmRun > 0) return row.hoursOrKmRun;
       if (row.startTime && row.endTime) {
@@ -9099,6 +9107,8 @@ export class DatabaseStorage implements IStorage {
           hoursWorked: equipmentLogs.hoursWorked,
           startTime: equipmentLogs.startTime,
           endTime: equipmentLogs.endTime,
+          openingReading: equipmentLogs.openingReading,
+          closingReading: equipmentLogs.closingReading,
           numberOfTrips: equipmentLogs.numberOfTrips,
           equipmentId: equipmentLogs.equipmentId,
           diesel: equipmentLogs.diesel,
@@ -9116,8 +9126,8 @@ export class DatabaseStorage implements IStorage {
 
         for (const row of dprLogs) {
           if (!matchesEntryTypeFilter(row.entryType)) continue;
-          const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType });
-          const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime });
+          const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType, openingReading: row.openingReading, closingReading: row.closingReading });
+          const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.diesel || 0;
           if (qty > 0) {
             const machineName = eqMap.get(row.equipmentId!) || row.machine;
@@ -9151,8 +9161,8 @@ export class DatabaseStorage implements IStorage {
         for (const row of plantUsage) {
           const et = row.entryType || "time_meter";
           if (!matchesEntryTypeFilter(et)) continue;
-          const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et });
-          const hours = calcHours({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime });
+          const qty = calcQty({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: et, openingReading: row.openingReading, closingReading: row.closingReading });
+          const hours = calcHours({ hoursOrKmRun: row.hoursOrKmRun, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
           const dieselVal = row.dieselIssued || 0;
           if (qty > 0) {
             const machineName = eqMap.get(row.equipmentId) || "EQUIPMENT";
@@ -9192,6 +9202,8 @@ export class DatabaseStorage implements IStorage {
         hoursWorked: equipmentLogs.hoursWorked,
         startTime: equipmentLogs.startTime,
         endTime: equipmentLogs.endTime,
+        openingReading: equipmentLogs.openingReading,
+        closingReading: equipmentLogs.closingReading,
         numberOfTrips: equipmentLogs.numberOfTrips,
         diesel: equipmentLogs.diesel,
         task: equipmentLogs.task,
@@ -9203,8 +9215,8 @@ export class DatabaseStorage implements IStorage {
 
       for (const row of unlinkedLogs) {
         if (!matchesEntryTypeFilter(row.entryType)) continue;
-        const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType });
-        const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime });
+        const qty = calcQty({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, numberOfTrips: row.numberOfTrips, entryType: row.entryType, openingReading: row.openingReading, closingReading: row.closingReading });
+        const hours = calcHours({ hoursWorked: row.hoursWorked, startTime: row.startTime, endTime: row.endTime, openingReading: row.openingReading, closingReading: row.closingReading });
         const dieselVal = row.diesel || 0;
         if (qty > 0) {
           const label = entryTypeLabel(row.entryType);
