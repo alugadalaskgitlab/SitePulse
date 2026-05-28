@@ -161,13 +161,13 @@ export default function Plant() {
 
         {reportsVisible && (
           <TabsContent value="reports" className="mt-6">
-            <ReportsTab />
+            <ReportsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
           </TabsContent>
         )}
 
         {stockVisible && (
           <TabsContent value="stock" className="mt-6">
-            <StockDetailsTab />
+            <StockDetailsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
           </TabsContent>
         )}
 
@@ -470,8 +470,9 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
   );
 }
 
-function ReportsTab() {
+function ReportsTab({ plantType = "hma" }: { plantType?: string }) {
   const { sectionVisible } = useAuth();
+  const isRmc = plantType === "rmc";
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
     const sep = path.includes("?") ? "&" : "?";
@@ -480,10 +481,10 @@ function ReportsTab() {
   return (
     <div className="space-y-4">
       <div className="bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-md text-sm">
-        Reports — All daily plant reports, historical reports, and heating trends. Use date / plant filters and bulk PDF / ZIP export.
+        Reports — {isRmc ? "RMC daily production, material receipts, cube test summaries." : "All daily plant reports, historical reports, and heating trends. Use date / plant filters and bulk PDF / ZIP export."}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sectionVisible("plant_daily_reports") && (
+        {!isRmc && sectionVisible("plant_daily_reports") && (
         <Link href={appendRoleAndTab(`/plant/daily-report/${todayStr}`)}>
           <Card className="hover-elevate cursor-pointer h-full border-green-200 dark:border-green-800" data-testid="tile-today-daily-report-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -499,7 +500,7 @@ function ReportsTab() {
           </Card>
         </Link>
         )}
-        {sectionVisible("plant_daily_reports") && (
+        {!isRmc && sectionVisible("plant_daily_reports") && (
         <Link href={appendRoleAndTab("/plant/daily-reports")}>
           <Card className="hover-elevate cursor-pointer h-full border-slate-200 dark:border-slate-800" data-testid="tile-historical-daily-reports-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -515,7 +516,7 @@ function ReportsTab() {
           </Card>
         </Link>
         )}
-        {sectionVisible("plant_heating") && (
+        {!isRmc && sectionVisible("plant_heating") && (
         <Link href={appendRoleAndTab("/plant/heating-trends")}>
           <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-trends-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -531,7 +532,7 @@ function ReportsTab() {
           </Card>
         </Link>
         )}
-        {sectionVisible("plant_daily_reports") && (
+        {isRmc && sectionVisible("plant_daily_reports") && (
         <Link href={appendRoleAndTab("/plant/rmc/daily-report")}>
           <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-daily-report-reports">
             <CardContent className="p-6 flex items-center gap-4">
@@ -552,7 +553,8 @@ function ReportsTab() {
   );
 }
 
-function StockDetailsTab() {
+function StockDetailsTab({ plantType = "hma" }: { plantType?: string }) {
+  const isRmc = plantType === "rmc";
   const { appendOrigin } = useOrigin();
   const { sectionVisible, isAdmin } = useAuth();
   const { toast } = useToast();
@@ -676,7 +678,7 @@ function StockDetailsTab() {
       </Link>
       )}
 
-      {sectionVisible("plant_variance") && (
+      {!isRmc && sectionVisible("plant_variance") && (
       <Link href={appendRoleAndTab("/plant/variance-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -693,7 +695,7 @@ function StockDetailsTab() {
       </Link>
       )}
 
-      {sectionVisible("plant_audit") && (
+      {!isRmc && sectionVisible("plant_audit") && (
       <Link href={appendRoleAndTab("/plant/audit-report")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -727,7 +729,7 @@ function StockDetailsTab() {
       </Link>
       )}
 
-      {sectionVisible("plant_bitumen") && (
+      {!isRmc && sectionVisible("plant_bitumen") && (
       <Link href={appendRoleAndTab("/plant/bitumen-stock")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -744,7 +746,7 @@ function StockDetailsTab() {
       </Link>
       )}
 
-      {sectionVisible("plant_ldo") && (
+      {!isRmc && sectionVisible("plant_ldo") && (
       <Link href={appendRoleAndTab("/plant/ldo-flow-meter")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">

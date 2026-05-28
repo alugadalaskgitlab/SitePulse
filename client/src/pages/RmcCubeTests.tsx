@@ -266,7 +266,19 @@ export default function RmcCubeTests() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <Label>Batch Record *</Label>
-              <Select value={form.batchRecordId} onValueChange={v => setForm(f => ({ ...f, batchRecordId: v }))}>
+              <Select
+                value={form.batchRecordId}
+                onValueChange={v => {
+                  const batch = batchRecords.find(b => b.id === Number(v));
+                  const ts = batch?.targetStrength != null ? batch.targetStrength.toString() : "";
+                  setForm(f => ({
+                    ...f,
+                    batchRecordId: v,
+                    targetStrength: ts || f.targetStrength,
+                    passFail: derivePassFail(f.strengthMpa, ts || f.targetStrength),
+                  }));
+                }}
+              >
                 <SelectTrigger data-testid="select-batch-record">
                   <SelectValue placeholder="Select batch…" />
                 </SelectTrigger>
