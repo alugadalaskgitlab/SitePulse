@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,8 @@ interface SitePurchaseItem {
 
 export default function SitePurchasesReport() {
   const { toast } = useToast();
+  const search = useSearch();
+  const returnTo = new URLSearchParams(search).get("returnTo") || "/site/dashboard";
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
@@ -123,7 +125,7 @@ export default function SitePurchasesReport() {
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/site/dashboard">
+          <Link href={returnTo}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ChevronLeft className="w-5 h-5" />
             </Button>

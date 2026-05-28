@@ -322,10 +322,10 @@ export default function SiteHome() {
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               {[
                 canDprs     && { label: "DPR History",        icon: FileText,     desc: "View & edit daily reports",  color: "text-amber-500",   href: "/site/dashboard" },
-                canMaterials && { label: "Materials Received", icon: Package,      desc: "Material trips log",         color: "text-emerald-500", href: "/site/material-trips" },
+                canMaterials && { label: "Materials Received", icon: Package,      desc: "All material trips report",  color: "text-emerald-500", href: "/site/materials-received?returnTo=/site" },
                 canDiesel   && { label: "Diesel Report",       icon: Fuel,         desc: "Usage vs planned",           color: "text-blue-500",    href: "/plant/diesel-requirements?returnTo=/site" },
                 canProcure  && { label: "Purchase Indents",    icon: ShoppingCart, desc: "Indents & approvals",        color: "text-violet-500",  href: "/plant/purchase-indents?returnTo=/site" },
-                canProcure  && { label: "Site Purchases",      icon: TrendingUp,   desc: "Purchases & expenses",       color: "text-rose-500",    href: "/site/purchases" },
+                canProcure  && { label: "Site Purchases",      icon: TrendingUp,   desc: "Purchases & expenses",       color: "text-rose-500",    href: "/site/purchases?returnTo=/site" },
               ].filter(Boolean).map((r: any, i, arr) => (
                 <Link href={r.href} key={r.label} data-testid={`link-report-${r.label.toLowerCase().replace(/\s+/g, "-")}`}>
                   <button className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors text-left ${i < arr.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
