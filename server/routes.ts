@@ -6938,6 +6938,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/maintenance/open-count", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const count = await storage.getOpenBreakdownCount();
+      res.json({ count });
+    } catch (err) {
+      console.error("GET /api/maintenance/open-count:", err);
+      res.status(500).json({ error: "Failed to fetch open count" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();

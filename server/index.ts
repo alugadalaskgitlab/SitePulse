@@ -111,6 +111,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureMaintenanceTables();
+    console.log("Startup: equipment_maintenance_logs and maintenance_parts_used tables ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure maintenance tables:", e);
+  }
+
+  try {
     await storage.ensureHeatingSessionDipColumns();
   } catch (e) {
     console.error("Startup: Failed to ensure heating session dip columns:", e);

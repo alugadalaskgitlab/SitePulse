@@ -521,6 +521,10 @@ export interface IStorage {
   // Rewrite legacy short generator names (e.g. "600 KVA") to canonical Equipment Master names ("600 KVA GENERATOR")
   migrateLegacyGeneratorNamesToCanonical(): Promise<{ generatorLogsUpdated: number; heatingSessionsUpdated: number; errors: number }>;
 
+  // Ensures the equipment_maintenance_logs and maintenance_parts_used tables exist.
+  // Uses CREATE TABLE IF NOT EXISTS — idempotent, safe for every startup.
+  ensureMaintenanceTables(): Promise<void>;
+
   // Ensures the 4 LDO dip columns added in Task #551 exist on bitumen_heating_sessions.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureHeatingSessionDipColumns(): Promise<void>;
@@ -754,6 +758,7 @@ export interface IStorage {
   addMaintenanceParts(logId: number, parts: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
   removeMaintenancePart(partId: number): Promise<boolean>;
   getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]>;
+  getOpenBreakdownCount(): Promise<number>;
 
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -10288,6 +10293,43 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async ensureMaintenanceTables(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS equipment_maintenance_logs (
+        id serial PRIMARY KEY,
+        date date NOT NULL,
+        equipment_id integer NOT NULL,
+        event_type text NOT NULL,
+        description text NOT NULL,
+        downtime_hours real,
+        status text NOT NULL DEFAULT 'open',
+        next_service_due date,
+        serviced_by text,
+        remarks text,
+        reported_by text,
+        resolved_at date,
+        auto_issue_id integer,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS eml_date_idx ON equipment_maintenance_logs (date)
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS eml_equipment_idx ON equipment_maintenance_logs (equipment_id)
+    `));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS maintenance_parts_used (
+        id serial PRIMARY KEY,
+        maintenance_log_id integer NOT NULL,
+        store_item_id integer NOT NULL,
+        qty real NOT NULL,
+        uom text NOT NULL,
+        auto_issue_item_id integer
+      )
+    `));
+  }
+
   async ensureHeatingSessionDipColumns(): Promise<void> {
     const cols = [
       "ldo_tank1_opening_dip",
@@ -17017,6 +17059,14 @@ export class DatabaseStorage implements IStorage {
     }));
 
     return result;
+  }
+
+  async getOpenBreakdownCount(): Promise<number> {
+    const rows = await db
+      .select({ id: equipmentMaintenanceLogs.id })
+      .from(equipmentMaintenanceLogs)
+      .where(and(eq(equipmentMaintenanceLogs.eventType, 'breakdown'), eq(equipmentMaintenanceLogs.status, 'open')));
+    return rows.length;
   }
 }
 

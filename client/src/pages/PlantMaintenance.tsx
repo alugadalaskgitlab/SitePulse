@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useOrigin } from "@/hooks/use-origin";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { EquipmentMasterType, StoreItem } from "@shared/schema";
-import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X } from "lucide-react";
+import type { EquipmentMasterType, StoreItem, StoreStockBalance } from "@shared/schema";
+import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 type Part = { storeItemId: number; qty: number; uom: string };
@@ -57,15 +57,12 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   pm: "Preventive Maintenance",
 };
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  breakdown: "destructive",
-  service: "default",
-  pm: "secondary",
-};
-
 function eventTypeBadge(type: string) {
-  const variant = (EVENT_TYPE_COLORS[type] ?? "outline") as any;
-  return <Badge variant={variant} className="text-xs">{EVENT_TYPE_LABELS[type] ?? type}</Badge>;
+  const cls =
+    type === "breakdown" ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400" :
+    type === "service" ? "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400" :
+    "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400";
+  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cls}`}>{EVENT_TYPE_LABELS[type] ?? type}</span>;
 }
 
 function statusBadge(status: string) {
@@ -75,15 +72,88 @@ function statusBadge(status: string) {
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 
+function PartSelector({
+  storeItems,
+  stockMap,
+  partItemId,
+  setPartItemId,
+  partQty,
+  setPartQty,
+  partUom,
+  setPartUom,
+  onAdd,
+  addLabel = "Add",
+}: {
+  storeItems: StoreItem[];
+  stockMap: Record<number, number>;
+  partItemId: string;
+  setPartItemId: (v: string) => void;
+  partQty: string;
+  setPartQty: (v: string) => void;
+  partUom: string;
+  setPartUom: (v: string) => void;
+  onAdd: () => void;
+  addLabel?: string;
+}) {
+  const selectedItem = storeItems.find(s => s.id === Number(partItemId));
+  const available = partItemId ? (stockMap[Number(partItemId)] ?? 0) : null;
+  const exceeds = available !== null && Number(partQty) > available;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-2 items-end">
+        <div className="flex-1 space-y-1">
+          <Label className="text-xs">Item</Label>
+          <Select value={partItemId} onValueChange={v => { setPartItemId(v); const it = storeItems.find(s => s.id === Number(v)); if (it) setPartUom(it.uom); }}>
+            <SelectTrigger data-testid="select-part-item"><SelectValue placeholder="Select item..." /></SelectTrigger>
+            <SelectContent>
+              {storeItems.map(s => {
+                const bal = stockMap[s.id] ?? 0;
+                return (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    <span>{s.name}</span>
+                    <span className={`ml-2 text-xs ${bal <= 0 ? "text-red-500" : "text-muted-foreground"}`}>({bal} {s.uom} avail.)</span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          {available !== null && (
+            <p className={`text-xs ${available <= 0 ? "text-red-600" : "text-muted-foreground"}`}>
+              Stock available: {available} {selectedItem?.uom ?? ""}
+            </p>
+          )}
+        </div>
+        <div className="w-20 space-y-1">
+          <Label className="text-xs">Qty</Label>
+          <Input className={`h-9 ${exceeds ? "border-red-400" : ""}`} type="number" min="0.01" step="0.01" value={partQty} onChange={e => setPartQty(e.target.value)} placeholder="0" data-testid="input-part-qty" />
+        </div>
+        <div className="w-20 space-y-1">
+          <Label className="text-xs">UOM</Label>
+          <Input className="h-9" value={partUom || selectedItem?.uom || ""} onChange={e => setPartUom(e.target.value)} placeholder="Nos" data-testid="input-part-uom" />
+        </div>
+        <Button type="button" variant="outline" size="sm" className="h-9" onClick={onAdd} disabled={!partItemId || !partQty || exceeds} data-testid="button-add-part">{addLabel}</Button>
+      </div>
+      {exceeds && (
+        <p className="text-xs text-red-600 flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3" /> Requested qty ({partQty}) exceeds available stock ({available}).
+        </p>
+      )}
+    </div>
+  );
+}
+
 function LogForm({
   equipment,
   storeItems,
+  stockMap,
   onClose,
   onSaved,
   initial,
 }: {
   equipment: EquipmentMasterType[];
   storeItems: StoreItem[];
+  stockMap: Record<number, number>;
   onClose: () => void;
   onSaved: () => void;
   initial?: { eventType?: string };
@@ -115,6 +185,7 @@ function LogForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/health-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/open-count"] });
       toast({ title: "Maintenance log created" });
       onSaved();
     },
@@ -154,10 +225,8 @@ function LogForm({
     });
   }
 
-  const selectedItem = storeItems.find(s => s.id === Number(partItemId));
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Date *</Label>
@@ -175,7 +244,6 @@ function LogForm({
           </Select>
         </div>
       </div>
-
       <div className="space-y-1">
         <Label>Equipment *</Label>
         <Select value={equipmentId} onValueChange={setEquipmentId}>
@@ -187,12 +255,10 @@ function LogForm({
           </SelectContent>
         </Select>
       </div>
-
       <div className="space-y-1">
         <Label>Description *</Label>
         <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the issue or work done..." data-testid="textarea-maint-description" />
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Status</Label>
@@ -211,7 +277,6 @@ function LogForm({
           </div>
         )}
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Serviced By</Label>
@@ -222,7 +287,6 @@ function LogForm({
           <Input value={reportedBy} onChange={e => setReportedBy(e.target.value)} placeholder="Your name" data-testid="input-maint-reported-by" />
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Next Service Due</Label>
@@ -235,15 +299,13 @@ function LogForm({
           </div>
         )}
       </div>
-
       <div className="space-y-1">
         <Label>Remarks</Label>
         <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Additional notes..." data-testid="textarea-maint-remarks" />
       </div>
-
       {storeItems.length > 0 && (
         <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
-          <h4 className="font-medium text-sm flex items-center gap-2"><Package className="w-4 h-4" /> Parts Used (from Stores)</h4>
+          <h4 className="font-medium text-sm flex items-center gap-2"><Package className="w-4 h-4" /> Parts Used (auto-deducted from Stores)</h4>
           {parts.map((p, idx) => {
             const item = storeItems.find(s => s.id === p.storeItemId);
             return (
@@ -254,33 +316,159 @@ function LogForm({
               </div>
             );
           })}
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Item</Label>
-              <Select value={partItemId} onValueChange={v => { setPartItemId(v); const it = storeItems.find(s => s.id === Number(v)); if (it) setPartUom(it.uom); }}>
-                <SelectTrigger className="h-8" data-testid="select-part-item"><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {storeItems.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name} ({s.category})</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-20 space-y-1">
-              <Label className="text-xs">Qty</Label>
-              <Input className="h-8" type="number" min="0.01" step="0.01" value={partQty} onChange={e => setPartQty(e.target.value)} placeholder="0" data-testid="input-part-qty" />
-            </div>
-            <div className="w-20 space-y-1">
-              <Label className="text-xs">UOM</Label>
-              <Input className="h-8" value={partUom || selectedItem?.uom || ""} onChange={e => setPartUom(e.target.value)} placeholder="Nos" data-testid="input-part-uom" />
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={addPart} className="h-8" data-testid="button-add-part">Add</Button>
-          </div>
+          <PartSelector
+            storeItems={storeItems}
+            stockMap={stockMap}
+            partItemId={partItemId}
+            setPartItemId={setPartItemId}
+            partQty={partQty}
+            setPartQty={setPartQty}
+            partUom={partUom}
+            setPartUom={setPartUom}
+            onAdd={addPart}
+          />
         </div>
       )}
-
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
         <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-maint-log">
           {createMutation.isPending ? "Saving..." : "Save Log"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function EditLogForm({
+  log,
+  onClose,
+  onSaved,
+}: {
+  log: MaintenanceLog;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [date, setDate] = useState(log.date);
+  const [eventType, setEventType] = useState(log.eventType);
+  const [description, setDescription] = useState(log.description);
+  const [downtimeHours, setDowntimeHours] = useState(String(log.downtimeHours ?? ""));
+  const [status, setStatus] = useState(log.status);
+  const [nextServiceDue, setNextServiceDue] = useState(log.nextServiceDue ?? "");
+  const [servicedBy, setServicedBy] = useState(log.servicedBy ?? "");
+  const [remarks, setRemarks] = useState(log.remarks ?? "");
+  const [reportedBy, setReportedBy] = useState(log.reportedBy ?? "");
+  const [resolvedAt, setResolvedAt] = useState(log.resolvedAt ?? "");
+
+  const editMutation = useMutation({
+    mutationFn: async (body: any) => {
+      const res = await apiRequest("PATCH", `/api/maintenance/logs/${log.id}`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/health-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/open-count"] });
+      toast({ title: "Log updated" });
+      onSaved();
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!description) {
+      toast({ title: "Description is required", variant: "destructive" });
+      return;
+    }
+    editMutation.mutate({
+      date,
+      eventType,
+      description,
+      downtimeHours: downtimeHours ? Number(downtimeHours) : null,
+      status,
+      nextServiceDue: nextServiceDue || null,
+      servicedBy: servicedBy || null,
+      remarks: remarks || null,
+      reportedBy: reportedBy || null,
+      resolvedAt: resolvedAt || null,
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Date</Label>
+          <Input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-edit-date" />
+        </div>
+        <div className="space-y-1">
+          <Label>Event Type</Label>
+          <Select value={eventType} onValueChange={setEventType}>
+            <SelectTrigger data-testid="select-edit-event-type"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="breakdown">Breakdown</SelectItem>
+              <SelectItem value="service">Scheduled Service</SelectItem>
+              <SelectItem value="pm">Preventive Maintenance</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-1 text-sm text-muted-foreground bg-muted/30 rounded p-2">
+        Equipment: <strong className="text-foreground">{log.equipmentName}</strong> (cannot be changed after creation)
+      </div>
+      <div className="space-y-1">
+        <Label>Description *</Label>
+        <Textarea value={description} onChange={e => setDescription(e.target.value)} data-testid="textarea-edit-description" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Status</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger data-testid="select-edit-status"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {eventType === "breakdown" && (
+          <div className="space-y-1">
+            <Label>Downtime Hours</Label>
+            <Input type="number" min="0" step="0.5" value={downtimeHours} onChange={e => setDowntimeHours(e.target.value)} data-testid="input-edit-downtime" />
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Serviced By</Label>
+          <Input value={servicedBy} onChange={e => setServicedBy(e.target.value)} data-testid="input-edit-serviced-by" />
+        </div>
+        <div className="space-y-1">
+          <Label>Reported By</Label>
+          <Input value={reportedBy} onChange={e => setReportedBy(e.target.value)} data-testid="input-edit-reported-by" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Next Service Due</Label>
+          <Input type="date" value={nextServiceDue} onChange={e => setNextServiceDue(e.target.value)} data-testid="input-edit-next-service" />
+        </div>
+        {status === "resolved" && (
+          <div className="space-y-1">
+            <Label>Resolved At</Label>
+            <Input type="date" value={resolvedAt} onChange={e => setResolvedAt(e.target.value)} data-testid="input-edit-resolved-at" />
+          </div>
+        )}
+      </div>
+      <div className="space-y-1">
+        <Label>Remarks</Label>
+        <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} data-testid="textarea-edit-remarks" />
+      </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="submit" disabled={editMutation.isPending} data-testid="button-submit-edit-log">
+          {editMutation.isPending ? "Saving..." : "Update Log"}
         </Button>
       </div>
     </form>
@@ -292,29 +480,31 @@ function LogCard({
   canEdit,
   canDelete,
   storeItems,
+  stockMap,
   onRefresh,
 }: {
   log: MaintenanceLog;
   canEdit: boolean;
   canDelete: boolean;
   storeItems: StoreItem[];
+  stockMap: Record<number, number>;
   onRefresh: () => void;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
   const [partItemId, setPartItemId] = useState("");
   const [partQty, setPartQty] = useState("");
   const [partUom, setPartUom] = useState("");
 
   const deleteMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("DELETE", `/api/maintenance/logs/${log.id}`);
-    },
+    mutationFn: async () => { await apiRequest("DELETE", `/api/maintenance/logs/${log.id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/health-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/open-count"] });
       toast({ title: "Log deleted" });
       onRefresh();
     },
@@ -333,6 +523,7 @@ function LogCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/health-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance/open-count"] });
       toast({ title: log.status === "open" ? "Marked as resolved" : "Re-opened" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -356,17 +547,13 @@ function LogCard({
   });
 
   const removePartMutation = useMutation({
-    mutationFn: async (partId: number) => {
-      await apiRequest("DELETE", `/api/maintenance/parts/${partId}`);
-    },
+    mutationFn: async (partId: number) => { await apiRequest("DELETE", `/api/maintenance/parts/${partId}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
       toast({ title: "Part removed" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
-
-  const selectedItem = storeItems.find(s => s.id === Number(partItemId));
 
   return (
     <>
@@ -406,12 +593,7 @@ function LogCard({
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {canEdit && (
-                <Button
-                  variant="ghost" size="sm" className="text-xs h-7 px-2"
-                  onClick={() => resolveToggleMutation.mutate()}
-                  disabled={resolveToggleMutation.isPending}
-                  data-testid={`button-toggle-status-${log.id}`}
-                >
+                <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => resolveToggleMutation.mutate()} disabled={resolveToggleMutation.isPending} data-testid={`button-toggle-status-${log.id}`}>
                   {log.status === "open" ? "Resolve" : "Re-open"}
                 </Button>
               )}
@@ -446,7 +628,12 @@ function LogCard({
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {canEdit && (
+                  <Button type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setEditOpen(true)} data-testid={`button-edit-log-${log.id}`}>
+                    <Pencil className="w-3 h-3" /> Edit
+                  </Button>
+                )}
                 {canEdit && (
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setAddPartOpen(p => !p)} data-testid={`button-add-part-toggle-${log.id}`}>
                     <Plus className="w-3 h-3" /> Add Part
@@ -460,31 +647,35 @@ function LogCard({
               </div>
 
               {addPartOpen && (
-                <div className="flex gap-2 items-end bg-muted/20 rounded p-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Item</Label>
-                    <Select value={partItemId} onValueChange={v => { setPartItemId(v); const it = storeItems.find(s => s.id === Number(v)); if (it) setPartUom(it.uom); }}>
-                      <SelectTrigger className="h-8" data-testid="select-add-part-item"><SelectValue placeholder="Select..." /></SelectTrigger>
-                      <SelectContent>
-                        {storeItems.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name} ({s.category})</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-20 space-y-1">
-                    <Label className="text-xs">Qty</Label>
-                    <Input className="h-8" type="number" min="0.01" step="0.01" value={partQty} onChange={e => setPartQty(e.target.value)} data-testid="input-add-part-qty" />
-                  </div>
-                  <div className="w-20 space-y-1">
-                    <Label className="text-xs">UOM</Label>
-                    <Input className="h-8" value={partUom || selectedItem?.uom || ""} onChange={e => setPartUom(e.target.value)} data-testid="input-add-part-uom" />
-                  </div>
-                  <Button size="sm" className="h-8" onClick={() => addPartMutation.mutate()} disabled={addPartMutation.isPending || !partItemId || !partQty} data-testid="button-confirm-add-part">Add</Button>
+                <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+                  <p className="text-xs font-medium">Add part (auto-issued from Stores)</p>
+                  <PartSelector
+                    storeItems={storeItems}
+                    stockMap={stockMap}
+                    partItemId={partItemId}
+                    setPartItemId={setPartItemId}
+                    partQty={partQty}
+                    setPartQty={setPartQty}
+                    partUom={partUom}
+                    setPartUom={setPartUom}
+                    onAdd={() => addPartMutation.mutate()}
+                    addLabel={addPartMutation.isPending ? "Adding..." : "Add"}
+                  />
                 </div>
               )}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Maintenance Log #{log.id}</DialogTitle>
+          </DialogHeader>
+          <EditLogForm log={log} onClose={() => setEditOpen(false)} onSaved={() => setEditOpen(false)} />
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -600,6 +791,12 @@ export default function PlantMaintenance() {
   const { data: storeItems = [] } = useQuery<StoreItem[]>({
     queryKey: ["/api/stores/items"],
   });
+
+  const { data: stockSummary = [] } = useQuery<StoreStockBalance[]>({
+    queryKey: ["/api/stores/stock-summary"],
+  });
+
+  const stockMap: Record<number, number> = Object.fromEntries(stockSummary.map(s => [s.itemId, s.balance]));
 
   const params = new URLSearchParams();
   if (filterEquipmentId && filterEquipmentId !== "all") params.set("equipmentId", filterEquipmentId);
@@ -717,6 +914,7 @@ export default function PlantMaintenance() {
                     canEdit={sectionCan("plant_equipment", "edit")}
                     canDelete={isAdmin}
                     storeItems={storeItems}
+                    stockMap={stockMap}
                     onRefresh={refetch}
                   />
                 ))}
@@ -738,6 +936,7 @@ export default function PlantMaintenance() {
           <LogForm
             equipment={equipment.filter(e => e.isActive)}
             storeItems={storeItems}
+            stockMap={stockMap}
             initial={{ eventType: newFormEventType }}
             onClose={() => setShowNewForm(false)}
             onSaved={() => setShowNewForm(false)}

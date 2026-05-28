@@ -186,6 +186,13 @@ function OperationsTab() {
   const { appendPlantContext } = useOrigin();
   const { sectionVisible } = useAuth();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
+
+  const { data: openCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/maintenance/open-count"],
+    enabled: sectionVisible("plant_equipment"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const openBreakdownCount = openCountData?.count ?? 0;
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {sectionVisible("plant_materials") && (
@@ -282,12 +289,19 @@ function OperationsTab() {
       <Link href={opLink("/plant/maintenance")}>
         <Card className="hover-elevate cursor-pointer h-full" data-testid="card-maintenance">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+            <div className="relative w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
               <Wrench className="w-7 h-7 text-red-600 dark:text-red-400" />
+              {openBreakdownCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
+              )}
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Maintenance & Breakdowns</h3>
-              <p className="text-sm text-muted-foreground">Log breakdowns, services, PM events and parts used</p>
+              <p className="text-sm text-muted-foreground">
+                {openBreakdownCount > 0
+                  ? <span className="text-destructive font-medium">{openBreakdownCount} open breakdown{openBreakdownCount !== 1 ? "s" : ""}</span>
+                  : "Log breakdowns, services, PM events and parts used"}
+              </p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
