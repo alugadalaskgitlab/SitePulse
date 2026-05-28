@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Pencil, Trash2, CheckCircle, XCircle, TestTube, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, CheckCircle, XCircle, TestTube, AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -188,11 +188,24 @@ export default function RmcCubeTests() {
             <p className="text-sm text-muted-foreground">Concrete compressive strength QC results</p>
           </div>
         </div>
-        {canCreate && (
-          <Button onClick={openCreate} data-testid="btn-add-test">
-            <Plus className="w-4 h-4 mr-2" />Add Test Result
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const p = new URLSearchParams({ dateFrom, dateTo });
+              if (filterAge && filterAge !== "all") p.set("ageDays", filterAge);
+              window.location.href = `/api/rmc/cube-tests/export?${p}`;
+            }}
+            data-testid="btn-export-cube-tests"
+          >
+            <Download className="w-4 h-4 mr-2" />Export Excel
           </Button>
-        )}
+          {canCreate && (
+            <Button onClick={openCreate} data-testid="btn-add-test">
+              <Plus className="w-4 h-4 mr-2" />Add Test Result
+            </Button>
+          )}
+        </div>
       </div>
 
       {!isLoading && failCount > 0 && (

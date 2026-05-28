@@ -7130,6 +7130,56 @@ export async function registerRoutes(
   });
 
   // Cube Tests
+  // RMC Cube Tests — Excel export (must be declared before /:id)
+  app.get("/api/rmc/cube-tests/export", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const filters = {
+        ageDays: req.query.ageDays ? Number(req.query.ageDays) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const [cubeTests, batchRecords] = await Promise.all([
+        storage.getRmcCubeTests(filters),
+        storage.getRmcBatchRecords({}),
+      ]);
+      const batchMap = new Map(batchRecords.map(b => [b.id, b]));
+
+      const sheetRows = cubeTests.map(t => {
+        const batch = batchMap.get(t.batchRecordId);
+        return {
+          "Sample ID": t.sampleId,
+          "Grade": batch?.grade ?? "",
+          "Batch Date": batch?.date ?? "",
+          "Age (Days)": t.ageDays,
+          "Test Date": t.testDate,
+          "Strength (MPa)": t.strengthMpa,
+          "Target fck (MPa)": t.targetStrength ?? "",
+          "Pass / Fail": t.passFail ? t.passFail.toUpperCase() : "",
+          "Remarks": t.remarks ?? "",
+        };
+      });
+
+      const wb = xlsx.utils.book_new();
+      const ws = xlsx.utils.json_to_sheet(sheetRows);
+      ws["!cols"] = [
+        { wch: 18 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+        { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 28 },
+      ];
+      xlsx.utils.book_append_sheet(wb, ws, "Cube Tests");
+
+      const rangeStr = filters.dateFrom && filters.dateTo
+        ? `${filters.dateFrom}-to-${filters.dateTo}`
+        : "all";
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="rmc-cube-tests-${rangeStr}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Export failed" });
+    }
+  });
+
   app.get("/api/rmc/cube-tests/stats", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_production")) return;
