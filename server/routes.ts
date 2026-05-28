@@ -5025,8 +5025,19 @@ export async function registerRoutes(
       if (!dateFrom || !dateTo) {
         return res.status(400).json({ message: "dateFrom and dateTo are required" });
       }
-      const report = await storage.getDieselComparisonReport(dateFrom, dateTo);
-      res.json(report);
+      const rawRows = await storage.getDieselComparisonReport(dateFrom, dateTo);
+      const dateWise = rawRows.map((row: any) => ({
+        date: row.date,
+        planned: row.totalPlanned,
+        purchased: row.totalPurchased ?? null,
+        actual: row.totalActualIssued ?? null,
+      }));
+      const totals = {
+        totalPlanned: dateWise.reduce((s: number, r: any) => s + (r.planned || 0), 0),
+        totalPurchased: dateWise.reduce((s: number, r: any) => s + (r.purchased || 0), 0),
+        totalActual: dateWise.reduce((s: number, r: any) => s + (r.actual || 0), 0),
+      };
+      res.json({ dateWise, totals, equipmentWise: [] });
     } catch (err) {
       console.error("Error fetching diesel comparison report:", err);
       res.status(500).json({ message: "Failed to fetch diesel comparison report" });
