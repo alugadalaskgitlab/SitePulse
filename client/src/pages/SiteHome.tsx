@@ -131,8 +131,8 @@ export default function SiteHome() {
         </div>
         <div className="flex items-center gap-2">
           <Link href="/">
-            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white hover:bg-slate-800" data-testid="button-home">
-              <Home className="w-4 h-4" />
+            <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-600 hover:border-slate-500" data-testid="button-home">
+              <Home className="w-5 h-5" />
             </Button>
           </Link>
           <div className="w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center font-bold text-xs">
@@ -220,7 +220,7 @@ export default function SiteHome() {
             )}
 
             {canProcure && (
-              <Link href="/plant/purchase-indents" data-testid="link-purchase-indent">
+              <Link href="/plant/purchase-indents?returnTo=/site" data-testid="link-purchase-indent">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-violet-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-lg flex items-center justify-center group-hover:bg-violet-200 dark:group-hover:bg-violet-900/70 transition-colors">
                     <ShoppingCart className="w-4 h-4 text-violet-600 dark:text-violet-400" />
@@ -242,7 +242,7 @@ export default function SiteHome() {
             )}
 
             {canDiesel && (
-              <Link href="/plant/diesel-requirements" data-testid="link-diesel-requirement">
+              <Link href="/plant/diesel-requirements?returnTo=/site" data-testid="link-diesel-requirement">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-blue-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/70 transition-colors">
                     <Fuel className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -323,8 +323,9 @@ export default function SiteHome() {
               {[
                 canDprs     && { label: "DPR History",        icon: FileText,     desc: "View & edit daily reports",  color: "text-amber-500",   href: "/site/dashboard" },
                 canMaterials && { label: "Materials Received", icon: Package,      desc: "Material trips log",         color: "text-emerald-500", href: "/site/material-trips" },
-                canDiesel   && { label: "Diesel Report",       icon: Fuel,         desc: "Usage vs planned",           color: "text-blue-500",    href: "/plant/diesel-requirements" },
-                canProcure  && { label: "Purchase Indents",    icon: ShoppingCart, desc: "Indents & approvals",        color: "text-violet-500",  href: "/plant/purchase-indents" },
+                canDiesel   && { label: "Diesel Report",       icon: Fuel,         desc: "Usage vs planned",           color: "text-blue-500",    href: "/plant/diesel-requirements?returnTo=/site" },
+                canProcure  && { label: "Purchase Indents",    icon: ShoppingCart, desc: "Indents & approvals",        color: "text-violet-500",  href: "/plant/purchase-indents?returnTo=/site" },
+                canProcure  && { label: "Site Purchases",      icon: TrendingUp,   desc: "Purchases & expenses",       color: "text-rose-500",    href: "/site/purchases" },
               ].filter(Boolean).map((r: any, i, arr) => (
                 <Link href={r.href} key={r.label} data-testid={`link-report-${r.label.toLowerCase().replace(/\s+/g, "-")}`}>
                   <button className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors text-left ${i < arr.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>

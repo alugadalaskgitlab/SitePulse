@@ -29,13 +29,11 @@ import {
   Users,
   Package,
   ExternalLink,
-  Truck,
   Trash2,
-  ShoppingCart,
   Clock,
   Pencil,
 } from "lucide-react";
-import type { SiteMaterialTrip, EquipmentMasterType } from "@shared/schema";
+import type { EquipmentMasterType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,7 +45,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 
 const MATERIAL_OPTIONS = [
@@ -69,7 +66,6 @@ export default function SiteDashboard() {
   const canCreate = sectionCan("site_dprs", "create");
   const canExport = sectionCan("site_dprs", "view_reports");
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
-  const [activeTab, setActiveTab] = useState("dpr-summary");
   // DPR filter state — persisted across visits in localStorage so the page
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
@@ -99,52 +95,6 @@ export default function SiteDashboard() {
   
   const [, setLocation] = useLocation();
   
-  // Materials Received tab state
-  const today = format(new Date(), "yyyy-MM-dd");
-  // Materials Received filter state — persisted across visits in localStorage.
-  // URL params (if any are ever added for shareable links) win over the saved set.
-  const SITE_MATERIAL_FILTER_URL_KEYS = [
-    "materialDateFrom", "materialDateTo", "materialSiteFilter", "materialNameFilter", "materialSupplierFilter", "materialStockOwnerFilter",
-  ];
-  const urlHasMaterialFilterParams = (() => {
-    if (typeof window === "undefined") return false;
-    const sp = new URLSearchParams(window.location.search);
-    return SITE_MATERIAL_FILTER_URL_KEYS.some((k) => sp.has(k));
-  })();
-  const [materialFilters, setMaterialFilters, resetMaterialFilters] = usePersistedFilters(
-    "site-dashboard:material-filters:v1",
-    {
-      materialDateFrom: today,
-      materialDateTo: today,
-      materialSiteFilter: "",
-      materialNameFilter: "",
-      materialSupplierFilter: "",
-      materialStockOwnerFilter: "",
-    },
-    { shouldHydrate: !urlHasMaterialFilterParams },
-  );
-  const { materialDateFrom, materialDateTo, materialSiteFilter, materialNameFilter, materialSupplierFilter, materialStockOwnerFilter } = materialFilters;
-  const setMaterialDateFrom = (v: string) => setMaterialFilters((f) => ({ ...f, materialDateFrom: v }));
-  const setMaterialDateTo = (v: string) => setMaterialFilters((f) => ({ ...f, materialDateTo: v }));
-  const setMaterialSiteFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialSiteFilter: v }));
-  const setMaterialNameFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialNameFilter: v }));
-  const setMaterialSupplierFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialSupplierFilter: v }));
-  const setMaterialStockOwnerFilter = (v: string) => setMaterialFilters((f) => ({ ...f, materialStockOwnerFilter: v }));
-  const [newMaterialEntry, setNewMaterialEntry] = useState({
-    date: today,
-    time: format(new Date(), "HH:mm"),
-    site: "",
-    material: "",
-    supplier: "",
-    vehicleNumber: "",
-    quantity: "",
-    uom: "CFT",
-    location: "",
-    receiptNumber: "",
-    enteredBy: "",
-    notes: "",
-  });
-  
   const printRef = useRef<HTMLDivElement>(null);
   const hasRestoredRef = useRef(false);
   
@@ -158,7 +108,6 @@ export default function SiteDashboard() {
       const saved = sessionStorage.getItem("siteDashboardState");
       if (saved) {
         const state = JSON.parse(saved);
-        if (state.activeTab) setActiveTab(state.activeTab);
         if (state.expandedReports && Array.isArray(state.expandedReports)) {
           setExpandedReports(new Set(state.expandedReports));
         }
@@ -173,12 +122,11 @@ export default function SiteDashboard() {
   const saveDashboardState = useCallback(() => {
     try {
       sessionStorage.setItem("siteDashboardState", JSON.stringify({
-        activeTab,
         expandedReports: [...expandedReports],
         scrollY: window.scrollY,
       }));
     } catch (_e) {}
-  }, [activeTab, expandedReports]);
+  }, [expandedReports]);
   
   // Use detailed DPR data for advanced filtering
   // Only send date filters to server; site/engineer/activity/equipment/diesel are filtered client-side
@@ -328,107 +276,12 @@ export default function SiteDashboard() {
     return "";
   };
 
-  // Materials Received tab data (combined: site_material_trips + DPR material_logs)
-  const buildMaterialsReceivedUrl = () => {
-    const params = new URLSearchParams();
-    if (materialDateFrom) params.set("dateFrom", materialDateFrom);
-    if (materialDateTo) params.set("dateTo", materialDateTo);
-    if (materialSiteFilter) params.set("site", materialSiteFilter);
-    if (materialNameFilter) params.set("material", materialNameFilter);
-    const activeSupplier = materialSupplierFilter || materialStockOwnerFilter;
-    if (activeSupplier) params.set("supplier", activeSupplier);
-    const queryString = params.toString();
-    return queryString ? `/api/materials-received?${queryString}` : "/api/materials-received";
-  };
-
-  const { data: materialTrips, isLoading: isLoadingMaterials } = useQuery<any[]>({
-    queryKey: [buildMaterialsReceivedUrl()],
-    enabled: activeTab === "materials-received",
-  });
-
-  const createMaterialMutation = useMutation({
-    mutationFn: async (data: typeof newMaterialEntry) => {
-      return apiRequest("POST", "/api/site-material-trips", {
-        ...data,
-        quantity: parseFloat(data.quantity) || 0,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: (query) => 
-        typeof query.queryKey[0] === 'string' && (query.queryKey[0].startsWith('/api/site-material-trips') || query.queryKey[0].startsWith('/api/materials-received'))
-      });
-      toast({ title: "Material Logged", description: "Material entry has been recorded successfully." });
-      setNewMaterialEntry({
-        date: today,
-        time: format(new Date(), "HH:mm"),
-        site: newMaterialEntry.site,
-        material: "",
-        supplier: "",
-        vehicleNumber: "",
-        quantity: "",
-        uom: "CFT",
-        location: "",
-        receiptNumber: "",
-        enteredBy: newMaterialEntry.enteredBy,
-        notes: "",
-      });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: "Failed to log material entry.", variant: "destructive" });
-      console.error("Error creating material entry:", error);
-    },
-  });
-
-  const deleteMaterialMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return apiRequest("DELETE", `/api/site-material-trips/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: (query) => 
-        typeof query.queryKey[0] === 'string' && (query.queryKey[0].startsWith('/api/site-material-trips') || query.queryKey[0].startsWith('/api/materials-received'))
-      });
-      toast({ title: "Deleted", description: "Material entry has been removed." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to delete material entry.", variant: "destructive" });
-    },
-  });
-
-  const handleMaterialSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMaterialEntry.site || !newMaterialEntry.material || !newMaterialEntry.quantity) {
-      toast({ title: "Required Fields", description: "Please fill in Site, Material, and Quantity.", variant: "destructive" });
-      return;
-    }
-    createMaterialMutation.mutate(newMaterialEntry);
-  };
-
-  const materialTripsByMaterial = useMemo(() => {
-    const grouped: Record<string, { count: number; totalQty: number; uom: string }> = {};
-    (materialTrips || []).forEach(trip => {
-      const key = trip.material;
-      if (!grouped[key]) {
-        grouped[key] = { count: 0, totalQty: 0, uom: trip.uom };
-      }
-      grouped[key].count++;
-      grouped[key].totalQty += trip.quantity || 0;
-    });
-    return grouped;
-  }, [materialTrips]);
 
   const clearFilters = () => {
     resetDprFilters();
   };
 
   const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier;
-
-  const hasActiveMaterialFilters =
-    materialDateFrom !== today ||
-    materialDateTo !== today ||
-    !!materialSiteFilter ||
-    !!materialNameFilter ||
-    !!materialSupplierFilter ||
-    !!materialStockOwnerFilter;
 
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
     executeAction(action);
@@ -959,58 +812,35 @@ export default function SiteDashboard() {
             <p className="text-muted-foreground text-sm">View and manage daily progress reports</p>
           </div>
         </div>
-        {activeTab === "dpr-summary" && (
-          <div className="flex items-center gap-2">
-            {canExport && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
-                  <FileText className="w-4 h-4" />
-                  PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
-                  <Printer className="w-4 h-4" />
-                  Print
-                </Button>
-              </>
-            )}
-            {canCreate && (
-              <Link href={appendOrigin("/site/new")}>
-                <Button className="gap-2" data-testid="button-new-report">
-                  <Plus className="w-4 h-4" />
-                  New Report
-                </Button>
-              </Link>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {canExport && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-excel")} className="gap-1" data-testid="button-reports-excel">
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-pdf")} className="gap-1" data-testid="button-reports-pdf">
+                <FileText className="w-4 h-4" />
+                PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleAdminAction("reports-print")} className="gap-1" data-testid="button-reports-print">
+                <Printer className="w-4 h-4" />
+                Print
+              </Button>
+            </>
+          )}
+          {canCreate && (
+            <Link href={appendOrigin("/site/new")}>
+              <Button className="gap-2" data-testid="button-new-report">
+                <Plus className="w-4 h-4" />
+                New Report
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mt-6">
-        <Link href={appendOrigin("/site/purchases")}>
-          <Button variant="outline" size="sm" className="gap-2" data-testid="button-site-purchases">
-            <ShoppingCart className="w-4 h-4" />
-            Site Purchases
-          </Button>
-        </Link>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="dpr-summary" className="gap-2" data-testid="tab-dpr-summary">
-            <Calendar className="w-4 h-4" />
-            DPR Summary
-          </TabsTrigger>
-          <TabsTrigger value="materials-received" className="gap-2" data-testid="tab-materials-received">
-            <Truck className="w-4 h-4" />
-            Materials Received
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="dpr-summary" className="space-y-6 mt-6">
+      <div className="space-y-6 mt-6">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-4">
@@ -1445,359 +1275,7 @@ export default function SiteDashboard() {
               </div>
             )}
           </div>
-        </TabsContent>
-
-        <TabsContent value="materials-received" className="space-y-6 mt-6">
-          {/* Date Range, Site, and Material Filters */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Filter className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Filters</span>
-                {hasActiveMaterialFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetMaterialFilters}
-                    className="ml-auto gap-1"
-                    data-testid="button-reset-material-filters"
-                    aria-label="Reset material filters to defaults"
-                  >
-                    <X className="w-3 h-3" />
-                    Reset filters
-                  </Button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs">From Date</Label>
-                  <Input
-                    type="date"
-                    value={materialDateFrom}
-                    onChange={(e) => setMaterialDateFrom(e.target.value)}
-                    data-testid="input-material-date-from"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">To Date</Label>
-                  <Input
-                    type="date"
-                    value={materialDateTo}
-                    onChange={(e) => setMaterialDateTo(e.target.value)}
-                    data-testid="input-material-date-to"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Site</Label>
-                  <Select value={materialSiteFilter || "__all__"} onValueChange={(v) => setMaterialSiteFilter(v === "__all__" ? "" : v)}>
-                    <SelectTrigger data-testid="select-material-site-filter">
-                      <SelectValue placeholder="All Sites" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Sites</SelectItem>
-                      {uniqueSites.map(site => (
-                        <SelectItem key={site} value={site}>{site}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Material</Label>
-                  <Select value={materialNameFilter || "__all__"} onValueChange={(v) => setMaterialNameFilter(v === "__all__" ? "" : v)}>
-                    <SelectTrigger data-testid="select-material-name-filter">
-                      <SelectValue placeholder="All Materials" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Materials</SelectItem>
-                      {MATERIAL_OPTIONS.map(mat => (
-                        <SelectItem key={mat} value={mat}>{mat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Supplier / Party</Label>
-                  <Select value={materialSupplierFilter || "__all__"} onValueChange={(v) => { setMaterialSupplierFilter(v === "__all__" ? "" : v); if (v !== "__all__") setMaterialStockOwnerFilter(""); }}>
-                    <SelectTrigger data-testid="select-material-supplier-filter">
-                      <SelectValue placeholder="All Suppliers" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Suppliers</SelectItem>
-                      {(supplierList || []).map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Stock Owner</Label>
-                  <Select value={materialStockOwnerFilter || "__all__"} onValueChange={(v) => { setMaterialStockOwnerFilter(v === "__all__" ? "" : v); if (v !== "__all__") setMaterialSupplierFilter(""); }}>
-                    <SelectTrigger data-testid="select-material-stock-owner">
-                      <SelectValue placeholder="All Owners" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Owners</SelectItem>
-                      {(supplierList || []).map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Summary Cards */}
-          {Object.keys(materialTripsByMaterial).length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(materialTripsByMaterial).map(([material, data]) => (
-                <Card key={material} data-testid={`card-material-summary-${material}`}>
-                  <CardContent className="p-4 text-center">
-                    <div className="text-2xl font-bold">{data.totalQty.toFixed(3)}</div>
-                    <div className="text-xs text-muted-foreground">{data.uom}</div>
-                    <div className="font-medium mt-1">{material}</div>
-                    <div className="text-xs text-muted-foreground">{data.count} trip{data.count !== 1 ? 's' : ''}</div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {/* Entry Form */}
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Log Material Received
-              </h3>
-              <form onSubmit={handleMaterialSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Date *</Label>
-                    <Input
-                      type="date"
-                      value={newMaterialEntry.date}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, date: e.target.value }))}
-                      data-testid="input-material-date"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Time</Label>
-                    <Input
-                      type="time"
-                      value={newMaterialEntry.time}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, time: e.target.value }))}
-                      data-testid="input-material-time"
-                    />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label className="text-xs">Site *</Label>
-                    <Select value={newMaterialEntry.site} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, site: v }))}>
-                      <SelectTrigger data-testid="select-material-site">
-                        <SelectValue placeholder="Select Site" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {uniqueSites.map(site => (
-                          <SelectItem key={site} value={site}>{site}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Material *</Label>
-                    <Select value={newMaterialEntry.material} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, material: v }))}>
-                      <SelectTrigger data-testid="select-material-material">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MATERIAL_OPTIONS.map(mat => (
-                          <SelectItem key={mat} value={mat}>{mat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Quantity *</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0"
-                      value={newMaterialEntry.quantity}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, quantity: e.target.value }))}
-                      data-testid="input-material-quantity"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">UOM</Label>
-                    <Select value={newMaterialEntry.uom} onValueChange={(v) => setNewMaterialEntry(prev => ({ ...prev, uom: v }))}>
-                      <SelectTrigger data-testid="select-material-uom">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UOM_OPTIONS.map(uom => (
-                          <SelectItem key={uom} value={uom}>{uom}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Vehicle No.</Label>
-                    <Input
-                      placeholder="KA-XX-XXXX"
-                      value={newMaterialEntry.vehicleNumber}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value }))}
-                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, vehicleNumber: e.target.value.toUpperCase() }))}
-                      className="uppercase"
-                      data-testid="input-material-vehicle"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Supplier</Label>
-                    <Input
-                      placeholder="Supplier name"
-                      value={newMaterialEntry.supplier}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value }))}
-                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, supplier: e.target.value.toUpperCase() }))}
-                      className="uppercase"
-                      data-testid="input-material-supplier"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Location/Task</Label>
-                    <Input
-                      placeholder="Unloading location"
-                      value={newMaterialEntry.location}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value }))}
-                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, location: e.target.value.toUpperCase() }))}
-                      className="uppercase"
-                      data-testid="input-material-location"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Receipt No.</Label>
-                    <Input
-                      placeholder="Challan/Receipt"
-                      value={newMaterialEntry.receiptNumber}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value }))}
-                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, receiptNumber: e.target.value.toUpperCase() }))}
-                      className="uppercase"
-                      data-testid="input-material-receipt"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Entered By</Label>
-                    <Input
-                      placeholder="Supervisor name"
-                      value={newMaterialEntry.enteredBy}
-                      onChange={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value }))}
-                      onBlur={(e) => setNewMaterialEntry(prev => ({ ...prev, enteredBy: e.target.value.toUpperCase() }))}
-                      className="uppercase"
-                      data-testid="input-material-enteredby"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Button type="submit" disabled={createMaterialMutation.isPending} className="gap-2" data-testid="button-material-submit">
-                    {createMaterialMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    Add Entry
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Material Entries Table */}
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Package className="w-4 h-4" />
-                Material Entries ({materialTrips?.length || 0})
-              </h3>
-              {isLoadingMaterials ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
-              ) : !materialTrips || materialTrips.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No material entries found</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-muted/50">
-                        <th className="text-left p-2 border text-xs">Date / Time</th>
-                        <th className="text-left p-2 border text-xs">Vehicle</th>
-                        <th className="text-left p-2 border text-xs">Material</th>
-                        <th className="text-right p-2 border text-xs">Qty / UOM</th>
-                        <th className="text-left p-2 border text-xs">Supplier</th>
-                        <th className="text-left p-2 border text-xs">Receipt No.</th>
-                        <th className="text-center p-2 border text-xs">Source</th>
-                        <th className="text-center p-2 border text-xs w-10"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {materialTrips.map((trip: any) => {
-                        const isDprRow = trip.source === 'dpr' && trip.dprId;
-                        const handleRowClick = isDprRow ? () => { saveDashboardState(); setLocation(appendOrigin(`/site/report/${trip.dprId}`)); } : undefined;
-                        return (
-                        <tr 
-                          key={`${trip.source}-${trip.id}`} 
-                          className={`border-b hover:bg-muted/30 ${isDprRow ? 'cursor-pointer' : ''}`}
-                          onClick={handleRowClick}
-                          data-testid={`material-entry-${trip.source}-${trip.id}`}
-                        >
-                          <td className="p-2 border text-xs">
-                            <div>{trip.date ? format(new Date(trip.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase() : '-'}</div>
-                            {trip.time && <div className="text-muted-foreground">{trip.time}</div>}
-                          </td>
-                          <td className="p-2 border text-xs">{trip.vehicleNumber || '-'}</td>
-                          <td className="p-2 border text-xs font-medium">{trip.material || '-'}</td>
-                          <td className="p-2 border text-xs text-right">{trip.quantity} {trip.uom}</td>
-                          <td className="p-2 border text-xs">{trip.supplier || '-'}</td>
-                          <td className="p-2 border text-xs">{trip.receiptNumber || '-'}</td>
-                          <td className="p-2 border text-center">
-                            {isDprRow ? (
-                              <span 
-                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
-                                data-testid={`link-dpr-${trip.dprId}`}
-                              >DPR</span>
-                            ) : (
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === 'trip' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                {trip.source === 'trip' ? 'TRIP' : 'EQUIP'}
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 border text-center" onClick={(e) => e.stopPropagation()}>
-                            {trip.source === 'trip' ? (
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => deleteMaterialMutation.mutate(trip.id)}
-                                disabled={deleteMaterialMutation.isPending}
-                                data-testid={`button-delete-material-${trip.id}`}
-                              >
-                                <Trash2 className="w-3 h-3 text-destructive" />
-                              </Button>
-                            ) : null}
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      </div>
 
     </div>
   );
