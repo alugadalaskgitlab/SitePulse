@@ -24,10 +24,13 @@ interface DailyReport {
 
 export default function RmcDailyReport() {
   const [date, setDate] = useState(today);
+  const [plantName, setPlantName] = useState("");
+
+  const plantParam = plantName.trim() ? `&plantName=${encodeURIComponent(plantName.trim())}` : "";
 
   const { data: report, isLoading } = useQuery<DailyReport>({
-    queryKey: ["/api/rmc/daily-report", date],
-    queryFn: () => apiRequest("GET", `/api/rmc/daily-report?date=${date}`).then(r => r.json()),
+    queryKey: ["/api/rmc/daily-report", date, plantName.trim()],
+    queryFn: () => apiRequest("GET", `/api/rmc/daily-report?date=${date}${plantParam}`).then(r => r.json()),
     enabled: !!date,
   });
 
@@ -45,7 +48,19 @@ export default function RmcDailyReport() {
             <p className="text-sm text-muted-foreground">Day-wise summary of production, materials & QC</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="input-plant" className="text-sm whitespace-nowrap">Plant</Label>
+            <Input
+              id="input-plant"
+              type="text"
+              placeholder="All plants"
+              value={plantName}
+              onChange={e => setPlantName(e.target.value)}
+              className="w-36"
+              data-testid="input-plant-name"
+            />
+          </div>
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" data-testid="input-date" />
           {report && (
             <>
@@ -54,7 +69,7 @@ export default function RmcDailyReport() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => window.open(`/api/rmc/daily-report/pdf?date=${date}`, "_blank")}
+                onClick={() => window.open(`/api/rmc/daily-report/pdf?date=${date}${plantParam}`, "_blank")}
                 data-testid="btn-download-pdf"
               >
                 <Download className="w-4 h-4 mr-2" />Download PDF
@@ -66,6 +81,7 @@ export default function RmcDailyReport() {
 
       <div className="print:block hidden text-center mb-4">
         <h2 className="text-xl font-bold">RMC Daily Production Report — {date}</h2>
+        {plantName.trim() && <p className="text-sm text-muted-foreground">Plant: {plantName.trim()}</p>}
       </div>
 
       {isLoading && (
