@@ -118,6 +118,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureRmcTables();
+    console.log("Startup: RMC tables ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure RMC tables:", e);
+  }
+
+  try {
     await storage.ensureHeatingSessionDipColumns();
   } catch (e) {
     console.error("Startup: Failed to ensure heating session dip columns:", e);

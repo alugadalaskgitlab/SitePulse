@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -3353,6 +3353,7 @@ export async function registerRoutes(
       if (!plantName) return res.status(400).json({ message: "plantName is required" });
       const parsed = insertPlantSettingsSchema.parse({
         plantName,
+        plantType: req.body?.plantType ?? "hma",
         bitumenTank1LitresPerCm: req.body?.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,
@@ -6950,6 +6951,241 @@ export async function registerRoutes(
   });
 
   // Seed Data
+  // ============================================
+  // RMC PLANT MODULE (Task #697)
+  // ============================================
+
+  // Mix Designs
+  app.get("/api/rmc/mix-designs", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const plantName = req.query.plantName as string | undefined;
+      const rows = await storage.getRmcMixDesigns(plantName);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/rmc/mix-designs/:id", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const row = await storage.getRmcMixDesign(Number(req.params.id));
+      if (!row) return res.status(404).json({ message: "Mix design not found" });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/rmc/mix-designs", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_production")) return;
+      const data = insertRmcMixDesignSchema.parse(req.body);
+      const row = await storage.createRmcMixDesign(data);
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/rmc/mix-designs/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_production")) return;
+      const data = insertRmcMixDesignSchema.partial().parse(req.body);
+      const row = await storage.updateRmcMixDesign(Number(req.params.id), data);
+      if (!row) return res.status(404).json({ message: "Mix design not found" });
+      res.json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/rmc/mix-designs/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deleteRmcMixDesign(Number(req.params.id));
+      if (!ok) return res.status(404).json({ message: "Mix design not found" });
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Batch Records
+  app.get("/api/rmc/batch-records", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const filters = {
+        plantName: req.query.plantName as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        mixDesignId: req.query.mixDesignId ? Number(req.query.mixDesignId) : undefined,
+      };
+      const rows = await storage.getRmcBatchRecords(filters);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/rmc/batch-records/:id", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const row = await storage.getRmcBatchRecord(Number(req.params.id));
+      if (!row) return res.status(404).json({ message: "Batch record not found" });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/rmc/batch-records", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_production")) return;
+      const data = insertRmcBatchRecordSchema.parse(req.body);
+      const row = await storage.createRmcBatchRecord(data);
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/rmc/batch-records/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_production")) return;
+      const data = insertRmcBatchRecordSchema.partial().parse(req.body);
+      const row = await storage.updateRmcBatchRecord(Number(req.params.id), data);
+      if (!row) return res.status(404).json({ message: "Batch record not found" });
+      res.json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/rmc/batch-records/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deleteRmcBatchRecord(Number(req.params.id));
+      if (!ok) return res.status(404).json({ message: "Batch record not found" });
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Cube Tests
+  app.get("/api/rmc/cube-tests", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const filters = {
+        batchRecordId: req.query.batchRecordId ? Number(req.query.batchRecordId) : undefined,
+        ageDays: req.query.ageDays ? Number(req.query.ageDays) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const rows = await storage.getRmcCubeTests(filters);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/rmc/cube-tests", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_production")) return;
+      const data = insertRmcCubeTestSchema.parse(req.body);
+      const row = await storage.createRmcCubeTest(data);
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/rmc/cube-tests/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_production")) return;
+      const data = insertRmcCubeTestSchema.partial().parse(req.body);
+      const row = await storage.updateRmcCubeTest(Number(req.params.id), data);
+      if (!row) return res.status(404).json({ message: "Cube test not found" });
+      res.json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/rmc/cube-tests/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deleteRmcCubeTest(Number(req.params.id));
+      if (!ok) return res.status(404).json({ message: "Cube test not found" });
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // Raw Material Receipts
+  app.get("/api/rmc/raw-materials", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const filters = {
+        plantName: req.query.plantName as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        category: req.query.category as string | undefined,
+      };
+      const rows = await storage.getRmcRawMaterialReceipts(filters);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/rmc/raw-materials", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_materials")) return;
+      const data = insertRmcRawMaterialReceiptSchema.parse(req.body);
+      const row = await storage.createRmcRawMaterialReceipt(data);
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/rmc/raw-materials/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_materials")) return;
+      const data = insertRmcRawMaterialReceiptSchema.partial().parse(req.body);
+      const row = await storage.updateRmcRawMaterialReceipt(Number(req.params.id), data);
+      if (!row) return res.status(404).json({ message: "Receipt not found" });
+      res.json(row);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/rmc/raw-materials/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deleteRmcRawMaterialReceipt(Number(req.params.id));
+      if (!ok) return res.status(404).json({ message: "Receipt not found" });
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // RMC Stock Summary
+  app.get("/api/rmc/stock-summary", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_materials")) return;
+      const plantName = req.query.plantName as string | undefined;
+      const summary = await storage.getRmcStockSummary(plantName);
+      res.json(summary);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // RMC Daily Report
+  app.get("/api/rmc/daily-report", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
+      const date = req.query.date as string;
+      if (!date) return res.status(400).json({ message: "date query param required" });
+      const plantName = req.query.plantName as string | undefined;
+      const report = await storage.getRmcDailyReport(date, plantName);
+      res.json(report);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   seedDatabase();
   seedPlantMasterData();
 

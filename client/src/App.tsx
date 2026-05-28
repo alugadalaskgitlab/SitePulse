@@ -76,6 +76,11 @@ import StoresGrn from "@/pages/StoresGrn";
 import StoresIssue from "@/pages/StoresIssue";
 import StoresLedger from "@/pages/StoresLedger";
 import PlantMaintenance from "@/pages/PlantMaintenance";
+import RmcMixDesigns from "@/pages/RmcMixDesigns";
+import RmcBatchRecords from "@/pages/RmcBatchRecords";
+import RmcRawMaterials from "@/pages/RmcRawMaterials";
+import RmcCubeTests from "@/pages/RmcCubeTests";
+import RmcDailyReport from "@/pages/RmcDailyReport";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -191,6 +196,11 @@ function AuthedShell() {
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
             <Route path="/plant/maintenance" component={gated(PlantMaintenance, "plant_equipment")} />
+            <Route path="/plant/rmc/mix-designs" component={gated(RmcMixDesigns, "plant_production")} />
+            <Route path="/plant/rmc/batch-records" component={gated(RmcBatchRecords, "plant_production")} />
+            <Route path="/plant/rmc/raw-materials" component={gated(RmcRawMaterials, "plant_materials")} />
+            <Route path="/plant/rmc/cube-tests" component={gated(RmcCubeTests, "plant_production")} />
+            <Route path="/plant/rmc/daily-report" component={gated(RmcDailyReport, "plant_daily_reports")} />
             <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
             <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />

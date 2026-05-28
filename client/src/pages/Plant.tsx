@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench, FlaskConical, TestTube, BarChart3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -155,7 +155,7 @@ export default function Plant() {
 
         {opsVisible && (
           <TabsContent value="operations" className="mt-6">
-            <OperationsTab />
+            <OperationsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
           </TabsContent>
         )}
 
@@ -182,10 +182,11 @@ export default function Plant() {
   );
 }
 
-function OperationsTab() {
+function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
   const { appendPlantContext } = useOrigin();
   const { sectionVisible } = useAuth();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
+  const isRmc = plantType === "rmc";
 
   const { data: openCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/maintenance/open-count"],
@@ -381,6 +382,74 @@ function OperationsTab() {
       </Link>
       )}
 
+      {isRmc && sectionVisible("plant_production") && (
+      <Link href={opLink("/plant/rmc/batch-records")}>
+        <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-batch-records">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <Truck className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">RMC Batch Records</h3>
+              <p className="text-sm text-muted-foreground">Log concrete batches & generate delivery challans</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      )}
+
+      {isRmc && sectionVisible("plant_materials") && (
+      <Link href={opLink("/plant/rmc/raw-materials")}>
+        <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-raw-materials">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <Package className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">RMC Raw Material Receipts</h3>
+              <p className="text-sm text-muted-foreground">Track incoming cement, aggregates & admixtures</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      )}
+
+      {isRmc && sectionVisible("plant_production") && (
+      <Link href={opLink("/plant/rmc/cube-tests")}>
+        <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-cube-tests">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <TestTube className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Cube Tests QC</h3>
+              <p className="text-sm text-muted-foreground">Record compressive strength test results</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      )}
+
+      {isRmc && sectionVisible("plant_production") && (
+      <Link href={opLink("/plant/rmc/mix-designs")}>
+        <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-mix-designs">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <FlaskConical className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Mix Designs</h3>
+              <p className="text-sm text-muted-foreground">Manage approved concrete mix design grades</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      )}
+
     </div>
   );
 }
@@ -440,6 +509,22 @@ function ReportsTab() {
               <div className="flex-1">
                 <h3 className="font-semibold text-lg">Boiler / Heating Trends</h3>
                 <p className="text-sm text-muted-foreground">Daily L/MT, L/Hr trends with date-range filter and Excel export</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        )}
+        {sectionVisible("plant_daily_reports") && (
+        <Link href={appendRoleAndTab("/plant/rmc/daily-report")}>
+          <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-daily-report-reports">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                <BarChart3 className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">RMC Daily Report</h3>
+                <p className="text-sm text-muted-foreground">Day-wise RMC production, materials & cube test summary</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </CardContent>
@@ -925,10 +1010,79 @@ function StockDetailsTab() {
   );
 }
 
+function PlantTypeConfigSection() {
+  const { toast } = useToast();
+  const { data: allSettings = [] } = useQuery<PlantSettings[]>({
+    queryKey: ['/api/plant-module/plant-settings'],
+  });
+  const setting = allSettings[0];
+  const [plantType, setPlantType] = useState<string>("");
+  useEffect(() => { if (setting?.plantType) setPlantType(setting.plantType); }, [setting?.plantType]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!setting?.plantName) throw new Error("No plant name found");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(setting.plantName)}`, {
+        plantType,
+        bitumenTank1LitresPerCm: setting.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: setting.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: setting.bitumenDensityKgPerL ?? null,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
+      toast({ title: "Plant type saved", description: `Plant is now configured as ${plantType === "rmc" ? "Ready Mix Concrete (RMC)" : "Hot Mix Asphalt (HMA)"}` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (!setting) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+            <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+          </div>
+          <div>
+            <CardTitle>Plant Type Configuration</CardTitle>
+            <CardDescription>Switch between HMA (bituminous) and RMC (concrete) plant mode</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <Label>Plant Type</Label>
+            <Select value={plantType} onValueChange={setPlantType}>
+              <SelectTrigger className="mt-1 w-64" data-testid="select-plant-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hma">Hot Mix Asphalt (HMA)</SelectItem>
+                <SelectItem value="rmc">Ready Mix Concrete (RMC)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || plantType === (setting?.plantType ?? "hma")} className="mt-6" data-testid="btn-save-plant-type">
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Changing plant type switches the Operations tab between HMA-specific (shift logs, heating, dispatches) and RMC-specific (batch records, raw materials, cube tests) sections.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function MastersTab() {
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isAdmin } = useAuth();
   return (
     <div className="space-y-6">
+      {isAdmin && <PlantTypeConfigSection />}
       {sectionVisible("master_parties") && <PartyMaster />}
       {sectionVisible("master_parties") && <SitesMasterSection />}
       {sectionVisible("master_materials") && <MaterialMaster />}

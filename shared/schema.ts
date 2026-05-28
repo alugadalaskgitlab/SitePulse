@@ -170,6 +170,7 @@ export const appSettings = pgTable("app_settings", {
 export const plantSettings = pgTable("plant_settings", {
   id: serial("id").primaryKey(),
   plantName: text("plant_name").notNull(),
+  plantType: text("plant_type").default("hma"), // "hma" | "rmc"
   bitumenTank1LitresPerCm: real("bitumen_tank1_litres_per_cm"),
   bitumenTank2LitresPerCm: real("bitumen_tank2_litres_per_cm"),
   bitumenDensityKgPerL: real("bitumen_density_kg_per_l"),
@@ -1879,6 +1880,91 @@ export type EquipmentHealthSummary = {
   openBreakdowns: number;
   downtimeHoursThisMonth: number;
   totalMaintenanceEvents: number;
+};
+
+// ============================================
+// RMC PLANT MODULE (Task #697)
+// ============================================
+
+export const rmcMixDesigns = pgTable("rmc_mix_designs", {
+  id: serial("id").primaryKey(),
+  grade: text("grade").notNull(), // M15, M20, M25, M30, M35, M40, M45, M50
+  plantName: text("plant_name").notNull().default("Main Plant"),
+  cementContent: real("cement_content"), // kg/m³
+  wcr: real("wcr"), // water-cement ratio
+  admixtureName: text("admixture_name"),
+  admixtureDosage: real("admixture_dosage"), // % of cement weight
+  targetStrength: real("target_strength"), // MPa (characteristic compressive strength)
+  componentProportions: jsonb("component_proportions"), // { cement, fineAgg, coarseAgg10, coarseAgg20 } in kg/m³
+  notes: text("notes"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const rmcBatchRecords = pgTable("rmc_batch_records", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  plantName: text("plant_name").notNull().default("Main Plant"),
+  mixDesignId: integer("mix_design_id").notNull(),
+  batchesCount: integer("batches_count"),
+  totalVolumeM3: real("total_volume_m3").notNull(),
+  truckNumber: text("truck_number"),
+  dcNumber: text("dc_number"),
+  customerName: text("customer_name"),
+  deliverySite: text("delivery_site"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  dateIdx: index("rmc_batch_records_date_idx").on(t.date),
+}));
+
+export const rmcCubeTests = pgTable("rmc_cube_tests", {
+  id: serial("id").primaryKey(),
+  batchRecordId: integer("batch_record_id").notNull(),
+  sampleId: text("sample_id").notNull(),
+  ageDays: integer("age_days").notNull(), // 3, 7, 14, 28
+  testDate: date("test_date").notNull(),
+  strengthMpa: real("strength_mpa").notNull(),
+  targetStrength: real("target_strength"),
+  passFail: text("pass_fail"), // "pass" | "fail"
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const rmcRawMaterialReceipts = pgTable("rmc_raw_material_receipts", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  plantName: text("plant_name").notNull().default("Main Plant"),
+  materialName: text("material_name").notNull(),
+  category: text("category"), // Cement, Fine Aggregate, Coarse Aggregate, Admixture, Water
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull(),
+  supplier: text("supplier"),
+  vehicleNumber: text("vehicle_number"),
+  challanNumber: text("challan_number"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  dateIdx: index("rmc_raw_materials_date_idx").on(t.date),
+}));
+
+export const insertRmcMixDesignSchema = createInsertSchema(rmcMixDesigns).omit({ id: true, createdAt: true });
+export const insertRmcBatchRecordSchema = createInsertSchema(rmcBatchRecords).omit({ id: true, createdAt: true });
+export const insertRmcCubeTestSchema = createInsertSchema(rmcCubeTests).omit({ id: true, createdAt: true });
+export const insertRmcRawMaterialReceiptSchema = createInsertSchema(rmcRawMaterialReceipts).omit({ id: true, createdAt: true });
+
+export type RmcMixDesign = typeof rmcMixDesigns.$inferSelect;
+export type InsertRmcMixDesign = z.infer<typeof insertRmcMixDesignSchema>;
+export type RmcBatchRecord = typeof rmcBatchRecords.$inferSelect;
+export type InsertRmcBatchRecord = z.infer<typeof insertRmcBatchRecordSchema>;
+export type RmcCubeTest = typeof rmcCubeTests.$inferSelect;
+export type InsertRmcCubeTest = z.infer<typeof insertRmcCubeTestSchema>;
+export type RmcRawMaterialReceipt = typeof rmcRawMaterialReceipts.$inferSelect;
+export type InsertRmcRawMaterialReceipt = z.infer<typeof insertRmcRawMaterialReceiptSchema>;
+
+export type RmcBatchRecordWithDesign = RmcBatchRecord & {
+  grade: string;
+  targetStrength: number | null;
 };
 
 export const insertUserSchema = createInsertSchema(users).omit({

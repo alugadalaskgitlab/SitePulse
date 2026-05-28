@@ -199,6 +199,19 @@ import {
   type InsertMaintenancePartUsed,
   type EquipmentMaintenanceLogWithDetails,
   type EquipmentHealthSummary,
+  rmcMixDesigns,
+  rmcBatchRecords,
+  rmcCubeTests,
+  rmcRawMaterialReceipts,
+  type RmcMixDesign,
+  type InsertRmcMixDesign,
+  type RmcBatchRecord,
+  type InsertRmcBatchRecord,
+  type RmcBatchRecordWithDesign,
+  type RmcCubeTest,
+  type InsertRmcCubeTest,
+  type RmcRawMaterialReceipt,
+  type InsertRmcRawMaterialReceipt,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
 import { format } from "date-fns";
@@ -759,6 +772,40 @@ export interface IStorage {
   removeMaintenancePart(partId: number): Promise<boolean>;
   getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]>;
   getOpenBreakdownCount(): Promise<number>;
+
+  // RMC Plant Module (Task #697)
+  getRmcMixDesigns(plantName?: string): Promise<RmcMixDesign[]>;
+  getRmcMixDesign(id: number): Promise<RmcMixDesign | undefined>;
+  createRmcMixDesign(d: InsertRmcMixDesign): Promise<RmcMixDesign>;
+  updateRmcMixDesign(id: number, d: Partial<InsertRmcMixDesign>): Promise<RmcMixDesign | undefined>;
+  deleteRmcMixDesign(id: number): Promise<boolean>;
+
+  getRmcBatchRecords(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; mixDesignId?: number }): Promise<RmcBatchRecordWithDesign[]>;
+  getRmcBatchRecord(id: number): Promise<RmcBatchRecordWithDesign | undefined>;
+  createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<RmcBatchRecord>;
+  updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<RmcBatchRecord | undefined>;
+  deleteRmcBatchRecord(id: number): Promise<boolean>;
+
+  getRmcCubeTests(filters?: { batchRecordId?: number; ageDays?: number; dateFrom?: string; dateTo?: string }): Promise<RmcCubeTest[]>;
+  createRmcCubeTest(t: InsertRmcCubeTest): Promise<RmcCubeTest>;
+  updateRmcCubeTest(id: number, t: Partial<InsertRmcCubeTest>): Promise<RmcCubeTest | undefined>;
+  deleteRmcCubeTest(id: number): Promise<boolean>;
+
+  getRmcRawMaterialReceipts(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; category?: string }): Promise<RmcRawMaterialReceipt[]>;
+  createRmcRawMaterialReceipt(r: InsertRmcRawMaterialReceipt): Promise<RmcRawMaterialReceipt>;
+  updateRmcRawMaterialReceipt(id: number, r: Partial<InsertRmcRawMaterialReceipt>): Promise<RmcRawMaterialReceipt | undefined>;
+  deleteRmcRawMaterialReceipt(id: number): Promise<boolean>;
+
+  getRmcDailyReport(date: string, plantName?: string): Promise<{
+    totalVolumeM3: number;
+    batchRecords: RmcBatchRecordWithDesign[];
+    gradeBreakdown: { grade: string; volumeM3: number; batches: number }[];
+    rawMaterialsReceived: { materialName: string; category: string; totalQty: number; uom: string }[];
+    cubeTests: RmcCubeTest[];
+  }>;
+
+  getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; uom: string }[]>;
+  ensureRmcTables(): Promise<void>;
 
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -17067,6 +17114,244 @@ export class DatabaseStorage implements IStorage {
       .from(equipmentMaintenanceLogs)
       .where(and(eq(equipmentMaintenanceLogs.eventType, 'breakdown'), eq(equipmentMaintenanceLogs.status, 'open')));
     return rows.length;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RMC Plant Module (Task #697)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async ensureRmcTables(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS rmc_mix_designs (
+        id serial PRIMARY KEY,
+        grade text NOT NULL,
+        plant_name text NOT NULL DEFAULT 'Main Plant',
+        cement_content real,
+        wcr real,
+        admixture_name text,
+        admixture_dosage real,
+        target_strength real,
+        component_proportions jsonb,
+        notes text,
+        is_active integer DEFAULT 1,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS rmc_batch_records (
+        id serial PRIMARY KEY,
+        date date NOT NULL,
+        plant_name text NOT NULL DEFAULT 'Main Plant',
+        mix_design_id integer NOT NULL,
+        batches_count integer,
+        total_volume_m3 real NOT NULL,
+        truck_number text,
+        dc_number text,
+        customer_name text,
+        delivery_site text,
+        remarks text,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS rmc_batch_records_date_idx ON rmc_batch_records (date)
+    `));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS rmc_cube_tests (
+        id serial PRIMARY KEY,
+        batch_record_id integer NOT NULL,
+        sample_id text NOT NULL,
+        age_days integer NOT NULL,
+        test_date date NOT NULL,
+        strength_mpa real NOT NULL,
+        target_strength real,
+        pass_fail text,
+        remarks text,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS rmc_raw_material_receipts (
+        id serial PRIMARY KEY,
+        date date NOT NULL,
+        plant_name text NOT NULL DEFAULT 'Main Plant',
+        material_name text NOT NULL,
+        category text,
+        qty real NOT NULL,
+        uom text NOT NULL,
+        supplier text,
+        vehicle_number text,
+        challan_number text,
+        notes text,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE INDEX IF NOT EXISTS rmc_raw_materials_date_idx ON rmc_raw_material_receipts (date)
+    `));
+    await db.execute(sql.raw(`
+      ALTER TABLE plant_settings ADD COLUMN IF NOT EXISTS plant_type text DEFAULT 'hma'
+    `));
+  }
+
+  async getRmcMixDesigns(plantName?: string): Promise<RmcMixDesign[]> {
+    const conds = plantName ? [eq(rmcMixDesigns.plantName, plantName)] : [];
+    return db.select().from(rmcMixDesigns).where(and(...conds)).orderBy(asc(rmcMixDesigns.grade));
+  }
+
+  async getRmcMixDesign(id: number): Promise<RmcMixDesign | undefined> {
+    const rows = await db.select().from(rmcMixDesigns).where(eq(rmcMixDesigns.id, id)).limit(1);
+    return rows[0];
+  }
+
+  async createRmcMixDesign(d: InsertRmcMixDesign): Promise<RmcMixDesign> {
+    const rows = await db.insert(rmcMixDesigns).values(d).returning();
+    return rows[0];
+  }
+
+  async updateRmcMixDesign(id: number, d: Partial<InsertRmcMixDesign>): Promise<RmcMixDesign | undefined> {
+    const rows = await db.update(rmcMixDesigns).set(d).where(eq(rmcMixDesigns.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteRmcMixDesign(id: number): Promise<boolean> {
+    const res = await db.delete(rmcMixDesigns).where(eq(rmcMixDesigns.id, id));
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  private async _buildBatchRecordWithDesign(br: RmcBatchRecord): Promise<RmcBatchRecordWithDesign> {
+    const design = await this.getRmcMixDesign(br.mixDesignId);
+    return { ...br, grade: design?.grade ?? 'Unknown', targetStrength: design?.targetStrength ?? null };
+  }
+
+  async getRmcBatchRecords(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; mixDesignId?: number }): Promise<RmcBatchRecordWithDesign[]> {
+    const conds: any[] = [];
+    if (filters?.plantName) conds.push(eq(rmcBatchRecords.plantName, filters.plantName));
+    if (filters?.dateFrom) conds.push(gte(rmcBatchRecords.date, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(rmcBatchRecords.date, filters.dateTo));
+    if (filters?.mixDesignId) conds.push(eq(rmcBatchRecords.mixDesignId, filters.mixDesignId));
+    const rows = await db.select().from(rmcBatchRecords).where(and(...conds)).orderBy(desc(rmcBatchRecords.date));
+    return Promise.all(rows.map(r => this._buildBatchRecordWithDesign(r)));
+  }
+
+  async getRmcBatchRecord(id: number): Promise<RmcBatchRecordWithDesign | undefined> {
+    const rows = await db.select().from(rmcBatchRecords).where(eq(rmcBatchRecords.id, id)).limit(1);
+    if (!rows[0]) return undefined;
+    return this._buildBatchRecordWithDesign(rows[0]);
+  }
+
+  async createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<RmcBatchRecord> {
+    const rows = await db.insert(rmcBatchRecords).values(r).returning();
+    return rows[0];
+  }
+
+  async updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<RmcBatchRecord | undefined> {
+    const rows = await db.update(rmcBatchRecords).set(r).where(eq(rmcBatchRecords.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteRmcBatchRecord(id: number): Promise<boolean> {
+    const res = await db.delete(rmcBatchRecords).where(eq(rmcBatchRecords.id, id));
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async getRmcCubeTests(filters?: { batchRecordId?: number; ageDays?: number; dateFrom?: string; dateTo?: string }): Promise<RmcCubeTest[]> {
+    const conds: any[] = [];
+    if (filters?.batchRecordId) conds.push(eq(rmcCubeTests.batchRecordId, filters.batchRecordId));
+    if (filters?.ageDays) conds.push(eq(rmcCubeTests.ageDays, filters.ageDays));
+    if (filters?.dateFrom) conds.push(gte(rmcCubeTests.testDate, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(rmcCubeTests.testDate, filters.dateTo));
+    return db.select().from(rmcCubeTests).where(and(...conds)).orderBy(desc(rmcCubeTests.testDate));
+  }
+
+  async createRmcCubeTest(t: InsertRmcCubeTest): Promise<RmcCubeTest> {
+    const rows = await db.insert(rmcCubeTests).values(t).returning();
+    return rows[0];
+  }
+
+  async updateRmcCubeTest(id: number, t: Partial<InsertRmcCubeTest>): Promise<RmcCubeTest | undefined> {
+    const rows = await db.update(rmcCubeTests).set(t).where(eq(rmcCubeTests.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteRmcCubeTest(id: number): Promise<boolean> {
+    const res = await db.delete(rmcCubeTests).where(eq(rmcCubeTests.id, id));
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async getRmcRawMaterialReceipts(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; category?: string }): Promise<RmcRawMaterialReceipt[]> {
+    const conds: any[] = [];
+    if (filters?.plantName) conds.push(eq(rmcRawMaterialReceipts.plantName, filters.plantName));
+    if (filters?.dateFrom) conds.push(gte(rmcRawMaterialReceipts.date, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(rmcRawMaterialReceipts.date, filters.dateTo));
+    if (filters?.category) conds.push(eq(rmcRawMaterialReceipts.category, filters.category));
+    return db.select().from(rmcRawMaterialReceipts).where(and(...conds)).orderBy(desc(rmcRawMaterialReceipts.date));
+  }
+
+  async createRmcRawMaterialReceipt(r: InsertRmcRawMaterialReceipt): Promise<RmcRawMaterialReceipt> {
+    const rows = await db.insert(rmcRawMaterialReceipts).values(r).returning();
+    return rows[0];
+  }
+
+  async updateRmcRawMaterialReceipt(id: number, r: Partial<InsertRmcRawMaterialReceipt>): Promise<RmcRawMaterialReceipt | undefined> {
+    const rows = await db.update(rmcRawMaterialReceipts).set(r).where(eq(rmcRawMaterialReceipts.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteRmcRawMaterialReceipt(id: number): Promise<boolean> {
+    const res = await db.delete(rmcRawMaterialReceipts).where(eq(rmcRawMaterialReceipts.id, id));
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async getRmcDailyReport(date: string, plantName?: string): Promise<{
+    totalVolumeM3: number;
+    batchRecords: RmcBatchRecordWithDesign[];
+    gradeBreakdown: { grade: string; volumeM3: number; batches: number }[];
+    rawMaterialsReceived: { materialName: string; category: string; totalQty: number; uom: string }[];
+    cubeTests: RmcCubeTest[];
+  }> {
+    const batchRecords = await this.getRmcBatchRecords({ dateFrom: date, dateTo: date, plantName });
+    const totalVolumeM3 = batchRecords.reduce((s, r) => s + r.totalVolumeM3, 0);
+
+    const gradeMap: Map<string, { volumeM3: number; batches: number }> = new Map();
+    for (const br of batchRecords) {
+      const cur = gradeMap.get(br.grade) ?? { volumeM3: 0, batches: 0 };
+      gradeMap.set(br.grade, { volumeM3: cur.volumeM3 + br.totalVolumeM3, batches: cur.batches + (br.batchesCount ?? 1) });
+    }
+    const gradeBreakdown = Array.from(gradeMap.entries()).map(([grade, v]) => ({ grade, ...v }));
+
+    const rawMaterialsReceived = await this.getRmcRawMaterialReceipts({ dateFrom: date, dateTo: date, plantName });
+    const rawMap: Map<string, { category: string; totalQty: number; uom: string }> = new Map();
+    for (const r of rawMaterialsReceived) {
+      const key = `${r.materialName}__${r.uom}`;
+      const cur = rawMap.get(key) ?? { category: r.category ?? '', totalQty: 0, uom: r.uom };
+      rawMap.set(key, { ...cur, totalQty: cur.totalQty + r.qty });
+    }
+    const rawSummary = Array.from(rawMap.entries()).map(([key, v]) => ({
+      materialName: key.split('__')[0],
+      category: v.category,
+      totalQty: v.totalQty,
+      uom: v.uom,
+    }));
+
+    const batchIds = batchRecords.map(br => br.id);
+    let cubeTests: RmcCubeTest[] = [];
+    if (batchIds.length > 0) {
+      cubeTests = await db.select().from(rmcCubeTests).where(inArray(rmcCubeTests.batchRecordId, batchIds));
+    }
+
+    return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, cubeTests };
+  }
+
+  async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; uom: string }[]> {
+    const receipts = await this.getRmcRawMaterialReceipts({ plantName });
+    const map: Map<string, { category: string; totalReceived: number; uom: string }> = new Map();
+    for (const r of receipts) {
+      const key = `${r.materialName}__${r.uom}`;
+      const cur = map.get(key) ?? { category: r.category ?? '', totalReceived: 0, uom: r.uom };
+      map.set(key, { ...cur, totalReceived: cur.totalReceived + r.qty });
+    }
+    return Array.from(map.entries()).map(([key, v]) => ({ materialName: key.split('__')[0], ...v }));
   }
 }
 
