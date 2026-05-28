@@ -2171,6 +2171,7 @@ export class DatabaseStorage implements IStorage {
       bitumenTank1LitresPerCm: input.bitumenTank1LitresPerCm ?? null,
       bitumenTank2LitresPerCm: input.bitumenTank2LitresPerCm ?? null,
       bitumenDensityKgPerL: input.bitumenDensityKgPerL ?? null,
+      ...(input.plantType !== undefined ? { plantType: input.plantType } : {}),
       updatedAt: new Date(),
     };
     if (existing) {
@@ -17309,6 +17310,7 @@ export class DatabaseStorage implements IStorage {
     batchRecords: RmcBatchRecordWithDesign[];
     gradeBreakdown: { grade: string; volumeM3: number; batches: number }[];
     rawMaterialsReceived: { materialName: string; category: string; totalQty: number; uom: string }[];
+    materialConsumed: { materialName: string; consumedQty: number; uom: string }[];
     cubeTests: RmcCubeTest[];
   }> {
     const batchRecords = await this.getRmcBatchRecords({ dateFrom: date, dateTo: date, plantName });
