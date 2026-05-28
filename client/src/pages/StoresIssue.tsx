@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2 } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -25,29 +26,27 @@ type IssueWithItems = {
 
 const emptyLine = (): IssueLine => ({ itemId: "", qty: "", uom: "" });
 
-interface Props { isNew?: boolean }
+interface Props { isNew?: boolean; detailId?: number }
 
-export default function StoresIssue({ isNew }: Props) {
+export default function StoresIssue({ isNew, detailId }: Props) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(!!isNew);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sectionFilter, setSectionFilter] = useState("__all__");
+  const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
     date: TODAY, issuedToSection: "plant", issuedToDetail: "", purpose: "", remarks: "",
   });
   const [lines, setLines] = useState<IssueLine[]>([emptyLine()]);
 
-  const { data: items = [] } = useQuery<StoreItem[]>({
-    queryKey: ["/api/stores/items"],
-    queryFn: async () => {
-      const res = await fetch("/api/stores/items");
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
+  useEffect(() => {
+    if (detailId) setSelectedId(detailId);
+  }, [detailId]);
+
+  const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
 
   const { data: stock = [] } = useQuery<any[]>({ queryKey: ["/api/stores/stock-summary"] });
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
@@ -64,6 +63,15 @@ export default function StoresIssue({ isNew }: Props) {
       return res.json();
     },
   });
+
+  const { data: previewNum } = useQuery<{ number: string }>({
+    queryKey: ["/api/stores/next-doc-number", "ISS"],
+    queryFn: () => fetch("/api/stores/next-doc-number?type=ISS").then(r => r.json()),
+    enabled: showForm,
+    staleTime: 0,
+  });
+
+  const selectedIssue = issues.find(i => i.id === selectedId) ?? null;
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/issues", data),
@@ -114,6 +122,17 @@ export default function StoresIssue({ isNew }: Props) {
     });
   }
 
+  function openDetail(issue: IssueWithItems) {
+    setSelectedId(issue.id);
+    navigate(`/stores/issues/${issue.id}`);
+    setShowForm(false);
+  }
+
+  function closeDetail() {
+    setSelectedId(null);
+    navigate("/stores/issues");
+  }
+
   const sectionLabel = (s: string) => SECTIONS.find(x => x.value === s)?.label ?? s;
 
   return (
@@ -127,21 +146,83 @@ export default function StoresIssue({ isNew }: Props) {
             <ArrowUpFromLine className="w-5 h-5 text-orange-600" />
             <h1 className="text-xl font-bold">Issue Vouchers</h1>
           </div>
-          {!showForm && (
+          {!showForm && !selectedId && (
             <Button size="sm" className="gap-1 bg-orange-600 hover:bg-orange-700" onClick={() => setShowForm(true)} data-testid="button-new-issue">
               <Plus className="w-4 h-4" /> New Issue
             </Button>
           )}
         </div>
 
+        {/* Detail panel */}
+        {selectedIssue && (
+          <Card className="border-orange-300 dark:border-orange-800 shadow-md">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-lg font-bold text-orange-700 dark:text-orange-400" data-testid="text-issue-detail-number">{selectedIssue.issueNumber}</span>
+                    <span className="text-sm text-muted-foreground">{format(new Date(selectedIssue.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                    <Badge variant="outline" className="text-[10px]">{sectionLabel(selectedIssue.issuedToSection)}</Badge>
+                  </div>
+                  {selectedIssue.issuedToDetail && <p className="text-base font-semibold mt-1">{selectedIssue.issuedToDetail}</p>}
+                  {selectedIssue.purpose && <p className="text-xs text-muted-foreground">{selectedIssue.purpose}</p>}
+                  {selectedIssue.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedIssue.remarks}</p>}
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={closeDetail} data-testid="button-close-detail">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="border rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs">Item</th>
+                      <th className="text-left px-3 py-2 text-xs">Category</th>
+                      <th className="text-right px-3 py-2 text-xs">Qty</th>
+                      <th className="text-left px-2 py-2 text-xs">UOM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedIssue.items.map((it, i) => (
+                      <tr key={i} className="border-t" data-testid={`row-detail-item-${i}`}>
+                        <td className="px-3 py-2 font-medium">{it.itemName}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-xs">{it.category}</td>
+                        <td className="px-3 py-2 text-right">{it.qty}</td>
+                        <td className="px-2 py-2 text-xs">{it.uom}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-between items-center">
+                <Button variant="outline" size="sm" onClick={closeDetail} data-testid="button-back-to-list" className="gap-1">
+                  <ChevronLeft className="w-4 h-4" /> Back to list
+                </Button>
+                <Button variant="ghost" size="sm" className="text-destructive gap-1"
+                  onClick={() => { if (confirm("Delete this Issue Voucher?")) { deleteMutation.mutate(selectedIssue.id); closeDetail(); } }}
+                  data-testid="button-delete-detail-issue">
+                  <Trash2 className="w-4 h-4" /> Delete
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* New Issue form */}
-        {showForm && (
+        {!selectedId && showForm && (
           <Card className="border-orange-200 dark:border-orange-900">
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <ArrowUpFromLine className="w-4 h-4 text-orange-600" /> New Issue Voucher
-                </h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <ArrowUpFromLine className="w-4 h-4 text-orange-600" /> New Issue Voucher
+                  </h3>
+                  {previewNum?.number && (
+                    <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-issue-preview-number">
+                      {previewNum.number}
+                    </span>
+                  )}
+                </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowForm(false); if (isNew) navigate("/stores/issues"); }}>
                   <X className="w-4 h-4" />
                 </Button>
@@ -179,7 +260,6 @@ export default function StoresIssue({ isNew }: Props) {
                   </div>
                 </div>
 
-                {/* Line items */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Items Issued *</Label>
                   {lines.map((line, idx) => {
@@ -241,68 +321,72 @@ export default function StoresIssue({ isNew }: Props) {
           </Card>
         )}
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">From</Label>
-            <Input type="date" className="h-8 w-36 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">To</Label>
-            <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
-          </div>
-          <Select value={sectionFilter} onValueChange={setSectionFilter}>
-            <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-section-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Sections</SelectItem>
-              {SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {(dateFrom || dateTo || sectionFilter !== "__all__") && (
-            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); }}>Clear</Button>
-          )}
-        </div>
+        {!selectedId && (
+          <>
+            {/* Filters */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input type="date" className="h-8 w-36 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
+              </div>
+              <Select value={sectionFilter} onValueChange={setSectionFilter}>
+                <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-section-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Sections</SelectItem>
+                  {SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {(dateFrom || dateTo || sectionFilter !== "__all__") && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); }}>Clear</Button>
+              )}
+            </div>
 
-        {/* Issue List */}
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
-        ) : issues.length === 0 ? (
-          <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No issue vouchers found.</CardContent></Card>
-        ) : (
-          <div className="space-y-3">
-            {issues.map(issue => (
-              <Card key={issue.id} data-testid={`card-issue-${issue.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm font-bold text-orange-700 dark:text-orange-400">{issue.issueNumber}</span>
-                        <span className="text-xs text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-                          {sectionLabel(issue.issuedToSection)}
-                        </span>
-                      </div>
-                      {issue.issuedToDetail && <div className="text-sm font-medium mt-1">{issue.issuedToDetail}</div>}
-                      {issue.purpose && <div className="text-xs text-muted-foreground">{issue.purpose}</div>}
-                      <div className="mt-2 space-y-0.5">
-                        {issue.items.map((it, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="font-medium text-foreground">{it.itemName}</span>
-                            <span>—</span>
-                            <span>{it.qty} {it.uom}</span>
+            {/* Issue List */}
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
+            ) : issues.length === 0 ? (
+              <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No issue vouchers found.</CardContent></Card>
+            ) : (
+              <div className="space-y-3">
+                {issues.map(issue => (
+                  <Card key={issue.id} className="cursor-pointer hover-elevate" onClick={() => openDetail(issue)} data-testid={`card-issue-${issue.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm font-bold text-orange-700 dark:text-orange-400">{issue.issueNumber}</span>
+                            <span className="text-xs text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                              {sectionLabel(issue.issuedToSection)}
+                            </span>
                           </div>
-                        ))}
+                          {issue.issuedToDetail && <div className="text-sm font-medium mt-1">{issue.issuedToDetail}</div>}
+                          {issue.purpose && <div className="text-xs text-muted-foreground">{issue.purpose}</div>}
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {issue.items.length} item{issue.items.length !== 1 ? "s" : ""}
+                            {" — "}
+                            {issue.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(issue)} data-testid={`button-view-issue-${issue.id}`}>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this Issue Voucher?")) deleteMutation.mutate(issue.id); }} data-testid={`button-delete-issue-${issue.id}`}>
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      {issue.remarks && <div className="text-xs text-muted-foreground mt-1 italic">{issue.remarks}</div>}
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { if (confirm("Delete this Issue Voucher?")) deleteMutation.mutate(issue.id); }} data-testid={`button-delete-issue-${issue.id}`}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -223,8 +223,10 @@ function AuthedShell() {
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
             <Route path="/stores/grns/new" component={gated(() => <StoresGrn isNew />, "stores_inventory")} />
+            <Route path="/stores/grns/:id" component={gated((p: any) => <StoresGrn detailId={parseInt(p.id)} />, "stores_inventory")} />
             <Route path="/stores/issues" component={gated(StoresIssue, "stores_inventory")} />
             <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
+            <Route path="/stores/issues/:id" component={gated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "stores_inventory")} />
             <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
             <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
             <Route path="/admin/users" component={gated(UserManagement, "user_management")} />

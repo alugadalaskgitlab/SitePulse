@@ -891,6 +891,36 @@ function PermissionsDialog({
                     </div>
                   ); })}
                 </div>
+              ) : g.id === "stores" ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b">
+                    <span>Stores &amp; Inventory</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer normal-case font-normal text-xs tracking-normal">
+                      <Checkbox
+                        checked={g.sections.length > 0 && g.sections.every((s) => ACTIONS.every((a) => matrix[s][a]))}
+                        onCheckedChange={(v) => setAllForSubGroup(g.sections, !!v)}
+                        data-testid="checkbox-tab-stores-all"
+                      />
+                      Grant all
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2 px-1 pb-1">
+                    <span className="text-xs text-muted-foreground">Quick presets:</span>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" data-testid="button-stores-preset-engineer"
+                      onClick={() => setMatrix(prev => ({ ...prev, stores_inventory: { view: true, create: false, edit: false, delete: false, view_reports: false, export: false } }))}>
+                      Engineer (view only)
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" data-testid="button-stores-preset-manager"
+                      onClick={() => setMatrix(prev => ({ ...prev, stores_inventory: { view: true, create: true, edit: true, delete: false, view_reports: true, export: true } }))}>
+                      Manager (create &amp; edit)
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" data-testid="button-stores-preset-admin"
+                      onClick={() => setAllForSection("stores_inventory", true)}>
+                      Admin (full)
+                    </Button>
+                  </div>
+                  <PermMatrix sections={g.sections} />
+                </div>
               ) : (
                 <div>
                   <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">

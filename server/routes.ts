@@ -6805,6 +6805,20 @@ export async function registerRoutes(
     }
   });
 
+  // Preview next document number without incrementing
+  app.get("/api/stores/next-doc-number", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const type = req.query.type as string;
+      if (type !== "GRN" && type !== "ISS") return res.status(400).json({ error: "type must be GRN or ISS" });
+      const number = await storage.generateStoreDocNumber(type);
+      res.json({ number });
+    } catch (err) {
+      console.error("GET /api/stores/next-doc-number:", err);
+      res.status(500).json({ error: "Failed to generate number" });
+    }
+  });
+
   // GRN counts grouped by indent reference (for PurchaseIndents traceability)
   app.get("/api/stores/indent-grn-counts", async (req, res) => {
     try {
