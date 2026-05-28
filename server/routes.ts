@@ -6624,6 +6624,7 @@ export async function registerRoutes(
   // Item Master
   app.get("/api/stores/items", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const includeInactive = req.query.includeInactive === "true";
       const items = await storage.getStoreItems(includeInactive);
       res.json(items);
@@ -6671,10 +6672,12 @@ export async function registerRoutes(
   // GRNs
   app.get("/api/stores/grns", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const grns = await storage.getStoreGrns({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         supplier: req.query.supplier as string | undefined,
+        indentRef: req.query.indentRef as string | undefined,
       });
       res.json(grns);
     } catch (err) {
@@ -6685,6 +6688,7 @@ export async function registerRoutes(
 
   app.get("/api/stores/grns/:id", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const grn = await storage.getStoreGrn(parseInt(req.params.id));
       if (!grn) return res.status(404).json({ error: "Not found" });
       res.json(grn);
@@ -6723,6 +6727,7 @@ export async function registerRoutes(
   // Issue Vouchers
   app.get("/api/stores/issues", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const issues = await storage.getStoreIssues({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -6737,6 +6742,7 @@ export async function registerRoutes(
 
   app.get("/api/stores/issues/:id", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const issue = await storage.getStoreIssue(parseInt(req.params.id));
       if (!issue) return res.status(404).json({ error: "Not found" });
       res.json(issue);
@@ -6775,6 +6781,7 @@ export async function registerRoutes(
   // Stock Summary
   app.get("/api/stores/stock-summary", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const summary = await storage.getStoreStockSummary();
       res.json(summary);
     } catch (err) {
@@ -6786,6 +6793,7 @@ export async function registerRoutes(
   // Per-item Ledger
   app.get("/api/stores/ledger/:itemId", async (req, res) => {
     try {
+      if (!assertView(req, res, "stores_inventory")) return;
       const ledger = await storage.getStoreItemLedger(parseInt(req.params.itemId), {
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -6794,6 +6802,18 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/stores/ledger/:itemId:", err);
       res.status(500).json({ error: "Failed to fetch ledger" });
+    }
+  });
+
+  // GRN counts grouped by indent reference (for PurchaseIndents traceability)
+  app.get("/api/stores/indent-grn-counts", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const counts = await storage.getStoreGrnCountsByIndentRef();
+      res.json(counts);
+    } catch (err) {
+      console.error("GET /api/stores/indent-grn-counts:", err);
+      res.status(500).json({ error: "Failed to fetch indent GRN counts" });
     }
   });
 

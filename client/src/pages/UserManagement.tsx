@@ -731,6 +731,11 @@ function PermissionsDialog({
       sections: ["vendor_bills", "reports"],
     },
     {
+      id: "stores",
+      label: "Stores",
+      sections: ["stores_inventory"],
+    },
+    {
       id: "masters",
       label: "Masters",
       sections: ["admin_settings"],

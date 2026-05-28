@@ -724,7 +724,8 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems>;
   deleteStoreGrn(id: number): Promise<boolean>;
@@ -16587,15 +16588,29 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string }): Promise<StoreGrnWithItems[]> {
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
+    if (filters?.indentRef) conds.push(ilike(storeGrns.indentRef, `%${filters.indentRef}%`));
     const grns = await db.select().from(storeGrns)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
     return Promise.all(grns.map(g => this.buildGrnWithItems(g)));
+  }
+
+  async getStoreGrnCountsByIndentRef(): Promise<Record<string, number>> {
+    const rows = await db
+      .select({ indentRef: storeGrns.indentRef, count: sql<number>`count(*)::int` })
+      .from(storeGrns)
+      .where(sql`${storeGrns.indentRef} is not null and ${storeGrns.indentRef} <> ''`)
+      .groupBy(storeGrns.indentRef);
+    const result: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.indentRef) result[r.indentRef] = r.count;
+    }
+    return result;
   }
 
   async getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined> {

@@ -328,6 +328,7 @@ export default function PurchaseIndents() {
   const { sectionCan, isAdmin } = useAuth();
   const canCreate = sectionCan("site_procurement", "create");
   const canEdit = sectionCan("site_procurement", "edit");
+  const canViewStores = sectionCan("stores_inventory", "view");
   const canDelete = isAdmin;
   const canForceClose = isAdmin;
   const { getPlantBackLink } = useOrigin();
@@ -392,6 +393,11 @@ export default function PurchaseIndents() {
 
   const { data: plantMaterialsList } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: indentGrnCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/stores/indent-grn-counts"],
+    enabled: canViewStores,
   });
 
   const createMutation = useMutation({
@@ -1081,6 +1087,11 @@ export default function PurchaseIndents() {
                             {indent.status === "approved" && purchased === 0 && (
                               <p className="text-xs text-emerald-600 mt-0.5">READY TO PURCHASE</p>
                             )}
+                            {canViewStores && indentGrnCounts && indentGrnCounts[indent.indentNo] ? (
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 font-medium" data-testid={`text-grn-count-${indent.id}`}>
+                                {indentGrnCounts[indent.indentNo]} GRN{indentGrnCounts[indent.indentNo] > 1 ? "s" : ""} RAISED
+                              </p>
+                            ) : null}
                           </div>
                           {getStatusBadge(indent.status)}
                         </div>
