@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, FileText, Printer } from "lucide-react";
+import { ArrowLeft, FileText, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,9 +48,18 @@ export default function RmcDailyReport() {
         <div className="flex items-center gap-2">
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" data-testid="input-date" />
           {report && (
-            <Button variant="outline" onClick={handlePrint} data-testid="btn-print">
-              <Printer className="w-4 h-4 mr-2" />Print
-            </Button>
+            <>
+              <Button variant="outline" onClick={handlePrint} data-testid="btn-print">
+                <Printer className="w-4 h-4 mr-2" />Print
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open(`/api/rmc/daily-report/pdf?date=${date}`, "_blank")}
+                data-testid="btn-download-pdf"
+              >
+                <Download className="w-4 h-4 mr-2" />Download PDF
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Pencil, Trash2, Printer, FlaskConical } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Printer, FlaskConical, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -227,6 +227,18 @@ export default function RmcBatchRecords() {
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" data-testid="input-date-from" />
           <span className="text-muted-foreground text-sm">to</span>
           <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" data-testid="input-date-to" />
+          {records.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const params = new URLSearchParams({ dateFrom, dateTo });
+                window.location.href = `/api/rmc/batch-records/export?${params}`;
+              }}
+              data-testid="btn-export-excel"
+            >
+              <FileDown className="w-4 h-4 mr-2" />Export Excel
+            </Button>
+          )}
           {canCreate && (
             <Button onClick={openCreate} data-testid="btn-add-batch">
               <Plus className="w-4 h-4 mr-2" />Add Batch

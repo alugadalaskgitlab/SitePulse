@@ -7023,6 +7023,51 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // RMC Batch Records — Excel export (must be declared before /:id)
+  app.get("/api/rmc/batch-records/export", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const filters = {
+        plantName: req.query.plantName as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const rows = await storage.getRmcBatchRecords(filters);
+
+      const sheetRows = rows.map(r => ({
+        "Date": r.date,
+        "Plant": r.plantName,
+        "DC Number": r.dcNumber ?? "",
+        "Grade": r.grade,
+        "Batches": r.batchesCount ?? "",
+        "Volume (m³)": r.totalVolumeM3,
+        "Customer": r.customerName ?? "",
+        "Delivery Site": r.deliverySite ?? "",
+        "Truck Number": r.truckNumber ?? "",
+        "Remarks": r.remarks ?? "",
+      }));
+
+      const wb = xlsx.utils.book_new();
+      const ws = xlsx.utils.json_to_sheet(sheetRows);
+      // Column widths
+      ws["!cols"] = [
+        { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 8 },
+        { wch: 12 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 24 },
+      ];
+      xlsx.utils.book_append_sheet(wb, ws, "Batch Records");
+
+      const rangeStr = filters.dateFrom && filters.dateTo
+        ? `${filters.dateFrom}-to-${filters.dateTo}`
+        : "all";
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="rmc-batch-records-${rangeStr}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Export failed" });
+    }
+  });
+
   app.get("/api/rmc/batch-records/:id", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_production")) return;
@@ -7192,6 +7237,190 @@ export async function registerRoutes(
       const report = await storage.getRmcDailyReport(date, plantName);
       res.json(report);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // RMC Daily Report — PDF export
+  app.get("/api/rmc/daily-report/pdf", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
+      const date = req.query.date as string;
+      if (!date) return res.status(400).json({ message: "date query param required" });
+      const plantName = (req.query.plantName as string | undefined) || undefined;
+      const report = await storage.getRmcDailyReport(date, plantName);
+
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="rmc-daily-report-${date}.pdf"`);
+      doc.pipe(res);
+
+      // ── Header ──────────────────────────────────────────────────────────
+      doc.fontSize(18).font("Helvetica-Bold").text("RMC Daily Production Report", { align: "center" });
+      doc.fontSize(11).font("Helvetica").text(plantName ? `Plant: ${plantName}` : "Ready Mix Concrete Plant", { align: "center" });
+      doc.fontSize(10).text(`Date: ${date}    Generated: ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`, { align: "center" });
+      doc.moveDown(0.5);
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+      doc.moveDown(0.5);
+
+      // ── Summary stats ────────────────────────────────────────────────────
+      doc.fontSize(13).font("Helvetica-Bold").text("Summary");
+      doc.moveDown(0.2);
+      const stats = [
+        ["Total Volume", `${report.totalVolumeM3.toFixed(2)} m³`],
+        ["Dispatches", String(report.batchRecords.length)],
+        ["Grades Produced", String(report.gradeBreakdown.length)],
+        ["Cube Tests", String(report.cubeTests.length)],
+      ];
+      const colW = 120;
+      const startX = 40;
+      let sx = startX;
+      const statsY = doc.y;
+      for (const [label, value] of stats) {
+        doc.rect(sx, statsY, colW - 4, 40).stroke();
+        doc.fontSize(8).font("Helvetica").fillColor("#555").text(label, sx + 4, statsY + 4, { width: colW - 8 });
+        doc.fontSize(14).font("Helvetica-Bold").fillColor("#000").text(value, sx + 4, statsY + 16, { width: colW - 8 });
+        sx += colW;
+      }
+      doc.y = statsY + 50;
+      doc.moveDown(0.5);
+
+      // ── Grade Breakdown ─────────────────────────────────────────────────
+      if (report.gradeBreakdown.length > 0) {
+        doc.fontSize(13).font("Helvetica-Bold").fillColor("#000").text("Grade-wise Production");
+        doc.moveDown(0.2);
+        const hY = doc.y;
+        doc.rect(40, hY, 515, 18).fill("#e8e8e8").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+        doc.text("Grade", 44, hY + 4, { width: 200 });
+        doc.text("Batches", 244, hY + 4, { width: 100, align: "right" });
+        doc.text("Volume (m³)", 344, hY + 4, { width: 207, align: "right" });
+        doc.y = hY + 20;
+        for (const g of report.gradeBreakdown) {
+          const ry = doc.y;
+          doc.rect(40, ry, 515, 16).stroke();
+          doc.fontSize(9).font("Helvetica").fillColor("#000");
+          doc.text(g.grade, 44, ry + 3, { width: 200 });
+          doc.text(String(g.batches), 244, ry + 3, { width: 100, align: "right" });
+          doc.text(g.volumeM3.toFixed(2), 344, ry + 3, { width: 207, align: "right" });
+          doc.y = ry + 18;
+        }
+        // Totals row
+        const ty = doc.y;
+        doc.rect(40, ty, 515, 16).fill("#f5f5f5").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+        doc.text("Total", 44, ty + 3, { width: 200 });
+        doc.text(String(report.batchRecords.reduce((s, r) => s + (r.batchesCount ?? 0), 0)), 244, ty + 3, { width: 100, align: "right" });
+        doc.text(report.totalVolumeM3.toFixed(2), 344, ty + 3, { width: 207, align: "right" });
+        doc.y = ty + 22;
+        doc.moveDown(0.5);
+      }
+
+      // ── Batch Dispatches ────────────────────────────────────────────────
+      if (report.batchRecords.length > 0) {
+        doc.fontSize(13).font("Helvetica-Bold").fillColor("#000").text("Batch Dispatches");
+        doc.moveDown(0.2);
+        const hY = doc.y;
+        doc.rect(40, hY, 515, 18).fill("#e8e8e8").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+        doc.text("DC #", 44, hY + 4, { width: 70 });
+        doc.text("Grade", 114, hY + 4, { width: 70 });
+        doc.text("Customer", 184, hY + 4, { width: 140 });
+        doc.text("Delivery Site", 324, hY + 4, { width: 140 });
+        doc.text("Vol (m³)", 464, hY + 4, { width: 87, align: "right" });
+        doc.y = hY + 20;
+        for (const b of report.batchRecords) {
+          const ry = doc.y;
+          if (ry > 760) { doc.addPage(); }
+          const ry2 = doc.y;
+          doc.rect(40, ry2, 515, 16).stroke();
+          doc.fontSize(8).font("Helvetica").fillColor("#000");
+          doc.text(b.dcNumber || "—", 44, ry2 + 3, { width: 70 });
+          doc.text(b.grade, 114, ry2 + 3, { width: 70 });
+          doc.text(b.customerName || "—", 184, ry2 + 3, { width: 140 });
+          doc.text(b.deliverySite || "—", 324, ry2 + 3, { width: 140 });
+          doc.text(b.totalVolumeM3.toFixed(2), 464, ry2 + 3, { width: 87, align: "right" });
+          doc.y = ry2 + 18;
+        }
+        doc.moveDown(0.5);
+      }
+
+      // ── Raw Materials Received vs Consumed ──────────────────────────────
+      if (report.rawMaterialsReceived.length > 0 || report.materialConsumed.length > 0) {
+        const allMats = Array.from(new Set([
+          ...report.rawMaterialsReceived.map(r => r.materialName),
+          ...report.materialConsumed.map(c => c.materialName),
+        ]));
+        const receivedMap = new Map(report.rawMaterialsReceived.map(r => [r.materialName, r.totalQty]));
+        const consumedMap = new Map(report.materialConsumed.map(c => [c.materialName, c.consumedQty]));
+        doc.fontSize(13).font("Helvetica-Bold").fillColor("#000").text("Raw Materials — Received vs Consumed");
+        doc.moveDown(0.2);
+        const hY = doc.y;
+        doc.rect(40, hY, 515, 18).fill("#e8e8e8").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+        doc.text("Material", 44, hY + 4, { width: 200 });
+        doc.text("Received (kg)", 244, hY + 4, { width: 110, align: "right" });
+        doc.text("Consumed (kg)", 354, hY + 4, { width: 110, align: "right" });
+        doc.text("Balance", 464, hY + 4, { width: 87, align: "right" });
+        doc.y = hY + 20;
+        for (const mat of allMats) {
+          const ry = doc.y;
+          if (ry > 760) { doc.addPage(); }
+          const ry2 = doc.y;
+          doc.rect(40, ry2, 515, 16).stroke();
+          const recv = receivedMap.get(mat) ?? 0;
+          const cons = consumedMap.get(mat) ?? 0;
+          const bal = recv - cons;
+          doc.fontSize(8).font("Helvetica").fillColor("#000");
+          doc.text(mat, 44, ry2 + 3, { width: 200 });
+          doc.text(recv > 0 ? recv.toFixed(2) : "—", 244, ry2 + 3, { width: 110, align: "right" });
+          doc.text(cons > 0 ? cons.toFixed(2) : "—", 354, ry2 + 3, { width: 110, align: "right" });
+          doc.fillColor(bal < 0 ? "#cc0000" : "#000").text((recv > 0 || cons > 0) ? bal.toFixed(2) : "—", 464, ry2 + 3, { width: 87, align: "right" });
+          doc.fillColor("#000");
+          doc.y = ry2 + 18;
+        }
+        doc.moveDown(0.5);
+      }
+
+      // ── Cube Tests ──────────────────────────────────────────────────────
+      if (report.cubeTests.length > 0) {
+        doc.fontSize(13).font("Helvetica-Bold").fillColor("#000").text("Cube Test Results");
+        doc.moveDown(0.2);
+        const hY = doc.y;
+        doc.rect(40, hY, 515, 18).fill("#e8e8e8").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+        doc.text("Sample ID", 44, hY + 4, { width: 150 });
+        doc.text("Age (d)", 194, hY + 4, { width: 70, align: "right" });
+        doc.text("Strength (MPa)", 264, hY + 4, { width: 120, align: "right" });
+        doc.text("Target", 384, hY + 4, { width: 80, align: "right" });
+        doc.text("Result", 464, hY + 4, { width: 87, align: "right" });
+        doc.y = hY + 20;
+        for (const t of report.cubeTests) {
+          const ry = doc.y;
+          if (ry > 760) { doc.addPage(); }
+          const ry2 = doc.y;
+          doc.rect(40, ry2, 515, 16).stroke();
+          const result = t.passFail === "pass" ? "PASS" : t.passFail === "fail" ? "FAIL" : "—";
+          const resultColor = t.passFail === "pass" ? "#007700" : t.passFail === "fail" ? "#cc0000" : "#555";
+          doc.fontSize(8).font("Helvetica").fillColor("#000");
+          doc.text(t.sampleId, 44, ry2 + 3, { width: 150 });
+          doc.text(String(t.ageDays), 194, ry2 + 3, { width: 70, align: "right" });
+          doc.text(String(t.strengthMpa), 264, ry2 + 3, { width: 120, align: "right" });
+          doc.text(t.targetStrength != null ? String(t.targetStrength) : "—", 384, ry2 + 3, { width: 80, align: "right" });
+          doc.font("Helvetica-Bold").fillColor(resultColor).text(result, 464, ry2 + 3, { width: 87, align: "right" });
+          doc.fillColor("#000");
+          doc.y = ry2 + 18;
+        }
+        doc.moveDown(0.5);
+      }
+
+      if (report.batchRecords.length === 0 && report.rawMaterialsReceived.length === 0 && report.cubeTests.length === 0) {
+        doc.fontSize(11).font("Helvetica").fillColor("#888").text("No data recorded for this date.", { align: "center" });
+      }
+
+      doc.end();
+    } catch (err: any) {
+      console.error("RMC PDF error", err);
+      if (!res.headersSent) res.status(500).json({ message: err.message || "Failed to generate PDF" });
+    }
   });
 
   seedDatabase();
