@@ -790,6 +790,7 @@ export interface IStorage {
   createRmcCubeTest(t: InsertRmcCubeTest): Promise<RmcCubeTest>;
   updateRmcCubeTest(id: number, t: Partial<InsertRmcCubeTest>): Promise<RmcCubeTest | undefined>;
   deleteRmcCubeTest(id: number): Promise<boolean>;
+  getRmcCubeTestStats(dateFrom?: string): Promise<{ failCount: number }>;
 
   getRmcRawMaterialReceipts(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; category?: string }): Promise<RmcRawMaterialReceipt[]>;
   createRmcRawMaterialReceipt(r: InsertRmcRawMaterialReceipt): Promise<RmcRawMaterialReceipt>;
@@ -17280,6 +17281,13 @@ export class DatabaseStorage implements IStorage {
   async deleteRmcCubeTest(id: number): Promise<boolean> {
     const res = await db.delete(rmcCubeTests).where(eq(rmcCubeTests.id, id));
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async getRmcCubeTestStats(dateFrom?: string): Promise<{ failCount: number }> {
+    const conds: any[] = [eq(rmcCubeTests.passFail, 'fail')];
+    if (dateFrom) conds.push(gte(rmcCubeTests.testDate, dateFrom));
+    const rows = await db.select({ count: sql<number>`count(*)::int` }).from(rmcCubeTests).where(and(...conds));
+    return { failCount: rows[0]?.count ?? 0 };
   }
 
   async getRmcRawMaterialReceipts(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; category?: string }): Promise<RmcRawMaterialReceipt[]> {

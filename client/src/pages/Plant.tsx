@@ -201,6 +201,15 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
   });
   const openBreakdownCount = openCountData?.count ?? 0;
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const { data: cubeTestStatsData } = useQuery<{ failCount: number }>({
+    queryKey: ["/api/rmc/cube-tests/stats", thirtyDaysAgo],
+    queryFn: () => apiRequest("GET", `/api/rmc/cube-tests/stats?dateFrom=${thirtyDaysAgo}`).then(r => r.json()),
+    enabled: isRmc && sectionVisible("plant_production"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const cubeTestFailCount = cubeTestStatsData?.failCount ?? 0;
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: rmcSummary, isLoading: rmcSummaryLoading } = useQuery<{
     date: string;
@@ -509,12 +518,19 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
       <Link href={opLink("/plant/rmc/cube-tests")}>
         <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-cube-tests">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+            <div className="relative w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center shrink-0">
               <TestTube className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+              {cubeTestFailCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-cube-failures">{cubeTestFailCount}</span>
+              )}
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Cube Tests QC</h3>
-              <p className="text-sm text-muted-foreground">Record compressive strength test results</p>
+              <p className="text-sm text-muted-foreground">
+                {cubeTestFailCount > 0
+                  ? <span className="text-destructive font-medium">{cubeTestFailCount} failed test{cubeTestFailCount !== 1 ? "s" : ""} in last 30 days</span>
+                  : "Record compressive strength test results"}
+              </p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>

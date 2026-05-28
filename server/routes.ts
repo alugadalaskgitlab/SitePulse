@@ -7130,6 +7130,15 @@ export async function registerRoutes(
   });
 
   // Cube Tests
+  app.get("/api/rmc/cube-tests/stats", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const stats = await storage.getRmcCubeTestStats(dateFrom);
+      res.json(stats);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get("/api/rmc/cube-tests", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_production")) return;
