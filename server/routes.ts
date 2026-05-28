@@ -25,7 +25,6 @@ import {
   assertView,
   assertAuthed,
   assertCreate,
-  assertView,
   currentUserName,
 } from "./auth-routes";
 
@@ -6828,6 +6827,114 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/stores/indent-grn-counts:", err);
       res.status(500).json({ error: "Failed to fetch indent GRN counts" });
+    }
+  });
+
+  // ============================================
+  // EQUIPMENT MAINTENANCE & BREAKDOWN LOGS (Task #696)
+  // ============================================
+
+  app.get("/api/maintenance/logs", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const filters = {
+        equipmentId: req.query.equipmentId ? Number(req.query.equipmentId) : undefined,
+        eventType: req.query.eventType as string | undefined,
+        status: req.query.status as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      };
+      const logs = await storage.getMaintenanceLogs(filters);
+      res.json(logs);
+    } catch (err) {
+      console.error("GET /api/maintenance/logs:", err);
+      res.status(500).json({ error: "Failed to fetch maintenance logs" });
+    }
+  });
+
+  app.get("/api/maintenance/logs/:id", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const log = await storage.getMaintenanceLog(Number(req.params.id));
+      if (!log) return res.status(404).json({ error: "Not found" });
+      res.json(log);
+    } catch (err) {
+      console.error("GET /api/maintenance/logs/:id:", err);
+      res.status(500).json({ error: "Failed to fetch maintenance log" });
+    }
+  });
+
+  app.post("/api/maintenance/logs", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_equipment")) return;
+      const { parts, ...logData } = req.body;
+      const log = await storage.createMaintenanceLog(logData, parts || []);
+      res.status(201).json(log);
+    } catch (err) {
+      console.error("POST /api/maintenance/logs:", err);
+      res.status(500).json({ error: "Failed to create maintenance log" });
+    }
+  });
+
+  app.patch("/api/maintenance/logs/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_equipment")) return;
+      const updated = await storage.updateMaintenanceLog(Number(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/maintenance/logs/:id:", err);
+      res.status(500).json({ error: "Failed to update maintenance log" });
+    }
+  });
+
+  app.delete("/api/maintenance/logs/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const deleted = await storage.deleteMaintenanceLog(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/maintenance/logs/:id:", err);
+      res.status(500).json({ error: "Failed to delete maintenance log" });
+    }
+  });
+
+  app.post("/api/maintenance/logs/:id/parts", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "plant_equipment")) return;
+      const { parts } = req.body;
+      if (!Array.isArray(parts) || parts.length === 0) {
+        return res.status(400).json({ error: "parts array is required" });
+      }
+      const log = await storage.addMaintenanceParts(Number(req.params.id), parts);
+      res.status(201).json(log);
+    } catch (err) {
+      console.error("POST /api/maintenance/logs/:id/parts:", err);
+      res.status(500).json({ error: "Failed to add parts" });
+    }
+  });
+
+  app.delete("/api/maintenance/parts/:partId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_equipment")) return;
+      const deleted = await storage.removeMaintenancePart(Number(req.params.partId));
+      if (!deleted) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/maintenance/parts/:partId:", err);
+      res.status(500).json({ error: "Failed to remove part" });
+    }
+  });
+
+  app.get("/api/maintenance/health-summary", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_equipment")) return;
+      const summary = await storage.getEquipmentHealthSummary();
+      res.json(summary);
+    } catch (err) {
+      console.error("GET /api/maintenance/health-summary:", err);
+      res.status(500).json({ error: "Failed to fetch health summary" });
     }
   });
 

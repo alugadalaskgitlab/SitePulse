@@ -1823,6 +1823,64 @@ export type StoreLedgerEntry = {
   purpose?: string;
 };
 
+// ============================================
+// EQUIPMENT MAINTENANCE & BREAKDOWN LOGS (Task #696)
+// ============================================
+
+export const equipmentMaintenanceLogs = pgTable("equipment_maintenance_logs", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  equipmentId: integer("equipment_id").notNull(), // FK → equipment_master
+  eventType: text("event_type").notNull(), // "breakdown" | "service" | "pm"
+  description: text("description").notNull(),
+  downtimeHours: real("downtime_hours"),
+  status: text("status").notNull().default("open"), // "open" | "resolved"
+  nextServiceDue: date("next_service_due"),
+  servicedBy: text("serviced_by"),
+  remarks: text("remarks"),
+  reportedBy: text("reported_by"),
+  resolvedAt: date("resolved_at"),
+  autoIssueId: integer("auto_issue_id"), // FK → store_issues (auto-created)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  dateIdx: index("eml_date_idx").on(t.date),
+  equipmentIdx: index("eml_equipment_idx").on(t.equipmentId),
+}));
+
+export const maintenancePartsUsed = pgTable("maintenance_parts_used", {
+  id: serial("id").primaryKey(),
+  maintenanceLogId: integer("maintenance_log_id").notNull(),
+  storeItemId: integer("store_item_id").notNull(), // FK → store_items
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull(),
+  autoIssueItemId: integer("auto_issue_item_id"), // FK → store_issue_items
+});
+
+export const insertEquipmentMaintenanceLogSchema = createInsertSchema(equipmentMaintenanceLogs).omit({ id: true, createdAt: true, autoIssueId: true });
+export const insertMaintenancePartUsedSchema = createInsertSchema(maintenancePartsUsed).omit({ id: true, autoIssueItemId: true, maintenanceLogId: true });
+
+export type EquipmentMaintenanceLog = typeof equipmentMaintenanceLogs.$inferSelect;
+export type InsertEquipmentMaintenanceLog = z.infer<typeof insertEquipmentMaintenanceLogSchema>;
+export type MaintenancePartUsed = typeof maintenancePartsUsed.$inferSelect;
+export type InsertMaintenancePartUsed = z.infer<typeof insertMaintenancePartUsedSchema>;
+
+export type EquipmentMaintenanceLogWithDetails = EquipmentMaintenanceLog & {
+  equipmentName: string;
+  parts: (MaintenancePartUsed & { itemName: string; category: string })[];
+  autoIssueNumber?: string | null;
+};
+
+export type EquipmentHealthSummary = {
+  equipmentId: number;
+  equipmentName: string;
+  registrationNumber: string | null;
+  lastServiceDate: string | null;
+  nextServiceDue: string | null;
+  openBreakdowns: number;
+  downtimeHoursThisMonth: number;
+  totalMaintenanceEvents: number;
+};
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,

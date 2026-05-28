@@ -75,6 +75,7 @@ import StoresItems from "@/pages/StoresItems";
 import StoresGrn from "@/pages/StoresGrn";
 import StoresIssue from "@/pages/StoresIssue";
 import StoresLedger from "@/pages/StoresLedger";
+import PlantMaintenance from "@/pages/PlantMaintenance";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -189,6 +190,7 @@ function AuthedShell() {
             <Route path="/plant/dispatches" component={gated(PlantDispatches, "plant_production")} />
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
+            <Route path="/plant/maintenance" component={gated(PlantMaintenance, "plant_equipment")} />
             <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
             <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />

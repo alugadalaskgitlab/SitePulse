@@ -191,6 +191,14 @@ import {
   type StoreIssueWithItems,
   type StoreStockBalance,
   type StoreLedgerEntry,
+  equipmentMaintenanceLogs,
+  maintenancePartsUsed,
+  type EquipmentMaintenanceLog,
+  type InsertEquipmentMaintenanceLog,
+  type MaintenancePartUsed,
+  type InsertMaintenancePartUsed,
+  type EquipmentMaintenanceLogWithDetails,
+  type EquipmentHealthSummary,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
 import { format } from "date-fns";
@@ -736,7 +744,17 @@ export interface IStorage {
   getStoreStockSummary(): Promise<StoreStockBalance[]>;
   getStoreItemLedger(itemId: number, filters?: { dateFrom?: string; dateTo?: string }): Promise<StoreLedgerEntry[]>;
   generateStoreDocNumber(type: 'GRN' | 'ISS'): Promise<string>;
-  
+
+  // Equipment Maintenance & Breakdown Logs
+  getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<EquipmentMaintenanceLogWithDetails[]>;
+  getMaintenanceLog(id: number): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
+  createMaintenanceLog(log: InsertEquipmentMaintenanceLog, parts?: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
+  updateMaintenanceLog(id: number, log: Partial<InsertEquipmentMaintenanceLog>): Promise<EquipmentMaintenanceLogWithDetails | undefined>;
+  deleteMaintenanceLog(id: number): Promise<boolean>;
+  addMaintenanceParts(logId: number, parts: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails>;
+  removeMaintenancePart(partId: number): Promise<boolean>;
+  getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]>;
+
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
     id: number;
@@ -16785,6 +16803,220 @@ export class DatabaseStorage implements IStorage {
       entry.runningBalance = running;
     }
     return combined;
+  }
+
+  // =========================================================================
+  // EQUIPMENT MAINTENANCE & BREAKDOWN LOGS (Task #696)
+  // =========================================================================
+
+  private async buildMaintenanceLogWithDetails(log: EquipmentMaintenanceLog): Promise<EquipmentMaintenanceLogWithDetails> {
+    const equip = await db.select({ name: equipmentMaster.name }).from(equipmentMaster).where(eq(equipmentMaster.id, log.equipmentId));
+    const equipmentName = equip[0]?.name ?? `Equipment #${log.equipmentId}`;
+
+    const partsRaw = await db.select({
+      id: maintenancePartsUsed.id,
+      maintenanceLogId: maintenancePartsUsed.maintenanceLogId,
+      storeItemId: maintenancePartsUsed.storeItemId,
+      qty: maintenancePartsUsed.qty,
+      uom: maintenancePartsUsed.uom,
+      autoIssueItemId: maintenancePartsUsed.autoIssueItemId,
+      itemName: storeItems.name,
+      category: storeItems.category,
+    }).from(maintenancePartsUsed)
+      .leftJoin(storeItems, eq(maintenancePartsUsed.storeItemId, storeItems.id))
+      .where(eq(maintenancePartsUsed.maintenanceLogId, log.id));
+
+    let autoIssueNumber: string | null = null;
+    if (log.autoIssueId) {
+      const issueRow = await db.select({ issueNumber: storeIssues.issueNumber })
+        .from(storeIssues).where(eq(storeIssues.id, log.autoIssueId));
+      autoIssueNumber = issueRow[0]?.issueNumber ?? null;
+    }
+
+    return {
+      ...log,
+      equipmentName,
+      autoIssueNumber,
+      parts: partsRaw.map(p => ({
+        id: p.id,
+        maintenanceLogId: p.maintenanceLogId,
+        storeItemId: p.storeItemId,
+        qty: p.qty,
+        uom: p.uom,
+        autoIssueItemId: p.autoIssueItemId ?? null,
+        itemName: p.itemName ?? 'Unknown',
+        category: p.category ?? '',
+      })),
+    };
+  }
+
+  async getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<EquipmentMaintenanceLogWithDetails[]> {
+    const conds: any[] = [];
+    if (filters?.equipmentId) conds.push(eq(equipmentMaintenanceLogs.equipmentId, filters.equipmentId));
+    if (filters?.eventType) conds.push(eq(equipmentMaintenanceLogs.eventType, filters.eventType));
+    if (filters?.status) conds.push(eq(equipmentMaintenanceLogs.status, filters.status));
+    if (filters?.dateFrom) conds.push(gte(equipmentMaintenanceLogs.date, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(equipmentMaintenanceLogs.date, filters.dateTo));
+
+    const logs = await db.select().from(equipmentMaintenanceLogs)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(equipmentMaintenanceLogs.date), desc(equipmentMaintenanceLogs.id));
+
+    return Promise.all(logs.map(l => this.buildMaintenanceLogWithDetails(l)));
+  }
+
+  async getMaintenanceLog(id: number): Promise<EquipmentMaintenanceLogWithDetails | undefined> {
+    const [log] = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, id));
+    if (!log) return undefined;
+    return this.buildMaintenanceLogWithDetails(log);
+  }
+
+  async createMaintenanceLog(logData: InsertEquipmentMaintenanceLog, parts?: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails> {
+    const [log] = await db.insert(equipmentMaintenanceLogs).values(logData).returning();
+
+    let autoIssueId: number | null = null;
+    if (parts && parts.length > 0) {
+      const equipRow = await db.select({ name: equipmentMaster.name }).from(equipmentMaster).where(eq(equipmentMaster.id, logData.equipmentId));
+      const equipName = equipRow[0]?.name ?? `Equipment #${logData.equipmentId}`;
+      const eventLabel = logData.eventType === 'breakdown' ? 'Breakdown' : logData.eventType === 'service' ? 'Service' : 'PM';
+      const purpose = `${eventLabel} – ${equipName} (Maint #${log.id})`;
+
+      const issue = await this.createStoreIssue({
+        date: logData.date,
+        issuedToSection: 'plant',
+        issuedToDetail: equipName,
+        purpose,
+        remarks: logData.description,
+      }, parts.map(p => ({ itemId: p.storeItemId, qty: p.qty, uom: p.uom })));
+
+      autoIssueId = issue.id;
+
+      await db.update(equipmentMaintenanceLogs)
+        .set({ autoIssueId })
+        .where(eq(equipmentMaintenanceLogs.id, log.id));
+
+      const issueItemRows = await db.select().from(storeIssueItems).where(eq(storeIssueItems.issueId, issue.id));
+      for (let i = 0; i < parts.length; i++) {
+        const issueItem = issueItemRows[i];
+        if (issueItem) {
+          await db.insert(maintenancePartsUsed).values({
+            maintenanceLogId: log.id,
+            storeItemId: parts[i].storeItemId,
+            qty: parts[i].qty,
+            uom: parts[i].uom,
+            autoIssueItemId: issueItem.id,
+          });
+        }
+      }
+
+      const [updated] = await db.update(equipmentMaintenanceLogs)
+        .set({ autoIssueId })
+        .where(eq(equipmentMaintenanceLogs.id, log.id))
+        .returning();
+      return this.buildMaintenanceLogWithDetails(updated);
+    }
+
+    return this.buildMaintenanceLogWithDetails(log);
+  }
+
+  async updateMaintenanceLog(id: number, updates: Partial<InsertEquipmentMaintenanceLog>): Promise<EquipmentMaintenanceLogWithDetails | undefined> {
+    const [updated] = await db.update(equipmentMaintenanceLogs)
+      .set(updates)
+      .where(eq(equipmentMaintenanceLogs.id, id))
+      .returning();
+    if (!updated) return undefined;
+    return this.buildMaintenanceLogWithDetails(updated);
+  }
+
+  async deleteMaintenanceLog(id: number): Promise<boolean> {
+    const [log] = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, id));
+    if (!log) return false;
+    await db.delete(maintenancePartsUsed).where(eq(maintenancePartsUsed.maintenanceLogId, id));
+    if (log.autoIssueId) {
+      await this.deleteStoreIssue(log.autoIssueId);
+    }
+    const result = await db.delete(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, id));
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async addMaintenanceParts(logId: number, parts: InsertMaintenancePartUsed[]): Promise<EquipmentMaintenanceLogWithDetails> {
+    const [log] = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, logId));
+    if (!log) throw new Error(`Maintenance log #${logId} not found`);
+
+    const equipRow = await db.select({ name: equipmentMaster.name }).from(equipmentMaster).where(eq(equipmentMaster.id, log.equipmentId));
+    const equipName = equipRow[0]?.name ?? `Equipment #${log.equipmentId}`;
+
+    let issueId = log.autoIssueId;
+    if (!issueId) {
+      const eventLabel = log.eventType === 'breakdown' ? 'Breakdown' : log.eventType === 'service' ? 'Service' : 'PM';
+      const purpose = `${eventLabel} – ${equipName} (Maint #${log.id})`;
+      const issue = await this.createStoreIssue({
+        date: log.date,
+        issuedToSection: 'plant',
+        issuedToDetail: equipName,
+        purpose,
+        remarks: log.description,
+      }, []);
+      issueId = issue.id;
+      await db.update(equipmentMaintenanceLogs).set({ autoIssueId: issueId }).where(eq(equipmentMaintenanceLogs.id, logId));
+    }
+
+    for (const part of parts) {
+      const [issueItem] = await db.insert(storeIssueItems).values({ issueId, itemId: part.storeItemId, qty: part.qty, uom: part.uom }).returning();
+      await db.insert(maintenancePartsUsed).values({
+        maintenanceLogId: logId,
+        storeItemId: part.storeItemId,
+        qty: part.qty,
+        uom: part.uom,
+        autoIssueItemId: issueItem.id,
+      });
+    }
+
+    const [refreshed] = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.id, logId));
+    return this.buildMaintenanceLogWithDetails(refreshed);
+  }
+
+  async removeMaintenancePart(partId: number): Promise<boolean> {
+    const [part] = await db.select().from(maintenancePartsUsed).where(eq(maintenancePartsUsed.id, partId));
+    if (!part) return false;
+    if (part.autoIssueItemId) {
+      await db.delete(storeIssueItems).where(eq(storeIssueItems.id, part.autoIssueItemId));
+    }
+    const result = await db.delete(maintenancePartsUsed).where(eq(maintenancePartsUsed.id, partId));
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async getEquipmentHealthSummary(): Promise<EquipmentHealthSummary[]> {
+    const allEquipment = await db.select().from(equipmentMaster).where(eq(equipmentMaster.isActive, 1)).orderBy(asc(equipmentMaster.name));
+
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const result = await Promise.all(allEquipment.map(async (eq_) => {
+      const logs = await db.select().from(equipmentMaintenanceLogs).where(eq(equipmentMaintenanceLogs.equipmentId, eq_.id));
+
+      const openBreakdowns = logs.filter(l => l.eventType === 'breakdown' && l.status === 'open').length;
+      const downtimeThisMonth = logs
+        .filter(l => l.eventType === 'breakdown' && l.date >= monthStart)
+        .reduce((s, l) => s + (l.downtimeHours ?? 0), 0);
+
+      const serviceLogs = logs.filter(l => l.eventType === 'service' || l.eventType === 'pm').sort((a, b) => b.date.localeCompare(a.date));
+      const lastServiceDate = serviceLogs[0]?.date ?? null;
+      const nextServiceDue = serviceLogs.find(l => l.nextServiceDue)?.nextServiceDue ?? null;
+
+      return {
+        equipmentId: eq_.id,
+        equipmentName: eq_.name,
+        registrationNumber: eq_.registrationNumber ?? null,
+        lastServiceDate,
+        nextServiceDue,
+        openBreakdowns,
+        downtimeHoursThisMonth: downtimeThisMonth,
+        totalMaintenanceEvents: logs.length,
+      };
+    }));
+
+    return result;
   }
 }
 

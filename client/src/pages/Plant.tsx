@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -270,6 +270,24 @@ function OperationsTab() {
             <div className="flex-1">
               <h3 className="font-semibold text-lg">Equipment Usage</h3>
               <p className="text-sm text-muted-foreground">Track meter readings and diesel consumption</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      )}
+
+      {sectionVisible("plant_equipment") && (
+      <Link href={opLink("/plant/maintenance")}>
+        <Card className="hover-elevate cursor-pointer h-full" data-testid="card-maintenance">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <Wrench className="w-7 h-7 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Maintenance & Breakdowns</h3>
+              <p className="text-sm text-muted-foreground">Log breakdowns, services, PM events and parts used</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
