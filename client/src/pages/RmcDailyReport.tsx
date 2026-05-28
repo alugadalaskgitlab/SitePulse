@@ -18,6 +18,7 @@ interface DailyReport {
   batchRecords: RmcBatchRecordWithDesign[];
   gradeBreakdown: { grade: string; volumeM3: number; batches: number }[];
   rawMaterialsReceived: { materialName: string; category: string; totalQty: number; uom: string }[];
+  materialConsumed: { materialName: string; consumedQty: number; uom: string }[];
   cubeTests: RmcCubeTest[];
 }
 
@@ -155,34 +156,53 @@ export default function RmcDailyReport() {
             </Card>
           )}
 
-          {/* Raw Materials */}
-          {report.rawMaterialsReceived.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Raw Materials Received Today</CardTitle></CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-muted-foreground">
-                      <th className="text-left pb-2">Material</th>
-                      <th className="text-left pb-2">Category</th>
-                      <th className="text-right pb-2">Qty</th>
-                      <th className="text-right pb-2">UOM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.rawMaterialsReceived.map((r, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="py-1.5 font-medium">{r.materialName}</td>
-                        <td className="py-1.5 text-muted-foreground">{r.category || "—"}</td>
-                        <td className="py-1.5 text-right font-semibold text-green-700 dark:text-green-400">{r.totalQty.toFixed(2)}</td>
-                        <td className="py-1.5 text-right">{r.uom}</td>
+          {/* Raw Materials — Consumed vs Received */}
+          {(report.rawMaterialsReceived.length > 0 || report.materialConsumed.length > 0) && (() => {
+            const allMaterials = Array.from(new Set([
+              ...report.rawMaterialsReceived.map(r => r.materialName),
+              ...report.materialConsumed.map(c => c.materialName),
+            ]));
+            const receivedMap = new Map(report.rawMaterialsReceived.map(r => [r.materialName, r]));
+            const consumedMap = new Map(report.materialConsumed.map(c => [c.materialName, c.consumedQty]));
+            return (
+              <Card>
+                <CardHeader><CardTitle className="text-base">Raw Materials — Received vs Consumed</CardTitle></CardHeader>
+                <CardContent>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="text-left pb-2">Material</th>
+                        <th className="text-right pb-2">Received (kg)</th>
+                        <th className="text-right pb-2">Consumed (kg)</th>
+                        <th className="text-right pb-2">Balance</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          )}
+                    </thead>
+                    <tbody>
+                      {allMaterials.map((mat, i) => {
+                        const recv = receivedMap.get(mat);
+                        const recvQty = recv ? recv.totalQty : 0;
+                        const consQty = consumedMap.get(mat) ?? 0;
+                        const balance = recvQty - consQty;
+                        return (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="py-1.5 font-medium">{mat}</td>
+                            <td className="py-1.5 text-right text-green-700 dark:text-green-400">{recvQty > 0 ? recvQty.toFixed(2) : "—"}</td>
+                            <td className="py-1.5 text-right text-orange-600 dark:text-orange-400">{consQty > 0 ? consQty.toFixed(2) : "—"}</td>
+                            <td className={`py-1.5 text-right font-semibold ${balance < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                              {recvQty > 0 || consQty > 0 ? balance.toFixed(2) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {report.materialConsumed.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-3">Consumption figures are computed from mix design proportions × batch volume. Add component proportions to mix designs to see consumption.</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Cube Tests */}
           {report.cubeTests.length > 0 && (

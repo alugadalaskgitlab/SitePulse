@@ -801,6 +801,7 @@ export interface IStorage {
     batchRecords: RmcBatchRecordWithDesign[];
     gradeBreakdown: { grade: string; volumeM3: number; batches: number }[];
     rawMaterialsReceived: { materialName: string; category: string; totalQty: number; uom: string }[];
+    materialConsumed: { materialName: string; consumedQty: number; uom: string }[];
     cubeTests: RmcCubeTest[];
   }>;
 
@@ -17334,13 +17335,32 @@ export class DatabaseStorage implements IStorage {
       uom: v.uom,
     }));
 
+    // Compute material consumption from mix design proportions × batch volume
+    const consumedMap: Map<string, number> = new Map();
+    for (const br of batchRecords) {
+      const design = await this.getRmcMixDesign(br.mixDesignId);
+      if (design?.componentProportions && typeof design.componentProportions === 'object') {
+        const props = design.componentProportions as Record<string, number>;
+        for (const [material, kgPerM3] of Object.entries(props)) {
+          if (typeof kgPerM3 === 'number' && kgPerM3 > 0) {
+            consumedMap.set(material, (consumedMap.get(material) ?? 0) + kgPerM3 * br.totalVolumeM3);
+          }
+        }
+      }
+    }
+    const materialConsumed = Array.from(consumedMap.entries()).map(([materialName, consumedQty]) => ({
+      materialName,
+      consumedQty: Math.round(consumedQty * 100) / 100,
+      uom: 'kg',
+    }));
+
     const batchIds = batchRecords.map(br => br.id);
     let cubeTests: RmcCubeTest[] = [];
     if (batchIds.length > 0) {
       cubeTests = await db.select().from(rmcCubeTests).where(inArray(rmcCubeTests.batchRecordId, batchIds));
     }
 
-    return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, cubeTests };
+    return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, materialConsumed, cubeTests };
   }
 
   async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; uom: string }[]> {

@@ -43,13 +43,13 @@ export default function RmcCubeTests() {
   const [form, setForm] = useState(defaultForm());
   const [dateFrom, setDateFrom] = useState(monthAgo);
   const [dateTo, setDateTo] = useState(today);
-  const [filterAge, setFilterAge] = useState<string>("");
+  const [filterAge, setFilterAge] = useState<string>("all");
 
   const { data: cubeTests = [], isLoading } = useQuery<RmcCubeTest[]>({
     queryKey: ["/api/rmc/cube-tests", dateFrom, dateTo, filterAge],
     queryFn: () => {
       const p = new URLSearchParams({ dateFrom, dateTo });
-      if (filterAge) p.set("ageDays", filterAge);
+      if (filterAge && filterAge !== "all") p.set("ageDays", filterAge);
       return apiRequest("GET", `/api/rmc/cube-tests?${p}`).then(r => r.json());
     },
   });
@@ -188,7 +188,7 @@ export default function RmcCubeTests() {
             <SelectValue placeholder="All ages" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All ages</SelectItem>
+            <SelectItem value="all">All ages</SelectItem>
             {AGE_OPTIONS.map(a => <SelectItem key={a} value={a.toString()}>{a}-day</SelectItem>)}
           </SelectContent>
         </Select>

@@ -196,7 +196,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
   const openBreakdownCount = openCountData?.count ?? 0;
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {sectionVisible("plant_materials") && (
+      {!isRmc && sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-receipts")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -214,7 +214,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
 
       )}
 
-      {sectionVisible("plant_materials") && (
+      {!isRmc && sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-issues")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -232,7 +232,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
 
       )}
 
-      {sectionVisible("plant_materials") && (
+      {!isRmc && sectionVisible("plant_materials") && (
       <Link href={opLink("/plant/material-returns")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -250,7 +250,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
 
       )}
 
-      {sectionVisible("plant_production") && (
+      {!isRmc && sectionVisible("plant_production") && (
       <Link href={opLink("/plant/dispatches")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
@@ -329,7 +329,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
 
       )}
 
-      {sectionVisible("plant_shift_logs") && (
+      {!isRmc && sectionVisible("plant_shift_logs") && (
       <Link href={opLink("/plant/shift-log")}>
         <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
           <CardContent className="p-6 flex items-center gap-4">
@@ -347,7 +347,7 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
 
       )}
 
-      {sectionVisible("plant_heating") && (
+      {!isRmc && sectionVisible("plant_heating") && (
       <Link href={opLink(`/plant/heating-sessions/${new Date().toISOString().slice(0, 10)}`)}>
         <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
           <CardContent className="p-6 flex items-center gap-4">
@@ -392,6 +392,22 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
             <div className="flex-1">
               <h3 className="font-semibold text-lg">RMC Batch Records</h3>
               <p className="text-sm text-muted-foreground">Log concrete batches & generate delivery challans</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+      )}
+      {isRmc && sectionVisible("plant_production") && (
+      <Link href={opLink("/plant/rmc/delivery-challans")}>
+        <Card className="hover-elevate cursor-pointer h-full border-teal-200 dark:border-teal-800" data-testid="tile-rmc-delivery-challans">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <FileText className="w-7 h-7 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg">Delivery Challans</h3>
+              <p className="text-sm text-muted-foreground">View and print DCs generated from batch records</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </CardContent>
