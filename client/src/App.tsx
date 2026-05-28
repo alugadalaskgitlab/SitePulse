@@ -70,6 +70,11 @@ import ScenarioComparison from "@/pages/ScenarioComparison";
 import ConcreteEstimates from "@/pages/ConcreteEstimates";
 import ConcreteCalculator from "@/pages/ConcreteCalculator";
 import ConcreteCalculatorV2 from "@/pages/ConcreteCalculatorV2";
+import StoresHome from "@/pages/StoresHome";
+import StoresItems from "@/pages/StoresItems";
+import StoresGrn from "@/pages/StoresGrn";
+import StoresIssue from "@/pages/StoresIssue";
+import StoresLedger from "@/pages/StoresLedger";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -214,6 +219,13 @@ function AuthedShell() {
             <Route path="/plant/rate-cards" component={gated(RateCards, "admin_settings")} />
             <Route path="/plant/data-sync" component={gated(DataSync, "admin_settings")} />
             <Route path="/plant/:id" component={gated(PlantDetails, "admin_settings")} />
+            <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
+            <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
+            <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
+            <Route path="/stores/grns/new" component={gated(() => <StoresGrn isNew />, "stores_inventory")} />
+            <Route path="/stores/issues" component={gated(StoresIssue, "stores_inventory")} />
+            <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
+            <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
             <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
             <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />

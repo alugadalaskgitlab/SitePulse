@@ -1723,6 +1723,106 @@ export const recordUnlockLog = pgTable("record_unlock_log", {
   unlockedAtIdx: index("record_unlock_log_unlocked_at_idx").on(t.unlockedAt),
 }));
 
+// ============================================
+// STORES / INVENTORY MODULE
+// ============================================
+
+export const storeItems = pgTable("store_items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // Spares, Lubricants, Consumables, Electricals, Tools, Others
+  uom: text("uom").notNull(),
+  minStockQty: real("min_stock_qty"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const storeGrns = pgTable("store_grns", {
+  id: serial("id").primaryKey(),
+  grnNumber: text("grn_number").notNull().unique(),
+  date: date("date").notNull(),
+  supplier: text("supplier").notNull(),
+  invoiceNo: text("invoice_no"),
+  indentRef: text("indent_ref"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  dateIdx: index("store_grns_date_idx").on(t.date),
+}));
+
+export const storeGrnItems = pgTable("store_grn_items", {
+  id: serial("id").primaryKey(),
+  grnId: integer("grn_id").notNull(),
+  itemId: integer("item_id").notNull(),
+  qty: real("qty").notNull(),
+  rate: real("rate"),
+  uom: text("uom").notNull(),
+});
+
+export const storeIssues = pgTable("store_issues", {
+  id: serial("id").primaryKey(),
+  issueNumber: text("issue_number").notNull().unique(),
+  date: date("date").notNull(),
+  issuedToSection: text("issued_to_section").notNull(), // plant, site, other
+  issuedToDetail: text("issued_to_detail"),
+  purpose: text("purpose"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  dateIdx: index("store_issues_date_idx").on(t.date),
+}));
+
+export const storeIssueItems = pgTable("store_issue_items", {
+  id: serial("id").primaryKey(),
+  issueId: integer("issue_id").notNull(),
+  itemId: integer("item_id").notNull(),
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull(),
+});
+
+export const insertStoreItemSchema = createInsertSchema(storeItems).omit({ id: true, createdAt: true });
+export const insertStoreGrnSchema = createInsertSchema(storeGrns).omit({ id: true, createdAt: true });
+export const insertStoreGrnItemSchema = createInsertSchema(storeGrnItems).omit({ id: true });
+export const insertStoreIssueSchema = createInsertSchema(storeIssues).omit({ id: true, createdAt: true });
+export const insertStoreIssueItemSchema = createInsertSchema(storeIssueItems).omit({ id: true });
+
+export type StoreItem = typeof storeItems.$inferSelect;
+export type InsertStoreItem = z.infer<typeof insertStoreItemSchema>;
+export type StoreGrn = typeof storeGrns.$inferSelect;
+export type InsertStoreGrn = z.infer<typeof insertStoreGrnSchema>;
+export type StoreGrnItem = typeof storeGrnItems.$inferSelect;
+export type InsertStoreGrnItem = z.infer<typeof insertStoreGrnItemSchema>;
+export type StoreIssue = typeof storeIssues.$inferSelect;
+export type InsertStoreIssue = z.infer<typeof insertStoreIssueSchema>;
+export type StoreIssueItem = typeof storeIssueItems.$inferSelect;
+export type InsertStoreIssueItem = z.infer<typeof insertStoreIssueItemSchema>;
+
+export type StoreGrnWithItems = StoreGrn & {
+  items: (StoreGrnItem & { itemName: string; category: string })[];
+};
+export type StoreIssueWithItems = StoreIssue & {
+  items: (StoreIssueItem & { itemName: string; category: string })[];
+};
+export type StoreStockBalance = {
+  itemId: number;
+  itemName: string;
+  category: string;
+  uom: string;
+  balance: number;
+  minStockQty: number | null;
+  isLowStock: boolean;
+};
+export type StoreLedgerEntry = {
+  date: string;
+  docNumber: string;
+  type: "GRN" | "ISSUE";
+  qty: number;
+  direction: "in" | "out";
+  runningBalance: number;
+  counterparty: string;
+  purpose?: string;
+};
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,

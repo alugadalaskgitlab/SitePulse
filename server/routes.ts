@@ -6619,6 +6619,184 @@ export async function registerRoutes(
     }
   });
 
+  // ── STORES & INVENTORY ROUTES ────────────────────────────────────────────
+
+  // Item Master
+  app.get("/api/stores/items", async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === "true";
+      const items = await storage.getStoreItems(includeInactive);
+      res.json(items);
+    } catch (err) {
+      console.error("GET /api/stores/items:", err);
+      res.status(500).json({ error: "Failed to fetch store items" });
+    }
+  });
+
+  app.post("/api/stores/items", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const item = await storage.createStoreItem(req.body);
+      res.status(201).json(item);
+    } catch (err) {
+      console.error("POST /api/stores/items:", err);
+      res.status(500).json({ error: "Failed to create store item" });
+    }
+  });
+
+  app.patch("/api/stores/items/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "stores_inventory")) return;
+      const item = await storage.updateStoreItem(parseInt(req.params.id), req.body);
+      if (!item) return res.status(404).json({ error: "Not found" });
+      res.json(item);
+    } catch (err) {
+      console.error("PATCH /api/stores/items/:id:", err);
+      res.status(500).json({ error: "Failed to update store item" });
+    }
+  });
+
+  app.post("/api/stores/items/:id/toggle", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "stores_inventory")) return;
+      const item = await storage.toggleStoreItemActive(parseInt(req.params.id));
+      if (!item) return res.status(404).json({ error: "Not found" });
+      res.json(item);
+    } catch (err) {
+      console.error("POST /api/stores/items/:id/toggle:", err);
+      res.status(500).json({ error: "Failed to toggle item" });
+    }
+  });
+
+  // GRNs
+  app.get("/api/stores/grns", async (req, res) => {
+    try {
+      const grns = await storage.getStoreGrns({
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        supplier: req.query.supplier as string | undefined,
+      });
+      res.json(grns);
+    } catch (err) {
+      console.error("GET /api/stores/grns:", err);
+      res.status(500).json({ error: "Failed to fetch GRNs" });
+    }
+  });
+
+  app.get("/api/stores/grns/:id", async (req, res) => {
+    try {
+      const grn = await storage.getStoreGrn(parseInt(req.params.id));
+      if (!grn) return res.status(404).json({ error: "Not found" });
+      res.json(grn);
+    } catch (err) {
+      console.error("GET /api/stores/grns/:id:", err);
+      res.status(500).json({ error: "Failed to fetch GRN" });
+    }
+  });
+
+  app.post("/api/stores/grns", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const { grn, items } = req.body;
+      if (!grn || !items || !Array.isArray(items)) {
+        return res.status(400).json({ error: "grn and items are required" });
+      }
+      const result = await storage.createStoreGrn(grn, items);
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("POST /api/stores/grns:", err);
+      res.status(500).json({ error: "Failed to create GRN" });
+    }
+  });
+
+  app.delete("/api/stores/grns/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const deleted = await storage.deleteStoreGrn(parseInt(req.params.id));
+      res.json({ success: deleted });
+    } catch (err) {
+      console.error("DELETE /api/stores/grns/:id:", err);
+      res.status(500).json({ error: "Failed to delete GRN" });
+    }
+  });
+
+  // Issue Vouchers
+  app.get("/api/stores/issues", async (req, res) => {
+    try {
+      const issues = await storage.getStoreIssues({
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        section: req.query.section as string | undefined,
+      });
+      res.json(issues);
+    } catch (err) {
+      console.error("GET /api/stores/issues:", err);
+      res.status(500).json({ error: "Failed to fetch issues" });
+    }
+  });
+
+  app.get("/api/stores/issues/:id", async (req, res) => {
+    try {
+      const issue = await storage.getStoreIssue(parseInt(req.params.id));
+      if (!issue) return res.status(404).json({ error: "Not found" });
+      res.json(issue);
+    } catch (err) {
+      console.error("GET /api/stores/issues/:id:", err);
+      res.status(500).json({ error: "Failed to fetch issue" });
+    }
+  });
+
+  app.post("/api/stores/issues", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const { issue, items } = req.body;
+      if (!issue || !items || !Array.isArray(items)) {
+        return res.status(400).json({ error: "issue and items are required" });
+      }
+      const result = await storage.createStoreIssue(issue, items);
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("POST /api/stores/issues:", err);
+      res.status(500).json({ error: "Failed to create issue voucher" });
+    }
+  });
+
+  app.delete("/api/stores/issues/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const deleted = await storage.deleteStoreIssue(parseInt(req.params.id));
+      res.json({ success: deleted });
+    } catch (err) {
+      console.error("DELETE /api/stores/issues/:id:", err);
+      res.status(500).json({ error: "Failed to delete issue" });
+    }
+  });
+
+  // Stock Summary
+  app.get("/api/stores/stock-summary", async (req, res) => {
+    try {
+      const summary = await storage.getStoreStockSummary();
+      res.json(summary);
+    } catch (err) {
+      console.error("GET /api/stores/stock-summary:", err);
+      res.status(500).json({ error: "Failed to fetch stock summary" });
+    }
+  });
+
+  // Per-item Ledger
+  app.get("/api/stores/ledger/:itemId", async (req, res) => {
+    try {
+      const ledger = await storage.getStoreItemLedger(parseInt(req.params.itemId), {
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+      });
+      res.json(ledger);
+    } catch (err) {
+      console.error("GET /api/stores/ledger/:itemId:", err);
+      res.status(500).json({ error: "Failed to fetch ledger" });
+    }
+  });
+
   // Seed Data
   seedDatabase();
   seedPlantMasterData();

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { HardHat, Factory, BarChart3, Settings, Users, ShieldCheck, LogOut } from "lucide-react";
+import { HardHat, Factory, Package, BarChart3, Settings, Users, ShieldCheck, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AdminNotifications } from "@/components/AdminNotifications";
@@ -37,6 +37,7 @@ export default function Home() {
     sectionVisible("master_materials") ||
     sectionVisible("master_equipment") ||
     sectionVisible("master_personnel");
+  const canSeeStores = sectionVisible("stores_inventory");
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-12">
@@ -49,7 +50,7 @@ export default function Home() {
         </p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl" data-testid="home-modules-grid">
         {canSeeSite && (
           <Link href="/site">
             <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-primary/50" data-testid="card-site-report">
@@ -78,6 +79,23 @@ export default function Home() {
                 <h2 className="text-2xl font-bold mb-2">Plant Report</h2>
                 <p className="text-muted-foreground text-sm">
                   Hot-mix plant operations and material tracking
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
+        {canSeeStores && (
+          <Link href="/stores">
+            <Card className="hover-elevate cursor-pointer transition-all border-2 hover:border-orange-500/50" data-testid="card-stores">
+              <CardContent className="p-8 flex flex-col items-center text-center">
+                <img src={companyLogo} alt="HLC" className="w-16 h-16 rounded-lg object-cover mb-4" />
+                <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center mb-3">
+                  <Package className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Stores</h2>
+                <p className="text-muted-foreground text-sm">
+                  Inventory management, GRNs and issue tracking
                 </p>
               </CardContent>
             </Card>

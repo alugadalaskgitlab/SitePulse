@@ -172,6 +172,25 @@ import {
   type ConcreteEstimateV2,
   type InsertConcreteEstimateV2,
   users,
+  storeItems,
+  storeGrns,
+  storeGrnItems,
+  storeIssues,
+  storeIssueItems,
+  type StoreItem,
+  type InsertStoreItem,
+  type StoreGrn,
+  type InsertStoreGrn,
+  type StoreGrnItem,
+  type InsertStoreGrnItem,
+  type StoreIssue,
+  type InsertStoreIssue,
+  type StoreIssueItem,
+  type InsertStoreIssueItem,
+  type StoreGrnWithItems,
+  type StoreIssueWithItems,
+  type StoreStockBalance,
+  type StoreLedgerEntry,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
 import { format } from "date-fns";
@@ -699,6 +718,23 @@ export interface IStorage {
 
   // Fix bad stock_balance / stock_ledger entries created by old buggy party-detection logic
   fixBadStockBalanceEntries(): Promise<{ fixed: number; skipped: boolean }>;
+
+  // Stores & Inventory Module
+  getStoreItems(includeInactive?: boolean): Promise<StoreItem[]>;
+  createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
+  updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
+  toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
+  createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems>;
+  deleteStoreGrn(id: number): Promise<boolean>;
+  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string }): Promise<StoreIssueWithItems[]>;
+  getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
+  createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
+  deleteStoreIssue(id: number): Promise<boolean>;
+  getStoreStockSummary(): Promise<StoreStockBalance[]>;
+  getStoreItemLedger(itemId: number, filters?: { dateFrom?: string; dateTo?: string }): Promise<StoreLedgerEntry[]>;
+  generateStoreDocNumber(type: 'GRN' | 'ISS'): Promise<string>;
   
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
@@ -16473,6 +16509,267 @@ export class DatabaseStorage implements IStorage {
     await this.recomputeBalanceAfterForMaterial(ldoMatId);
     await this.setSetting(SETTING_KEY, '1');
     return { applied: true, message: 'migrateLdoToDispatchModelOnly_v3: purged dip-based rows, rebuilt LDO dispatch ledger with chronological owner-first routing, recomputed all balances.' };
+  }
+
+  // ============================================
+  // STORES & INVENTORY MODULE
+  // ============================================
+
+  async generateStoreDocNumber(type: 'GRN' | 'ISS'): Promise<string> {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const fyStart = month >= 4 ? year : year - 1;
+    const fyEnd = fyStart + 1;
+    const fyStr = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
+    const prefix = type === 'GRN' ? 'GRN' : 'ISS';
+    const pattern = `${prefix}/${fyStr}/%`;
+    const table = type === 'GRN' ? storeGrns : storeIssues;
+    const colName = type === 'GRN' ? 'grn_number' : 'issue_number';
+    const result = await db.execute(sql`
+      SELECT ${sql.raw(colName)} as doc_num
+      FROM ${sql.raw(type === 'GRN' ? 'store_grns' : 'store_issues')}
+      WHERE ${sql.raw(colName)} LIKE ${pattern}
+      ORDER BY ${sql.raw(colName)} DESC
+      LIMIT 1
+    `);
+    const rows = (result.rows || []) as any[];
+    let seq = 1;
+    if (rows.length > 0 && rows[0].doc_num) {
+      const parts = String(rows[0].doc_num).split('/');
+      const lastSeq = parseInt(parts[2] || '0', 10);
+      if (!isNaN(lastSeq)) seq = lastSeq + 1;
+    }
+    return `${prefix}/${fyStr}/${String(seq).padStart(4, '0')}`;
+  }
+
+  async getStoreItems(includeInactive = false): Promise<StoreItem[]> {
+    const conds = includeInactive ? [] : [eq(storeItems.isActive, 1)];
+    return db.select().from(storeItems)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(asc(storeItems.category), asc(storeItems.name));
+  }
+
+  async createStoreItem(data: InsertStoreItem): Promise<StoreItem> {
+    const [item] = await db.insert(storeItems).values(data).returning();
+    return item;
+  }
+
+  async updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined> {
+    const [updated] = await db.update(storeItems).set(data).where(eq(storeItems.id, id)).returning();
+    return updated;
+  }
+
+  async toggleStoreItemActive(id: number): Promise<StoreItem | undefined> {
+    const [current] = await db.select().from(storeItems).where(eq(storeItems.id, id));
+    if (!current) return undefined;
+    const [updated] = await db.update(storeItems)
+      .set({ isActive: current.isActive === 1 ? 0 : 1 })
+      .where(eq(storeItems.id, id)).returning();
+    return updated;
+  }
+
+  private async buildGrnWithItems(grn: StoreGrn): Promise<StoreGrnWithItems> {
+    const items = await db
+      .select({
+        id: storeGrnItems.id,
+        grnId: storeGrnItems.grnId,
+        itemId: storeGrnItems.itemId,
+        qty: storeGrnItems.qty,
+        rate: storeGrnItems.rate,
+        uom: storeGrnItems.uom,
+        itemName: storeItems.name,
+        category: storeItems.category,
+      })
+      .from(storeGrnItems)
+      .leftJoin(storeItems, eq(storeGrnItems.itemId, storeItems.id))
+      .where(eq(storeGrnItems.grnId, grn.id));
+    return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
+  }
+
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string }): Promise<StoreGrnWithItems[]> {
+    const conds: any[] = [];
+    if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
+    if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
+    const grns = await db.select().from(storeGrns)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(storeGrns.date), desc(storeGrns.id));
+    return Promise.all(grns.map(g => this.buildGrnWithItems(g)));
+  }
+
+  async getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined> {
+    const [grn] = await db.select().from(storeGrns).where(eq(storeGrns.id, id));
+    if (!grn) return undefined;
+    return this.buildGrnWithItems(grn);
+  }
+
+  async createStoreGrn(
+    grnData: Omit<InsertStoreGrn, 'grnNumber'>,
+    items: Omit<InsertStoreGrnItem, 'grnId'>[]
+  ): Promise<StoreGrnWithItems> {
+    const grnNumber = await this.generateStoreDocNumber('GRN');
+    const [grn] = await db.insert(storeGrns).values({ ...grnData, grnNumber }).returning();
+    if (items.length > 0) {
+      await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));
+    }
+    return this.buildGrnWithItems(grn);
+  }
+
+  async deleteStoreGrn(id: number): Promise<boolean> {
+    await db.delete(storeGrnItems).where(eq(storeGrnItems.grnId, id));
+    const result = await db.delete(storeGrns).where(eq(storeGrns.id, id));
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  private async buildIssueWithItems(issue: StoreIssue): Promise<StoreIssueWithItems> {
+    const items = await db
+      .select({
+        id: storeIssueItems.id,
+        issueId: storeIssueItems.issueId,
+        itemId: storeIssueItems.itemId,
+        qty: storeIssueItems.qty,
+        uom: storeIssueItems.uom,
+        itemName: storeItems.name,
+        category: storeItems.category,
+      })
+      .from(storeIssueItems)
+      .leftJoin(storeItems, eq(storeIssueItems.itemId, storeItems.id))
+      .where(eq(storeIssueItems.issueId, issue.id));
+    return { ...issue, items: items as (StoreIssueItem & { itemName: string; category: string })[] };
+  }
+
+  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string }): Promise<StoreIssueWithItems[]> {
+    const conds: any[] = [];
+    if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
+    if (filters?.dateTo) conds.push(lte(storeIssues.date, filters.dateTo));
+    if (filters?.section) conds.push(eq(storeIssues.issuedToSection, filters.section));
+    const issues = await db.select().from(storeIssues)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(desc(storeIssues.date), desc(storeIssues.id));
+    return Promise.all(issues.map(i => this.buildIssueWithItems(i)));
+  }
+
+  async getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined> {
+    const [issue] = await db.select().from(storeIssues).where(eq(storeIssues.id, id));
+    if (!issue) return undefined;
+    return this.buildIssueWithItems(issue);
+  }
+
+  async createStoreIssue(
+    issueData: Omit<InsertStoreIssue, 'issueNumber'>,
+    items: Omit<InsertStoreIssueItem, 'issueId'>[]
+  ): Promise<StoreIssueWithItems> {
+    const issueNumber = await this.generateStoreDocNumber('ISS');
+    const [issue] = await db.insert(storeIssues).values({ ...issueData, issueNumber }).returning();
+    if (items.length > 0) {
+      await db.insert(storeIssueItems).values(items.map(it => ({ ...it, issueId: issue.id })));
+    }
+    return this.buildIssueWithItems(issue);
+  }
+
+  async deleteStoreIssue(id: number): Promise<boolean> {
+    await db.delete(storeIssueItems).where(eq(storeIssueItems.issueId, id));
+    const result = await db.delete(storeIssues).where(eq(storeIssues.id, id));
+    return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async getStoreStockSummary(): Promise<StoreStockBalance[]> {
+    const allItems = await db.select().from(storeItems).where(eq(storeItems.isActive, 1)).orderBy(asc(storeItems.category), asc(storeItems.name));
+    const grnTotals = await db.execute(sql`
+      SELECT item_id, COALESCE(SUM(qty), 0) AS total_in
+      FROM store_grn_items
+      GROUP BY item_id
+    `);
+    const issueTotals = await db.execute(sql`
+      SELECT item_id, COALESCE(SUM(qty), 0) AS total_out
+      FROM store_issue_items
+      GROUP BY item_id
+    `);
+    const inMap: Record<number, number> = {};
+    const outMap: Record<number, number> = {};
+    for (const r of (grnTotals.rows as any[])) inMap[r.item_id] = parseFloat(r.total_in);
+    for (const r of (issueTotals.rows as any[])) outMap[r.item_id] = parseFloat(r.total_out);
+    return allItems.map(item => {
+      const balance = (inMap[item.id] ?? 0) - (outMap[item.id] ?? 0);
+      return {
+        itemId: item.id,
+        itemName: item.name,
+        category: item.category,
+        uom: item.uom,
+        balance,
+        minStockQty: item.minStockQty ?? null,
+        isLowStock: item.minStockQty != null && balance <= item.minStockQty,
+      };
+    });
+  }
+
+  async getStoreItemLedger(itemId: number, filters?: { dateFrom?: string; dateTo?: string }): Promise<StoreLedgerEntry[]> {
+    // GRN rows for this item
+    const grnRows = await db
+      .select({
+        date: storeGrns.date,
+        docNumber: storeGrns.grnNumber,
+        qty: storeGrnItems.qty,
+        supplier: storeGrns.supplier,
+        createdAt: storeGrns.createdAt,
+      })
+      .from(storeGrnItems)
+      .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
+      .where(and(
+        eq(storeGrnItems.itemId, itemId),
+        ...(filters?.dateFrom ? [gte(storeGrns.date, filters.dateFrom)] : []),
+        ...(filters?.dateTo ? [lte(storeGrns.date, filters.dateTo)] : []),
+      ));
+
+    // Issue rows for this item
+    const issueRows = await db
+      .select({
+        date: storeIssues.date,
+        docNumber: storeIssues.issueNumber,
+        qty: storeIssueItems.qty,
+        issuedToDetail: storeIssues.issuedToDetail,
+        purpose: storeIssues.purpose,
+        createdAt: storeIssues.createdAt,
+      })
+      .from(storeIssueItems)
+      .innerJoin(storeIssues, eq(storeIssueItems.issueId, storeIssues.id))
+      .where(and(
+        eq(storeIssueItems.itemId, itemId),
+        ...(filters?.dateFrom ? [gte(storeIssues.date, filters.dateFrom)] : []),
+        ...(filters?.dateTo ? [lte(storeIssues.date, filters.dateTo)] : []),
+      ));
+
+    const combined: Array<StoreLedgerEntry & { sortKey: string }> = [
+      ...grnRows.map(r => ({
+        date: r.date,
+        docNumber: r.docNumber,
+        type: 'GRN' as const,
+        qty: r.qty,
+        direction: 'in' as const,
+        runningBalance: 0,
+        counterparty: r.supplier,
+        sortKey: r.date + r.createdAt?.toISOString(),
+      })),
+      ...issueRows.map(r => ({
+        date: r.date,
+        docNumber: r.docNumber,
+        type: 'ISSUE' as const,
+        qty: r.qty,
+        direction: 'out' as const,
+        runningBalance: 0,
+        counterparty: r.issuedToDetail ?? '',
+        purpose: r.purpose ?? undefined,
+        sortKey: r.date + r.createdAt?.toISOString(),
+      })),
+    ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    let running = 0;
+    for (const entry of combined) {
+      running += entry.direction === 'in' ? entry.qty : -entry.qty;
+      entry.runningBalance = running;
+    }
+    return combined;
   }
 }
 
