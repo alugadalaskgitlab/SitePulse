@@ -1,4 +1,4 @@
-import { FileText, Package, ShoppingCart, Fuel, BarChart2, Plus, ChevronRight, Clock, CheckCircle, AlertCircle, Calendar, TrendingUp } from "lucide-react";
+import { FileText, Package, ShoppingCart, Fuel, Plus, ChevronRight, Clock, CheckCircle, AlertCircle, Calendar, TrendingUp } from "lucide-react";
 
 const recentActivity = [
   { type: "DPR", label: "Daily Progress Report", date: "Today, 8:30 AM", status: "submitted", id: "DPR-2026-148" },
@@ -12,13 +12,6 @@ const statusConfig: Record<string, { color: string; icon: typeof CheckCircle; la
   approved: { color: "text-green-600 bg-green-50", icon: CheckCircle, label: "Approved" },
   pending: { color: "text-amber-600 bg-amber-50", icon: AlertCircle, label: "Pending" },
 };
-
-const weeklyStats = [
-  { label: "DPRs Filed", value: 5, total: 5, color: "bg-blue-500" },
-  { label: "Materials In", value: 12, unit: "entries", color: "bg-emerald-500" },
-  { label: "Indents Raised", value: 8, unit: "this week", color: "bg-violet-500" },
-  { label: "Diesel Orders", value: 3, unit: "approved", color: "bg-amber-500" },
-];
 
 export function Dashboard() {
   return (
@@ -129,25 +122,8 @@ export function Dashboard() {
           </div>
         </section>
 
-        {/* Stats row */}
-        <section>
-          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">This Week</h2>
-          <div className="grid grid-cols-4 gap-3">
-            {weeklyStats.map((s) => (
-              <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p className="text-xs text-slate-500">{s.label}</p>
-                <p className="text-2xl font-black text-slate-800 mt-1">{s.value}</p>
-                <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full ${s.color} rounded-full`} style={{ width: `${Math.min(100, (s.value / 15) * 100)}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">{s.unit || `/ 5 days`}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <div className="grid grid-cols-3 gap-5">
-          {/* Recent Activity */}
+          {/* Recent Activity — wider */}
           <div className="col-span-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recent Activity</h2>
@@ -178,18 +154,17 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Reports Panel */}
+          {/* Reports Panel — 4 real links only */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reports</h2>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               {[
-                { label: "DPR History", icon: FileText, desc: "All daily reports", color: "text-amber-500" },
-                { label: "Materials Log", icon: Package, desc: "Received & issued", color: "text-emerald-500" },
+                { label: "DPR History", icon: FileText, desc: "View & edit daily reports", color: "text-amber-500" },
+                { label: "Materials Received", icon: Package, desc: "Receipts & issues log", color: "text-emerald-500" },
                 { label: "Diesel Report", icon: Fuel, desc: "Usage vs planned", color: "text-blue-500" },
-                { label: "Procurement", icon: ShoppingCart, desc: "Indents & vendors", color: "text-violet-500" },
-                { label: "Analytics", icon: BarChart2, desc: "Trends & charts", color: "text-rose-500" },
+                { label: "Purchase Indents", icon: ShoppingCart, desc: "Indents & approvals", color: "text-violet-500" },
               ].map((r, i, arr) => (
                 <button key={i} className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors text-left ${i < arr.length - 1 ? "border-b border-slate-100" : ""}`}>
                   <r.icon className={`w-4 h-4 ${r.color} flex-shrink-0`} />
