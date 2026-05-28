@@ -7036,6 +7036,14 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "plant_production")) return;
       const data = insertRmcBatchRecordSchema.parse(req.body);
+      // Auto-generate a DC number if none provided
+      if (!data.dcNumber) {
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const existing = await storage.getRmcBatchRecords({ plantName: data.plantName, dateFrom: now.toISOString().split('T')[0], dateTo: now.toISOString().split('T')[0] });
+        const seq = String(existing.length + 1).padStart(3, '0');
+        data.dcNumber = `DC-${dateStr}-${seq}`;
+      }
       const row = await storage.createRmcBatchRecord(data);
       res.status(201).json(row);
     } catch (err: any) {

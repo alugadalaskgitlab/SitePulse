@@ -805,7 +805,7 @@ export interface IStorage {
     cubeTests: RmcCubeTest[];
   }>;
 
-  getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]>;
+  getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]>;
   ensureRmcTables(): Promise<void>;
 
   // Site Material Logs Summary
@@ -17365,46 +17365,66 @@ export class DatabaseStorage implements IStorage {
     return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, materialConsumed, cubeTests };
   }
 
-  async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]> {
-    // Aggregate receipts
+  async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]> {
+    // UOM → kg conversion factor; null means we cannot convert, balance will be null
+    const uomToKgFactor = (uom: string): number | null => {
+      const u = uom.trim().toLowerCase();
+      if (u === 'kg') return 1;
+      if (u === 'mt' || u === 'tonne' || u === 't') return 1000;
+      if (u === 'bag' || u === 'bags' || u === '50kg bag') return 50;
+      if (u === 'litre' || u === 'liters' || u === 'l') return 1; // e.g. water — treat as kg approximation
+      return null;
+    };
+
+    // Aggregate receipts per (materialName × uom) key, also track totalReceivedKg for balance
     const receipts = await this.getRmcRawMaterialReceipts({ plantName });
-    const rcvMap: Map<string, { category: string; totalReceived: number; uom: string }> = new Map();
+    const rcvMap: Map<string, { category: string; totalReceived: number; totalReceivedKg: number | null; uom: string }> = new Map();
     for (const r of receipts) {
       const key = `${r.materialName}__${r.uom}`;
-      const cur = rcvMap.get(key) ?? { category: r.category ?? '', totalReceived: 0, uom: r.uom };
-      rcvMap.set(key, { ...cur, totalReceived: cur.totalReceived + r.qty });
+      const factor = uomToKgFactor(r.uom);
+      const cur = rcvMap.get(key) ?? { category: r.category ?? '', totalReceived: 0, totalReceivedKg: factor !== null ? 0 : null, uom: r.uom };
+      const addedKg = factor !== null ? r.qty * factor : null;
+      rcvMap.set(key, {
+        ...cur,
+        totalReceived: cur.totalReceived + r.qty,
+        totalReceivedKg: cur.totalReceivedKg !== null && addedKg !== null ? cur.totalReceivedKg + addedKg : null,
+      });
     }
 
-    // Aggregate consumption from batch records × mix design component proportions
+    // Aggregate consumption (always in kg) from batch records × mix design component proportions
     const batchRecords = await this.getRmcBatchRecords({ plantName });
-    const consumedMap: Map<string, number> = new Map();
+    const consumedKgMap: Map<string, number> = new Map(); // key: normalised materialName (lowercase)
     for (const br of batchRecords) {
       const design = await this.getRmcMixDesign(br.mixDesignId);
       if (design?.componentProportions && typeof design.componentProportions === 'object') {
         const props = design.componentProportions as Record<string, number>;
         for (const [material, kgPerM3] of Object.entries(props)) {
           if (typeof kgPerM3 === 'number' && kgPerM3 > 0) {
-            // Normalize material key to match receipt material names (lowercase trim)
-            const normKey = `${material}__kg`;
-            consumedMap.set(normKey, (consumedMap.get(normKey) ?? 0) + kgPerM3 * br.totalVolumeM3);
+            const normName = material.trim().toLowerCase();
+            consumedKgMap.set(normName, (consumedKgMap.get(normName) ?? 0) + kgPerM3 * br.totalVolumeM3);
           }
         }
       }
     }
 
     // Merge receipts + consumed into final summary
-    const allKeys = new Set([...rcvMap.keys()]);
-    return Array.from(allKeys).map(key => {
-      const rcv = rcvMap.get(key)!;
+    return Array.from(rcvMap.entries()).map(([key, rcv]) => {
       const matName = key.split('__')[0];
-      // Try to find consumption by matching material name (case-insensitive) with kg UOM
-      const consumedKg = Array.from(consumedMap.entries())
-        .filter(([ck]) => ck.split('__')[0].toLowerCase() === matName.toLowerCase())
+      const consumedKg = Array.from(consumedKgMap.entries())
+        .filter(([k]) => k === matName.trim().toLowerCase())
         .reduce((s, [, v]) => s + v, 0);
       const totalConsumed = Math.round(consumedKg * 100) / 100;
       const totalReceived = Math.round(rcv.totalReceived * 100) / 100;
-      const balance = Math.round((totalReceived - totalConsumed) * 100) / 100;
-      return { materialName: matName, category: rcv.category, totalReceived, totalConsumed, balance, uom: rcv.uom };
+      // balanceKg: available in kg terms (for cross-UOM accuracy); null when receipt UOM is unknown
+      const balanceKg = rcv.totalReceivedKg !== null
+        ? Math.round((rcv.totalReceivedKg - consumedKg) * 100) / 100
+        : null;
+      // balance in original UOM when possible (divide back by factor), else use received−consumed directly
+      const factor = uomToKgFactor(rcv.uom);
+      const balance = balanceKg !== null && factor !== null && factor > 0
+        ? Math.round((balanceKg / factor) * 100) / 100
+        : Math.round((totalReceived - totalConsumed) * 100) / 100;
+      return { materialName: matName, category: rcv.category, totalReceived, totalConsumed, balance, uom: rcv.uom, balanceKg };
     });
   }
 }

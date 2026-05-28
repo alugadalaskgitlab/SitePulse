@@ -37,6 +37,12 @@ export default function Plant() {
     enabled: isAdmin,
   });
   const primaryPlantName = allPlantSettings?.[0]?.plantName;
+  // Resolve plant type from the settings entry whose plantName matches the primary
+  // plant (the one this module is scoped to). Falls back to the first entry so
+  // single-plant deployments continue to work without any URL parameters.
+  const currentPlantType = (
+    allPlantSettings?.find(s => s.plantName === primaryPlantName) ?? allPlantSettings?.[0]
+  )?.plantType ?? "hma";
 
   const { getBackLink } = useOrigin();
   const backLink = getBackLink("/");
@@ -155,19 +161,19 @@ export default function Plant() {
 
         {opsVisible && (
           <TabsContent value="operations" className="mt-6">
-            <OperationsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
+            <OperationsTab plantType={currentPlantType} />
           </TabsContent>
         )}
 
         {reportsVisible && (
           <TabsContent value="reports" className="mt-6">
-            <ReportsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
+            <ReportsTab plantType={currentPlantType} />
           </TabsContent>
         )}
 
         {stockVisible && (
           <TabsContent value="stock" className="mt-6">
-            <StockDetailsTab plantType={allPlantSettings?.[0]?.plantType ?? "hma"} />
+            <StockDetailsTab plantType={currentPlantType} />
           </TabsContent>
         )}
 

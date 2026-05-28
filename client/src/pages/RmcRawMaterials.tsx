@@ -63,7 +63,7 @@ export default function RmcRawMaterials() {
         .then(r => r.json()),
   });
 
-  const { data: stockSummary = [] } = useQuery<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]>({
+  const { data: stockSummary = [] } = useQuery<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]>({
     queryKey: ["/api/rmc/stock-summary"],
   });
 
@@ -256,16 +256,19 @@ export default function RmcRawMaterials() {
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground border-t pt-2">
                       <div>
-                        <span className="text-green-700 dark:text-green-400 font-medium">↑ {s.totalReceived.toFixed(2)}</span>
+                        <span className="text-green-700 dark:text-green-400 font-medium">↑ {s.totalReceived.toFixed(2)} {s.uom}</span>
                         <span className="ml-1">received</span>
                       </div>
                       <div>
                         <span className={`font-medium ${s.totalConsumed > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>
-                          ↓ {s.totalConsumed.toFixed(2)}
+                          ↓ {s.totalConsumed.toFixed(2)} kg
                         </span>
                         <span className="ml-1">consumed</span>
                       </div>
                     </div>
+                    {s.balanceKg !== null && s.uom.toLowerCase() !== 'kg' && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">≈ {s.balanceKg.toFixed(1)} kg balance</p>
+                    )}
                     {s.totalConsumed === 0 && (
                       <p className="text-xs text-muted-foreground mt-1 italic">Add component proportions to mix designs to track consumption</p>
                     )}
