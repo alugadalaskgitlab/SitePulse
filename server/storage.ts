@@ -805,7 +805,7 @@ export interface IStorage {
     cubeTests: RmcCubeTest[];
   }>;
 
-  getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; uom: string }[]>;
+  getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]>;
   ensureRmcTables(): Promise<void>;
 
   // Site Material Logs Summary
@@ -17365,15 +17365,47 @@ export class DatabaseStorage implements IStorage {
     return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, materialConsumed, cubeTests };
   }
 
-  async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; uom: string }[]> {
+  async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]> {
+    // Aggregate receipts
     const receipts = await this.getRmcRawMaterialReceipts({ plantName });
-    const map: Map<string, { category: string; totalReceived: number; uom: string }> = new Map();
+    const rcvMap: Map<string, { category: string; totalReceived: number; uom: string }> = new Map();
     for (const r of receipts) {
       const key = `${r.materialName}__${r.uom}`;
-      const cur = map.get(key) ?? { category: r.category ?? '', totalReceived: 0, uom: r.uom };
-      map.set(key, { ...cur, totalReceived: cur.totalReceived + r.qty });
+      const cur = rcvMap.get(key) ?? { category: r.category ?? '', totalReceived: 0, uom: r.uom };
+      rcvMap.set(key, { ...cur, totalReceived: cur.totalReceived + r.qty });
     }
-    return Array.from(map.entries()).map(([key, v]) => ({ materialName: key.split('__')[0], ...v }));
+
+    // Aggregate consumption from batch records × mix design component proportions
+    const batchRecords = await this.getRmcBatchRecords({ plantName });
+    const consumedMap: Map<string, number> = new Map();
+    for (const br of batchRecords) {
+      const design = await this.getRmcMixDesign(br.mixDesignId);
+      if (design?.componentProportions && typeof design.componentProportions === 'object') {
+        const props = design.componentProportions as Record<string, number>;
+        for (const [material, kgPerM3] of Object.entries(props)) {
+          if (typeof kgPerM3 === 'number' && kgPerM3 > 0) {
+            // Normalize material key to match receipt material names (lowercase trim)
+            const normKey = `${material}__kg`;
+            consumedMap.set(normKey, (consumedMap.get(normKey) ?? 0) + kgPerM3 * br.totalVolumeM3);
+          }
+        }
+      }
+    }
+
+    // Merge receipts + consumed into final summary
+    const allKeys = new Set([...rcvMap.keys()]);
+    return Array.from(allKeys).map(key => {
+      const rcv = rcvMap.get(key)!;
+      const matName = key.split('__')[0];
+      // Try to find consumption by matching material name (case-insensitive) with kg UOM
+      const consumedKg = Array.from(consumedMap.entries())
+        .filter(([ck]) => ck.split('__')[0].toLowerCase() === matName.toLowerCase())
+        .reduce((s, [, v]) => s + v, 0);
+      const totalConsumed = Math.round(consumedKg * 100) / 100;
+      const totalReceived = Math.round(rcv.totalReceived * 100) / 100;
+      const balance = Math.round((totalReceived - totalConsumed) * 100) / 100;
+      return { materialName: matName, category: rcv.category, totalReceived, totalConsumed, balance, uom: rcv.uom };
+    });
   }
 }
 

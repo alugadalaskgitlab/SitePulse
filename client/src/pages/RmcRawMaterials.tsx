@@ -63,7 +63,7 @@ export default function RmcRawMaterials() {
         .then(r => r.json()),
   });
 
-  const { data: stockSummary = [] } = useQuery<{ materialName: string; category: string; totalReceived: number; uom: string }[]>({
+  const { data: stockSummary = [] } = useQuery<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string }[]>({
     queryKey: ["/api/rmc/stock-summary"],
   });
 
@@ -236,9 +236,9 @@ export default function RmcRawMaterials() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {stockSummary.map((s, i) => (
-                <Card key={i} data-testid={`card-stock-${i}`}>
+                <Card key={i} data-testid={`card-stock-${i}`} className={s.balance < 0 ? "border-red-300 dark:border-red-700" : ""}>
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between mb-3">
                       <div>
                         <p className="font-semibold">{s.materialName}</p>
                         {s.category && (
@@ -248,10 +248,27 @@ export default function RmcRawMaterials() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-xl font-bold text-green-700 dark:text-green-400">{s.totalReceived.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">{s.uom}</p>
+                        <p className={`text-xl font-bold ${s.balance < 0 ? "text-red-600 dark:text-red-400" : "text-blue-700 dark:text-blue-300"}`}>
+                          {s.balance.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">balance ({s.uom})</p>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground border-t pt-2">
+                      <div>
+                        <span className="text-green-700 dark:text-green-400 font-medium">↑ {s.totalReceived.toFixed(2)}</span>
+                        <span className="ml-1">received</span>
+                      </div>
+                      <div>
+                        <span className={`font-medium ${s.totalConsumed > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>
+                          ↓ {s.totalConsumed.toFixed(2)}
+                        </span>
+                        <span className="ml-1">consumed</span>
+                      </div>
+                    </div>
+                    {s.totalConsumed === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">Add component proportions to mix designs to track consumption</p>
+                    )}
                   </CardContent>
                 </Card>
               ))}
