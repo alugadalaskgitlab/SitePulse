@@ -806,6 +806,7 @@ export interface IStorage {
   }>;
 
   getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]>;
+  getRmcTodaySummary(plantName?: string, date?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number; byGrade: { grade: string; volumeM3: number; batchesCount: number }[] }>;
   ensureRmcTables(): Promise<void>;
 
   // Site Material Logs Summary
@@ -17363,6 +17364,22 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { totalVolumeM3, batchRecords, gradeBreakdown, rawMaterialsReceived: rawSummary, materialConsumed, cubeTests };
+  }
+
+  async getRmcTodaySummary(plantName?: string, date?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number; byGrade: { grade: string; volumeM3: number; batchesCount: number }[] }> {
+    const targetDate = date ?? new Date().toISOString().slice(0, 10);
+    const records = await this.getRmcBatchRecords({ dateFrom: targetDate, dateTo: targetDate, plantName });
+    const totalVolumeM3 = records.reduce((s, r) => s + r.totalVolumeM3, 0);
+    const totalBatches = records.reduce((s, r) => s + (r.batchesCount ?? 1), 0);
+    const gradeMap = new Map<string, { volumeM3: number; batchesCount: number }>();
+    for (const r of records) {
+      const cur = gradeMap.get(r.grade) ?? { volumeM3: 0, batchesCount: 0 };
+      gradeMap.set(r.grade, { volumeM3: cur.volumeM3 + r.totalVolumeM3, batchesCount: cur.batchesCount + (r.batchesCount ?? 1) });
+    }
+    const byGrade = Array.from(gradeMap.entries())
+      .map(([grade, v]) => ({ grade, ...v }))
+      .sort((a, b) => a.grade.localeCompare(b.grade));
+    return { date: targetDate, totalVolumeM3, totalBatches, byGrade };
   }
 
   async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]> {

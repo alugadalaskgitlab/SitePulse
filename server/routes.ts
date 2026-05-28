@@ -7009,6 +7009,16 @@ export async function registerRoutes(
   });
 
   // Batch Records
+  app.get("/api/rmc/today-summary", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const plantName = req.query.plantName as string | undefined;
+      const date = req.query.date as string | undefined;
+      const summary = await storage.getRmcTodaySummary(plantName, date);
+      res.json(summary);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get("/api/rmc/batch-records", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_production")) return;

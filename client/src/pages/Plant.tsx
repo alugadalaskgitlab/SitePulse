@@ -161,7 +161,7 @@ export default function Plant() {
 
         {opsVisible && (
           <TabsContent value="operations" className="mt-6">
-            <OperationsTab plantType={currentPlantType} />
+            <OperationsTab plantType={currentPlantType} plantName={primaryPlantName} />
           </TabsContent>
         )}
 
@@ -188,7 +188,7 @@ export default function Plant() {
   );
 }
 
-function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
+function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; plantName?: string }) {
   const { appendPlantContext } = useOrigin();
   const { sectionVisible } = useAuth();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
@@ -200,6 +200,27 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
     staleTime: 5 * 60 * 1000,
   });
   const openBreakdownCount = openCountData?.count ?? 0;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const { data: rmcSummary, isLoading: rmcSummaryLoading } = useQuery<{
+    date: string;
+    totalVolumeM3: number;
+    totalBatches: number;
+    byGrade: { grade: string; volumeM3: number; batchesCount: number }[];
+  }>({
+    queryKey: ["/api/rmc/today-summary", plantName, todayStr],
+    queryFn: async () => {
+      const params = new URLSearchParams({ date: todayStr });
+      if (plantName) params.set("plantName", plantName);
+      const r = await fetch(`/api/rmc/today-summary?${params}`);
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
+    enabled: isRmc && sectionVisible("plant_production"),
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {!isRmc && sectionVisible("plant_materials") && (
@@ -386,6 +407,52 @@ function OperationsTab({ plantType = "hma" }: { plantType?: string }) {
           </CardContent>
         </Card>
       </Link>
+      )}
+
+      {isRmc && sectionVisible("plant_production") && (
+      <div className="col-span-1 md:col-span-3" data-testid="card-rmc-shift-summary">
+        <Card className="border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-900/10">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-5 h-5 text-teal-700 dark:text-teal-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base leading-tight">Today's RMC Production</h3>
+                <p className="text-xs text-muted-foreground">{todayStr}</p>
+              </div>
+              {rmcSummaryLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
+              {!rmcSummaryLoading && rmcSummary && (
+                <div className="ml-auto text-right">
+                  <p className="text-2xl font-bold text-teal-700 dark:text-teal-400" data-testid="text-rmc-total-volume">{rmcSummary.totalVolumeM3.toFixed(2)} m³</p>
+                  <p className="text-xs text-muted-foreground">{rmcSummary.totalBatches} batch{rmcSummary.totalBatches !== 1 ? "es" : ""}</p>
+                </div>
+              )}
+              {!rmcSummaryLoading && !rmcSummary && (
+                <p className="ml-auto text-sm text-muted-foreground">No data</p>
+              )}
+            </div>
+            {rmcSummary && rmcSummary.byGrade.length > 0 ? (
+              <div className="mt-3 border-t border-teal-100 dark:border-teal-800 pt-3">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+                  <span>Grade</span>
+                  <span className="text-right">Batches</span>
+                  <span className="text-right">Volume (m³)</span>
+                </div>
+                {rmcSummary.byGrade.map(g => (
+                  <div key={g.grade} className="grid grid-cols-3 gap-x-4 gap-y-1 text-sm px-1 py-0.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900/20" data-testid={`row-rmc-grade-${g.grade}`}>
+                    <span className="font-medium text-teal-800 dark:text-teal-300">{g.grade}</span>
+                    <span className="text-right text-muted-foreground">{g.batchesCount}</span>
+                    <span className="text-right font-semibold">{g.volumeM3.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : !rmcSummaryLoading && (
+              <p className="text-sm text-muted-foreground mt-2 text-center py-2">No batches recorded today</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
       )}
 
       {isRmc && sectionVisible("plant_production") && (
