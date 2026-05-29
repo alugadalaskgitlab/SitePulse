@@ -2505,10 +2505,19 @@ export class DatabaseStorage implements IStorage {
 
   // Equipment Master
   async getEquipmentMaster(includeInactive?: boolean, plantNameFilter?: string): Promise<EquipmentMasterType[]> {
-    const conditions: ReturnType<typeof eq>[] = [];
-    if (!includeInactive) conditions.push(eq(equipmentMaster.isActive, 1));
-    if (plantNameFilter) conditions.push(eq(equipmentMaster.plantName, plantNameFilter));
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    // When plantNameFilter is given, return equipment assigned to that plant PLUS shared equipment (null plantName)
+    // This preserves the rule: shared equipment is globally available regardless of plant context
+    let whereClause;
+    if (!includeInactive && plantNameFilter) {
+      whereClause = and(
+        eq(equipmentMaster.isActive, 1),
+        or(eq(equipmentMaster.plantName, plantNameFilter), isNull(equipmentMaster.plantName))
+      );
+    } else if (!includeInactive) {
+      whereClause = eq(equipmentMaster.isActive, 1);
+    } else if (plantNameFilter) {
+      whereClause = or(eq(equipmentMaster.plantName, plantNameFilter), isNull(equipmentMaster.plantName));
+    }
     return db.select().from(equipmentMaster)
       .where(whereClause)
       .orderBy(asc(equipmentMaster.name));

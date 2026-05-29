@@ -191,6 +191,12 @@ export default function PlantEquipmentUsage() {
     queryKey: ["/api/plant-module/equipment-usage"],
   });
 
+  // Read plant context from URL (passed by Plant.tsx OperationsTab via ?plant=...)
+  const contextPlantName = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("plant") || null;
+  }, []);
+
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", "all"],
     queryFn: async () => {
@@ -199,7 +205,20 @@ export default function PlantEquipmentUsage() {
       return res.json();
     },
   });
-  const activeEquipment = equipment?.filter(e => e.isActive === 1) || [];
+
+  // Sort active equipment so plant-specific (matching contextPlantName) comes first,
+  // then shared (null plantName), then equipment from other plants last.
+  const activeEquipment = useMemo(() => {
+    const active = equipment?.filter(e => e.isActive === 1) || [];
+    if (!contextPlantName) return active;
+    return [...active].sort((a, b) => {
+      const aPlant = (a as any).plantName as string | null;
+      const bPlant = (b as any).plantName as string | null;
+      const aScore = aPlant === contextPlantName ? 0 : aPlant === null ? 1 : 2;
+      const bScore = bPlant === contextPlantName ? 0 : bPlant === null ? 1 : 2;
+      return aScore - bScore;
+    });
+  }, [equipment, contextPlantName]);
 
   const { data: sitesList } = useQuery<Site[]>({
     queryKey: ["/api/sites"],

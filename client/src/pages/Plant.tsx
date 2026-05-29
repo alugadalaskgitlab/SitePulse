@@ -274,7 +274,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
       )}
 
       {sectionVisible("plant_equipment") && (
-      <Link href={opLink("/plant/equipment-usage")}>
+      <Link href={opLink("/plant/equipment-usage") + (plantName ? `&plant=${encodeURIComponent(plantName)}` : "")}>
         <Card className="hover-elevate cursor-pointer h-full">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
