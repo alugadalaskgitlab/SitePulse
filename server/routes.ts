@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema } from "@shared/schema";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { sendPushToAll, sendTestPush } from "./push";
+import { sendPushToAll, sendPushToAudience, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath } from "./auth";
@@ -7226,6 +7226,16 @@ export async function registerRoutes(
       const data = insertRmcCubeTestSchema.parse(req.body);
       const row = await storage.createRmcCubeTest(data);
       res.status(201).json(row);
+      if (data.passFail === "fail") {
+        const ageLabel = data.ageDays != null ? `${data.ageDays}-day ` : "";
+        const sampleLabel = data.sampleId ? ` (${data.sampleId})` : "";
+        sendPushToAudience(
+          "Cube Test Failed ⚠️",
+          `${ageLabel}cube test${sampleLabel} recorded as FAIL — check /plant/rmc/cube-tests`,
+          "/plant/rmc/cube-tests",
+          "managers"
+        ).catch((err) => console.error("[Push] Cube test fail alert error:", err));
+      }
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
       res.status(500).json({ message: err.message });
