@@ -285,6 +285,7 @@ export const equipmentMaster = pgTable("equipment_master", {
   vendorName: text("vendor_name"), // Vendor/contractor name for hired equipment
   meterType: text("meter_type").notNull(), // hour_meter, odometer
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
+  plantName: text("plant_name"), // nullable; references plant_settings.plant_name; null = shared/unassigned
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });

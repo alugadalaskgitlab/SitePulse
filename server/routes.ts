@@ -1245,7 +1245,8 @@ export async function registerRoutes(
   app.get("/api/plant-module/equipment", async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === "true";
-      const equipmentList = await storage.getEquipmentMaster(includeInactive);
+      const plantNameFilter = req.query.plantName as string | undefined;
+      const equipmentList = await storage.getEquipmentMaster(includeInactive, plantNameFilter);
       res.json(equipmentList);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch equipment" });

@@ -346,7 +346,7 @@ export interface IStorage {
   updateMixTemplate(id: number, template: Partial<InsertMixTemplate>, components?: InsertMixTemplateComponent[]): Promise<MixTemplate | undefined>;
   deleteMixTemplate(id: number): Promise<boolean>;
   
-  getEquipmentMaster(includeInactive?: boolean): Promise<EquipmentMasterType[]>;
+  getEquipmentMaster(includeInactive?: boolean, plantNameFilter?: string): Promise<EquipmentMasterType[]>;
   createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType>;
   updateEquipment(id: number, equipment: Partial<InsertEquipmentMaster>): Promise<EquipmentMasterType | undefined>;
   deleteEquipment(id: number): Promise<boolean>;
@@ -2504,11 +2504,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Equipment Master
-  async getEquipmentMaster(includeInactive?: boolean): Promise<EquipmentMasterType[]> {
-    if (includeInactive) {
-      return db.select().from(equipmentMaster).orderBy(asc(equipmentMaster.name));
-    }
-    return db.select().from(equipmentMaster).where(eq(equipmentMaster.isActive, 1)).orderBy(asc(equipmentMaster.name));
+  async getEquipmentMaster(includeInactive?: boolean, plantNameFilter?: string): Promise<EquipmentMasterType[]> {
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (!includeInactive) conditions.push(eq(equipmentMaster.isActive, 1));
+    if (plantNameFilter) conditions.push(eq(equipmentMaster.plantName, plantNameFilter));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    return db.select().from(equipmentMaster)
+      .where(whereClause)
+      .orderBy(asc(equipmentMaster.name));
   }
 
   async createEquipment(equipment: InsertEquipmentMaster): Promise<EquipmentMasterType> {

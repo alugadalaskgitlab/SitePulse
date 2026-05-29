@@ -3245,7 +3245,13 @@ function EquipmentMasterSection() {
   const [vendorName, setVendorName] = useState("");
   const [meterType, setMeterType] = useState("hour_meter");
   const [consumptionNorm, setConsumptionNorm] = useState("");
+  const [plantNameField, setPlantNameField] = useState(""); // form: assigned plant
+  const [filterPlantName, setFilterPlantName] = useState("all"); // list filter
   const [showInactive, setShowInactive] = useState(false);
+
+  const { data: allPlantSettingsForEquip = [] } = useQuery<PlantSettingsWithSite[]>({
+    queryKey: ["/api/plant-module/plant-settings"],
+  });
 
   const { data: equipment, isLoading } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment", showInactive ? "all" : "active"],
@@ -3255,6 +3261,13 @@ function EquipmentMasterSection() {
       return res.json();
     },
   });
+
+  const filteredEquipment = useMemo(() => {
+    if (!equipment) return [];
+    if (filterPlantName === "all") return equipment;
+    if (filterPlantName === "__shared__") return equipment.filter(e => !(e as any).plantName);
+    return equipment.filter(e => (e as any).plantName === filterPlantName);
+  }, [equipment, filterPlantName]);
 
   const createMutation = useMutation({
     mutationFn: (data: { name: string; registrationNumber?: string; ownership?: string; vendorName?: string; meterType: string; consumptionNorm?: number }) =>
@@ -3345,6 +3358,7 @@ function EquipmentMasterSection() {
     setVendorName("");
     setMeterType("hour_meter");
     setConsumptionNorm("");
+    setPlantNameField("");
   };
 
   const openEdit = (equip: EquipmentMasterType) => {
@@ -3355,6 +3369,7 @@ function EquipmentMasterSection() {
     setVendorName((equip as any).vendorName || "");
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
+    setPlantNameField((equip as any).plantName || "");
     setDialogOpen(true);
   };
 
@@ -3365,12 +3380,13 @@ function EquipmentMasterSection() {
       ownership,
       vendorName: ownership === "hired" ? vendorName || undefined : undefined,
       meterType,
-      consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined
+      consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
+      plantName: plantNameField || null,
     };
     if (editingEquipment) {
       updateMutation.mutate({ id: editingEquipment.id, data });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(data as any);
     }
   };
 
@@ -3381,7 +3397,19 @@ function EquipmentMasterSection() {
           <Gauge className="w-5 h-5" />
           Equipment Master
         </CardTitle>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Select value={filterPlantName} onValueChange={setFilterPlantName}>
+            <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-filter-plant-equipment">
+              <SelectValue placeholder="All Plants" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Plants</SelectItem>
+              <SelectItem value="__shared__">Shared / Unassigned</SelectItem>
+              {allPlantSettingsForEquip.map(p => (
+                <SelectItem key={p.plantName} value={p.plantName}>{p.plantName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="flex items-center gap-2">
             <Checkbox
               id="show-inactive"
@@ -3472,6 +3500,20 @@ function EquipmentMasterSection() {
                   data-testid="input-consumption-norm"
                 />
               </div>
+              <div>
+                <Label>Plant <span className="text-muted-foreground text-xs">(leave blank if shared across plants)</span></Label>
+                <Select value={plantNameField || "__none__"} onValueChange={v => setPlantNameField(v === "__none__" ? "" : v)}>
+                  <SelectTrigger data-testid="select-equipment-plant">
+                    <SelectValue placeholder="Shared / Not assigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Shared / No specific plant —</SelectItem>
+                    {allPlantSettingsForEquip.map(p => (
+                      <SelectItem key={p.plantName} value={p.plantName}>{p.plantName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button 
                 onClick={handleSubmit}
                 className="w-full" 
@@ -3492,15 +3534,23 @@ function EquipmentMasterSection() {
           </div>
         ) : !equipment?.length ? (
           <p className="text-muted-foreground text-center py-6">No equipment added yet.</p>
+        ) : !filteredEquipment.length && equipment?.length ? (
+          <p className="text-muted-foreground text-center py-6">No equipment for the selected plant filter.</p>
         ) : (
           <div className="space-y-2">
-            {equipment.map((equip) => {
+            {filteredEquipment.map((equip) => {
               const isInactive = equip.isActive === 0;
+              const equippedPlantName = (equip as any).plantName as string | null;
               return (
-              <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`}>
+              <div key={equip.id} className={`flex items-center justify-between p-3 rounded-md ${isInactive ? "bg-muted/30 opacity-60" : "bg-muted/50"}`} data-testid={`row-equipment-${equip.id}`}>
                 <div>
-                  <p className="font-medium flex items-center gap-2">
+                  <p className="font-medium flex items-center gap-2 flex-wrap">
                     {equip.name}
+                    {equippedPlantName ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" data-testid={`badge-plant-${equip.id}`}>{equippedPlantName}</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">Shared</span>
+                    )}
                     {isInactive && <Badge variant="outline" className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
                   </p>
                   <p className="text-sm text-muted-foreground">
