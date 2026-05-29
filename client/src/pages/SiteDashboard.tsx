@@ -354,7 +354,9 @@ export default function SiteDashboard() {
             Date: format(new Date(dpr.date), "dd/MM/yyyy"),
             Site: getBaseSiteName(dpr.site),
             "Structure Type": s.structureType || "",
+            "Sub-type": s.structureSubType || "",
             "Name/Location": s.structureName || "",
+            "Stage / Part": s.stage || "",
             "Item of Work": s.itemOfWork || "",
             Quantity: s.quantity ?? "",
             Unit: s.uom || "",
@@ -502,14 +504,16 @@ export default function SiteDashboard() {
           doc.setFont("helvetica", "normal");
           const structureRows = (dpr as any).structureItems.map((s: any) => [
             s.structureType || "",
+            s.structureSubType || "-",
             s.structureName || "",
+            s.stage || "-",
             s.itemOfWork || "",
             `${s.quantity ?? ""} ${s.uom || ""}`,
             s.remarks || "",
           ]);
           autoTable(doc, {
             startY: yPos,
-            head: [["Structure Type", "Name/Location", "Item of Work", "Qty & Unit", "Remarks"]],
+            head: [["Type", "Sub-type", "Name/Location", "Stage", "Item of Work", "Qty & Unit", "Remarks"]],
             body: structureRows,
             theme: 'grid',
             headStyles: { fillColor: [60, 90, 130], fontSize: 7 },
@@ -703,11 +707,13 @@ export default function SiteDashboard() {
             <div class="section">
               <div class="section-title">Structure Works Progress</div>
               <table>
-                <tr><th>Structure Type</th><th>Name/Location</th><th>Item of Work</th><th>Quantity</th><th>Unit</th><th>Remarks</th></tr>
+                <tr><th>Type</th><th>Sub-type</th><th>Name/Location</th><th>Stage</th><th>Item of Work</th><th>Quantity</th><th>Unit</th><th>Remarks</th></tr>
                 ${(dpr as any).structureItems.map((s: any) => `
                   <tr>
                     <td>${s.structureType || ""}</td>
+                    <td>${s.structureSubType || "-"}</td>
                     <td>${s.structureName || ""}</td>
+                    <td>${s.stage || "-"}</td>
                     <td>${s.itemOfWork || ""}</td>
                     <td>${s.quantity ?? ""}</td>
                     <td>${s.uom || ""}</td>
