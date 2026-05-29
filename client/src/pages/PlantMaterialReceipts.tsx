@@ -13,7 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -64,6 +64,7 @@ export default function PlantMaterialReceipts() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterPartyId, setFilterPartyId] = useState("all");
   const [filterMaterialId, setFilterMaterialId] = useState("all");
+  const [filterUnapprovedIndent, setFilterUnapprovedIndent] = useState(false);
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -136,6 +137,16 @@ export default function PlantMaterialReceipts() {
   const { data: receipts, isLoading } = useQuery<MaterialReceipt[]>({
     queryKey: ["/api/plant-module/material-receipts"],
   });
+
+  // Fetch all purchase indents to resolve indentRef → status in the list view
+  const { data: allIndents = [] } = useQuery<{ id: number; indentNo: string; status: string }[]>({
+    queryKey: ["/api/purchase-indents"],
+  });
+  const indentStatusMap = useMemo<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    allIndents.forEach(pi => { m[pi.indentNo] = pi.status; });
+    return m;
+  }, [allIndents]);
 
   useEffect(() => {
     if (localHighlightId != null && highlightRowRef.current) {
@@ -387,6 +398,12 @@ export default function PlantMaterialReceipts() {
       if (r.partyId !== parseInt(filterPartyId)) return false;
     }
     if (filterMaterialId !== "all" && r.materialId !== parseInt(filterMaterialId)) return false;
+    if (filterUnapprovedIndent) {
+      const ref = (r as any).indentRef;
+      if (!ref) return false;
+      const status = indentStatusMap[ref];
+      if (status === "approved") return false;
+    }
     return true;
   }) || [];
 
@@ -1018,6 +1035,23 @@ export default function PlantMaterialReceipts() {
               </Select>
             </div>
           </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={filterUnapprovedIndent ? "default" : "outline"}
+              className={filterUnapprovedIndent ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600" : ""}
+              onClick={() => setFilterUnapprovedIndent(v => !v)}
+              data-testid="btn-filter-unapproved-indent"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
+              Unapproved Indent Only
+            </Button>
+            {filterUnapprovedIndent && (
+              <span className="text-xs text-amber-600 dark:text-amber-400" data-testid="text-unapproved-filter-active">
+                Showing receipts linked to pending or rejected indents
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1183,7 +1217,19 @@ export default function PlantMaterialReceipts() {
                                   {(receipt as any).indentRef && (
                                     <div>
                                       <span className="text-muted-foreground text-xs block">Indent Ref</span>
-                                      <Badge variant="outline" className="text-xs border-violet-400 text-violet-700 dark:text-violet-400">{(receipt as any).indentRef}</Badge>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <Badge variant="outline" className="text-xs border-violet-400 text-violet-700 dark:text-violet-400" data-testid={`badge-indent-ref-${receipt.id}`}>{(receipt as any).indentRef}</Badge>
+                                        {(() => {
+                                          const status = indentStatusMap[(receipt as any).indentRef];
+                                          if (!status) return null;
+                                          switch (status) {
+                                            case "approved": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid={`badge-indent-status-${receipt.id}`}>APPROVED</Badge>;
+                                            case "pending": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid={`badge-indent-status-${receipt.id}`}>PENDING</Badge>;
+                                            case "rejected": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" data-testid={`badge-indent-status-${receipt.id}`}>REJECTED</Badge>;
+                                            default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid={`badge-indent-status-${receipt.id}`}>{status.toUpperCase()}</Badge>;
+                                          }
+                                        })()}
+                                      </div>
                                     </div>
                                   )}
                                   {receipt.tankNumber && (
