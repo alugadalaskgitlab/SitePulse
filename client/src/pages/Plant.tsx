@@ -1071,33 +1071,45 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
 
 function PlantTypeConfigSection() {
   const { toast } = useToast();
-  const { data: allSettings = [] } = useQuery<PlantSettings[]>({
+  const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettings[]>({
     queryKey: ['/api/plant-module/plant-settings'],
   });
   const setting = allSettings[0];
-  const [plantType, setPlantType] = useState<string>("");
+  const isCreating = !settingsLoading && !setting;
+
+  const [newPlantName, setNewPlantName] = useState("");
+  const [plantType, setPlantType] = useState<string>("hma");
   useEffect(() => { if (setting?.plantType) setPlantType(setting.plantType); }, [setting?.plantType]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!setting?.plantName) throw new Error("No plant name found");
-      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(setting.plantName)}`, {
+      const targetName = isCreating ? newPlantName.trim() : setting!.plantName;
+      if (!targetName) throw new Error("Plant name is required");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(targetName)}`, {
         plantType,
-        bitumenTank1LitresPerCm: setting.bitumenTank1LitresPerCm ?? null,
-        bitumenTank2LitresPerCm: setting.bitumenTank2LitresPerCm ?? null,
-        bitumenDensityKgPerL: setting.bitumenDensityKgPerL ?? null,
+        bitumenTank1LitresPerCm: setting?.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: setting?.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: setting?.bitumenDensityKgPerL ?? null,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
-      toast({ title: "Plant type saved", description: `Plant is now configured as ${plantType === "rmc" ? "Ready Mix Concrete (RMC)" : "Hot Mix Asphalt (HMA)"}` });
+      if (isCreating) setNewPlantName("");
+      const typeLabel = plantType === "rmc" ? "Ready Mix Concrete (RMC)" : "Hot Mix Asphalt (HMA)";
+      toast({
+        title: isCreating ? "Plant created" : "Plant settings saved",
+        description: isCreating
+          ? `Plant "${newPlantName.trim()}" added as ${typeLabel}.`
+          : `Plant type updated to ${typeLabel}.`,
+      });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  if (!setting) return null;
+  if (settingsLoading) return null;
+
   return (
     <Card>
       <CardHeader>
@@ -1106,12 +1118,39 @@ function PlantTypeConfigSection() {
             <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <CardTitle>Plant Type Configuration</CardTitle>
-            <CardDescription>Switch between HMA (bituminous) and RMC (concrete) plant mode</CardDescription>
+            <CardTitle>{isCreating ? "Add Plant Configuration" : "Plant Configuration"}</CardTitle>
+            <CardDescription>
+              {isCreating
+                ? "No plant has been set up yet. Enter a name and type to configure this module."
+                : "Switch between HMA (bituminous) and RMC (concrete) plant mode"}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isCreating ? (
+          <div>
+            <Label htmlFor="input-new-plant-name">Plant Name <span className="text-destructive">*</span></Label>
+            <Input
+              id="input-new-plant-name"
+              value={newPlantName}
+              onChange={(e) => setNewPlantName(e.target.value)}
+              placeholder="e.g., Main Plant, Site A HMA Plant"
+              className="mt-1 max-w-sm"
+              data-testid="input-new-plant-name"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              This name appears across all plant records, reports, and shift logs.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <Label>Plant Name</Label>
+            <div className="mt-1 px-3 py-2 text-sm font-medium bg-muted/50 rounded-md max-w-sm" data-testid="text-plant-name">
+              {setting?.plantName}
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <Label>Plant Type</Label>
@@ -1125,12 +1164,24 @@ function PlantTypeConfigSection() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || plantType === (setting?.plantType ?? "hma")} className="mt-6" data-testid="btn-save-plant-type">
-            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={
+              saveMutation.isPending ||
+              (isCreating ? !newPlantName.trim() : plantType === (setting?.plantType ?? "hma"))
+            }
+            className="mt-6"
+            data-testid="btn-save-plant-type"
+          >
+            {saveMutation.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : isCreating ? "Create Plant" : "Save"}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Changing plant type switches the Operations tab between HMA-specific (shift logs, heating, dispatches) and RMC-specific (batch records, raw materials, cube tests) sections.
+          {isCreating
+            ? "HMA mode shows shift logs, heating, and dispatch tracking. RMC mode shows batch records, cube tests, and raw material receipts."
+            : "Changing plant type switches the Operations tab between HMA-specific (shift logs, heating, dispatches) and RMC-specific (batch records, raw materials, cube tests) sections."}
         </p>
       </CardContent>
     </Card>
