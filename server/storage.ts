@@ -755,13 +755,13 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   updateStoreGrn(id: number, data: { acceptanceStatus: string; acceptanceRemarks?: string | null }): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
-  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number }): Promise<StoreIssueWithItems[]>;
+  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
   createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
   deleteStoreIssue(id: number): Promise<boolean>;
@@ -7729,6 +7729,9 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateTo) waterConditions.push(lte(dprs.date, filters.dateTo));
     if (filters?.material && !filters.material.toUpperCase().includes('WATER')) {
       waterConditions.push(sql`1=0`);
+    }
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      waterConditions.push(inArray(dprs.site, filters.permittedSiteNames));
     }
 
     const waterEntries = await db.select({
@@ -16927,13 +16930,17 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreGrnWithItems[]> {
+    if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
     if (filters?.indentRef) conds.push(ilike(storeGrns.indentRef, `%${filters.indentRef}%`));
     if (filters?.siteId) conds.push(eq(storeGrns.siteId, filters.siteId));
+    if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
+      conds.push(inArray(storeGrns.siteId, filters.permittedSiteIds));
+    }
     const grns = await db.select().from(storeGrns)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
@@ -17024,12 +17031,16 @@ export class DatabaseStorage implements IStorage {
     return { ...issue, items: items as (StoreIssueItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number }): Promise<StoreIssueWithItems[]> {
+  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]> {
+    if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeIssues.date, filters.dateTo));
     if (filters?.section) conds.push(eq(storeIssues.issuedToSection, filters.section));
     if (filters?.siteId) conds.push(eq(storeIssues.siteId, filters.siteId));
+    if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
+      conds.push(inArray(storeIssues.siteId, filters.permittedSiteIds));
+    }
     const issues = await db.select().from(storeIssues)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeIssues.date), desc(storeIssues.id));

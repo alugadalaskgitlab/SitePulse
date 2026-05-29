@@ -186,7 +186,12 @@ export async function registerRoutes(
   // Get all DPRs with full details (for admin reports)
   app.get("/api/dprs/with-details", async (req, res) => {
     try {
-      const dprs = await storage.getDprsWithDetails();
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      let dprs = await storage.getDprsWithDetails();
+      if (permittedSiteNames !== null) {
+        const nameSet = new Set(permittedSiteNames);
+        dprs = dprs.filter((d) => nameSet.has(d.site));
+      }
       res.json(dprs);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch DPRs with details" });
@@ -202,7 +207,13 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
       };
-      const materialLogs = await storage.getSiteMaterialLogs(filters);
+      let materialLogs = await storage.getSiteMaterialLogs(filters);
+      // Permission System v2: filter to permitted sites
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      if (permittedSiteNames !== null) {
+        const nameSet = new Set(permittedSiteNames);
+        materialLogs = materialLogs.filter((r) => nameSet.has(r.site));
+      }
       res.json(materialLogs);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch material summary" });
@@ -669,7 +680,10 @@ export async function registerRoutes(
   // Export to Excel
   app.get(api.dprs.export.path, async (req, res) => {
     try {
-      const dprs = await storage.getDprs();
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const dprs = await storage.getDprs(
+        permittedSiteNames !== null ? { permittedSiteNames } : undefined
+      );
       
       // Simple export of just the headers for MVP
       // In a real app, we might want to flatten all details
@@ -6767,12 +6781,16 @@ export async function registerRoutes(
   app.get("/api/stores/grns", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
+      const permittedIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : null;
       const grns = await storage.getStoreGrns({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         supplier: req.query.supplier as string | undefined,
         indentRef: req.query.indentRef as string | undefined,
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);
     } catch (err) {
@@ -6786,6 +6804,13 @@ export async function registerRoutes(
       if (!assertView(req, res, "stores_inventory")) return;
       const grn = await storage.getStoreGrn(parseInt(req.params.id));
       if (!grn) return res.status(404).json({ error: "Not found" });
+      // Permission System v2: check site access for detail
+      if (req.authUser && !req.authUser.isAdmin && grn.siteId) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null && !permittedIds.includes(grn.siteId)) {
+          return res.status(403).json({ error: "Access denied for this site" });
+        }
+      }
       res.json(grn);
     } catch (err) {
       console.error("GET /api/stores/grns/:id:", err);
@@ -6841,11 +6866,15 @@ export async function registerRoutes(
   app.get("/api/stores/issues", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
+      const permittedIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : null;
       const issues = await storage.getStoreIssues({
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         section: req.query.section as string | undefined,
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(issues);
     } catch (err) {
@@ -6859,6 +6888,13 @@ export async function registerRoutes(
       if (!assertView(req, res, "stores_inventory")) return;
       const issue = await storage.getStoreIssue(parseInt(req.params.id));
       if (!issue) return res.status(404).json({ error: "Not found" });
+      // Permission System v2: check site access for detail
+      if (req.authUser && !req.authUser.isAdmin && issue.siteId) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null && !permittedIds.includes(issue.siteId)) {
+          return res.status(403).json({ error: "Access denied for this site" });
+        }
+      }
       res.json(issue);
     } catch (err) {
       console.error("GET /api/stores/issues/:id:", err);
