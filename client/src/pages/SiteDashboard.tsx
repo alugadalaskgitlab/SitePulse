@@ -468,8 +468,33 @@ export default function SiteDashboard() {
       doc.text(`Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"}`, 14, yPos);
       yPos += 6;
       
-      // Progress Entries
-      if (dpr.progress?.length > 0) {
+      // Progress / Structure Entries
+      if ((dpr as any).workType === "structure") {
+        if ((dpr as any).structureItems?.length > 0) {
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "bold");
+          doc.text("Structure Works Progress:", 14, yPos);
+          yPos += 4;
+          doc.setFont("helvetica", "normal");
+          const structureRows = (dpr as any).structureItems.map((s: any) => [
+            s.structureType || "",
+            s.structureName || "",
+            s.itemOfWork || "",
+            `${s.quantity ?? ""} ${s.uom || ""}`,
+            s.remarks || "",
+          ]);
+          autoTable(doc, {
+            startY: yPos,
+            head: [["Structure Type", "Name/Location", "Item of Work", "Qty & Unit", "Remarks"]],
+            body: structureRows,
+            theme: 'grid',
+            headStyles: { fillColor: [60, 90, 130], fontSize: 7 },
+            styles: { fontSize: 7, cellPadding: 1 },
+            margin: { left: 14, right: 14 },
+          });
+          yPos = (doc as any).lastAutoTable.finalY + 4;
+        }
+      } else if (dpr.progress?.length > 0) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text("Progress Entries:", 14, yPos);
@@ -646,9 +671,30 @@ export default function SiteDashboard() {
     if (filters.hasDiesel) filtersText.push(`With Diesel Usage`);
 
     const reportsHtml = dprs?.map((dpr: any, index: number) => {
-      // Progress table
+      // Progress / Structure table
       let progressHtml = "";
-      if (dpr.progress?.length > 0) {
+      if ((dpr as any).workType === "structure") {
+        if ((dpr as any).structureItems?.length > 0) {
+          progressHtml = `
+            <div class="section">
+              <div class="section-title">Structure Works Progress</div>
+              <table>
+                <tr><th>Structure Type</th><th>Name/Location</th><th>Item of Work</th><th>Quantity</th><th>Unit</th><th>Remarks</th></tr>
+                ${(dpr as any).structureItems.map((s: any) => `
+                  <tr>
+                    <td>${s.structureType || ""}</td>
+                    <td>${s.structureName || ""}</td>
+                    <td>${s.itemOfWork || ""}</td>
+                    <td>${s.quantity ?? ""}</td>
+                    <td>${s.uom || ""}</td>
+                    <td>${s.remarks || ""}</td>
+                  </tr>
+                `).join("")}
+              </table>
+            </div>
+          `;
+        }
+      } else if (dpr.progress?.length > 0) {
         progressHtml = `
           <div class="section">
             <div class="section-title">Progress Entries</div>
