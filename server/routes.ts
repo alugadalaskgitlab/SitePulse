@@ -3389,6 +3389,18 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/plant-module/plant-settings/:plantName", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const plantName = decodeURIComponent(req.params.plantName).trim();
+      if (!plantName) return res.status(400).json({ message: "plantName is required" });
+      await storage.deletePlantSettings(plantName);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete plant settings" });
+    }
+  });
+
   app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
     try {
       const all = await storage.getPlantShiftLogs({});

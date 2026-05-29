@@ -320,6 +320,7 @@ export interface IStorage {
   getPlantSettings(plantName: string): Promise<PlantSettings | null>;
   listPlantSettings(): Promise<PlantSettings[]>;
   upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings>;
+  deletePlantSettings(plantName: string): Promise<boolean>;
   // Plant Module Phase-1 - Masters
   getParties(): Promise<Party[]>;
   createParty(party: InsertParty): Promise<Party>;
@@ -2236,6 +2237,11 @@ export class DatabaseStorage implements IStorage {
       ...patch,
     }).returning();
     return inserted;
+  }
+
+  async deletePlantSettings(plantName: string): Promise<boolean> {
+    const result = await db.delete(plantSettings).where(eq(plantSettings.plantName, plantName));
+    return ((result as any).rowCount ?? 0) > 0;
   }
 
   // ============================================
