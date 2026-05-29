@@ -7486,25 +7486,50 @@ export async function registerRoutes(
         doc.text("Sample ID", 44, hY + 4, { width: 150 });
         doc.text("Age (d)", 194, hY + 4, { width: 70, align: "right" });
         doc.text("Strength (MPa)", 264, hY + 4, { width: 120, align: "right" });
-        doc.text("Target", 384, hY + 4, { width: 80, align: "right" });
+        doc.text("Grade Benchmark", 384, hY + 4, { width: 80, align: "right" });
         doc.text("Result", 464, hY + 4, { width: 87, align: "right" });
         doc.y = hY + 20;
         for (const t of report.cubeTests) {
           const ry = doc.y;
           if (ry > 760) { doc.addPage(); }
           const ry2 = doc.y;
-          doc.rect(40, ry2, 515, 16).stroke();
+          const isFail = t.passFail === "fail";
+          if (isFail) {
+            doc.rect(40, ry2, 515, 16).fillAndStroke("#fff0f0", "#000000");
+          } else {
+            doc.rect(40, ry2, 515, 16).stroke();
+          }
           const result = t.passFail === "pass" ? "PASS" : t.passFail === "fail" ? "FAIL" : "—";
           const resultColor = t.passFail === "pass" ? "#007700" : t.passFail === "fail" ? "#cc0000" : "#555";
           doc.fontSize(8).font("Helvetica").fillColor("#000");
           doc.text(t.sampleId, 44, ry2 + 3, { width: 150 });
           doc.text(String(t.ageDays), 194, ry2 + 3, { width: 70, align: "right" });
-          doc.text(String(t.strengthMpa), 264, ry2 + 3, { width: 120, align: "right" });
-          doc.text(t.targetStrength != null ? String(t.targetStrength) : "—", 384, ry2 + 3, { width: 80, align: "right" });
+          // Highlight strength value red for failed rows
+          doc.fillColor(isFail ? "#cc0000" : "#000").text(String(t.strengthMpa), 264, ry2 + 3, { width: 120, align: "right" });
+          doc.fillColor("#000").text(t.targetStrength != null ? String(t.targetStrength) : "—", 384, ry2 + 3, { width: 80, align: "right" });
           doc.font("Helvetica-Bold").fillColor(resultColor).text(result, 464, ry2 + 3, { width: 87, align: "right" });
           doc.fillColor("#000");
           doc.y = ry2 + 18;
         }
+        // ── Pass / Fail summary ─────────────────────────────────────────────
+        const cubePassCount = report.cubeTests.filter(t => t.passFail === "pass").length;
+        const cubeFailCount = report.cubeTests.filter(t => t.passFail === "fail").length;
+        const cubeTested = cubePassCount + cubeFailCount;
+        const cubePassRate = cubeTested > 0 ? ((cubePassCount / cubeTested) * 100).toFixed(1) : null;
+        // Ensure summary row fits on the current page (needs ~30px)
+        if (doc.y > 740) { doc.addPage(); }
+        const sy = doc.y;
+        doc.rect(40, sy, 515, 20).fill("#f5f5f5").stroke();
+        doc.fontSize(9).font("Helvetica-Bold").fillColor("#000")
+          .text(`Pass: ${cubePassCount}`, 44, sy + 5, { width: 100 });
+        doc.fillColor("#cc0000")
+          .text(`Fail: ${cubeFailCount}`, 154, sy + 5, { width: 100 });
+        if (cubePassRate !== null) {
+          const rateColor = cubeFailCount === 0 ? "#007700" : cubeFailCount / cubeTested >= 0.5 ? "#cc0000" : "#996600";
+          doc.fillColor(rateColor).text(`Pass Rate: ${cubePassRate}%`, 264, sy + 5, { width: 287, align: "right" });
+        }
+        doc.fillColor("#000");
+        doc.y = sy + 26;
         doc.moveDown(0.5);
       }
 
