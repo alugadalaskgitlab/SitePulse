@@ -187,8 +187,19 @@ export default function SiteReport() {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{dpr.progress.length}</p>
-            <p className="text-sm text-muted-foreground">Activities</p>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-xs">
+                {(dpr as any).workType === "structure" ? "Structure" : "Road"}
+              </Badge>
+            </div>
+            <p className="text-2xl font-bold text-primary">
+              {(dpr as any).workType === "structure"
+                ? ((dpr as any).structureItems?.length ?? 0)
+                : dpr.progress.length}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {(dpr as any).workType === "structure" ? "Structure Items" : "Activities"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -225,13 +236,47 @@ export default function SiteReport() {
         )}
       </div>
 
-      {/* Activity Progress */}
+      {/* Activity Progress / Structure Items */}
       <Card>
-        <CardHeader>
-          <CardTitle>Activity Progress</CardTitle>
+        <CardHeader className="flex flex-row items-center gap-3">
+          <CardTitle>
+            {(dpr as any).workType === "structure" ? "Structure Works Progress" : "Activity Progress"}
+          </CardTitle>
+          <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-xs">
+            {(dpr as any).workType === "structure" ? "Structure DPR" : "Road DPR"}
+          </Badge>
         </CardHeader>
         <CardContent>
-          {dpr.progress.length === 0 ? (
+          {(dpr as any).workType === "structure" ? (
+            (dpr as any).structureItems?.length === 0 ? (
+              <p className="text-muted-foreground italic">No structure items recorded.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Structure Type</TableHead>
+                    <TableHead>Name / Location</TableHead>
+                    <TableHead>Item of Work</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>Remarks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(dpr as any).structureItems?.map((item: any, i: number) => (
+                    <TableRow key={i} data-testid={`row-structure-${i}`}>
+                      <TableCell><Badge variant="secondary">{item.structureType}</Badge></TableCell>
+                      <TableCell className="font-medium">{item.structureName || '-'}</TableCell>
+                      <TableCell>{item.itemOfWork}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.quantity != null ? item.quantity : '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{item.remarks || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )
+          ) : dpr.progress.length === 0 ? (
             <p className="text-muted-foreground italic">No activities recorded.</p>
           ) : (
             <Table>

@@ -114,11 +114,35 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
   return null;
 }
 
+interface StructureItem {
+  structureType: string;
+  structureName: string;
+  itemOfWork: string;
+  quantity: number | null;
+  uom: string;
+  remarks: string;
+}
+
+const STRUCTURE_TYPES = ["Culvert", "Bridge", "CD Work", "Retaining Wall", "Drain", "Other"];
+const STRUCTURE_ITEMS = ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Other"];
+const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
+
 // Shared mapping from a raw DPR object to typed form state.
 // Used for initial load, draft comparison, and discard-draft restore.
 function mapDprToFormState(dpr: any) {
   const baseSite = dpr.site.replace(/ – (Edited by|Copy by) .+$/, '').trim();
   const header = { date: dpr.date, site: baseSite, engineer: dpr.engineer };
+  const workType: "road" | "structure" = dpr.workType === "structure" ? "structure" : "road";
+  const structureItems: StructureItem[] = dpr.structureItems?.length
+    ? dpr.structureItems.map((s: any) => ({
+        structureType: s.structureType || "",
+        structureName: s.structureName || "",
+        itemOfWork: s.itemOfWork || "",
+        quantity: s.quantity ?? null,
+        uom: s.uom || "m³",
+        remarks: s.remarks || "",
+      }))
+    : [{ structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }];
 
   const progress: ProgressEntry[] = dpr.progress?.length
     ? dpr.progress.map((p: any) => ({
@@ -195,7 +219,7 @@ function mapDprToFormState(dpr: any) {
       }))
     : [];
 
-  return { header, progress, equipment, labour, materials, sitePurchases };
+  return { header, workType, structureItems, progress, equipment, labour, materials, sitePurchases };
 }
 
 export default function SiteEdit() {
@@ -311,6 +335,11 @@ export default function SiteEdit() {
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
+  const [workType, setWorkType] = useState<"road" | "structure">("road");
+  const [structureItems, setStructureItems] = useState<StructureItem[]>([
+    { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
+  ]);
+
   useEffect(() => {
     if (!dpr) return;
 
@@ -332,6 +361,8 @@ export default function SiteEdit() {
           if (draft.labour?.length) setLabour(draft.labour);
           setMaterials(draft.materials || []);
           setSitePurchases(draft.sitePurchases || []);
+          if (draft.workType) setWorkType(draft.workType);
+          if (draft.structureItems?.length) setStructureItems(draft.structureItems);
           setDraftRestored(true);
           formInitializedRef.current = true;
           return;
@@ -344,8 +375,10 @@ export default function SiteEdit() {
       }
     }
 
-    const { header: h, progress: prog, equipment: eq, labour: lab, materials: mat, sitePurchases: sp } = serverState;
+    const { header: h, workType: wt, structureItems: si, progress: prog, equipment: eq, labour: lab, materials: mat, sitePurchases: sp } = serverState;
     setHeader(h);
+    setWorkType(wt);
+    setStructureItems(si);
     setProgress(prog);
     setEquipment(eq);
     setLabour(lab);
@@ -358,7 +391,7 @@ export default function SiteEdit() {
   // and only when the state actually differs from what the server provided — prevents stale drafts)
   useEffect(() => {
     if (!formInitializedRef.current) return;
-    const draft = { header, progress, equipment, labour, materials, sitePurchases };
+    const draft = { header, workType, structureItems, progress, equipment, labour, materials, sitePurchases };
     const draftJson = JSON.stringify(draft);
     if (draftJson === serverSnapshotRef.current) {
       // Form matches server state — no real edits, remove any stale draft
@@ -366,7 +399,7 @@ export default function SiteEdit() {
       return;
     }
     sessionStorage.setItem(DRAFT_KEY, draftJson);
-  }, [header, progress, equipment, labour, materials, sitePurchases]);
+  }, [header, workType, structureItems, progress, equipment, labour, materials, sitePurchases]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -507,14 +540,16 @@ export default function SiteEdit() {
 
     const payload = {
       ...header,
-      progress: progress.filter(p => p.activity).map(p => {
+      workType,
+      structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
+      progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
         const effectiveLength = getEffectiveLength(p);
         return {
           ...p,
           length: effectiveLength,
           quantity: calculateQuantity(p) || p.quantity,
         };
-      }),
+      }) : [],
       equipment: equipment.filter(e => e.machine).map(eq => ({
         ...eq,
         totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
@@ -678,14 +713,84 @@ export default function SiteEdit() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle>Activity Progress</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
-          </Button>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+          <CardTitle>{workType === "structure" ? "Structure Works Progress" : "Activity Progress"}</CardTitle>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center border rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setWorkType("road")}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${workType === "road" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                data-testid="button-worktype-road"
+              >Road</button>
+              <button
+                type="button"
+                onClick={() => setWorkType("structure")}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${workType === "structure" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                data-testid="button-worktype-structure"
+              >Structure</button>
+            </div>
+            {workType === "road" && (
+              <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
+                <Plus className="w-4 h-4 mr-1" /> Add Row
+              </Button>
+            )}
+            {workType === "structure" && (
+              <Button size="sm" variant="outline" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure">
+                <Plus className="w-4 h-4 mr-1" /> Add Item
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {progress.map((entry, idx) => (
+          {workType === "structure" ? (
+            structureItems.map((item, idx) => (
+              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">Structure Item #{idx + 1}</span>
+                  <Button size="icon" variant="ghost" onClick={() => setStructureItems(prev => prev.filter((_, i) => i !== idx))} disabled={structureItems.length === 1} data-testid={`button-remove-structure-${idx}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Structure Type</Label>
+                    <Select value={item.structureType} onValueChange={(v) => { const u = [...structureItems]; u[idx].structureType = v; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Structure Name / Location</Label>
+                    <Input placeholder="e.g. Culvert at Ch. 5+200" value={item.structureName} onChange={(e) => { const u = [...structureItems]; u[idx].structureName = e.target.value; setStructureItems(u); }} data-testid={`input-structure-name-${idx}`} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Item of Work</Label>
+                    <Select value={item.itemOfWork} onValueChange={(v) => { const u = [...structureItems]; u[idx].itemOfWork = v; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-item-work-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_ITEMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Quantity</Label>
+                    <Input type="number" placeholder="0" value={item.quantity ?? ""} onChange={(e) => { const u = [...structureItems]; u[idx].quantity = e.target.value ? parseFloat(e.target.value) : null; setStructureItems(u); }} data-testid={`input-structure-qty-${idx}`} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Unit</Label>
+                    <Select value={item.uom} onValueChange={(v) => { const u = [...structureItems]; u[idx].uom = v; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-structure-uom-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2 md:col-span-1">
+                    <Label className="text-xs">Remarks (optional)</Label>
+                    <Input placeholder="Any remarks..." value={item.remarks} onChange={(e) => { const u = [...structureItems]; u[idx].remarks = e.target.value; setStructureItems(u); }} data-testid={`input-structure-remarks-${idx}`} />
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : null}
+          {workType === "road" && progress.map((entry, idx) => (
             <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -935,9 +1040,16 @@ export default function SiteEdit() {
               </div>
             </div>
           ))}
-          <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
-          </Button>
+          {workType === "road" && (
+            <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Row
+            </Button>
+          )}
+          {workType === "structure" && (
+            <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Item
+            </Button>
+          )}
         </CardContent>
       </Card>
 

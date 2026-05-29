@@ -2,6 +2,7 @@ import { db } from "./db";
 import {
   dprs,
   progressEntries,
+  dprStructureItems,
   equipmentLogs,
   labourLogs,
   materialLogs,
@@ -1353,6 +1354,7 @@ export class DatabaseStorage implements IStorage {
         labour: true,
         materials: true,
         sitePurchases: true,
+        structureItems: true,
       },
       orderBy: desc(dprs.date),
     });
@@ -1367,6 +1369,7 @@ export class DatabaseStorage implements IStorage {
         labour: true,
         materials: true,
         sitePurchases: true,
+        structureItems: true,
       }
     });
     return dpr;
@@ -1384,6 +1387,7 @@ export class DatabaseStorage implements IStorage {
         site: dprData.site.toUpperCase(),
         engineer: dprData.engineer.toUpperCase(),
         submittedAt: submittedAt,
+        workType: dprData.workType ?? "road",
       }).returning();
 
       const dprId = newDpr.id;
@@ -1455,6 +1459,13 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      // 7. Insert Structure Items (for workType = "structure")
+      if (dprData.structureItems?.length) {
+        await tx.insert(dprStructureItems).values(
+          dprData.structureItems.map(s => ({ ...s, dprId }))
+        );
+      }
+
       return newDpr;
     });
   }
@@ -1470,6 +1481,7 @@ export class DatabaseStorage implements IStorage {
           date: dprData.date,
           site: dprData.site,
           engineer: dprData.engineer,
+          workType: dprData.workType ?? "road",
         })
         .where(eq(dprs.id, id))
         .returning();
@@ -1489,6 +1501,7 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
       await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
       await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
+      await tx.delete(dprStructureItems).where(eq(dprStructureItems.dprId, id));
 
       if (dprData.progress?.length) {
         const progressWithPersonnel = dprData.progress.map(p => {
@@ -1537,6 +1550,12 @@ export class DatabaseStorage implements IStorage {
             vendor: sp.vendor?.toUpperCase() || sp.vendor,
             billNo: sp.billNo?.toUpperCase() || sp.billNo,
           }))
+        );
+      }
+
+      if (dprData.structureItems?.length) {
+        await tx.insert(dprStructureItems).values(
+          dprData.structureItems.map(s => ({ ...s, dprId: id }))
         );
       }
 

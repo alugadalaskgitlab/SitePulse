@@ -1059,6 +1059,11 @@ export default function SiteDashboard() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold truncate">{dpr.site}</h3>
+                                {(dpr as any).workType === "structure" ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
+                                )}
                                 {pendingClosingCount > 0 && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
                                     <Clock className="w-3 h-3" />

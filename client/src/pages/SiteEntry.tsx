@@ -88,15 +88,28 @@ interface SitePurchaseEntry {
   uom: string;
 }
 
+interface StructureItem {
+  structureType: string;
+  structureName: string;
+  itemOfWork: string;
+  quantity: number | null;
+  uom: string;
+  remarks: string;
+}
+
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
-
 const GENDER_OPTIONS = ["Male", "Female"];
+const STRUCTURE_TYPES = ["Culvert", "Bridge", "CD Work", "Retaining Wall", "Drain", "Other"];
+const STRUCTURE_ITEMS = ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Other"];
+const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
+  workType: string;
   progress: ProgressEntry[];
+  structureItems: StructureItem[];
   equipment: EquipmentEntry[];
   labour: LabourEntry[];
   materials: MaterialEntry[];
@@ -198,18 +211,27 @@ export default function SiteEntry() {
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
+  const [workType, setWorkType] = useState<string>("road");
+  const [structureItems, setStructureItems] = useState<StructureItem[]>([
+    { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
+  ]);
+
   const formData = useMemo<SiteEntryFormData>(() => ({
     header,
+    workType,
     progress,
+    structureItems,
     equipment,
     labour,
     materials,
     sitePurchases,
-  }), [header, progress, equipment, labour, materials, sitePurchases]);
+  }), [header, workType, progress, structureItems, equipment, labour, materials, sitePurchases]);
 
   const handleRestoreDraft = useCallback((data: SiteEntryFormData) => {
     setHeader(data.header);
+    if (data.workType) setWorkType(data.workType);
     setProgress(data.progress);
+    if (data.structureItems) setStructureItems(data.structureItems);
     setEquipment(data.equipment);
     setLabour(data.labour);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
@@ -349,7 +371,9 @@ export default function SiteEntry() {
         site: header.site,
         engineer: header.engineer,
         role: "engineer",
-        progress: progressWithCalc,
+        workType,
+        progress: workType === "structure" ? [] : progressWithCalc,
+        structureItems: workType === "structure" ? structureItems.filter(s => s.structureType && s.itemOfWork) : [],
         equipment: normalizedEquipment,
         labour,
         materials,
@@ -511,14 +535,85 @@ export default function SiteEntry() {
 
       {/* Activity Progress */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle>Activity Progress</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
-          </Button>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <CardTitle>Activity Progress</CardTitle>
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                size="sm"
+                variant={workType === "road" ? "default" : "ghost"}
+                className="h-7 px-3 text-xs"
+                onClick={() => setWorkType("road")}
+                data-testid="button-work-type-road"
+              >Road</Button>
+              <Button
+                size="sm"
+                variant={workType === "structure" ? "default" : "ghost"}
+                className="h-7 px-3 text-xs"
+                onClick={() => setWorkType("structure")}
+                data-testid="button-work-type-structure"
+              >Structure</Button>
+            </div>
+          </div>
+          {workType === "road" ? (
+            <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
+              <Plus className="w-4 h-4 mr-1" /> Add Row
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setStructureItems(prev => [...prev, { structureType: "Culvert", structureName: "", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }])} data-testid="button-add-structure-item">
+              <Plus className="w-4 h-4 mr-1" /> Add Item
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {progress.map((entry, idx) => (
+          {workType === "structure" ? (
+            structureItems.map((item, idx) => (
+              <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">Structure Item #{idx + 1}</span>
+                  <Button size="icon" variant="ghost" onClick={() => setStructureItems(prev => prev.filter((_, i) => i !== idx))} disabled={structureItems.length === 1} data-testid={`button-remove-structure-${idx}`}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Structure Type</Label>
+                    <Select value={item.structureType} onValueChange={(val) => { const u = [...structureItems]; u[idx].structureType = val; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-1 md:col-span-2">
+                    <Label className="text-xs">Structure Name / Location</Label>
+                    <Input placeholder="e.g. Culvert at km 12+400" value={item.structureName} onChange={(e) => { const u = [...structureItems]; u[idx].structureName = e.target.value; setStructureItems(u); }} data-testid={`input-structure-name-${idx}`} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Item of Work</Label>
+                    <Select value={item.itemOfWork} onValueChange={(val) => { const u = [...structureItems]; u[idx].itemOfWork = val; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-structure-item-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_ITEMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Quantity</Label>
+                    <Input type="number" step="0.01" placeholder="0" value={item.quantity ?? ""} onChange={(e) => { const u = [...structureItems]; u[idx].quantity = e.target.value ? parseFloat(e.target.value) : null; setStructureItems(u); }} data-testid={`input-structure-qty-${idx}`} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Unit</Label>
+                    <Select value={item.uom} onValueChange={(val) => { const u = [...structureItems]; u[idx].uom = val; setStructureItems(u); }}>
+                      <SelectTrigger data-testid={`select-structure-uom-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{STRUCTURE_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2 md:col-span-3">
+                    <Label className="text-xs">Remarks (optional)</Label>
+                    <Input placeholder="Any remarks..." value={item.remarks} onChange={(e) => { const u = [...structureItems]; u[idx].remarks = e.target.value; setStructureItems(u); }} data-testid={`input-structure-remarks-${idx}`} />
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+          progress.map((entry, idx) => (
             <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -778,10 +873,12 @@ export default function SiteEntry() {
                 </Select>
               </div>
             </div>
-          ))}
-          <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
-          </Button>
+          )))}
+          {workType !== "structure" && (
+            <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('progress')} data-testid="button-add-progress-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Row
+            </Button>
+          )}
         </CardContent>
       </Card>
 
