@@ -121,8 +121,8 @@ export default function RmcBatchRecords() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(defaultForm("Main Plant"));
   const [printRecord, setPrintRecord] = useState<RmcBatchRecordWithDesign | null>(null);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => localStorage.getItem("rmc_batch_date_from") ?? today);
+  const [dateTo, setDateTo] = useState(() => localStorage.getItem("rmc_batch_date_to") ?? today);
   const [plantSelect, setPlantSelect] = useState(() => localStorage.getItem("rmc_plant_filter") ?? ALL_PLANTS);
   const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
 
@@ -240,9 +240,9 @@ export default function RmcBatchRecords() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" data-testid="input-date-from" />
+          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); localStorage.setItem("rmc_batch_date_from", e.target.value); }} className="w-36" data-testid="input-date-from" />
           <span className="text-muted-foreground text-sm">to</span>
-          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" data-testid="input-date-to" />
+          <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); localStorage.setItem("rmc_batch_date_to", e.target.value); }} className="w-36" data-testid="input-date-to" />
           {plantNames.length > 0 && (
             <Select value={plantSelect} onValueChange={handlePlantChange}>
               <SelectTrigger className="w-40" data-testid="select-plant-name">
