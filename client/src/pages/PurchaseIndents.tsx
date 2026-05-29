@@ -15,7 +15,9 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
-import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, PlantMaterial } from "@shared/schema";
+import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
+
+type StoreItem = { id: number; name: string; uom: string; category: string };
 
 function FreeTextCombobox({
   value,
@@ -77,25 +79,22 @@ function FreeTextCombobox({
 
 function MaterialCombobox({
   description,
-  materialId,
-  materials,
+  storeItems,
   onChange,
   onAddNew,
   "data-testid": testId,
 }: {
   description: string;
-  materialId: number | null;
-  materials: PlantMaterial[];
-  onChange: (desc: string, materialId: number | null, uom?: string) => void;
+  storeItems: StoreItem[];
+  onChange: (desc: string, uom: string) => void;
   onAddNew?: (typedName: string) => void;
   "data-testid"?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const activeList = materials.filter(m => m.isActive === 1 || m.id === materialId);
   const filtered = description
-    ? activeList.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
-    : activeList;
+    ? storeItems.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
+    : storeItems;
 
   const showDropdown = open && (filtered.length > 0 || !!onAddNew);
 
@@ -112,10 +111,10 @@ function MaterialCombobox({
       <Input
         value={description}
         onChange={e => {
-          onChange(e.target.value, null);
+          onChange(e.target.value, "");
           setOpen(true);
         }}
-        onBlur={e => onChange(e.target.value.toUpperCase(), null)}
+        onBlur={e => onChange(e.target.value.toUpperCase(), "")}
         onFocus={() => setOpen(true)}
         placeholder="TYPE ITEM NAME OR SELECT FROM LIST"
         className="uppercase"
@@ -130,12 +129,12 @@ function MaterialCombobox({
               className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2"
               onMouseDown={e => {
                 e.preventDefault();
-                onChange(m.name.toUpperCase(), m.id, (m.defaultUom || "NOS").toUpperCase());
+                onChange(m.name.toUpperCase(), m.uom.toUpperCase());
                 setOpen(false);
               }}
             >
               <span>{m.name.toUpperCase()}</span>
-              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{(m.defaultUom || "").toUpperCase()}</span>
+              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
             </div>
           ))}
           {onAddNew && (
@@ -153,9 +152,6 @@ function MaterialCombobox({
             </div>
           )}
         </div>
-      )}
-      {materialId && (
-        <p className="text-[10px] text-green-700 dark:text-green-400 mt-0.5">✓ Linked to materials master</p>
       )}
     </div>
   );
@@ -435,8 +431,8 @@ export default function PurchaseIndents() {
     enabled: !!selectedIndentId,
   });
 
-  const { data: plantMaterialsList } = useQuery<PlantMaterial[]>({
-    queryKey: ["/api/plant-module/materials"],
+  const { data: storeItemsList } = useQuery<StoreItem[]>({
+    queryKey: ["/api/stores/items"],
   });
 
   const { data: indentGrnCounts } = useQuery<Record<string, number>>({
@@ -1229,14 +1225,12 @@ export default function PurchaseIndents() {
                         <Label className="text-xs">ITEM</Label>
                         <MaterialCombobox
                           description={item.description}
-                          materialId={item.materialId ?? null}
-                          materials={plantMaterialsList || []}
-                          onChange={(desc, matId, uom) => {
+                          storeItems={storeItemsList || []}
+                          onChange={(desc, uom) => {
                             const updated = [...formItems];
                             updated[index] = {
                               ...updated[index],
                               description: desc,
-                              materialId: matId,
                               ...(uom ? { uom } : {}),
                             };
                             setFormItems(updated);
