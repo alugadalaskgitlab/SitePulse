@@ -8770,6 +8770,9 @@ export class DatabaseStorage implements IStorage {
             purpose: item.purpose.toUpperCase(),
             priority: item.priority || "normal",
             materialId: item.materialId || null,
+            estRate: item.estRate ?? null,
+            estAmount: item.estAmount ?? null,
+            requiredBy: item.requiredBy || null,
           }))
         ).returning();
       }
@@ -9004,6 +9007,9 @@ export class DatabaseStorage implements IStorage {
             purpose: item.purpose.toUpperCase(),
             priority: item.priority || "normal",
             materialId: item.materialId || null,
+            estRate: item.estRate ?? null,
+            estAmount: item.estAmount ?? null,
+            requiredBy: item.requiredBy || null,
           }))
         ).returning();
       }

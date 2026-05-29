@@ -86,7 +86,7 @@ function MaterialCombobox({
 }: {
   description: string;
   storeItems: StoreItem[];
-  onChange: (desc: string, uom: string) => void;
+  onChange: (desc: string, uom: string, materialId?: number | null) => void;
   onAddNew?: (typedName: string) => void;
   "data-testid"?: string;
 }) {
@@ -96,7 +96,9 @@ function MaterialCombobox({
     ? storeItems.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
     : storeItems;
 
-  const showDropdown = open && (filtered.length > 0 || !!onAddNew);
+  const hasExactMatch = storeItems.some(m => m.name.toLowerCase() === description.toLowerCase());
+  const showAddNew = !!onAddNew && !!description.trim() && !hasExactMatch;
+  const showDropdown = open && (filtered.length > 0 || showAddNew);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -129,7 +131,7 @@ function MaterialCombobox({
               className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2"
               onMouseDown={e => {
                 e.preventDefault();
-                onChange(m.name.toUpperCase(), m.uom.toUpperCase());
+                onChange(m.name.toUpperCase(), m.uom.toUpperCase(), m.id);
                 setOpen(false);
               }}
             >
@@ -137,18 +139,18 @@ function MaterialCombobox({
               <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
             </div>
           ))}
-          {onAddNew && (
+          {showAddNew && (
             <div
               className="px-3 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-2 text-blue-600 dark:text-blue-400 border-t border-muted"
               onMouseDown={e => {
                 e.preventDefault();
-                onAddNew(description);
+                onAddNew!(description);
                 setOpen(false);
               }}
               data-testid="option-add-new-store-item"
             >
               <Plus className="w-3 h-3 flex-shrink-0" />
-              <span>{description.trim() ? `Add "${description.trim()}" to store catalogue` : "Add new store item…"}</span>
+              <span>Save "{description.trim()}" as new material</span>
             </div>
           )}
         </div>
@@ -176,6 +178,7 @@ interface ItemRow {
   materialId: number | null;
   estRate: number | null;
   estAmount: number | null;
+  requiredBy: string | null;
 }
 
 interface PurchaseUpdateData {
@@ -383,27 +386,28 @@ export default function PurchaseIndents() {
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
-  const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Spares", uom: "NOS" });
+  const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Aggregate", uom: "NOS" });
 
   const addStoreItemMutation = useMutation({
-    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/stores/items", data); return res.json(); },
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/plant-module/materials", data); return res.json(); },
     onSuccess: (newItem: any) => {
-      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
-      toast({ title: `"${newItem.name}" added to store catalogue` });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
+      toast({ title: `"${newItem.name}" added to materials catalogue` });
       if (addStoreItemTargetIdx !== null) {
         const updated = [...formItems];
         updated[addStoreItemTargetIdx] = {
           ...updated[addStoreItemTargetIdx],
           description: newItem.name.toUpperCase(),
-          uom: (newItem.uom || "NOS").toUpperCase(),
+          uom: (newItem.defaultUom || "NOS").toUpperCase(),
+          materialId: newItem.id,
         };
         setFormItems(updated);
       }
       setAddStoreItemOpen(false);
-      setAddStoreItemForm({ name: "", category: "Spares", uom: "NOS" });
+      setAddStoreItemForm({ name: "", category: "Aggregate", uom: "NOS" });
       setAddStoreItemTargetIdx(null);
     },
-    onError: () => toast({ title: "Error adding store item", variant: "destructive" }),
+    onError: () => toast({ title: "Error adding material", variant: "destructive" }),
   });
 
   const [reportFilterDateFrom, setReportFilterDateFrom] = useState("");
@@ -431,9 +435,12 @@ export default function PurchaseIndents() {
     enabled: !!selectedIndentId,
   });
 
-  const { data: storeItemsList } = useQuery<StoreItem[]>({
-    queryKey: ["/api/stores/items"],
+  const { data: rawMaterialsList } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/materials"],
   });
+  const storeItemsList: StoreItem[] = (rawMaterialsList || [])
+    .filter((m: any) => m.isActive !== 0)
+    .map((m: any) => ({ id: m.id, name: m.name, uom: m.defaultUom || "NOS", category: m.category || "General" }));
 
   const { data: indentGrnCounts } = useQuery<Record<string, number>>({
     queryKey: ["/api/stores/indent-grn-counts"],
@@ -660,11 +667,11 @@ export default function PurchaseIndents() {
     setFormProposedBy("");
     setFormRaisedBy("");
     setFormRemarks("");
-    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null }]);
+    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null }]);
+    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -705,6 +712,7 @@ export default function PurchaseIndents() {
         materialId: item.materialId || undefined,
         estRate: item.estRate || undefined,
         estAmount: item.estAmount || undefined,
+        requiredBy: (item.priority !== "urgent" && item.requiredBy) ? item.requiredBy : undefined,
       })),
     };
 
@@ -773,6 +781,7 @@ export default function PurchaseIndents() {
         materialId: item.materialId || null,
         estRate: item.estRate || null,
         estAmount: (item as any).estAmount || null,
+        requiredBy: (item as any).requiredBy || null,
       })));
       setView("form");
     }
@@ -1105,11 +1114,24 @@ export default function PurchaseIndents() {
                             {indent.approvedBy && ` \u2022 ${indent.status === "rejected" ? "REJECTED" : "APPROVED"} BY ${indent.approvedBy}`}
                             {totalAmt > 0 && ` \u2022 \u20B9 ${totalAmt.toLocaleString("en-IN")} PURCHASED`}
                           </p>
-                          <div className="flex flex-wrap gap-1 mt-2">
+                          <div className="flex flex-wrap gap-1 mt-2 items-center">
                             {priorities.map(p => (
                               <span key={p}>{getPriorityBadge(p)}</span>
                             ))}
                             <span className="text-xs text-muted-foreground pt-1">{purposes.join(" / ")}</span>
+                            {(() => {
+                              const reqDates = indent.items
+                                .map(i => (i as any).requiredBy)
+                                .filter(Boolean)
+                                .sort();
+                              const earliest = reqDates[0];
+                              if (!earliest) return null;
+                              return (
+                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium pt-1" data-testid={`text-req-by-${indent.id}`}>
+                                  REQ. BY: {format(new Date(earliest + "T00:00:00"), "dd-MMM").toUpperCase()}
+                                </span>
+                              );
+                            })()}
                           </div>
                           {indent.status === "rejected" && indent.rejectionReason && (
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1">
@@ -1231,19 +1253,20 @@ export default function PurchaseIndents() {
                         <Label className="text-xs">ITEM</Label>
                         <MaterialCombobox
                           description={item.description}
-                          storeItems={storeItemsList || []}
-                          onChange={(desc, uom) => {
+                          storeItems={storeItemsList}
+                          onChange={(desc, uom, materialId) => {
                             const updated = [...formItems];
                             updated[index] = {
                               ...updated[index],
                               description: desc,
                               ...(uom ? { uom } : {}),
+                              materialId: materialId ?? (desc !== item.description ? null : updated[index].materialId),
                             };
                             setFormItems(updated);
                           }}
                           onAddNew={(typedName) => {
                             setAddStoreItemTargetIdx(index);
-                            setAddStoreItemForm({ name: typedName || "", category: "Spares", uom: item.uom });
+                            setAddStoreItemForm({ name: typedName || "", category: "Aggregate", uom: item.uom });
                             setAddStoreItemOpen(true);
                           }}
                           data-testid={`input-item-desc-${index}`}
@@ -1285,7 +1308,11 @@ export default function PurchaseIndents() {
                         </div>
                         <div>
                           <Label className="text-xs">PRIORITY</Label>
-                          <Select value={item.priority} onValueChange={(v) => updateItem(index, "priority", v)}>
+                          <Select value={item.priority} onValueChange={(v) => {
+                            const updated = [...formItems];
+                            updated[index] = { ...updated[index], priority: v, requiredBy: v === "urgent" ? null : updated[index].requiredBy };
+                            setFormItems(updated);
+                          }}>
                             <SelectTrigger data-testid={`select-item-priority-${index}`}>
                               <SelectValue />
                             </SelectTrigger>
@@ -1296,6 +1323,21 @@ export default function PurchaseIndents() {
                             </SelectContent>
                           </Select>
                         </div>
+                        {item.priority !== "urgent" && (
+                          <div>
+                            <Label className="text-xs">REQUIRED BY</Label>
+                            <Input
+                              type="date"
+                              value={item.requiredBy ?? ""}
+                              onChange={(e) => {
+                                const updated = [...formItems];
+                                updated[index] = { ...updated[index], requiredBy: e.target.value || null };
+                                setFormItems(updated);
+                              }}
+                              data-testid={`input-item-required-by-${index}`}
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -1477,7 +1519,7 @@ export default function PurchaseIndents() {
                             <p className="font-bold uppercase">{index + 1}. {item.description}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
                             {(item.estRate || estAmt) && (
                               <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
                                 ≈ ₹{estAmt?.toLocaleString("en-IN") ?? "—"}
@@ -1485,6 +1527,11 @@ export default function PurchaseIndents() {
                               </span>
                             )}
                             {getPriorityBadge(item.priority)}
+                            {(item as any).requiredBy && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-detail-req-by-${item.id}`}>
+                                REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-4 mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-md flex-wrap">
@@ -1608,8 +1655,13 @@ export default function PurchaseIndents() {
                             <p className="font-bold uppercase">{index + 1}. {item.description}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 flex-wrap items-center justify-end">
                             {getPriorityBadge(item.priority)}
+                            {(item as any).requiredBy && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-detail-req-by-${item.id}`}>
+                                REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="text-sm mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1788,9 +1840,14 @@ export default function PurchaseIndents() {
                             <p className="font-bold uppercase">{index + 1}. {item.description}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 flex-wrap items-center justify-end">
                             {getPriorityBadge(item.priority)}
                             {getItemStatusBadge(item.purchaseStatus)}
+                            {(item as any).requiredBy && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-purchase-req-by-${item.id}`}>
+                                REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -2174,15 +2231,15 @@ export default function PurchaseIndents() {
       <Dialog open={addStoreItemOpen} onOpenChange={open => { setAddStoreItemOpen(open); if (!open) setAddStoreItemTargetIdx(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add New Store Item</DialogTitle>
+            <DialogTitle>Save as New Material</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">ITEM NAME *</Label>
+              <Label className="text-xs">MATERIAL NAME *</Label>
               <Input
                 value={addStoreItemForm.name}
                 onChange={e => setAddStoreItemForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. BEARING 6205"
+                placeholder="e.g. STONE DUST"
                 className="uppercase"
                 data-testid="input-new-store-item-name"
                 autoFocus
@@ -2194,35 +2251,35 @@ export default function PurchaseIndents() {
                 <Select value={addStoreItemForm.category} onValueChange={v => setAddStoreItemForm(f => ({ ...f, category: v }))}>
                   <SelectTrigger className="text-xs" data-testid="select-new-store-item-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "Others"].map(c => (
+                    {["Aggregate", "Bitumen", "Utility", "LDO", "Spares", "Consumables", "Electricals", "Others"].map(c => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">UOM *</Label>
+                <Label className="text-xs">DEFAULT UOM *</Label>
                 <Select value={addStoreItemForm.uom} onValueChange={v => setAddStoreItemForm(f => ({ ...f, uom: v }))}>
                   <SelectTrigger className="text-xs" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["NOS", "PCS", "SET", "KG", "LITERS", "METERS", "FEET", "ROLL", "BOX", "PAIR", "PACK"].map(u => (
+                    {["NOS", "KG", "TON", "MT", "LITERS", "CUM", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
                       <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">Item will be added to the store catalogue and the description above will be filled in automatically.</p>
+            <p className="text-[10px] text-muted-foreground">Material will be added to the plant materials catalogue and linked to this indent item.</p>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" size="sm" onClick={() => setAddStoreItemOpen(false)}>Cancel</Button>
               <Button
                 type="button"
                 size="sm"
                 disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
-                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, uom: addStoreItemForm.uom, isActive: 1 })}
+                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim().toUpperCase(), category: addStoreItemForm.category, defaultUom: addStoreItemForm.uom, isActive: 1 })}
                 data-testid="button-save-new-store-item"
               >
-                {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add to Catalogue"}
+                {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save as New Item"}
               </Button>
             </div>
           </div>
