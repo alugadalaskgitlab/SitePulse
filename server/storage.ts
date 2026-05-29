@@ -753,7 +753,7 @@ export interface IStorage {
   getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
-  createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems>;
+  createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   deleteStoreGrn(id: number): Promise<boolean>;
   getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
@@ -761,7 +761,9 @@ export interface IStorage {
   deleteStoreIssue(id: number): Promise<boolean>;
   getStoreStockSummary(): Promise<StoreStockBalance[]>;
   getStoreItemLedger(itemId: number, filters?: { dateFrom?: string; dateTo?: string }): Promise<StoreLedgerEntry[]>;
-  generateStoreDocNumber(type: 'GRN' | 'ISS'): Promise<string>;
+  generateStoreDocNumber(type: 'GRN' | 'ISS', category?: string): Promise<string>;
+  generateMaterialReceiptNumber(catCode: string): Promise<string>;
+  generateReceiptNoForMaterial(materialId: number): Promise<string>;
 
   // Equipment Maintenance & Breakdown Logs
   getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<EquipmentMaintenanceLogWithDetails[]>;
@@ -2522,10 +2524,39 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(materialReceipts.date));
   }
 
+  private getMaterialCategoryCode(category: string | null | undefined, name: string | null | undefined): string {
+    const cat = (category || '').toLowerCase();
+    const nm = (name || '').toUpperCase();
+    if (cat === 'aggregate') return 'AGG';
+    if (cat === 'bitumen') return 'BT';
+    if (cat === 'emulsion' || nm.includes('EMULSION')) return 'EMU';
+    if (cat === 'ldo' || nm === 'LDO') return 'LDO';
+    if (cat === 'utility' || nm === 'DIESEL' || nm === 'HSD') return 'DSL';
+    if (cat === 'cement' || nm.includes('CEMENT')) return 'CEM';
+    return 'BULK';
+  }
+
+  async generateReceiptNoForMaterial(materialId: number): Promise<string> {
+    const [material] = await db.select({ category: plantMaterials.category, name: plantMaterials.name })
+      .from(plantMaterials).where(eq(plantMaterials.id, materialId)).limit(1);
+    const catCode = this.getMaterialCategoryCode(material?.category, material?.name);
+    return this.generateMaterialReceiptNumber(catCode);
+  }
+
   async createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt> {
+    // Auto-generate receiptNo if not already provided
+    let autoReceiptNo: string | null = (receipt as any).receiptNo || null;
+    if (!autoReceiptNo) {
+      const [material] = await db.select({ category: plantMaterials.category, name: plantMaterials.name })
+        .from(plantMaterials).where(eq(plantMaterials.id, receipt.materialId)).limit(1);
+      const catCode = this.getMaterialCategoryCode(material?.category, material?.name);
+      autoReceiptNo = await this.generateMaterialReceiptNumber(catCode);
+    }
+
     return db.transaction(async (tx) => {
       const uppercased = {
         ...receipt,
+        receiptNo: autoReceiptNo,
         supplier: receipt.supplier?.toUpperCase(),
         transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
@@ -16673,7 +16704,7 @@ export class DatabaseStorage implements IStorage {
   // STORES & INVENTORY MODULE
   // ============================================
 
-  async generateStoreDocNumber(type: 'GRN' | 'ISS'): Promise<string> {
+  async generateStoreDocNumber(type: 'GRN' | 'ISS', category?: string): Promise<string> {
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
@@ -16681,12 +16712,13 @@ export class DatabaseStorage implements IStorage {
     const fyEnd = fyStart + 1;
     const fyStr = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
     const prefix = type === 'GRN' ? 'GRN' : 'ISS';
-    const pattern = `${prefix}/${fyStr}/%`;
-    const table = type === 'GRN' ? storeGrns : storeIssues;
+    const fullPrefix = category ? `${prefix}/${category}/${fyStr}` : `${prefix}/${fyStr}`;
+    const pattern = `${fullPrefix}/%`;
     const colName = type === 'GRN' ? 'grn_number' : 'issue_number';
+    const tableName = type === 'GRN' ? 'store_grns' : 'store_issues';
     const result = await db.execute(sql`
       SELECT ${sql.raw(colName)} as doc_num
-      FROM ${sql.raw(type === 'GRN' ? 'store_grns' : 'store_issues')}
+      FROM ${sql.raw(tableName)}
       WHERE ${sql.raw(colName)} LIKE ${pattern}
       ORDER BY ${sql.raw(colName)} DESC
       LIMIT 1
@@ -16695,10 +16727,36 @@ export class DatabaseStorage implements IStorage {
     let seq = 1;
     if (rows.length > 0 && rows[0].doc_num) {
       const parts = String(rows[0].doc_num).split('/');
-      const lastSeq = parseInt(parts[2] || '0', 10);
+      const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
       if (!isNaN(lastSeq)) seq = lastSeq + 1;
     }
-    return `${prefix}/${fyStr}/${String(seq).padStart(4, '0')}`;
+    return `${fullPrefix}/${String(seq).padStart(4, '0')}`;
+  }
+
+  async generateMaterialReceiptNumber(catCode: string): Promise<string> {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const fyStart = month >= 4 ? year : year - 1;
+    const fyEnd = fyStart + 1;
+    const fyStr = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
+    const fullPrefix = `RECV/${catCode}/${fyStr}`;
+    const pattern = `${fullPrefix}/%`;
+    const result = await db.execute(sql`
+      SELECT receipt_no as doc_num
+      FROM material_receipts
+      WHERE receipt_no LIKE ${pattern}
+      ORDER BY receipt_no DESC
+      LIMIT 1
+    `);
+    const rows = (result.rows || []) as any[];
+    let seq = 1;
+    if (rows.length > 0 && rows[0].doc_num) {
+      const parts = String(rows[0].doc_num).split('/');
+      const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
+      if (!isNaN(lastSeq)) seq = lastSeq + 1;
+    }
+    return `${fullPrefix}/${String(seq).padStart(4, '0')}`;
   }
 
   async getStoreItems(includeInactive = false): Promise<StoreItem[]> {
@@ -16778,9 +16836,10 @@ export class DatabaseStorage implements IStorage {
 
   async createStoreGrn(
     grnData: Omit<InsertStoreGrn, 'grnNumber'>,
-    items: Omit<InsertStoreGrnItem, 'grnId'>[]
+    items: Omit<InsertStoreGrnItem, 'grnId'>[],
+    grnCategory?: string
   ): Promise<StoreGrnWithItems> {
-    const grnNumber = await this.generateStoreDocNumber('GRN');
+    const grnNumber = await this.generateStoreDocNumber('GRN', grnCategory);
     const [grn] = await db.insert(storeGrns).values({ ...grnData, grnNumber }).returning();
     if (items.length > 0) {
       await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));

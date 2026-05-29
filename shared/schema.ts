@@ -305,6 +305,7 @@ export const materialReceipts = pgTable("material_receipts", {
   transporter: text("transporter"), // Who transported the material (separate from supplier)
   vehicleNumber: text("vehicle_number"),
   challanNumber: text("challan_number"),
+  receiptNo: text("receipt_no"),
   invoiceNo: text("invoice_no"),
   invoiceDate: date("invoice_date"),
   indentRef: text("indent_ref"),

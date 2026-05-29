@@ -1377,6 +1377,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plant-module/next-receipt-number", async (req, res) => {
+    try {
+      const materialId = req.query.materialId ? Number(req.query.materialId) : null;
+      if (!materialId || isNaN(materialId)) return res.status(400).json({ error: "materialId required" });
+      const number = await storage.generateReceiptNoForMaterial(materialId);
+      res.json({ number });
+    } catch (err) {
+      console.error("GET /api/plant-module/next-receipt-number:", err);
+      res.status(500).json({ error: "Failed to generate receipt number" });
+    }
+  });
+
   // Material Issues (issues to sites/parties from central store)
   app.get("/api/plant-module/material-issues", async (req, res) => {
     try {
@@ -6712,11 +6724,11 @@ export async function registerRoutes(
   app.post("/api/stores/grns", async (req, res) => {
     try {
       if (!assertCreate(req, res, "stores_inventory")) return;
-      const { grn, items } = req.body;
+      const { grn, items, grnCategory } = req.body;
       if (!grn || !items || !Array.isArray(items)) {
         return res.status(400).json({ error: "grn and items are required" });
       }
-      const result = await storage.createStoreGrn(grn, items);
+      const result = await storage.createStoreGrn(grn, items, grnCategory || undefined);
       res.status(201).json(result);
     } catch (err) {
       console.error("POST /api/stores/grns:", err);
@@ -6822,7 +6834,8 @@ export async function registerRoutes(
       if (!assertView(req, res, "stores_inventory")) return;
       const type = req.query.type as string;
       if (type !== "GRN" && type !== "ISS") return res.status(400).json({ error: "type must be GRN or ISS" });
-      const number = await storage.generateStoreDocNumber(type);
+      const category = req.query.category as string | undefined;
+      const number = await storage.generateStoreDocNumber(type, category || undefined);
       res.json({ number });
     } catch (err) {
       console.error("GET /api/stores/next-doc-number:", err);

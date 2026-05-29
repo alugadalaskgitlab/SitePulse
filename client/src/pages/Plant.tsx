@@ -195,7 +195,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
   const { sectionVisible } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
-  const isRmc = plantType === "rmc" && rmcEnabled;
+  const isRmc = rmcEnabled;
 
   const { data: openCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/maintenance/open-count"],
@@ -510,7 +510,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 
 function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
   const { sectionVisible } = useAuth();
-  const isRmc = plantType === "rmc" && rmcEnabled;
+  const isRmc = rmcEnabled;
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
     const sep = path.includes("?") ? "&" : "?";
@@ -592,7 +592,7 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
 }
 
 function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
-  const isRmc = plantType === "rmc" && rmcEnabled;
+  const isRmc = rmcEnabled;
   const { appendOrigin } = useOrigin();
   const { sectionVisible, isAdmin } = useAuth();
   const { toast } = useToast();

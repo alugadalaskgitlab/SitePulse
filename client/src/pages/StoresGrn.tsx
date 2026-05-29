@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "Others"];
+const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
+const STORE_CATEGORY_CODES: Record<string, string> = {
+  "Spares": "SPR", "Lubricants": "LUB", "Consumables": "CONS", "Electricals": "ELEC",
+  "Tools": "TOOL", "HMA": "HMA", "RMC": "RMC", "Office": "OFC", "General": "GEN", "Others": "OTH",
+};
+
+function getStatusBadgeGrn(status: string) {
+  switch (status) {
+    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">APPROVED</Badge>;
+    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PENDING</Badge>;
+    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[10px] px-1.5 py-0">COMPLETED</Badge>;
+    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
+    default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
+  }
+}
 const STORE_UOMS = ["Nos", "Pcs", "Set", "Liters", "Ltrs", "Kg", "Grams", "Meters", "Feet", "Roll", "Bag", "Box", "Pair", "Pack"];
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
@@ -61,6 +75,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
   const [suggestedIndents, setSuggestedIndents] = useState<PurchaseIndentFull[]>([]);
+  const [grnCategory, setGrnCategory] = useState("Spares");
+  const [indentComboSearch, setIndentComboSearch] = useState("");
+  const [indentComboOpen, setIndentComboOpen] = useState(false);
+  const indentComboRef = useRef<HTMLDivElement>(null);
+  const [indentOverride, setIndentOverride] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (indentComboRef.current && !indentComboRef.current.contains(e.target as Node)) {
+        setIndentComboOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemTargetIdx, setAddItemTargetIdx] = useState<number | null>(null);
@@ -72,23 +101,22 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
 
-  const { data: purchaseIndents = [] } = useQuery<PurchaseIndentFull[]>({
+  const { data: allPurchaseIndents = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
     select: (data: any[]) =>
-      data
-        .map(d => ({
-          id: d.id,
-          indentNo: d.indentNo,
-          status: d.status,
-          items: (d.items || []).map((it: any) => ({
-            description: it.description || "",
-            qty: it.qty,
-            uom: it.uom,
-            approvedQty: it.approvedQty,
-          })),
-        }))
-        .filter(d => d.status === "approved" || d.status === "pending"),
+      data.map(d => ({
+        id: d.id,
+        indentNo: d.indentNo,
+        status: d.status,
+        items: (d.items || []).map((it: any) => ({
+          description: it.description || "",
+          qty: it.qty,
+          uom: it.uom,
+          approvedQty: it.approvedQty,
+        })),
+      })),
   });
+  const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
     queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter],
@@ -104,8 +132,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
 
   const { data: previewNum } = useQuery<{ number: string }>({
-    queryKey: ["/api/stores/next-doc-number", "GRN"],
-    queryFn: () => fetch("/api/stores/next-doc-number?type=GRN").then(r => r.json()),
+    queryKey: ["/api/stores/next-doc-number", "GRN", grnCategory],
+    queryFn: () => {
+      const catCode = STORE_CATEGORY_CODES[grnCategory] || "OTH";
+      return fetch(`/api/stores/next-doc-number?type=GRN&category=${catCode}`).then(r => r.json());
+    },
     enabled: showForm,
     staleTime: 0,
   });
@@ -146,6 +177,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", indentRef: "", remarks: "" });
       setLines([emptyLine()]);
       setSuggestedIndents([]);
+      setGrnCategory("Spares");
+      setIndentOverride(false);
+      setIndentComboSearch("");
       if (isNew) navigate("/stores/grns");
     },
     onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
@@ -183,6 +217,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "Add at least one item with quantity", variant: "destructive" });
       return;
     }
+    const selectedPI = allPurchaseIndents.find(pi => pi.indentNo === form.indentRef);
+    if (selectedPI && selectedPI.status !== "approved" && !indentOverride) {
+      toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed anyway.", variant: "destructive" });
+      return;
+    }
     createMutation.mutate({
       grn: {
         ...form,
@@ -197,6 +236,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         rate: l.rate ? parseFloat(l.rate) : null,
         uom: l.uom,
       })),
+      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "OTH",
     });
   }
 
@@ -307,10 +347,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           <Card className="border-green-200 dark:border-green-900">
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <h3 className="font-semibold text-sm flex items-center gap-2">
                     <ArrowDownToLine className="w-4 h-4 text-green-600" /> New Goods Receipt Note
                   </h3>
+                  <Select value={grnCategory} onValueChange={v => { setGrnCategory(v); }}>
+                    <SelectTrigger className="h-7 w-36 text-xs" data-testid="select-grn-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   {previewNum?.number && (
                     <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-grn-preview-number">
                       {previewNum.number}
@@ -343,61 +391,131 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </div>
                 </div>
 
-                {/* Indent reference — auto-detected or manual */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Indent Reference</Label>
-                    {form.indentRef && (
-                      <button type="button" className="text-[10px] text-muted-foreground hover:text-destructive" onClick={() => setForm(f => ({ ...f, indentRef: "" }))}>
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  {suggestedIndents.length > 0 && !form.indentRef && (
-                    <div className="flex flex-wrap gap-1.5 mb-1">
-                      <span className="text-[10px] text-muted-foreground">Matching indents:</span>
-                      {suggestedIndents.map(pi => (
-                        <button
-                          key={pi.id}
-                          type="button"
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 transition-colors"
-                          onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
-                          data-testid={`badge-indent-${pi.indentNo}`}
-                        >
-                          {pi.indentNo} ({pi.status.toUpperCase()})
-                        </button>
-                      ))}
+                {/* Indent reference — searchable combobox + status card */}
+                {(() => {
+                  const selectedPI = form.indentRef ? allPurchaseIndents.find(pi => pi.indentNo === form.indentRef) : null;
+                  const isNotApproved = selectedPI && selectedPI.status !== "approved";
+                  const filteredPIs = allPurchaseIndents.filter(pi =>
+                    !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
+                  );
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Indent Reference</Label>
+                        {suggestedIndents.length > 0 && !form.indentRef && (
+                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
+                            {suggestedIndents.length} match{suggestedIndents.length !== 1 ? "es" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Combobox */}
+                      <div ref={indentComboRef} className="relative">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            className="text-xs flex-1"
+                            placeholder="Type PI number to search…"
+                            value={form.indentRef || indentComboSearch}
+                            onChange={e => {
+                              const v = e.target.value;
+                              if (form.indentRef) {
+                                setForm(f => ({ ...f, indentRef: "" }));
+                                setIndentComboSearch(v);
+                              } else {
+                                setIndentComboSearch(v);
+                              }
+                              setIndentComboOpen(true);
+                            }}
+                            onFocus={() => setIndentComboOpen(true)}
+                            data-testid="input-indent-ref"
+                          />
+                          {form.indentRef && (
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"
+                              onClick={() => { setForm(f => ({ ...f, indentRef: "" })); setIndentComboSearch(""); setIndentOverride(false); }}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                        {indentComboOpen && !form.indentRef && filteredPIs.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                            <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">None / No indent</div>
+                            {filteredPIs.map(pi => (
+                              <div
+                                key={pi.id}
+                                className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  setForm(f => ({ ...f, indentRef: pi.indentNo }));
+                                  setIndentComboSearch("");
+                                  setIndentComboOpen(false);
+                                }}
+                                data-testid={`option-indent-${pi.indentNo}`}
+                              >
+                                <span className="font-semibold">{pi.indentNo}</span>
+                                {getStatusBadgeGrn(pi.status)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selected PI status card */}
+                      {selectedPI && (
+                        <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold">{selectedPI.indentNo}</span>
+                            {getStatusBadgeGrn(selectedPI.status)}
+                            <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          {selectedPI.items.slice(0, 3).map((it, i) => (
+                            <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
+                          ))}
+                          {selectedPI.items.length > 3 && <div className="text-muted-foreground">+{selectedPI.items.length - 3} more</div>}
+                        </div>
+                      )}
+
+                      {/* Warning + override if not approved */}
+                      {isNotApproved && (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 space-y-1">
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                              This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
+                            </p>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={indentOverride}
+                                onChange={e => setIndentOverride(e.target.checked)}
+                                data-testid="checkbox-indent-override"
+                              />
+                              <span className="text-amber-700 dark:text-amber-300">Override — I understand this GRN is being raised against an unapproved indent</span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Suggestions from item matching */}
+                      {suggestedIndents.length > 0 && !form.indentRef && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] text-muted-foreground">Matching indents:</span>
+                          {suggestedIndents.map(pi => (
+                            <button
+                              key={pi.id}
+                              type="button"
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 transition-colors"
+                              onClick={() => { setForm(f => ({ ...f, indentRef: pi.indentNo })); setIndentComboSearch(""); }}
+                              data-testid={`badge-indent-${pi.indentNo}`}
+                            >
+                              {pi.indentNo}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {form.indentRef ? (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-violet-400 text-violet-700 dark:text-violet-400 text-xs">
-                        {form.indentRef}
-                      </Badge>
-                      <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setForm(f => ({ ...f, indentRef: "" }))}>
-                        Change
-                      </Button>
-                    </div>
-                  ) : (
-                    <Select
-                      value={form.indentRef || "__none__"}
-                      onValueChange={v => setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }))}
-                    >
-                      <SelectTrigger className="text-xs" data-testid="select-grn-indent">
-                        <SelectValue placeholder="No indent (add items below first for suggestions)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None / No indent</SelectItem>
-                        {purchaseIndents.map(pi => (
-                          <SelectItem key={pi.id} value={pi.indentNo}>
-                            {pi.indentNo}{" "}
-                            <span className="text-muted-foreground text-[10px]">({pi.status.toUpperCase()})</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">Remarks / Notes</Label>

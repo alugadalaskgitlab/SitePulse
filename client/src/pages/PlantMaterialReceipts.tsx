@@ -13,7 +13,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -80,6 +80,10 @@ export default function PlantMaterialReceipts() {
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [indentRef, setIndentRef] = useState("");
+  const [indentComboSearch, setIndentComboSearch] = useState("");
+  const [indentComboOpen, setIndentComboOpen] = useState(false);
+  const indentComboRef = useRef<HTMLDivElement>(null);
+  const [indentOverride, setIndentOverride] = useState(false);
 
   interface ReceiptFormData {
     date: string;
@@ -168,12 +172,39 @@ export default function PlantMaterialReceipts() {
     }
   }, [autoEditDone, dialogOpen]);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (indentComboRef.current && !indentComboRef.current.contains(e.target as Node)) {
+        setIndentComboOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
   });
 
   const { data: materials } = useQuery<PlantMaterial[]>({
     queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: allPurchaseIndents = [] } = useQuery<{id: number; indentNo: string; status: string; items: {description: string; qty: number; uom: string}[]}[]>({
+    queryKey: ["/api/purchase-indents"],
+    select: (data: any[]) => data.map(d => ({
+      id: d.id,
+      indentNo: d.indentNo,
+      status: d.status,
+      items: (d.items || []).map((it: any) => ({ description: it.description || "", qty: it.qty, uom: it.uom })),
+    })),
+  });
+
+  const { data: nextReceiptNoData } = useQuery<{ number: string }>({
+    queryKey: ["/api/plant-module/next-receipt-number", materialId],
+    queryFn: () => fetch(`/api/plant-module/next-receipt-number?materialId=${materialId}`).then(r => r.json()),
+    enabled: dialogOpen && !editingReceipt && !!materialId,
+    staleTime: 0,
   });
 
   const createMutation = useMutation({
@@ -231,6 +262,8 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo("");
     setInvoiceDate("");
     setIndentRef("");
+    setIndentComboSearch("");
+    setIndentOverride(false);
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -249,6 +282,8 @@ export default function PlantMaterialReceipts() {
     setInvoiceNo((receipt as any).invoiceNo || "");
     setInvoiceDate((receipt as any).invoiceDate || "");
     setIndentRef((receipt as any).indentRef || "");
+    setIndentComboSearch("");
+    setIndentOverride(false);
     setDialogOpen(true);
   };
 
@@ -257,6 +292,11 @@ export default function PlantMaterialReceipts() {
       if (!challanNumber.trim()) {
         toast({ title: "Error", description: "Receipt No. is required", variant: "destructive" });
       }
+      return;
+    }
+    const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
+    if (selectedPI && selectedPI.status !== "approved" && !indentOverride) {
+      toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
       return;
     }
     
@@ -625,7 +665,14 @@ export default function PlantMaterialReceipts() {
           )}
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingReceipt ? "Edit Receipt" : "Record Material Receipt"}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2 flex-wrap">
+                {editingReceipt ? "Edit Receipt" : "Record Material Receipt"}
+                {!editingReceipt && nextReceiptNoData?.number && (
+                  <span className="text-xs font-mono font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-recv-preview-number">
+                    {nextReceiptNoData.number}
+                  </span>
+                )}
+              </DialogTitle>
             </DialogHeader>
             {hasDraft && !editingReceipt && (
               <DraftRestoreBanner
@@ -760,10 +807,109 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
-              <div>
-                <Label>Indent Ref. <span className="text-muted-foreground text-xs">(optional — link to purchase indent)</span></Label>
-                <Input value={indentRef} onChange={(e) => setIndentRef(e.target.value.toUpperCase())} placeholder="e.g. PI-2024-001" data-testid="input-indent-ref" />
-              </div>
+              {/* Indent Ref — searchable combobox + status card */}
+              {(() => {
+                const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
+                const isNotApproved = selectedPI && selectedPI.status !== "approved";
+                const filteredPIs = allPurchaseIndents.filter(pi =>
+                  !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
+                );
+                const getStatusBadge = (status: string) => {
+                  switch (status) {
+                    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">APPROVED</Badge>;
+                    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PENDING</Badge>;
+                    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[10px] px-1.5 py-0">COMPLETED</Badge>;
+                    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
+                    default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
+                  }
+                };
+                return (
+                  <div className="space-y-1.5">
+                    <Label>Indent Ref. <span className="text-muted-foreground text-xs">(optional — link to purchase indent)</span></Label>
+                    <div ref={indentComboRef} className="relative">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={indentRef || indentComboSearch}
+                          onChange={e => {
+                            const v = e.target.value;
+                            if (indentRef) {
+                              setIndentRef("");
+                              setIndentComboSearch(v);
+                            } else {
+                              setIndentComboSearch(v);
+                            }
+                            setIndentComboOpen(true);
+                            setIndentOverride(false);
+                          }}
+                          onFocus={() => setIndentComboOpen(true)}
+                          placeholder="Type PI number to search…"
+                          data-testid="input-indent-ref"
+                          autoComplete="off"
+                        />
+                        {indentRef && (
+                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0"
+                            onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); }}
+                          >
+                            <span className="sr-only">Clear</span>✕
+                          </Button>
+                        )}
+                      </div>
+                      {indentComboOpen && !indentRef && filteredPIs.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
+                          {filteredPIs.map(pi => (
+                            <div
+                              key={pi.id}
+                              className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                setIndentRef(pi.indentNo);
+                                setIndentComboSearch("");
+                                setIndentComboOpen(false);
+                              }}
+                              data-testid={`option-indent-${pi.indentNo}`}
+                            >
+                              <span className="font-semibold text-sm">{pi.indentNo}</span>
+                              {getStatusBadge(pi.status)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {selectedPI && (
+                      <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold">{selectedPI.indentNo}</span>
+                          {getStatusBadge(selectedPI.status)}
+                          <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        {selectedPI.items.slice(0, 3).map((it, i) => (
+                          <div key={i} className="text-muted-foreground">{it.description} — {it.qty} {it.uom}</div>
+                        ))}
+                        {selectedPI.items.length > 3 && <div className="text-muted-foreground">+{selectedPI.items.length - 3} more</div>}
+                      </div>
+                    )}
+                    {isNotApproved && (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1">
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                            This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
+                          </p>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={indentOverride}
+                              onChange={e => setIndentOverride(e.target.checked)}
+                              data-testid="checkbox-indent-override"
+                            />
+                            <span className="text-amber-700 dark:text-amber-300">Override — proceed with unapproved indent</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="space-y-1.5">
                 <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">
