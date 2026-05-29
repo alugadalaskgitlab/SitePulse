@@ -16717,8 +16717,19 @@ export class DatabaseStorage implements IStorage {
     const fyStart = month >= 4 ? year : year - 1;
     const fyEnd = fyStart + 1;
     const fyStr = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
-    const prefix = type === 'GRN' ? 'GRN' : 'ISS';
-    const fullPrefix = category ? `${prefix}/${category}/${fyStr}` : `${prefix}/${fyStr}`;
+    // For GRN type: use the category code directly as prefix when it is one of the
+    // meaningful short codes (STORE, EQP, ELECT, TOOLS, LUBR, CONS).
+    // This makes numbering like EQP/25-26/0001 instead of GRN/SPR/25-26/0001.
+    // For ISS type: keep the ISS prefix unchanged.
+    const GRN_KNOWN_PREFIXES = new Set(['STORE', 'EQP', 'ELECT', 'TOOLS', 'LUBR', 'CONS']);
+    let fullPrefix: string;
+    if (type === 'GRN') {
+      fullPrefix = (category && GRN_KNOWN_PREFIXES.has(category))
+        ? `${category}/${fyStr}`
+        : `GRN/${fyStr}`;
+    } else {
+      fullPrefix = `ISS/${fyStr}`;
+    }
     const pattern = `${fullPrefix}/%`;
     const colName = type === 'GRN' ? 'grn_number' : 'issue_number';
     const tableName = type === 'GRN' ? 'store_grns' : 'store_issues';
@@ -16841,9 +16852,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   private static readonly STORE_ITEM_CAT_CODES: Record<string, string> = {
-    "Spares": "SPR", "Lubricants": "LUB", "Consumables": "CONS",
-    "Electricals": "ELEC", "Tools": "TOOL", "HMA Plant": "HMA",
-    "RMC": "RMC", "Office": "OFC", "General": "GEN", "Other": "OTH",
+    "Spares": "EQP",
+    "Lubricants": "LUBR",
+    "Consumables": "CONS",
+    "Electricals": "ELECT",
+    "Tools": "TOOLS",
+    "HMA Plant": "STORE",
+    "HMA": "STORE",
+    "RMC": "STORE",
+    "Office": "STORE",
+    "General": "STORE",
   };
 
   async createStoreGrn(

@@ -15,9 +15,28 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const STORE_CATEGORY_CODES: Record<string, string> = {
-  "Spares": "SPR", "Lubricants": "LUB", "Consumables": "CONS", "Electricals": "ELEC",
-  "Tools": "TOOL", "HMA": "HMA", "RMC": "RMC", "Office": "OFC", "General": "GEN", "Others": "OTH",
+  "Spares": "EQP", "Lubricants": "LUBR", "Consumables": "CONS", "Electricals": "ELECT",
+  "Tools": "TOOLS", "HMA": "STORE", "RMC": "STORE", "Office": "STORE", "General": "STORE", "Others": "GRN",
 };
+
+const ACCEPTANCE_STATUS_OPTIONS = [
+  { value: "accepted", label: "Accepted" },
+  { value: "partial", label: "Partially Accepted" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function getAcceptanceBadge(status: string) {
+  switch (status) {
+    case "accepted":
+      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">ACCEPTED</Badge>;
+    case "partial":
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PARTIAL</Badge>;
+    case "rejected":
+      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
+    default:
+      return null;
+  }
+}
 
 function getStatusBadgeGrn(status: string) {
   switch (status) {
@@ -37,6 +56,7 @@ type GrnLine = { itemId: string; qty: string; rate: string; uom: string };
 type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
   invoiceNo: string | null; invoiceDate: string | null; indentRef: string | null; remarks: string | null;
+  acceptanceStatus: string; acceptanceRemarks: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
 };
 
@@ -74,6 +94,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     invoiceDate: "",
     indentRef: isNew ? indentRefFilter : "",
     remarks: "",
+    acceptanceStatus: "accepted",
+    acceptanceRemarks: "",
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
   const [suggestedIndents, setSuggestedIndents] = useState<PurchaseIndentFull[]>([]);
@@ -181,7 +203,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN created successfully" });
       setShowForm(false);
-      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", indentRef: "", remarks: "" });
+      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
       setSuggestedIndents([]);
       setGrnCategory("Spares");
@@ -224,6 +246,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "Add at least one item with quantity", variant: "destructive" });
       return;
     }
+    if ((form.acceptanceStatus === "partial" || form.acceptanceStatus === "rejected") && !form.acceptanceRemarks.trim()) {
+      toast({ title: "Please provide a reason for partial/rejected status", variant: "destructive" });
+      return;
+    }
     const selectedPI = allPurchaseIndents.find(pi => pi.indentNo === form.indentRef);
     if (selectedPI && selectedPI.status !== "approved" && !indentOverride) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed anyway.", variant: "destructive" });
@@ -236,6 +262,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         invoiceDate: form.invoiceDate || null,
         indentRef: form.indentRef || null,
         remarks: form.remarks || null,
+        acceptanceStatus: form.acceptanceStatus,
+        acceptanceRemarks: form.acceptanceRemarks || null,
       },
       items: validLines.map(l => ({
         itemId: parseInt(l.itemId),
@@ -243,7 +271,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         rate: l.rate ? parseFloat(l.rate) : null,
         uom: l.uom,
       })),
-      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "OTH",
+      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
     });
   }
 
@@ -291,6 +319,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                    {getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
                     )}
@@ -301,6 +330,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       {selectedGrn.invoiceNo ? `Invoice/Challan: ${selectedGrn.invoiceNo}` : ""}
                       {selectedGrn.invoiceNo && selectedGrn.invoiceDate ? " · " : ""}
                       {selectedGrn.invoiceDate ? format(new Date(selectedGrn.invoiceDate + "T00:00:00"), "dd MMM yyyy") : ""}
+                    </p>
+                  )}
+                  {selectedGrn.acceptanceRemarks && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <span className="font-medium">QC Note:</span> {selectedGrn.acceptanceRemarks}
                     </p>
                   )}
                   {selectedGrn.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
@@ -531,6 +565,37 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
                 </div>
 
+                {/* ── Acceptance Status ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-md border bg-muted/30">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Acceptance Status *</Label>
+                    <Select value={form.acceptanceStatus} onValueChange={v => setForm(f => ({ ...f, acceptanceStatus: v, acceptanceRemarks: v === "accepted" ? "" : f.acceptanceRemarks }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACCEPTANCE_STATUS_OPTIONS.map(o => (
+                          <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(form.acceptanceStatus === "partial" || form.acceptanceStatus === "rejected") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        {form.acceptanceStatus === "rejected" ? "Rejection Reason *" : "Partial Acceptance Reason *"}
+                      </Label>
+                      <Input
+                        value={form.acceptanceRemarks}
+                        onChange={e => setForm(f => ({ ...f, acceptanceRemarks: e.target.value }))}
+                        placeholder={form.acceptanceStatus === "rejected" ? "Why were goods rejected?" : "What was accepted / what was not?"}
+                        required
+                        data-testid="input-acceptance-remarks"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* ── Items received (item-first) ── */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Items Received *</Label>
@@ -736,6 +801,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                            {grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus)}
                             {grn.indentRef && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
                                 {grn.indentRef}

@@ -1775,6 +1775,8 @@ export const storeGrns = pgTable("store_grns", {
   invoiceDate: date("invoice_date"),
   indentRef: text("indent_ref"),
   remarks: text("remarks"),
+  acceptanceStatus: text("acceptance_status").notNull().default("accepted"), // "accepted" | "partial" | "rejected"
+  acceptanceRemarks: text("acceptance_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   dateIdx: index("store_grns_date_idx").on(t.date),
