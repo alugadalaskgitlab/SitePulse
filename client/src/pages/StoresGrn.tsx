@@ -72,7 +72,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     supplier: "",
     invoiceNo: "",
     invoiceDate: "",
-    indentRef: "",
+    indentRef: isNew ? indentRefFilter : "",
     remarks: "",
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);

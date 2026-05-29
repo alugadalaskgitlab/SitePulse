@@ -1133,6 +1133,12 @@ export default function PurchaseIndents() {
                                   {indentGrnCounts[indent.indentNo]} GRN{indentGrnCounts[indent.indentNo] > 1 ? "s" : ""} RAISED ↗
                                 </p>
                               </Link>
+                            ) : canViewStores && indentGrnCounts && (indent.status === "approved" || indent.status === "completed") ? (
+                              <Link href={`/stores/grns/new?indentRef=${encodeURIComponent(indent.indentNo)}`}>
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 font-medium underline-offset-2 hover:underline cursor-pointer" data-testid={`text-no-grn-${indent.id}`}>
+                                  NO DELIVERY RECORDED ↗
+                                </p>
+                              </Link>
                             ) : null}
                           </div>
                           {getStatusBadge(indent.status)}
