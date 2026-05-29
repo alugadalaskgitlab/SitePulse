@@ -6731,6 +6731,7 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
         supplier: req.query.supplier as string | undefined,
         indentRef: req.query.indentRef as string | undefined,
+        siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
       });
       res.json(grns);
     } catch (err) {

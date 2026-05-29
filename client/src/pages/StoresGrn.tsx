@@ -52,10 +52,12 @@ const STORE_UOMS = ["Nos", "Pcs", "Set", "Liters", "Ltrs", "Kg", "Grams", "Meter
 const TODAY = format(new Date(), "yyyy-MM-dd");
 
 type StoreItem = { id: number; name: string; category: string; uom: string };
+type Site = { id: number; name: string; isActive: number };
 type GrnLine = { itemId: string; qty: string; rate: string; uom: string };
 type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
-  invoiceNo: string | null; invoiceDate: string | null; indentRef: string | null; remarks: string | null;
+  invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
+  indentRef: string | null; remarks: string | null;
   acceptanceStatus: string; acceptanceRemarks: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
 };
@@ -85,6 +87,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
+  const [siteFilter, setSiteFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
@@ -92,6 +95,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     supplier: "",
     invoiceNo: "",
     invoiceDate: "",
+    siteId: "",
     indentRef: isNew ? indentRefFilter : "",
     remarks: "",
     acceptanceStatus: "accepted",
@@ -124,6 +128,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   }, [detailId]);
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
+  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const { data: allPurchaseIndents = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
@@ -143,12 +148,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (indentFilter) p.set("indentRef", indentFilter);
+      if (siteFilter) p.set("siteId", siteFilter);
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -203,7 +209,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN created successfully" });
       setShowForm(false);
-      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
+      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
       setSuggestedIndents([]);
       setGrnCategory("Spares");
@@ -260,6 +266,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         ...form,
         invoiceNo: form.invoiceNo || null,
         invoiceDate: form.invoiceDate || null,
+        siteId: form.siteId ? parseInt(form.siteId) : null,
         indentRef: form.indentRef || null,
         remarks: form.remarks || null,
         acceptanceStatus: form.acceptanceStatus,
@@ -320,6 +327,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
+                    {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : null; })()}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
                     )}
@@ -429,6 +437,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Invoice / Challan Date</Label>
                     <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Site / Project (optional)</Label>
+                    <Select value={form.siteId} onValueChange={v => setForm(f => ({ ...f, siteId: v === "__none__" ? "" : v }))}>
+                      <SelectTrigger className="h-9 text-xs" data-testid="select-grn-site">
+                        <SelectValue placeholder="— Not assigned —" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__" className="text-xs text-muted-foreground">— Not assigned —</SelectItem>
+                        {sites.map(s => (
+                          <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -781,8 +803,22 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Label className="text-xs text-muted-foreground">Indent</Label>
                 <Input className="h-8 w-36 text-xs" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
-              {(dateFrom || dateTo || indentFilter) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); }}>Clear</Button>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Site</Label>
+                <Select value={siteFilter} onValueChange={v => setSiteFilter(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-site-filter">
+                    <SelectValue placeholder="All sites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__" className="text-xs text-muted-foreground">All sites</SelectItem>
+                    {sites.map(s => (
+                      <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(dateFrom || dateTo || indentFilter || siteFilter) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); }}>Clear</Button>
               )}
             </div>
 
@@ -802,6 +838,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                             {grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus)}
+                            {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : null; })()}
                             {grn.indentRef && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
                                 {grn.indentRef}

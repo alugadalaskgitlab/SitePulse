@@ -751,7 +751,7 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
@@ -16826,12 +16826,13 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number }): Promise<StoreGrnWithItems[]> {
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeGrns.date, filters.dateTo));
     if (filters?.supplier) conds.push(ilike(storeGrns.supplier, `%${filters.supplier}%`));
     if (filters?.indentRef) conds.push(ilike(storeGrns.indentRef, `%${filters.indentRef}%`));
+    if (filters?.siteId) conds.push(eq(storeGrns.siteId, filters.siteId));
     const grns = await db.select().from(storeGrns)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
