@@ -70,7 +70,7 @@ export default function SiteDashboard() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const SITE_DPR_FILTER_URL_KEYS = [
-    "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier",
+    "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier", "workType",
   ];
   const urlHasDprFilterParams = (() => {
     if (typeof window === "undefined") return false;
@@ -78,7 +78,7 @@ export default function SiteDashboard() {
     return SITE_DPR_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
   const [filters, setFilters, resetDprFilters] = usePersistedFilters(
-    "site-dashboard:dpr-filters:v1",
+    "site-dashboard:dpr-filters:v2",
     {
       site: "",
       engineer: "",
@@ -89,6 +89,7 @@ export default function SiteDashboard() {
       hasDiesel: false,
       material: "",
       supplier: "",
+      workType: "",
     },
     { shouldHydrate: !urlHasDprFilterParams },
   );
@@ -193,6 +194,11 @@ export default function SiteDashboard() {
         const hasSupplier = dpr.materials?.some((m: any) => (m.supplier || '').toUpperCase() === filters.supplier);
         if (!hasSupplier) return false;
       }
+
+      // Work type filter
+      if (filters.workType) {
+        if ((dpr.workType || "road") !== filters.workType) return false;
+      }
       
       return true;
     });
@@ -281,7 +287,7 @@ export default function SiteDashboard() {
     resetDprFilters();
   };
 
-  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier;
+  const hasActiveFilters = filters.site || filters.engineer || filters.dateFrom || filters.dateTo || filters.activity || filters.equipment || filters.hasDiesel || filters.material || filters.supplier || filters.workType;
 
   const handleAdminAction = (action: "reports-excel" | "reports-pdf" | "reports-print") => {
     executeAction(action);
@@ -1041,6 +1047,19 @@ export default function SiteDashboard() {
                       {(supplierList || []).map((supplier) => (
                         <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Work Type</Label>
+                  <Select value={filters.workType || "all"} onValueChange={(value) => setFilters({ ...filters, workType: value === "all" ? "" : value })}>
+                    <SelectTrigger data-testid="select-work-type">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="road">Road</SelectItem>
+                      <SelectItem value="structure">Structure</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
