@@ -172,28 +172,28 @@ export default function StoresHome() {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Link href={`/stores/grns/new?returnTo=${ITEMS_RETURN}`}>
-                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-green-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-new-grn">
+              <Link href={`/stores/grns?returnTo=${ITEMS_RETURN}`}>
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-green-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-grn-history">
                   <div className="w-9 h-9 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
                     <ArrowDownToLine className="w-4 h-4 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">New GRN</p>
-                    <p className="text-xs text-slate-500">Goods Received Note</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">GRN</p>
+                    <p className="text-xs text-slate-500">Goods Received Notes</p>
                   </div>
-                  <Plus className="w-4 h-4 text-slate-300 group-hover:text-green-500 ml-auto" />
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-green-500 ml-auto" />
                 </button>
               </Link>
-              <Link href={`/stores/issues/new?returnTo=${ITEMS_RETURN}`}>
-                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-new-issue">
+              <Link href={`/stores/issues?returnTo=${ITEMS_RETURN}`}>
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-issues-history">
                   <div className="w-9 h-9 bg-orange-100 dark:bg-orange-900/40 rounded-lg flex items-center justify-center group-hover:bg-orange-200 transition-colors">
                     <ArrowUpFromLine className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">New Issue</p>
-                    <p className="text-xs text-slate-500">Issue Voucher</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Issue Vouchers</p>
+                    <p className="text-xs text-slate-500">Issue items to plant/site</p>
                   </div>
-                  <Plus className="w-4 h-4 text-slate-300 group-hover:text-orange-500 ml-auto" />
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-orange-500 ml-auto" />
                 </button>
               </Link>
               <Link href="/stores/items">

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, FileText } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, Badge as BadgeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,15 +18,20 @@ type StoreItem = { id: number; name: string; category: string; uom: string };
 type GrnLine = { itemId: string; qty: string; rate: string; uom: string };
 type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
-  invoiceNo: string | null; indentRef: string | null; remarks: string | null;
+  invoiceNo: string | null; invoiceDate: string | null; indentRef: string | null; remarks: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
+};
+
+type PurchaseIndentFull = {
+  id: number;
+  indentNo: string;
+  status: string;
+  items: { description: string; qty: number; uom: string; approvedQty: number | null }[];
 };
 
 const emptyLine = (): GrnLine => ({ itemId: "", qty: "", rate: "", uom: "" });
 
 interface Props { isNew?: boolean; detailId?: number }
-
-type PurchaseIndentSummary = { id: number; indentNo: string; status: string };
 
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
@@ -43,10 +48,15 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
-    date: TODAY, supplier: "", invoiceNo: "", indentRef: "", remarks: "",
+    date: TODAY,
+    supplier: "",
+    invoiceNo: "",
+    invoiceDate: "",
+    indentRef: "",
+    remarks: "",
   });
-  const [manualIndent, setManualIndent] = useState(false);
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
+  const [suggestedIndents, setSuggestedIndents] = useState<PurchaseIndentFull[]>([]);
 
   useEffect(() => {
     if (detailId) setSelectedId(detailId);
@@ -54,11 +64,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
 
-  const { data: purchaseIndents = [] } = useQuery<PurchaseIndentSummary[]>({
+  const { data: purchaseIndents = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
     select: (data: any[]) =>
       data
-        .map(d => ({ id: d.id, indentNo: d.indentNo, status: d.status }))
+        .map(d => ({
+          id: d.id,
+          indentNo: d.indentNo,
+          status: d.status,
+          items: (d.items || []).map((it: any) => ({
+            description: it.description || "",
+            qty: it.qty,
+            uom: it.uom,
+            approvedQty: it.approvedQty,
+          })),
+        }))
         .filter(d => d.status === "approved" || d.status === "pending"),
   });
 
@@ -84,15 +104,40 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const selectedGrn = grns.find(g => g.id === selectedId) ?? null;
 
+  function findMatchingIndents(itemName: string): PurchaseIndentFull[] {
+    if (!itemName || !purchaseIndents.length) return [];
+    const lc = itemName.toLowerCase();
+    return purchaseIndents.filter(pi =>
+      pi.items.some(it => it.description.toLowerCase().includes(lc) || lc.includes(it.description.toLowerCase()))
+    );
+  }
+
+  function updateLine(idx: number, key: keyof GrnLine, val: string) {
+    setLines(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: val };
+      if (key === "itemId" && val) {
+        const item = items.find(i => String(i.id) === val);
+        if (item) next[idx].uom = item.uom;
+        const matched = findMatchingIndents(item?.name || "");
+        setSuggestedIndents(matched);
+        if (matched.length === 1 && !form.indentRef) {
+          setForm(f => ({ ...f, indentRef: matched[0].indentNo }));
+        }
+      }
+      return next;
+    });
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN created successfully" });
       setShowForm(false);
-      setForm({ date: TODAY, supplier: "", invoiceNo: "", indentRef: "", remarks: "" });
-      setManualIndent(false);
+      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", indentRef: "", remarks: "" });
       setLines([emptyLine()]);
+      setSuggestedIndents([]);
       if (isNew) navigate("/stores/grns");
     },
     onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
@@ -108,28 +153,27 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Error", variant: "destructive" }),
   });
 
-  function updateLine(idx: number, key: keyof GrnLine, val: string) {
-    setLines(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: val };
-      if (key === "itemId" && val) {
-        const item = items.find(i => String(i.id) === val);
-        if (item) next[idx].uom = item.uom;
-      }
-      return next;
-    });
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validLines = lines.filter(l => l.itemId && l.qty);
     if (!validLines.length) {
-      toast({ title: "Add at least one item", variant: "destructive" });
+      toast({ title: "Add at least one item with quantity", variant: "destructive" });
       return;
     }
     createMutation.mutate({
-      grn: { ...form, invoiceNo: form.invoiceNo || null, indentRef: form.indentRef || null, remarks: form.remarks || null },
-      items: validLines.map(l => ({ itemId: parseInt(l.itemId), qty: parseFloat(l.qty), rate: l.rate ? parseFloat(l.rate) : null, uom: l.uom })),
+      grn: {
+        ...form,
+        invoiceNo: form.invoiceNo || null,
+        invoiceDate: form.invoiceDate || null,
+        indentRef: form.indentRef || null,
+        remarks: form.remarks || null,
+      },
+      items: validLines.map(l => ({
+        itemId: parseInt(l.itemId),
+        qty: parseFloat(l.qty),
+        rate: l.rate ? parseFloat(l.rate) : null,
+        uom: l.uom,
+      })),
     });
   }
 
@@ -142,6 +186,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   function closeDetail() {
     setSelectedId(null);
     navigate("/stores/grns");
+  }
+
+  function cancelForm() {
+    setShowForm(false);
+    setSuggestedIndents([]);
+    if (isNew) navigate("/stores/grns");
   }
 
   return (
@@ -176,7 +226,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     )}
                   </div>
                   <p className="text-base font-semibold mt-1">{selectedGrn.supplier}</p>
-                  {selectedGrn.invoiceNo && <p className="text-xs text-muted-foreground">Invoice / Challan: {selectedGrn.invoiceNo}</p>}
+                  {(selectedGrn.invoiceNo || selectedGrn.invoiceDate) && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedGrn.invoiceNo ? `Invoice/Challan: ${selectedGrn.invoiceNo}` : ""}
+                      {selectedGrn.invoiceNo && selectedGrn.invoiceDate ? " · " : ""}
+                      {selectedGrn.invoiceDate ? format(new Date(selectedGrn.invoiceDate + "T00:00:00"), "dd MMM yyyy") : ""}
+                    </p>
+                  )}
                   {selectedGrn.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={closeDetail} data-testid="button-close-detail">
@@ -238,116 +294,178 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </span>
                   )}
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowForm(false); if (isNew) navigate("/stores/grns"); }}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={cancelForm}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
+
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Date *</Label>
+                {/* ── Header fields ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">GRN Date *</Label>
                     <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-grn-date" />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Supplier *</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Supplier / Source *</Label>
                     <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="Supplier name" required data-testid="input-grn-supplier" />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">Invoice / Challan No.</Label>
                     <Input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Optional" data-testid="input-grn-invoice" />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Indent Reference</Label>
-                    {manualIndent ? (
-                      <div className="flex gap-1">
-                        <Input
-                          value={form.indentRef}
-                          onChange={e => setForm(f => ({ ...f, indentRef: e.target.value }))}
-                          placeholder="e.g. PI-2026-001"
-                          className="text-xs"
-                          data-testid="input-grn-indent-manual"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs px-2 shrink-0"
-                          onClick={() => { setManualIndent(false); setForm(f => ({ ...f, indentRef: "" })); }}
-                        >
-                          ← Pick
-                        </Button>
-                      </div>
-                    ) : (
-                      <Select
-                        value={form.indentRef || "__none__"}
-                        onValueChange={v => {
-                          if (v === "__manual__") {
-                            setManualIndent(true);
-                            setForm(f => ({ ...f, indentRef: "" }));
-                          } else {
-                            setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }));
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="text-xs" data-testid="select-grn-indent">
-                          <SelectValue placeholder="Select indent (optional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">None / No indent</SelectItem>
-                          {purchaseIndents.map(pi => (
-                            <SelectItem key={pi.id} value={pi.indentNo}>
-                              {pi.indentNo}{" "}
-                              <span className="text-muted-foreground text-[10px]">({pi.status.toUpperCase()})</span>
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="__manual__">Other — type manually…</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label className="text-xs">Remarks</Label>
-                    <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice / Challan Date</Label>
+                    <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
                   </div>
                 </div>
 
+                {/* Indent reference — auto-detected or manual */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Indent Reference</Label>
+                    {form.indentRef && (
+                      <button type="button" className="text-[10px] text-muted-foreground hover:text-destructive" onClick={() => setForm(f => ({ ...f, indentRef: "" }))}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {suggestedIndents.length > 0 && !form.indentRef && (
+                    <div className="flex flex-wrap gap-1.5 mb-1">
+                      <span className="text-[10px] text-muted-foreground">Matching indents:</span>
+                      {suggestedIndents.map(pi => (
+                        <button
+                          key={pi.id}
+                          type="button"
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 transition-colors"
+                          onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
+                          data-testid={`badge-indent-${pi.indentNo}`}
+                        >
+                          {pi.indentNo} ({pi.status.toUpperCase()})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {form.indentRef ? (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-violet-400 text-violet-700 dark:text-violet-400 text-xs">
+                        {form.indentRef}
+                      </Badge>
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setForm(f => ({ ...f, indentRef: "" }))}>
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select
+                      value={form.indentRef || "__none__"}
+                      onValueChange={v => setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }))}
+                    >
+                      <SelectTrigger className="text-xs" data-testid="select-grn-indent">
+                        <SelectValue placeholder="No indent (add items below first for suggestions)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None / No indent</SelectItem>
+                        {purchaseIndents.map(pi => (
+                          <SelectItem key={pi.id} value={pi.indentNo}>
+                            {pi.indentNo}{" "}
+                            <span className="text-muted-foreground text-[10px]">({pi.status.toUpperCase()})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Remarks / Notes</Label>
+                  <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
+                </div>
+
+                {/* ── Items received (item-first) ── */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Items Received *</Label>
-                  {lines.map((line, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-end" data-testid={`grn-line-${idx}`}>
-                      <div className="col-span-4">
-                        <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
-                          <SelectTrigger className="text-xs h-8" data-testid={`select-item-${idx}`}><SelectValue placeholder="Select item" /></SelectTrigger>
-                          <SelectContent>
-                            {items.map(it => <SelectItem key={it.id} value={String(it.id)}>{it.name} <span className="text-muted-foreground">({it.category})</span></SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                  <p className="text-[10px] text-muted-foreground -mt-1">Select an item first — matching purchase indents will be suggested automatically.</p>
+
+                  {/* Column headers */}
+                  <div className="hidden sm:grid grid-cols-12 gap-2 px-1">
+                    <span className="col-span-4 text-[10px] text-muted-foreground font-medium">Item</span>
+                    <span className="col-span-2 text-[10px] text-muted-foreground font-medium">Qty *</span>
+                    <span className="col-span-2 text-[10px] text-muted-foreground font-medium">UOM</span>
+                    <span className="col-span-3 text-[10px] text-muted-foreground font-medium">Rate (₹, optional)</span>
+                  </div>
+
+                  {lines.map((line, idx) => {
+                    const selectedItem = items.find(i => String(i.id) === line.itemId);
+                    return (
+                      <div key={idx} className="space-y-1" data-testid={`grn-line-${idx}`}>
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          <div className="col-span-4">
+                            <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
+                              <SelectTrigger className="text-xs h-8" data-testid={`select-item-${idx}`}>
+                                <SelectValue placeholder="Select item…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {items.length === 0 ? (
+                                  <div className="px-3 py-2 text-xs text-muted-foreground">No items in catalogue. Add via Item Master first.</div>
+                                ) : (
+                                  items.map(it => (
+                                    <SelectItem key={it.id} value={String(it.id)}>
+                                      {it.name} <span className="text-muted-foreground">({it.category})</span>
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-2">
+                            <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-qty-${idx}`} />
+                          </div>
+                          <div className="col-span-2">
+                            <Input className="h-8 text-xs bg-muted/50" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-uom-${idx}`} />
+                          </div>
+                          <div className="col-span-3">
+                            <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Rate ₹" value={line.rate} onChange={e => updateLine(idx, "rate", e.target.value)} data-testid={`input-rate-${idx}`} />
+                          </div>
+                          <div className="col-span-1 flex justify-center">
+                            {lines.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setLines(prev => prev.filter((_, i) => i !== idx))}>
+                                <X className="w-3 h-3 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {/* Per-line indent suggestion based on this item */}
+                        {selectedItem && (() => {
+                          const lineMatches = findMatchingIndents(selectedItem.name);
+                          if (!lineMatches.length) return null;
+                          return (
+                            <div className="flex items-center gap-1 pl-1">
+                              <span className="text-[10px] text-muted-foreground">Indent for {selectedItem.name}:</span>
+                              {lineMatches.map(pi => (
+                                <button
+                                  key={pi.id}
+                                  type="button"
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors ${form.indentRef === pi.indentNo ? "bg-violet-200 text-violet-800 dark:bg-violet-800/60 dark:text-violet-200" : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200"}`}
+                                  onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
+                                  data-testid={`line-badge-indent-${idx}-${pi.indentNo}`}
+                                >
+                                  {pi.indentNo}
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
-                      <div className="col-span-2">
-                        <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-qty-${idx}`} />
-                      </div>
-                      <div className="col-span-2">
-                        <Input className="h-8 text-xs" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-uom-${idx}`} />
-                      </div>
-                      <div className="col-span-3">
-                        <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Rate (₹, optional)" value={line.rate} onChange={e => updateLine(idx, "rate", e.target.value)} data-testid={`input-rate-${idx}`} />
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        {lines.length > 1 && (
-                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setLines(prev => prev.filter((_, i) => i !== idx))}>
-                            <X className="w-3 h-3 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+
                   <Button type="button" variant="outline" size="sm" className="text-xs gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-line">
                     <Plus className="w-3 h-3" /> Add Line
                   </Button>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
-                  <Button type="button" variant="ghost" onClick={() => { setShowForm(false); if (isNew) navigate("/stores/grns"); }}>Cancel</Button>
+                  <Button type="button" variant="ghost" onClick={cancelForm}>Cancel</Button>
                   <Button type="submit" className="gap-1" disabled={createMutation.isPending} data-testid="button-save-grn">
                     {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
                     Save GRN
@@ -358,7 +476,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           </Card>
         )}
 
-        {!selectedId && (
+        {!selectedId && !showForm && (
           <>
             {/* Filters */}
             <div className="flex items-center gap-3 flex-wrap">
@@ -383,7 +501,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
             ) : grns.length === 0 ? (
-              <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No GRNs found. Create one using the button above.</CardContent></Card>
+              <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No GRNs found. Click "New GRN" to create one.</CardContent></Card>
             ) : (
               <div className="space-y-3">
                 {grns.map(grn => (
@@ -401,7 +519,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             )}
                           </div>
                           <div className="text-sm font-medium mt-1">{grn.supplier}</div>
-                          {grn.invoiceNo && <div className="text-xs text-muted-foreground">Inv: {grn.invoiceNo}</div>}
+                          {(grn.invoiceNo || grn.invoiceDate) && (
+                            <div className="text-xs text-muted-foreground">
+                              {grn.invoiceNo ? `Inv: ${grn.invoiceNo}` : ""}
+                              {grn.invoiceNo && grn.invoiceDate ? " · " : ""}
+                              {grn.invoiceDate ? format(new Date(grn.invoiceDate + "T00:00:00"), "dd MMM yyyy") : ""}
+                            </div>
+                          )}
                           <div className="mt-1 text-xs text-muted-foreground">
                             {grn.items.length} item{grn.items.length !== 1 ? "s" : ""}
                             {" — "}

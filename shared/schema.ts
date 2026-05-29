@@ -1766,6 +1766,7 @@ export const storeGrns = pgTable("store_grns", {
   date: date("date").notNull(),
   supplier: text("supplier").notNull(),
   invoiceNo: text("invoice_no"),
+  invoiceDate: date("invoice_date"),
   indentRef: text("indent_ref"),
   remarks: text("remarks"),
   createdAt: timestamp("created_at").defaultNow(),
