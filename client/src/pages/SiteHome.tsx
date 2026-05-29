@@ -202,7 +202,7 @@ export default function SiteHome() {
             )}
 
             {canMaterials && (
-              <Link href="/site/material-trips" data-testid="link-material-receipt">
+              <Link href="/site/material-trips?returnTo=/site" data-testid="link-material-receipt">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/70 transition-colors">
                     <Package className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />

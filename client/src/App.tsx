@@ -83,6 +83,7 @@ import RmcRawMaterials from "@/pages/RmcRawMaterials";
 import RmcCubeTests from "@/pages/RmcCubeTests";
 import RmcDailyReport from "@/pages/RmcDailyReport";
 import RmcDeliveryChallans from "@/pages/RmcDeliveryChallans";
+import RmcHub from "@/pages/RmcHub";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -199,6 +200,7 @@ function AuthedShell() {
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
             <Route path="/plant/maintenance" component={gated(PlantMaintenance, "plant_equipment")} />
+            {rmcEnabled && <Route path="/plant/rmc" component={gated(RmcHub, "plant_production")} />}
             {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={gated(RmcMixDesigns, "plant_production")} />}
             {rmcEnabled && <Route path="/plant/rmc/batch-records" component={gated(RmcBatchRecords, "plant_production")} />}
             {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={gated(RmcRawMaterials, "plant_materials")} />}

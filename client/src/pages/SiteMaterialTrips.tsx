@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { format } from "date-fns";
 import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,15 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
+  const searchString = useSearch();
+  const returnTo = (() => {
+    try {
+      const p = new URLSearchParams(searchString || "");
+      return decodeURIComponent(p.get("returnTo") || "") || "/site";
+    } catch {
+      return "/site";
+    }
+  })();
   const { data: sitesList = [] } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
@@ -148,9 +157,9 @@ export default function SiteMaterialTrips() {
 
       <div className="container mx-auto p-4 space-y-6">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/site/dashboard">
+          <Link href={returnTo}>
             <Button variant="ghost" size="sm" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back
             </Button>
           </Link>
         </div>

@@ -133,6 +133,23 @@ export default function Plant() {
         )}
       </div>
 
+      {rmcEnabled && (
+        <Link href="/plant/rmc">
+          <Card className="hover-elevate cursor-pointer border-teal-300 dark:border-teal-700 bg-teal-50/60 dark:bg-teal-900/10" data-testid="tile-rmc-hub-shortcut">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center shrink-0">
+                <FlaskConical className="w-5 h-5 text-teal-700 dark:text-teal-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-base text-teal-800 dark:text-teal-200">Go to RMC Module</h3>
+                <p className="text-sm text-muted-foreground">Batch records, delivery challans, cube tests &amp; more</p>
+              </div>
+              <ArrowUpRight className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`grid w-full ${gridColsClass}`}>
           {opsVisible && (
