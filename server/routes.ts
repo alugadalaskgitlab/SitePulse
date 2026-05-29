@@ -154,26 +154,28 @@ export async function registerRoutes(
     res.sendFile('mix-calculator.html', { root });
   });
 
+  // Permission System v2 helper — resolves permitted site names for the current user.
+  // Returns null for admins or users with no site restrictions (all sites).
+  // Returns string[] of permitted site names when the user is restricted.
+  async function getPermittedSiteNames(req: Express.Request): Promise<string[] | null> {
+    if (!req.authUser || req.authUser.isAdmin) return null;
+    const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+    if (permittedIds === null) return null;
+    const allSites = await storage.getSites();
+    return allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name);
+  }
+
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
+      const permittedSiteNames = await getPermittedSiteNames(req);
       const filters: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] } = {
         site: req.query.site as string | undefined,
         engineer: req.query.engineer as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
       };
-      // Permission System v2: restrict to user's permitted sites
-      if (req.authUser && !req.authUser.isAdmin) {
-        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
-        if (permittedIds !== null) {
-          const allSites = await storage.getSites();
-          const nameSet = new Set(
-            allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name)
-          );
-          filters.permittedSiteNames = Array.from(nameSet);
-        }
-      }
       const dprs = await storage.getDprs(filters);
       res.json(dprs);
     } catch (err) {
@@ -224,12 +226,14 @@ export async function registerRoutes(
   // Get all site material trips (with optional filters)
   app.get("/api/materials-received", async (req, res) => {
     try {
+      const permittedSiteNames = await getPermittedSiteNames(req);
       const filters = {
         site: req.query.site as string | undefined,
         material: req.query.material as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         supplier: req.query.supplier as string | undefined,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
       };
       const results = await storage.getAllMaterialsReceived(filters);
       res.json(results);
@@ -241,11 +245,13 @@ export async function registerRoutes(
 
   app.get("/api/site-material-trips", async (req, res) => {
     try {
+      const permittedSiteNames = await getPermittedSiteNames(req);
       const filters = {
         site: req.query.site as string | undefined,
         material: req.query.material as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
+        ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
       };
       const trips = await storage.getSiteMaterialTrips(filters);
       res.json(trips);
@@ -625,6 +631,11 @@ export async function registerRoutes(
     const dpr = await storage.getDpr(Number(req.params.id));
     if (!dpr) {
       return res.status(404).json({ message: 'DPR not found' });
+    }
+    // Permission System v2: check that the requesting user can access this DPR's site
+    const permittedSiteNames = await getPermittedSiteNames(req);
+    if (permittedSiteNames !== null && !permittedSiteNames.includes(dpr.site)) {
+      return res.status(403).json({ message: 'Access denied for this site' });
     }
     const progressIds = dpr.progress?.map(p => p.id) || [];
     const actPersonnel = progressIds.length > 0 ? await storage.getActivityPersonnel(progressIds) : [];

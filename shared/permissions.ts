@@ -30,6 +30,12 @@ export const SECTION_KEYS = [
   "master_personnel",
   "user_management",
   "device_approval",
+  // Plant module card-level keys (future-ready, granular section gating)
+  "hmp_operations",
+  "rmc_operations",
+  "reports_analysis",
+  "estimates_manager",
+  "app_management",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -62,6 +68,11 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   master_personnel: "Personnel Master",
   user_management: "User Management",
   device_approval: "Device Approval",
+  hmp_operations: "HMP Operations",
+  rmc_operations: "RMC Operations",
+  reports_analysis: "Reports & Analysis",
+  estimates_manager: "Estimates Manager",
+  app_management: "App Management",
 };
 
 export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export"] as const;

@@ -747,6 +747,11 @@ function PermissionsDialog({
       sections: ["user_management", "device_approval"],
     },
     {
+      id: "plant-cards",
+      label: "Plant Cards",
+      sections: ["hmp_operations", "rmc_operations", "reports_analysis", "estimates_manager", "app_management"],
+    },
+    {
       id: "site-access",
       label: "Site Access",
       sections: [],

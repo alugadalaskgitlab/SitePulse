@@ -868,13 +868,13 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
-  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string }): Promise<any[]>;
+  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[] }): Promise<any[]>;
   getMaterialSuppliers(): Promise<string[]>;
   
   // Consumption Audit Log
@@ -7598,13 +7598,17 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
     if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));
     if (filters?.dateFrom) conditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
+    if (filters?.permittedSiteNames !== undefined) {
+      if (filters.permittedSiteNames.length === 0) return [];
+      conditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
+    }
     
     const trips = await db.select()
       .from(siteMaterialTrips)
@@ -7631,12 +7635,18 @@ export class DatabaseStorage implements IStorage {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
   }
 
-  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string }): Promise<any[]> {
+  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[] }): Promise<any[]> {
+    // Permission System v2: if no sites permitted, return empty immediately
+    if (filters?.permittedSiteNames !== undefined && filters.permittedSiteNames.length === 0) return [];
+
     const tripConditions: any[] = [];
     if (filters?.dateFrom) tripConditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) tripConditions.push(lte(siteMaterialTrips.date, filters.dateTo));
     if (filters?.material) tripConditions.push(ilike(siteMaterialTrips.material, `%${filters.material}%`));
     if (filters?.supplier) tripConditions.push(ilike(siteMaterialTrips.supplier, `%${filters.supplier}%`));
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      tripConditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
+    }
 
     const trips = await db.select().from(siteMaterialTrips)
       .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
@@ -7650,6 +7660,9 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateTo) dprConditions.push(lte(dprs.date, filters.dateTo));
     if (filters?.material) dprConditions.push(ilike(materialLogs.material, `%${filters.material}%`));
     if (filters?.supplier) dprConditions.push(ilike(materialLogs.supplier, `%${filters.supplier}%`));
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      dprConditions.push(inArray(dprs.site, filters.permittedSiteNames));
+    }
 
     const dprMaterials = await db.select({
       id: materialLogs.id,
