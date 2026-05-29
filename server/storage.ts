@@ -13,6 +13,7 @@ import {
   appSettings,
   plantSettings,
   type PlantSettings,
+  type PlantSettingsWithSite,
   type InsertPlantSettings,
   parties,
   plantMaterials,
@@ -318,7 +319,7 @@ export interface IStorage {
   setSetting(key: string, value: string): Promise<void>;
   // Task #253 — per-plant tank calibration (bitumen dip → MT).
   getPlantSettings(plantName: string): Promise<PlantSettings | null>;
-  listPlantSettings(): Promise<PlantSettings[]>;
+  listPlantSettings(): Promise<PlantSettingsWithSite[]>;
   upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings>;
   deletePlantSettings(plantName: string): Promise<boolean>;
   renamePlantSettings(oldName: string, newName: string): Promise<PlantSettings>;
@@ -2213,8 +2214,13 @@ export class DatabaseStorage implements IStorage {
     return rows[0] ?? null;
   }
 
-  async listPlantSettings(): Promise<PlantSettings[]> {
-    return db.select().from(plantSettings).orderBy(plantSettings.plantName);
+  async listPlantSettings(): Promise<PlantSettingsWithSite[]> {
+    return db.select({
+      ...getTableColumns(plantSettings),
+      siteName: sites.name,
+    }).from(plantSettings)
+      .leftJoin(sites, eq(plantSettings.siteId, sites.id))
+      .orderBy(plantSettings.plantName);
   }
 
   async upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings> {
@@ -2224,6 +2230,7 @@ export class DatabaseStorage implements IStorage {
       bitumenTank2LitresPerCm: input.bitumenTank2LitresPerCm ?? null,
       bitumenDensityKgPerL: input.bitumenDensityKgPerL ?? null,
       ...(input.plantType !== undefined ? { plantType: input.plantType } : {}),
+      siteId: input.siteId ?? null,
       updatedAt: new Date(),
     };
     if (existing) {

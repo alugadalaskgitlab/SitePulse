@@ -20,7 +20,7 @@ import * as XLSX from "xlsx";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, NO_CREATE_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, Site } from "@shared/schema";
+import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, PlantSettingsWithSite, Site } from "@shared/schema";
 import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
@@ -34,7 +34,7 @@ export default function Plant() {
   const { sectionVisible, isAdmin, isManager } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
-  const { data: allPlantSettings } = useQuery<PlantSettings[]>({
+  const { data: allPlantSettings } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ['/api/plant-module/plant-settings'],
     enabled: isAdmin,
   });
@@ -1094,7 +1094,7 @@ const PLANT_TYPE_LABELS: Record<string, string> = {
 
 function PlantTypeConfigSection() {
   const { toast } = useToast();
-  const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettings[]>({
+  const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ['/api/plant-module/plant-settings'],
   });
 
@@ -1116,7 +1116,7 @@ function PlantTypeConfigSection() {
   const [addSiteId, setAddSiteId] = useState<string>("");
 
   // ── Assign-site dialog state ─────────────────────────────────────────────────
-  const [assignSiteTarget, setAssignSiteTarget] = useState<PlantSettings | null>(null);
+  const [assignSiteTarget, setAssignSiteTarget] = useState<PlantSettingsWithSite | null>(null);
   const [assignSiteId, setAssignSiteId] = useState<string>("");
 
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
@@ -1262,7 +1262,6 @@ function PlantTypeConfigSection() {
           )}
 
           {allSettings.map((s) => {
-            const linkedSite = s.siteId ? sitesList.find(x => x.id === s.siteId) : null;
             return (
               <div
                 key={s.plantName}
@@ -1272,9 +1271,9 @@ function PlantTypeConfigSection() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium text-sm truncate" data-testid={`text-plant-name-${s.plantName}`}>{s.plantName}</p>
-                    {linkedSite ? (
+                    {s.siteName ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" data-testid={`badge-site-${s.plantName}`}>
-                        {linkedSite.name}
+                        {s.siteName}
                       </span>
                     ) : (
                       <span className="text-[10px] text-muted-foreground" data-testid={`badge-no-site-${s.plantName}`}>Shared / Mobile</span>

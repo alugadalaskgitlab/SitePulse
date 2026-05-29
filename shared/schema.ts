@@ -197,6 +197,7 @@ export const plantSettings = pgTable("plant_settings", {
 
 export const insertPlantSettingsSchema = createInsertSchema(plantSettings).omit({ id: true, updatedAt: true });
 export type PlantSettings = typeof plantSettings.$inferSelect;
+export type PlantSettingsWithSite = PlantSettings & { siteName: string | null };
 export type InsertPlantSettings = z.infer<typeof insertPlantSettingsSchema>;
 
 // ============================================
