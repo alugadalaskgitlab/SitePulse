@@ -57,8 +57,13 @@ export default function RmcRawMaterials() {
   const [form, setForm] = useState(defaultForm());
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
-  const [plantSelect, setPlantSelect] = useState(ALL_PLANTS);
+  const [plantSelect, setPlantSelect] = useState(() => localStorage.getItem("rmc_plant_filter") ?? ALL_PLANTS);
   const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
+
+  function handlePlantChange(value: string) {
+    setPlantSelect(value);
+    localStorage.setItem("rmc_plant_filter", value);
+  }
 
   const { data: plantNames = [] } = useQuery<string[]>({
     queryKey: ["/api/rmc/plants"],
@@ -183,7 +188,7 @@ export default function RmcRawMaterials() {
             <span className="text-muted-foreground text-sm">to</span>
             <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" data-testid="input-date-to" />
             {plantNames.length > 0 && (
-              <Select value={plantSelect} onValueChange={setPlantSelect}>
+              <Select value={plantSelect} onValueChange={handlePlantChange}>
                 <SelectTrigger className="w-40" data-testid="select-plant-name">
                   <SelectValue placeholder="All plants" />
                 </SelectTrigger>
@@ -256,7 +261,7 @@ export default function RmcRawMaterials() {
         <TabsContent value="stock" className="mt-4 space-y-4">
           {plantNames.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <Select value={plantSelect} onValueChange={setPlantSelect}>
+              <Select value={plantSelect} onValueChange={handlePlantChange}>
                 <SelectTrigger className="w-40" data-testid="select-plant-name-stock">
                   <SelectValue placeholder="All plants" />
                 </SelectTrigger>

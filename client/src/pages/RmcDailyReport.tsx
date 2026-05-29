@@ -26,8 +26,13 @@ interface DailyReport {
 export default function RmcDailyReport() {
   const [date, setDate] = useState(today);
   const ALL_PLANTS = "__ALL__";
-  const [plantSelect, setPlantSelect] = useState(ALL_PLANTS);
+  const [plantSelect, setPlantSelect] = useState(() => localStorage.getItem("rmc_plant_filter") ?? ALL_PLANTS);
   const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
+
+  function handlePlantChange(value: string) {
+    setPlantSelect(value);
+    localStorage.setItem("rmc_plant_filter", value);
+  }
 
   const { data: plantNames = [] } = useQuery<string[]>({
     queryKey: ["/api/rmc/plants"],
@@ -59,7 +64,7 @@ export default function RmcDailyReport() {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5">
             <Label className="text-sm whitespace-nowrap">Plant</Label>
-            <Select value={plantSelect} onValueChange={setPlantSelect}>
+            <Select value={plantSelect} onValueChange={handlePlantChange}>
               <SelectTrigger className="w-40" data-testid="select-plant-name">
                 <SelectValue placeholder="All plants" />
               </SelectTrigger>
