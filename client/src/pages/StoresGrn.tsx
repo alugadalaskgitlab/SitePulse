@@ -45,6 +45,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [form, setForm] = useState({
     date: TODAY, supplier: "", invoiceNo: "", indentRef: "", remarks: "",
   });
+  const [manualIndent, setManualIndent] = useState(false);
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
 
   useEffect(() => {
@@ -55,7 +56,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const { data: purchaseIndents = [] } = useQuery<PurchaseIndentSummary[]>({
     queryKey: ["/api/purchase-indents"],
-    select: (data: any[]) => data.map(d => ({ id: d.id, indentNo: d.indentNo, status: d.status })),
+    select: (data: any[]) =>
+      data
+        .map(d => ({ id: d.id, indentNo: d.indentNo, status: d.status }))
+        .filter(d => d.status === "approved" || d.status === "pending"),
   });
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
@@ -87,6 +91,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "GRN created successfully" });
       setShowForm(false);
       setForm({ date: TODAY, supplier: "", invoiceNo: "", indentRef: "", remarks: "" });
+      setManualIndent(false);
       setLines([emptyLine()]);
       if (isNew) navigate("/stores/grns");
     },
@@ -253,28 +258,51 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Indent Reference</Label>
-                    <Select
-                      value={form.indentRef || "__none__"}
-                      onValueChange={v => setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }))}
-                    >
-                      <SelectTrigger className="text-xs" data-testid="select-grn-indent">
-                        <SelectValue placeholder="Select indent (optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None / No indent</SelectItem>
-                        {purchaseIndents.map(pi => (
-                          <SelectItem key={pi.id} value={pi.indentNo}>
-                            {pi.indentNo}
-                            <span className="ml-2 text-muted-foreground text-[10px]">{pi.status.toUpperCase()}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.indentRef && (
-                      <p className="text-[10px] text-muted-foreground">Or type manually:</p>
-                    )}
-                    {form.indentRef && !purchaseIndents.find(p => p.indentNo === form.indentRef) && (
-                      <Input value={form.indentRef} onChange={e => setForm(f => ({ ...f, indentRef: e.target.value }))} placeholder="e.g. PI-2026-001" className="text-xs h-7 mt-1" data-testid="input-grn-indent-manual" />
+                    {manualIndent ? (
+                      <div className="flex gap-1">
+                        <Input
+                          value={form.indentRef}
+                          onChange={e => setForm(f => ({ ...f, indentRef: e.target.value }))}
+                          placeholder="e.g. PI-2026-001"
+                          className="text-xs"
+                          data-testid="input-grn-indent-manual"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs px-2 shrink-0"
+                          onClick={() => { setManualIndent(false); setForm(f => ({ ...f, indentRef: "" })); }}
+                        >
+                          ← Pick
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select
+                        value={form.indentRef || "__none__"}
+                        onValueChange={v => {
+                          if (v === "__manual__") {
+                            setManualIndent(true);
+                            setForm(f => ({ ...f, indentRef: "" }));
+                          } else {
+                            setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }));
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="text-xs" data-testid="select-grn-indent">
+                          <SelectValue placeholder="Select indent (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">None / No indent</SelectItem>
+                          {purchaseIndents.map(pi => (
+                            <SelectItem key={pi.id} value={pi.indentNo}>
+                              {pi.indentNo}{" "}
+                              <span className="text-muted-foreground text-[10px]">({pi.status.toUpperCase()})</span>
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__manual__">Other — type manually…</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                   <div className="space-y-2 sm:col-span-2">
