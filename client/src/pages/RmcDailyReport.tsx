@@ -277,6 +277,32 @@ export default function RmcDailyReport() {
                     ))}
                   </tbody>
                 </table>
+                {(() => {
+                  const total = report.cubeTests.length;
+                  const passed = report.cubeTests.filter(t => t.passFail === "pass").length;
+                  const failed = report.cubeTests.filter(t => t.passFail === "fail").length;
+                  const rated = report.cubeTests.filter(t => t.passFail === "pass" || t.passFail === "fail").length;
+                  const passRate = rated > 0 ? Math.round((passed / rated) * 100) : null;
+                  return (
+                    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-2.5 text-sm">
+                      <span className="text-muted-foreground font-medium">Summary:</span>
+                      <span className="font-medium">{total} Tested</span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-green-700 dark:text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        {passed} Pass
+                      </span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-red-600 dark:text-red-400">
+                        <XCircle className="w-4 h-4" />
+                        {failed} Fail
+                      </span>
+                      {passRate !== null && (
+                        <span className={`ml-auto font-bold text-base ${passRate === 100 ? "text-green-700 dark:text-green-400" : passRate >= 75 ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"}`}>
+                          {passRate}% Pass Rate
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}
