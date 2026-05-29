@@ -197,17 +197,25 @@ export default function PlantEquipmentUsage() {
     return params.get("plant") || null;
   }, []);
 
+  // When contextPlantName is set, allow operator to override and show all plants' equipment
+  const [showAllPlantEquipment, setShowAllPlantEquipment] = useState(false);
+
+  // If plant context is set and override not active, filter the API call to plant + shared equipment
+  const effectivePlantFilter = contextPlantName && !showAllPlantEquipment ? contextPlantName : undefined;
+
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
-    queryKey: ["/api/plant-module/equipment", "all"],
+    queryKey: ["/api/plant-module/equipment", "all", effectivePlantFilter ?? "all"],
     queryFn: async () => {
-      const res = await fetch("/api/plant-module/equipment?includeInactive=true");
+      const url = effectivePlantFilter
+        ? `/api/plant-module/equipment?includeInactive=true&plantName=${encodeURIComponent(effectivePlantFilter)}`
+        : "/api/plant-module/equipment?includeInactive=true";
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
   });
 
-  // Sort active equipment so plant-specific (matching contextPlantName) comes first,
-  // then shared (null plantName), then equipment from other plants last.
+  // When plant context is set, sort within results: own-plant first, then shared (null), then others
   const activeEquipment = useMemo(() => {
     const active = equipment?.filter(e => e.isActive === 1) || [];
     if (!contextPlantName) return active;
@@ -956,7 +964,18 @@ export default function PlantEquipmentUsage() {
               </div>
 
               <div>
-                <Label>Equipment</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Equipment</Label>
+                  {contextPlantName && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllPlantEquipment(v => !v)}
+                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      {showAllPlantEquipment ? `Show ${contextPlantName} only` : "Show all plants"}
+                    </button>
+                  )}
+                </div>
                 <Select 
                   value={equipmentId} 
                   onValueChange={(value) => {
