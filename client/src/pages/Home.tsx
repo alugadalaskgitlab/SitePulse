@@ -15,6 +15,7 @@ export default function Home() {
 
   const { data: sites } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const activeSite = sites?.find((s) => s.isActive !== 0) ?? sites?.[0];
+  const projectName = activeSite?.name ?? "HLC Projects";
 
   const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
   const initials = user?.fullName
@@ -33,9 +34,7 @@ export default function Home() {
     sectionVisible("plant_heating") ||
     sectionVisible("plant_production");
 
-  const canSeeRmc =
-    rmcEnabled &&
-    (sectionVisible("plant_production") || sectionVisible("plant_materials"));
+  const canSeeRmc = rmcEnabled && sectionVisible("plant_production");
 
   const canSeeStores = sectionVisible("stores_inventory");
 
@@ -183,22 +182,20 @@ export default function Home() {
       </header>
 
       {/* ── Project Banner ── */}
-      {activeSite && (
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800/80 to-slate-900 border-b border-slate-800 px-4 md:px-6 py-2.5">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider leading-none mb-0.5">
-                Active Project
-              </p>
-              <p className="text-sm font-bold text-white truncate">{activeSite.name}</p>
-            </div>
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 shrink-0">
-              <Calendar className="w-3 h-3" />
-              {today}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800/80 to-slate-900 border-b border-slate-800 px-4 md:px-6 py-2.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider leading-none mb-0.5">
+              Active Project
             </p>
+            <p className="text-sm font-bold text-white truncate">{projectName}</p>
           </div>
+          <p className="text-xs text-slate-500 flex items-center gap-1.5 shrink-0">
+            <Calendar className="w-3 h-3" />
+            {today}
+          </p>
         </div>
-      )}
+      </div>
 
       {/* ── Module Grid ── */}
       <div className="flex-1 px-4 md:px-6 py-8">

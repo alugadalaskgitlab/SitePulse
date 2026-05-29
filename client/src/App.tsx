@@ -149,7 +149,14 @@ function Router() {
       <Route path="/concrete-calculator" component={ConcreteCalculator} />
       <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
 
-      {/* Authenticated app shell. */}
+      {/* Home gets its own full-page dark shell (no AppHeader / container wrapper). */}
+      <Route path="/">
+        <RequireAuth>
+          <Home />
+        </RequireAuth>
+      </Route>
+
+      {/* All other authenticated routes get the full shell with AppHeader. */}
       <Route>
         <RequireAuth>
           <AuthedShell />
@@ -180,7 +187,6 @@ function AuthedShell() {
       <main className="min-h-screen relative z-10">
         <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
-            <Route path="/" component={Home} />
             <Route path="/site" component={SiteHome} />
             <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
             <Route path="/site/new" component={gated(SiteEntry, "site_dprs")} />
