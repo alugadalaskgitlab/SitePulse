@@ -8,5 +8,8 @@ export const modules: ModuleMap = {
   "./components/mockups/concrete-calc/LoginHub.tsx": () => import("../components/mockups/concrete-calc/LoginHub.tsx"),
   "./components/mockups/concrete-calc/ReportsTab.tsx": () => import("../components/mockups/concrete-calc/ReportsTab.tsx"),
   "./components/mockups/mix-portal-login/LoginPage.tsx": () => import("../components/mockups/mix-portal-login/LoginPage.tsx"),
+  "./components/mockups/plant-home/PlantHome.tsx": () => import("../components/mockups/plant-home/PlantHome.tsx"),
+  "./components/mockups/rmc-dispatch/RmcDispatch.tsx": () => import("../components/mockups/rmc-dispatch/RmcDispatch.tsx"),
+  "./components/mockups/rmc-mix-designs/RmcMixDesigns.tsx": () => import("../components/mockups/rmc-mix-designs/RmcMixDesigns.tsx"),
   "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx")
 };
