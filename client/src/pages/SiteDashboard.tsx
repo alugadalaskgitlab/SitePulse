@@ -312,7 +312,8 @@ export default function SiteDashboard() {
       Site: getBaseSiteName(dpr.site),
       Engineer: dpr.engineer,
       Role: dpr.role || "",
-      "Progress Entries": dpr.progress?.length || 0,
+      "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
+      "Progress Entries": (dpr as any).workType === "structure" ? ((dpr as any).structureItems?.length || 0) : (dpr.progress?.length || 0),
       "Equipment Logs": dpr.equipment?.length || 0,
       "Labour Count": dpr.labour?.reduce((sum: number, l: any) => sum + (l.count || 0), 0) || 0,
       "Material Entries": dpr.materials?.length || 0,
@@ -343,7 +344,30 @@ export default function SiteDashboard() {
       const progressSheet = XLSX.utils.json_to_sheet(progressData);
       XLSX.utils.book_append_sheet(wb, progressSheet, "Progress");
     }
-    
+
+    // Structure Items sheet
+    const structureData: any[] = [];
+    dprs.forEach((dpr: any) => {
+      if ((dpr as any).workType === "structure") {
+        ((dpr as any).structureItems || []).forEach((s: any) => {
+          structureData.push({
+            Date: format(new Date(dpr.date), "dd/MM/yyyy"),
+            Site: getBaseSiteName(dpr.site),
+            "Structure Type": s.structureType || "",
+            "Name/Location": s.structureName || "",
+            "Item of Work": s.itemOfWork || "",
+            Quantity: s.quantity ?? "",
+            Unit: s.uom || "",
+            Remarks: s.remarks || "",
+          });
+        });
+      }
+    });
+    if (structureData.length > 0) {
+      const structureSheet = XLSX.utils.json_to_sheet(structureData);
+      XLSX.utils.book_append_sheet(wb, structureSheet, "Structure Items");
+    }
+
     // Equipment Details sheet
     const equipmentData: any[] = [];
     dprs.forEach((dpr: any) => {
@@ -465,7 +489,7 @@ export default function SiteDashboard() {
       yPos += 5;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(`Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"}`, 14, yPos);
+      doc.text(`Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"} | Work Type: ${(dpr as any).workType === "structure" ? "Structure" : "Road"}`, 14, yPos);
       yPos += 6;
       
       // Progress / Structure Entries
@@ -791,7 +815,7 @@ export default function SiteDashboard() {
         <div class="report-card">
           <div class="report-header">
             <div class="report-site">${index + 1}. ${getBaseSiteName(dpr.site)}</div>
-            <div class="report-meta">Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"}</div>
+            <div class="report-meta">Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"} | Work Type: ${(dpr as any).workType === "structure" ? "Structure" : "Road"}</div>
           </div>
           <div class="report-body">
             ${progressHtml}
