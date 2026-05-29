@@ -106,6 +106,12 @@ export default function PlantMaterialReturns() {
     queryKey: ["/api/plant-module/materials"],
   });
 
+  const { data: sites = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
+  });
+  const getSiteName = (siteId: number | null | undefined) =>
+    siteId ? (sites.find(s => s.id === siteId)?.name ?? null) : null;
+
   const invalidateQueries = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-returns"] });
     queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-issues"] });
@@ -649,6 +655,11 @@ export default function PlantMaterialReturns() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold">{getMaterialName(ret.materialId)}</span>
                           <Badge variant="secondary">{ret.quantity} {ret.uom}</Badge>
+                          {getSiteName((ret as any).siteId) && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                              {getSiteName((ret as any).siteId)}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {ret.date} {ret.time && `at ${ret.time}`}

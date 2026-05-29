@@ -6943,8 +6943,19 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Return quantity (${ret.quantity}) exceeds remaining issuable amount (${remaining.toFixed(2)})`);
       }
 
+      // Auto-inherit siteId from linked issue by matching issuedTo name against sites table
+      let inheritedSiteId = ret.siteId ?? null;
+      if (!inheritedSiteId && originalIssue.issuedTo) {
+        const [matchedSite] = await tx.select({ id: sites.id })
+          .from(sites)
+          .where(ilike(sites.name, originalIssue.issuedTo.trim()))
+          .limit(1);
+        if (matchedSite) inheritedSiteId = matchedSite.id;
+      }
+
       const uppercased = {
         ...ret,
+        siteId: inheritedSiteId,
         returnedBy: ret.returnedBy?.toUpperCase(),
         vehicleNumber: ret.vehicleNumber?.toUpperCase(),
         notes: ret.notes?.toUpperCase(),
