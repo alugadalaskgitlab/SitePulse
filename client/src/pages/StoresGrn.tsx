@@ -327,7 +327,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
-                    {selectedGrn.siteId && (() => { const s = sites.find(x => x.id === selectedGrn.siteId); return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : null; })()}
+                    {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-xs text-muted-foreground">— No site assigned</span>; })()}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
                     )}
@@ -838,7 +838,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                             {grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus)}
-                            {grn.siteId && (() => { const s = sites.find(x => x.id === grn.siteId); return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : null; })()}
+                            {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
                             {grn.indentRef && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
                                 {grn.indentRef}

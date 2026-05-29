@@ -1774,7 +1774,7 @@ export const storeGrns = pgTable("store_grns", {
   supplier: text("supplier").notNull(),
   invoiceNo: text("invoice_no"),
   invoiceDate: date("invoice_date"),
-  siteId: integer("site_id"),
+  siteId: integer("site_id").references(() => sites.id),
   indentRef: text("indent_ref"),
   remarks: text("remarks"),
   acceptanceStatus: text("acceptance_status").notNull().default("accepted"), // "accepted" | "partial" | "rejected"
