@@ -30,8 +30,15 @@ export default function Plant() {
   const params = new URLSearchParams(searchString || window.location.search);
   const tabParam = params.get("tab");
 
-  const [activeTab, setActiveTab] = useState(tabParam || "operations");
-  const { sectionVisible, isAdmin, isManager } = useAuth();
+  const initialView = ((): "home" | "hmp" | "fleet" | "reports" | "masters" => {
+    if (tabParam === "operations") return "hmp";
+    if (tabParam === "stock" || tabParam === "reports") return "reports";
+    if (tabParam === "masters") return "masters";
+    return "home";
+  })();
+
+  const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports" | "masters">(initialView);
+  const { isAdmin, isManager } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: allPlantSettings } = useQuery<PlantSettingsWithSite[]>({
@@ -39,9 +46,6 @@ export default function Plant() {
     enabled: isAdmin,
   });
   const primaryPlantName = allPlantSettings?.[0]?.plantName;
-  // Resolve plant type from the settings entry whose plantName matches the primary
-  // plant (the one this module is scoped to). Falls back to the first entry so
-  // single-plant deployments continue to work without any URL parameters.
   const currentPlantType = (
     allPlantSettings?.find(s => s.plantName === primaryPlantName) ?? allPlantSettings?.[0]
   )?.plantType ?? "hma";
@@ -49,59 +53,35 @@ export default function Plant() {
   const { getBackLink } = useOrigin();
   const backLink = getBackLink("/");
 
-  useEffect(() => {
-    if (tabParam && ["operations", "stock", "reports", "masters"].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
-
-  const opsVisible =
-    sectionVisible("plant_materials") ||
-    sectionVisible("plant_production") ||
-    sectionVisible("plant_equipment") ||
-    sectionVisible("plant_shift_logs") ||
-    sectionVisible("plant_heating") ||
-    sectionVisible("site_procurement") ||
-    sectionVisible("site_diesel");
-  const stockVisible =
-    sectionVisible("plant_stock") ||
-    sectionVisible("plant_variance") ||
-    sectionVisible("plant_audit") ||
-    sectionVisible("plant_diesel_proc") ||
-    sectionVisible("plant_bitumen") ||
-    sectionVisible("plant_ldo") ||
-    sectionVisible("vendor_bills");
-  const reportsVisible = sectionVisible("plant_daily_reports") || sectionVisible("plant_heating");
-  const mastersVisible =
-    sectionVisible("master_parties") ||
-    sectionVisible("master_materials") ||
-    sectionVisible("master_equipment") ||
-    sectionVisible("master_personnel");
-
-  const visibleTabs = [
-    { key: "operations", visible: opsVisible },
-    { key: "stock", visible: stockVisible },
-    { key: "reports", visible: reportsVisible },
-    { key: "masters", visible: mastersVisible },
-  ].filter(t => t.visible);
-  const tabCount = visibleTabs.length || 1;
-  const gridColsClass = tabCount === 1 ? "grid-cols-1" : tabCount === 2 ? "grid-cols-2" : tabCount === 3 ? "grid-cols-3" : "grid-cols-4";
+  const VIEW_SUBTITLES: Record<string, string> = {
+    home: "Hot-mix plant operations and material tracking",
+    hmp: "Heating sessions, shift logs & production dispatches",
+    fleet: "Equipment usage, maintenance & fleet management",
+    reports: "Production reports, stock ledgers & finance",
+    masters: "Parties, materials, equipment & personnel",
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href={backLink}>
-            <Button variant="ghost" size="icon" data-testid="button-back">
+          {plantView === "home" ? (
+            <Link href={backLink}>
+              <Button variant="ghost" size="icon" data-testid="button-back">
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+            </Link>
+          ) : (
+            <Button variant="ghost" size="icon" onClick={() => setPlantView("home")} data-testid="button-back-to-home">
               <ChevronLeft className="w-5 h-5" />
             </Button>
-          </Link>
+          )}
           <div>
             <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant Module</h1>
-            <p className="text-muted-foreground mt-1">Hot-mix plant operations and material tracking</p>
+            <p className="text-muted-foreground mt-1">{VIEW_SUBTITLES[plantView]}</p>
           </div>
         </div>
-        {(isAdmin || isManager) && (
+        {(isAdmin || isManager) && plantView === "home" && (
           <div className="flex gap-2">
             {isAdmin && (
               <a
@@ -133,6 +113,80 @@ export default function Plant() {
         )}
       </div>
 
+      {plantView === "home" && (
+        <PlantHomeCards
+          plantType={currentPlantType}
+          plantName={primaryPlantName}
+          rmcEnabled={rmcEnabled}
+          onNavigate={setPlantView}
+        />
+      )}
+      {plantView === "hmp" && (
+        <HMPOpsView plantType={currentPlantType} plantName={primaryPlantName} />
+      )}
+      {plantView === "fleet" && (
+        <EquipmentFleetView plantName={primaryPlantName} />
+      )}
+      {plantView === "reports" && (
+        <ReportsAnalysisView plantType={currentPlantType} rmcEnabled={rmcEnabled} />
+      )}
+      {plantView === "masters" && (
+        <MastersTab />
+      )}
+    </div>
+  );
+}
+
+function PlantHomeCards({
+  plantType,
+  plantName,
+  rmcEnabled,
+  onNavigate,
+}: {
+  plantType: string;
+  plantName?: string;
+  rmcEnabled: boolean;
+  onNavigate: (view: "hmp" | "fleet" | "reports" | "masters") => void;
+}) {
+  const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { appendPlantContext } = useOrigin();
+
+  const { data: openCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/maintenance/open-count"],
+    enabled: sectionVisible("plant_equipment"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const openBreakdownCount = openCountData?.count ?? 0;
+
+  const isHma = plantType !== "rmc";
+
+  const hmpVisible =
+    isHma && (
+      sectionVisible("plant_production") ||
+      sectionVisible("plant_shift_logs") ||
+      sectionVisible("plant_heating") ||
+      sectionVisible("site_procurement") ||
+      sectionVisible("site_diesel")
+    );
+  const fleetVisible = sectionVisible("plant_equipment") || sectionVisible("site_diesel");
+  const reportsVisible =
+    sectionVisible("plant_daily_reports") ||
+    sectionVisible("plant_heating") ||
+    sectionVisible("plant_stock") ||
+    sectionVisible("plant_variance") ||
+    sectionVisible("plant_audit") ||
+    sectionVisible("plant_diesel_proc") ||
+    sectionVisible("plant_bitumen") ||
+    sectionVisible("plant_ldo") ||
+    sectionVisible("vendor_bills");
+  const mastersVisible =
+    sectionVisible("master_parties") ||
+    sectionVisible("master_materials") ||
+    sectionVisible("master_equipment") ||
+    sectionVisible("master_personnel");
+
+  return (
+    <div className="space-y-4">
       {rmcEnabled && (
         <Link href="/plant/rmc">
           <Card className="hover-elevate cursor-pointer border-teal-300 dark:border-teal-700 bg-teal-50/60 dark:bg-teal-900/10" data-testid="tile-rmc-hub-shortcut">
@@ -141,7 +195,7 @@ export default function Plant() {
                 <FlaskConical className="w-5 h-5 text-teal-700 dark:text-teal-400" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-base text-teal-800 dark:text-teal-200">Go to RMC Module</h3>
+                <h3 className="font-semibold text-base text-teal-800 dark:text-teal-200">RMC Operations</h3>
                 <p className="text-sm text-muted-foreground">Batch records, delivery challans, cube tests &amp; more</p>
               </div>
               <ArrowUpRight className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0" />
@@ -150,59 +204,262 @@ export default function Plant() {
         </Link>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${gridColsClass}`}>
-          {opsVisible && (
-            <TabsTrigger value="operations" className="gap-2" data-testid="tab-operations">
-              <Truck className="w-4 h-4" />
-              <span className="hidden sm:inline">Operations</span>
-            </TabsTrigger>
-          )}
-          {stockVisible && (
-            <TabsTrigger value="stock" className="gap-2" data-testid="tab-management">
-              <Layers className="w-4 h-4" />
-              <span className="hidden sm:inline">Management</span>
-            </TabsTrigger>
-          )}
-          {reportsVisible && (
-            <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
-              <FileText className="w-4 h-4" />
-              <span className="hidden sm:inline">Reports</span>
-            </TabsTrigger>
-          )}
-          {mastersVisible && (
-            <TabsTrigger value="masters" className="gap-2" data-testid="tab-masters">
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Masters</span>
-            </TabsTrigger>
-          )}
-        </TabsList>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {hmpVisible && (
+          <button className="text-left w-full" onClick={() => onNavigate("hmp")} data-testid="tile-hmp-ops">
+            <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                  <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">HMP Operations</h3>
+                  <p className="text-sm text-muted-foreground">Shift logs, heating sessions &amp; production dispatches</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </button>
+        )}
 
-        {opsVisible && (
-          <TabsContent value="operations" className="mt-6">
-            <OperationsTab plantType={currentPlantType} plantName={primaryPlantName} />
-          </TabsContent>
+        {fleetVisible && (
+          <button className="text-left w-full" onClick={() => onNavigate("fleet")} data-testid="tile-equipment-fleet">
+            <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="relative w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                  <Wrench className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+                  {openBreakdownCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center">{openBreakdownCount}</span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">Equipment &amp; Fleet</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {openBreakdownCount > 0
+                      ? <span className="text-destructive font-medium">{openBreakdownCount} open breakdown{openBreakdownCount !== 1 ? "s" : ""}</span>
+                      : "Usage logs, breakdowns & diesel tracking"}
+                  </p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </button>
         )}
 
         {reportsVisible && (
-          <TabsContent value="reports" className="mt-6">
-            <ReportsTab plantType={currentPlantType} rmcEnabled={rmcEnabled} />
-          </TabsContent>
-        )}
-
-        {stockVisible && (
-          <TabsContent value="stock" className="mt-6">
-            <StockDetailsTab plantType={currentPlantType} rmcEnabled={rmcEnabled} />
-          </TabsContent>
+          <button className="text-left w-full" onClick={() => onNavigate("reports")} data-testid="tile-reports-analysis">
+            <Card className="hover-elevate cursor-pointer h-full border-purple-200 dark:border-purple-800">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+                  <BarChart3 className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">Reports &amp; Analysis</h3>
+                  <p className="text-sm text-muted-foreground">Production reports, stock ledgers &amp; finance</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </button>
         )}
 
         {mastersVisible && (
-          <TabsContent value="masters" className="mt-6">
-            <MastersTab />
-          </TabsContent>
+          <button className="text-left w-full" onClick={() => onNavigate("masters")} data-testid="tile-masters-config">
+            <Card className="hover-elevate cursor-pointer h-full">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center shrink-0">
+                  <Settings className="w-7 h-7 text-slate-600 dark:text-slate-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">Masters &amp; Config</h3>
+                  <p className="text-sm text-muted-foreground">Parties, materials, equipment &amp; personnel</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </button>
         )}
+      </div>
+    </div>
+  );
+}
 
-      </Tabs>
+function HMPOpsView({ plantType = "hma", plantName }: { plantType?: string; plantName?: string }) {
+  const { appendPlantContext } = useOrigin();
+  const { sectionVisible } = useAuth();
+  const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {sectionVisible("plant_production") && (
+        <Link href={opLink("/plant/dispatches")}>
+          <Card className="hover-elevate cursor-pointer h-full">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <Truck className="w-7 h-7 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Plant Production &amp; Dispatches</h3>
+                <p className="text-sm text-muted-foreground">Log outgoing truck loads with mix data</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("plant_shift_logs") && (
+        <Link href={opLink("/plant/shift-log")}>
+          <Card className="hover-elevate cursor-pointer h-full border-blue-200 dark:border-blue-800" data-testid="tile-today-shift-log">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <Pencil className="w-7 h-7 text-blue-700 dark:text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Plant Log</h3>
+                <p className="text-sm text-muted-foreground">View plant shift logs or start a new entry</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("plant_heating") && (
+        <Link href={opLink(`/plant/heating-sessions/${todayStr}`)}>
+          <Card className="hover-elevate cursor-pointer h-full border-orange-200 dark:border-orange-800" data-testid="tile-heating-sessions">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                <Flame className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Bitumen Heating Sessions</h3>
+                <p className="text-sm text-muted-foreground">Per-session boiler runs – night pre-heat + day-time, with optional inline DG</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("site_procurement") && (
+        <Link href={opLink("/plant/purchase-indents")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-purchase-indents">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <ClipboardList className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Purchase Indents</h3>
+                <p className="text-sm text-muted-foreground">Raise and track material purchase requests</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("site_diesel") && (
+        <Link href={opLink("/plant/diesel-requirements")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-diesel-requirements">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+                <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function EquipmentFleetView({ plantName }: { plantName?: string }) {
+  const { appendPlantContext } = useOrigin();
+  const { sectionVisible, isAdmin } = useAuth();
+  const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
+
+  const { data: openCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/maintenance/open-count"],
+    enabled: sectionVisible("plant_equipment"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const openBreakdownCount = openCountData?.count ?? 0;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {sectionVisible("plant_equipment") && (
+        <Link href={opLink("/plant/equipment-usage") + (plantName ? `&plant=${encodeURIComponent(plantName)}` : "")}>
+          <Card className="hover-elevate cursor-pointer h-full">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                <Gauge className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Equipment Usage</h3>
+                <p className="text-sm text-muted-foreground">Track meter readings and diesel consumption</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("plant_equipment") && (
+        <Link href={opLink("/plant/maintenance")}>
+          <Card className="hover-elevate cursor-pointer h-full" data-testid="card-maintenance">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="relative w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                <Wrench className="w-7 h-7 text-red-600 dark:text-red-400" />
+                {openBreakdownCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Maintenance &amp; Breakdowns</h3>
+                <p className="text-sm text-muted-foreground">
+                  {openBreakdownCount > 0
+                    ? <span className="text-destructive font-medium">{openBreakdownCount} open breakdown{openBreakdownCount !== 1 ? "s" : ""}</span>
+                    : "Log breakdowns, services, PM events and parts used"}
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {sectionVisible("site_diesel") && (
+        <Link href={opLink("/plant/diesel-requirements")}>
+          <Card className="hover-elevate cursor-pointer h-full">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Fuel className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Daily Diesel Requirements</h3>
+                <p className="text-sm text-muted-foreground">Plan and track daily diesel needs per equipment</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function ReportsAnalysisView({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
+  return (
+    <div className="space-y-8">
+      <ReportsTab plantType={plantType} rmcEnabled={rmcEnabled} />
+      <StockDetailsTab plantType={plantType} rmcEnabled={rmcEnabled} />
     </div>
   );
 }
