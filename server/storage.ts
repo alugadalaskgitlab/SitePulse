@@ -1584,9 +1584,25 @@ export class DatabaseStorage implements IStorage {
         engineer: original.engineer.toUpperCase(),
         role: editedBy,
         submittedAt: dateTime,
+        workType: (original as any).workType ?? "road",
       }).returning();
 
       const dprId = newDpr.id;
+
+      // Copy structure items (for workType = "structure")
+      if ((original as any).structureItems?.length) {
+        await tx.insert(dprStructureItems).values(
+          (original as any).structureItems.map((s: any) => ({
+            dprId,
+            structureType: s.structureType,
+            structureName: s.structureName,
+            itemOfWork: s.itemOfWork,
+            quantity: s.quantity,
+            uom: s.uom,
+            remarks: s.remarks,
+          }))
+        );
+      }
 
       // Copy progress entries with uppercase and activity personnel
       if (original.progress?.length) {
@@ -1732,9 +1748,17 @@ export class DatabaseStorage implements IStorage {
         engineer: dprData.engineer.toUpperCase(),
         role: editedBy,
         submittedAt: dateTime,
+        workType: dprData.workType ?? "road",
       }).returning();
 
       const dprId = newDpr.id;
+
+      // Insert structure items (for workType = "structure")
+      if (dprData.structureItems?.length) {
+        await tx.insert(dprStructureItems).values(
+          dprData.structureItems.map(s => ({ ...s, dprId }))
+        );
+      }
 
       // Insert edited progress entries with uppercase text fields
       if (dprData.progress?.length) {
