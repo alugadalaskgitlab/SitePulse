@@ -399,7 +399,8 @@ export default function PurchaseIndents() {
         updated[addStoreItemTargetIdx] = {
           ...updated[addStoreItemTargetIdx],
           description: newItem.name.toUpperCase(),
-          uom: newItem.uom.toUpperCase(),
+          uom: (newItem.uom || "NOS").toUpperCase(),
+          materialId: newItem.id,
         };
         setFormItems(updated);
       }

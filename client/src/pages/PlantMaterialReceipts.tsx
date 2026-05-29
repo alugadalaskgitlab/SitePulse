@@ -465,6 +465,7 @@ export default function PlantMaterialReceipts() {
         r.vehicleNumber || "-",
         r.challanNumber || "-",
         (r as any).invoiceNo || "-",
+        (r as any).invoiceDate || "-",
         r.supplier || "-",
         r.transporter || "-",
         getPartyName(r.partyId),
@@ -473,7 +474,7 @@ export default function PlantMaterialReceipts() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
+        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Inv Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
@@ -558,6 +559,7 @@ export default function PlantMaterialReceipts() {
                 <th>Vehicle</th>
                 <th>Challan</th>
                 <th>Invoice No</th>
+                <th>Invoice Date</th>
                 <th>Indent Ref</th>
                 <th>Supplier</th>
                 <th>Transporter</th>
@@ -575,6 +577,7 @@ export default function PlantMaterialReceipts() {
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
                   <td>${(r as any).invoiceNo || '-'}</td>
+                  <td>${(r as any).invoiceDate || '-'}</td>
                   <td>${(r as any).indentRef || '-'}</td>
                   <td>${r.supplier || '-'}</td>
                   <td>${r.transporter || '-'}</td>

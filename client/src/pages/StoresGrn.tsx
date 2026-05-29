@@ -424,7 +424,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         <div className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-4 flex gap-1">
                             <div className="flex-1 min-w-0">
-                              <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
+                              <Select
+                                value={line.itemId}
+                                onValueChange={v => {
+                                  if (v === "__add_new__") {
+                                    setAddItemTargetIdx(idx);
+                                    setAddItemForm({ name: "", category: "Spares", uom: "Nos" });
+                                    setAddItemOpen(true);
+                                  } else {
+                                    updateLine(idx, "itemId", v);
+                                    const it = items.find(i => String(i.id) === v);
+                                    if (it) updateLine(idx, "uom", it.defaultUom || "NOS");
+                                  }
+                                }}
+                              >
                                 <SelectTrigger className="text-xs h-8 w-full" data-testid={`select-item-${idx}`}>
                                   <SelectValue placeholder="Select item…" />
                                 </SelectTrigger>
@@ -434,6 +447,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                       {it.name} <span className="text-muted-foreground">({it.category})</span>
                                     </SelectItem>
                                   ))}
+                                  <SelectItem value="__add_new__" className="text-blue-600 dark:text-blue-400 font-medium border-t">
+                                    + Add new item to catalogue…
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
