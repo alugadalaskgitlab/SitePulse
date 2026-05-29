@@ -44,6 +44,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Water": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
 };
 
+const ALL_PLANTS = "__ALL__";
+
 export default function RmcRawMaterials() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -55,16 +57,28 @@ export default function RmcRawMaterials() {
   const [form, setForm] = useState(defaultForm());
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
+  const [plantSelect, setPlantSelect] = useState(ALL_PLANTS);
+  const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
+
+  const { data: plantNames = [] } = useQuery<string[]>({
+    queryKey: ["/api/rmc/plants"],
+    queryFn: () => apiRequest("GET", "/api/rmc/plants").then(r => r.json()),
+  });
+
+  const plantParam = plantName ? `&plantName=${encodeURIComponent(plantName)}` : "";
 
   const { data: receipts = [], isLoading } = useQuery<RmcRawMaterialReceipt[]>({
-    queryKey: ["/api/rmc/raw-materials", dateFrom, dateTo],
+    queryKey: ["/api/rmc/raw-materials", dateFrom, dateTo, plantName],
     queryFn: () =>
-      apiRequest("GET", `/api/rmc/raw-materials?dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      apiRequest("GET", `/api/rmc/raw-materials?dateFrom=${dateFrom}&dateTo=${dateTo}${plantParam}`)
         .then(r => r.json()),
   });
 
   const { data: stockSummary = [] } = useQuery<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]>({
-    queryKey: ["/api/rmc/stock-summary"],
+    queryKey: ["/api/rmc/stock-summary", plantName],
+    queryFn: () =>
+      apiRequest("GET", `/api/rmc/stock-summary${plantName ? `?plantName=${encodeURIComponent(plantName)}` : ""}`)
+        .then(r => r.json()),
   });
 
   const upsertMutation = useMutation({
@@ -78,6 +92,7 @@ export default function RmcRawMaterials() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rmc/raw-materials"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rmc/stock-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rmc/plants"] });
       toast({ title: editingId ? "Receipt updated" : "Receipt recorded" });
       setOpen(false);
     },
@@ -167,6 +182,19 @@ export default function RmcRawMaterials() {
             <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" data-testid="input-date-from" />
             <span className="text-muted-foreground text-sm">to</span>
             <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" data-testid="input-date-to" />
+            {plantNames.length > 0 && (
+              <Select value={plantSelect} onValueChange={setPlantSelect}>
+                <SelectTrigger className="w-40" data-testid="select-plant-name">
+                  <SelectValue placeholder="All plants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_PLANTS}>All plants</SelectItem>
+                  {plantNames.map(name => (
+                    <SelectItem key={name} value={name} data-testid={`option-plant-${name}`}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {isLoading ? (
@@ -225,7 +253,22 @@ export default function RmcRawMaterials() {
           )}
         </TabsContent>
 
-        <TabsContent value="stock" className="mt-4">
+        <TabsContent value="stock" className="mt-4 space-y-4">
+          {plantNames.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={plantSelect} onValueChange={setPlantSelect}>
+                <SelectTrigger className="w-40" data-testid="select-plant-name-stock">
+                  <SelectValue placeholder="All plants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_PLANTS}>All plants</SelectItem>
+                  {plantNames.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {stockSummary.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 gap-3">

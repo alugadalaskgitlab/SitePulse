@@ -109,6 +109,8 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
   );
 }
 
+const ALL_PLANTS = "__ALL__";
+
 export default function RmcBatchRecords() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -121,15 +123,24 @@ export default function RmcBatchRecords() {
   const [printRecord, setPrintRecord] = useState<RmcBatchRecordWithDesign | null>(null);
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
+  const [plantSelect, setPlantSelect] = useState(ALL_PLANTS);
+  const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
+
+  const { data: plantNames = [] } = useQuery<string[]>({
+    queryKey: ["/api/rmc/plants"],
+    queryFn: () => apiRequest("GET", "/api/rmc/plants").then(r => r.json()),
+  });
+
+  const plantParam = plantName ? `&plantName=${encodeURIComponent(plantName)}` : "";
 
   const { data: designs = [] } = useQuery<RmcMixDesign[]>({
     queryKey: ["/api/rmc/mix-designs"],
   });
 
   const { data: records = [], isLoading } = useQuery<RmcBatchRecordWithDesign[]>({
-    queryKey: ["/api/rmc/batch-records", dateFrom, dateTo],
+    queryKey: ["/api/rmc/batch-records", dateFrom, dateTo, plantName],
     queryFn: () =>
-      apiRequest("GET", `/api/rmc/batch-records?dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      apiRequest("GET", `/api/rmc/batch-records?dateFrom=${dateFrom}&dateTo=${dateTo}${plantParam}`)
         .then(r => r.json()),
   });
 
@@ -227,11 +238,25 @@ export default function RmcBatchRecords() {
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" data-testid="input-date-from" />
           <span className="text-muted-foreground text-sm">to</span>
           <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" data-testid="input-date-to" />
+          {plantNames.length > 0 && (
+            <Select value={plantSelect} onValueChange={setPlantSelect}>
+              <SelectTrigger className="w-40" data-testid="select-plant-name">
+                <SelectValue placeholder="All plants" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_PLANTS}>All plants</SelectItem>
+                {plantNames.map(name => (
+                  <SelectItem key={name} value={name} data-testid={`option-plant-${name}`}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {records.length > 0 && (
             <Button
               variant="outline"
               onClick={() => {
                 const params = new URLSearchParams({ dateFrom, dateTo });
+                if (plantName) params.set("plantName", plantName);
                 window.location.href = `/api/rmc/batch-records/export?${params}`;
               }}
               data-testid="btn-export-excel"
