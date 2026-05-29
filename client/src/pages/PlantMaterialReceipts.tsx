@@ -190,12 +190,25 @@ export default function PlantMaterialReceipts() {
     queryKey: ["/api/plant-module/materials"],
   });
 
-  const { data: allPurchaseIndents = [] } = useQuery<{id: number; indentNo: string; status: string; items: {description: string; qty: number; uom: string}[]}[]>({
-    queryKey: ["/api/purchase-indents"],
+  const selectedMaterialName = useMemo(() => {
+    const m = materials?.find(m => m.id === parseInt(materialId || "0"));
+    return m?.name || "";
+  }, [materials, materialId]);
+
+  const { data: allPurchaseIndents = [] } = useQuery<{id: number; indentNo: string; status: string; date?: string; raisedBy?: string; items: {description: string; qty: number; uom: string}[]}[]>({
+    queryKey: ["/api/purchase-indents/for-material", selectedMaterialName],
+    queryFn: () => {
+      const url = selectedMaterialName
+        ? `/api/purchase-indents/for-material?name=${encodeURIComponent(selectedMaterialName)}`
+        : "/api/purchase-indents/for-material";
+      return fetch(url).then(r => r.json());
+    },
     select: (data: any[]) => data.map(d => ({
       id: d.id,
       indentNo: d.indentNo,
       status: d.status,
+      date: d.date,
+      raisedBy: d.raisedBy,
       items: (d.items || []).map((it: any) => ({ description: it.description || "", qty: it.qty, uom: it.uom })),
     })),
   });
@@ -290,7 +303,7 @@ export default function PlantMaterialReceipts() {
   const handleSubmit = () => {
     if (!materialId || !quantity || !partyId || !challanNumber.trim()) {
       if (!challanNumber.trim()) {
-        toast({ title: "Error", description: "Receipt No. is required", variant: "destructive" });
+        toast({ title: "Error", description: "Challan / DN No. is required", variant: "destructive" });
       }
       return;
     }
@@ -437,6 +450,7 @@ export default function PlantMaterialReceipts() {
         Date: r.date,
         Time: r.time || "",
         Material: getMaterialName(r.materialId),
+        "RECV No": (r as any).receiptNo || "",
         Quantity: r.quantity,
         UOM: r.uom,
         "Vehicle No": r.vehicleNumber || "",
@@ -498,6 +512,7 @@ export default function PlantMaterialReceipts() {
       }
       
       const tableData = filteredReceipts.map(r => [
+        (r as any).receiptNo || "-",
         r.date,
         r.time || "-",
         getMaterialName(r.materialId),
@@ -514,7 +529,7 @@ export default function PlantMaterialReceipts() {
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Inv Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
+        head: [["RECV No", "Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Inv Date", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
@@ -591,6 +606,7 @@ export default function PlantMaterialReceipts() {
           <table>
             <thead>
               <tr>
+                <th>RECV No.</th>
                 <th>Date</th>
                 <th>Time</th>
                 <th>Material</th>
@@ -609,6 +625,7 @@ export default function PlantMaterialReceipts() {
             <tbody>
               ${filteredReceipts.map(r => `
                 <tr>
+                  <td>${(r as any).receiptNo || '-'}</td>
                   <td>${r.date}</td>
                   <td>${r.time || '-'}</td>
                   <td>${getMaterialName(r.materialId)}</td>
@@ -791,8 +808,8 @@ export default function PlantMaterialReceipts() {
                   <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())} placeholder="e.g., KA-01-XX-1234" data-testid="input-vehicle" />
                 </div>
                 <div>
-                  <Label>Receipt No. <span className="text-destructive">*</span></Label>
-                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Receipt/Challan No. (Required)" data-testid="input-challan" className={!challanNumber.trim() ? "border-destructive/50" : ""} />
+                  <Label>Challan / DN No. <span className="text-destructive">*</span></Label>
+                  <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Supplier challan / delivery note no. (Required)" data-testid="input-challan" className={!challanNumber.trim() ? "border-destructive/50" : ""} />
                 </div>
               </div>
 
@@ -881,6 +898,8 @@ export default function PlantMaterialReceipts() {
                           <span className="font-semibold">{selectedPI.indentNo}</span>
                           {getStatusBadge(selectedPI.status)}
                           <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
+                          {selectedPI.date && <span className="text-muted-foreground">· {selectedPI.date}</span>}
+                          {selectedPI.raisedBy && <span className="text-muted-foreground">by {selectedPI.raisedBy}</span>}
                         </div>
                         {selectedPI.items.slice(0, 3).map((it, i) => (
                           <div key={i} className="text-muted-foreground">{it.description} — {it.qty} {it.uom}</div>

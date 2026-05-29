@@ -44,6 +44,8 @@ type PurchaseIndentFull = {
   id: number;
   indentNo: string;
   status: string;
+  date?: string;
+  raisedBy?: string;
   items: { description: string; qty: number; uom: string; approvedQty: number | null }[];
 };
 
@@ -157,7 +159,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       next[idx] = { ...next[idx], [key]: val };
       if (key === "itemId" && val) {
         const item = items.find(i => String(i.id) === val);
-        if (item) next[idx].uom = item.uom;
+        if (item) {
+          next[idx].uom = item.uom;
+          if (idx === 0 && item.category && STORE_CATEGORIES.includes(item.category)) {
+            setGrnCategory(item.category);
+          }
+        }
         const matched = findMatchingIndents(item?.name || "");
         setSuggestedIndents(matched);
         if (matched.length === 1 && !form.indentRef) {
@@ -467,6 +474,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <span className="font-semibold">{selectedPI.indentNo}</span>
                             {getStatusBadgeGrn(selectedPI.status)}
                             <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
+                            {selectedPI.date && <span className="text-muted-foreground">· {selectedPI.date}</span>}
+                            {selectedPI.raisedBy && <span className="text-muted-foreground">by {selectedPI.raisedBy}</span>}
                           </div>
                           {selectedPI.items.slice(0, 3).map((it, i) => (
                             <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>

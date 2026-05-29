@@ -4701,6 +4701,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-indents/for-material", async (req, res) => {
+    try {
+      const q = ((req.query.q as string) || (req.query.name as string) || "").toLowerCase().trim();
+      const indents = await storage.getPurchaseIndents();
+      const filtered = q
+        ? indents.filter(i => i.items.some(it => (it.description || "").toLowerCase().includes(q)))
+        : indents;
+      res.json(filtered);
+    } catch (err) {
+      console.error("Error fetching purchase indents for material:", err);
+      res.status(500).json({ message: "Failed to fetch purchase indents" });
+    }
+  });
+
   app.get("/api/purchase-indents/summary", async (req, res) => {
     try {
       const all = await storage.getPurchaseIndents();
