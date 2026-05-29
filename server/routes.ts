@@ -7544,6 +7544,123 @@ export async function registerRoutes(
     }
   });
 
+  // RMC Daily Report — Excel export (multi-sheet)
+  app.get("/api/rmc/daily-report/export", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
+      const date = req.query.date as string;
+      if (!date) return res.status(400).json({ message: "date query param required" });
+      const plantName = (req.query.plantName as string | undefined) || undefined;
+      const report = await storage.getRmcDailyReport(date, plantName);
+
+      const wb = xlsx.utils.book_new();
+
+      // ── Sheet 1: Summary ──────────────────────────────────────────────────
+      const cubePassCount = report.cubeTests.filter(t => t.passFail === "pass").length;
+      const cubeFailCount = report.cubeTests.filter(t => t.passFail === "fail").length;
+      const cubeTested = cubePassCount + cubeFailCount;
+      const summaryAoa = [
+        ["RMC Daily Production Report"],
+        ["Date", date],
+        plantName ? ["Plant", plantName] : ["Plant", "All Plants"],
+        [],
+        ["Metric", "Value"],
+        ["Total Volume (m³)", report.totalVolumeM3],
+        ["Dispatches", report.batchRecords.length],
+        ["Grades Produced", report.gradeBreakdown.length],
+        ["Cube Tests", report.cubeTests.length],
+        ["Cube Tests — Pass", cubePassCount],
+        ["Cube Tests — Fail", cubeFailCount],
+        cubeTested > 0 ? ["Cube Pass Rate (%)", Number(((cubePassCount / cubeTested) * 100).toFixed(1))] : ["Cube Pass Rate (%)", "N/A"],
+      ];
+      const summaryWs = xlsx.utils.aoa_to_sheet(summaryAoa);
+      summaryWs["!cols"] = [{ wch: 24 }, { wch: 16 }];
+      xlsx.utils.book_append_sheet(wb, summaryWs, "Summary");
+
+      // ── Sheet 2: Grade Breakdown ──────────────────────────────────────────
+      if (report.gradeBreakdown.length > 0) {
+        const gradeAoa = [
+          ["Grade", "Batches", "Volume (m³)"],
+          ...report.gradeBreakdown.map(g => [g.grade, g.batches, g.volumeM3]),
+          ["Total", report.batchRecords.reduce((s, r) => s + (r.batchesCount ?? 0), 0), report.totalVolumeM3],
+        ];
+        const gradeWs = xlsx.utils.aoa_to_sheet(gradeAoa);
+        gradeWs["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 14 }];
+        xlsx.utils.book_append_sheet(wb, gradeWs, "Grade Breakdown");
+      }
+
+      // ── Sheet 3: Batch Dispatches ─────────────────────────────────────────
+      if (report.batchRecords.length > 0) {
+        const batchRows = report.batchRecords.map(b => ({
+          "DC Number": b.dcNumber ?? "",
+          "Grade": b.grade,
+          "Customer": b.customerName ?? "",
+          "Delivery Site": b.deliverySite ?? "",
+          "Truck Number": b.truckNumber ?? "",
+          "Batches": b.batchesCount ?? "",
+          "Volume (m³)": b.totalVolumeM3,
+          "Remarks": b.remarks ?? "",
+        }));
+        const batchWs = xlsx.utils.json_to_sheet(batchRows);
+        batchWs["!cols"] = [
+          { wch: 14 }, { wch: 10 }, { wch: 22 }, { wch: 22 },
+          { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 28 },
+        ];
+        xlsx.utils.book_append_sheet(wb, batchWs, "Batch Dispatches");
+      }
+
+      // ── Sheet 4: Raw Materials ────────────────────────────────────────────
+      if (report.rawMaterialsReceived.length > 0 || report.materialConsumed.length > 0) {
+        const allMats = Array.from(new Set([
+          ...report.rawMaterialsReceived.map(r => r.materialName),
+          ...report.materialConsumed.map(c => c.materialName),
+        ]));
+        const receivedMap = new Map(report.rawMaterialsReceived.map(r => [r.materialName, r.totalQty]));
+        const consumedMap = new Map(report.materialConsumed.map(c => [c.materialName, c.consumedQty]));
+        const matAoa = [
+          ["Material", "Received (kg)", "Consumed (kg)", "Balance (kg)"],
+          ...allMats.map(mat => {
+            const recv = receivedMap.get(mat) ?? 0;
+            const cons = consumedMap.get(mat) ?? 0;
+            return [mat, recv || "", cons || "", recv - cons];
+          }),
+        ];
+        const matWs = xlsx.utils.aoa_to_sheet(matAoa);
+        matWs["!cols"] = [{ wch: 22 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+        xlsx.utils.book_append_sheet(wb, matWs, "Raw Materials");
+      }
+
+      // ── Sheet 5: Cube Tests ───────────────────────────────────────────────
+      const batchMap = new Map(report.batchRecords.map(b => [b.id, b]));
+      const cubeRows = report.cubeTests.map(t => ({
+        "Sample ID": t.sampleId,
+        "Grade": batchMap.get(t.batchRecordId)?.grade ?? "",
+        "Age (Days)": t.ageDays,
+        "Test Date": t.testDate,
+        "Strength (MPa)": t.strengthMpa,
+        "Target fck (MPa)": t.targetStrength ?? "",
+        "Pass / Fail": t.passFail ? t.passFail.toUpperCase() : "",
+        "Remarks": t.remarks ?? "",
+      }));
+      const cubeWs = cubeRows.length > 0
+        ? xlsx.utils.json_to_sheet(cubeRows)
+        : xlsx.utils.aoa_to_sheet([["Sample ID", "Grade", "Age (Days)", "Test Date", "Strength (MPa)", "Target fck (MPa)", "Pass / Fail", "Remarks"]]);
+      cubeWs["!cols"] = [
+        { wch: 18 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+        { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 28 },
+      ];
+      xlsx.utils.book_append_sheet(wb, cubeWs, "Cube Tests");
+
+      const buf = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="rmc-daily-report-${date}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      console.error("RMC daily report Excel error", err);
+      if (!res.headersSent) res.status(500).json({ message: err.message || "Export failed" });
+    }
+  });
+
   seedDatabase();
   seedPlantMasterData();
 

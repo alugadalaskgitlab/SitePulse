@@ -74,6 +74,13 @@ export default function RmcDailyReport() {
               >
                 <Download className="w-4 h-4 mr-2" />Download PDF
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => { window.location.href = `/api/rmc/daily-report/export?date=${date}${plantParam}`; }}
+                data-testid="btn-export-excel"
+              >
+                <FileText className="w-4 h-4 mr-2" />Export Excel
+              </Button>
             </>
           )}
         </div>
