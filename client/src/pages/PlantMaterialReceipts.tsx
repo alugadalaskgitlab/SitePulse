@@ -802,6 +802,15 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
+              {!editingReceipt && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">System Receipt No. (auto-assigned)</Label>
+                  <div className="flex items-center h-9 px-3 border rounded-md bg-muted/50 text-sm font-mono text-muted-foreground" data-testid="text-system-recv-no">
+                    {nextReceiptNoData?.number || (materialId ? "…" : "Select material first")}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Vehicle No</Label>
@@ -1098,6 +1107,11 @@ export default function PlantMaterialReceipts() {
                             >
                               <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
                               <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
+                                {(receipt as any).receiptNo && (
+                                  <span className="text-[10px] font-mono font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 px-1.5 py-0.5 rounded" data-testid={`text-recv-no-${receipt.id}`}>
+                                    {(receipt as any).receiptNo}
+                                  </span>
+                                )}
                                 {receipt.time && <span className="text-xs text-muted-foreground">{receipt.time}</span>}
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
@@ -1118,6 +1132,10 @@ export default function PlantMaterialReceipts() {
                             {isExpanded && (
                               <div className="px-4 pb-4 pt-3 border-t border-border/50">
                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground text-xs block">RECV No.</span>
+                                    <span className="font-medium font-mono text-xs">{(receipt as any).receiptNo || "—"}</span>
+                                  </div>
                                   <div>
                                     <span className="text-muted-foreground text-xs block">Time</span>
                                     <span className="font-medium">{receipt.time || "-"}</span>

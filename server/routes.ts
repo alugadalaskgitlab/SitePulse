@@ -4705,9 +4705,13 @@ export async function registerRoutes(
     try {
       const q = ((req.query.q as string) || (req.query.name as string) || "").toLowerCase().trim();
       const indents = await storage.getPurchaseIndents();
+      const activeStatuses = ["approved", "pending"];
       const filtered = q
-        ? indents.filter(i => i.items.some(it => (it.description || "").toLowerCase().includes(q)))
-        : indents;
+        ? indents.filter(i =>
+            activeStatuses.includes(i.status) &&
+            i.items.some(it => (it.description || "").toLowerCase().includes(q))
+          )
+        : indents.filter(i => activeStatuses.includes(i.status));
       res.json(filtered);
     } catch (err) {
       console.error("Error fetching purchase indents for material:", err);

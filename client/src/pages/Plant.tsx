@@ -195,6 +195,9 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
   const { sectionVisible } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
+  // Task #763: isRmc is driven purely by the feature flag; the plantType guard was removed
+  // because plant_settings may be empty (defaulting to "hma"), hiding RMC navigation even
+  // when the RMC module is intentionally enabled.
   const isRmc = rmcEnabled;
 
   const { data: openCountData } = useQuery<{ count: number }>({

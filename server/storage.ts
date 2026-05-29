@@ -16834,12 +16834,28 @@ export class DatabaseStorage implements IStorage {
     return this.buildGrnWithItems(grn);
   }
 
+  private static readonly STORE_ITEM_CAT_CODES: Record<string, string> = {
+    "Spares": "SPR", "Lubricants": "LUB", "Consumables": "CONS",
+    "Electricals": "ELEC", "Tools": "TOOL", "HMA Plant": "HMA",
+    "RMC": "RMC", "Office": "OFC", "General": "GEN", "Other": "OTH",
+  };
+
   async createStoreGrn(
     grnData: Omit<InsertStoreGrn, 'grnNumber'>,
     items: Omit<InsertStoreGrnItem, 'grnId'>[],
     grnCategory?: string
   ): Promise<StoreGrnWithItems> {
-    const grnNumber = await this.generateStoreDocNumber('GRN', grnCategory);
+    // Derive GRN category from the first line item's category (server-authoritative).
+    // Falls back to client-supplied grnCategory if lookup fails.
+    let resolvedCategoryCode = grnCategory;
+    if (items.length > 0) {
+      const [firstItem] = await db.select({ category: storeItems.category })
+        .from(storeItems).where(eq(storeItems.id, items[0].itemId));
+      if (firstItem?.category) {
+        resolvedCategoryCode = DatabaseStorage.STORE_ITEM_CAT_CODES[firstItem.category] ?? grnCategory;
+      }
+    }
+    const grnNumber = await this.generateStoreDocNumber('GRN', resolvedCategoryCode);
     const [grn] = await db.insert(storeGrns).values({ ...grnData, grnNumber }).returning();
     if (items.length > 0) {
       await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));
