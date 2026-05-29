@@ -1088,9 +1088,11 @@ export default function PurchaseIndents() {
                               <p className="text-xs text-emerald-600 mt-0.5">READY TO PURCHASE</p>
                             )}
                             {canViewStores && indentGrnCounts && indentGrnCounts[indent.indentNo] ? (
-                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 font-medium" data-testid={`text-grn-count-${indent.id}`}>
-                                {indentGrnCounts[indent.indentNo]} GRN{indentGrnCounts[indent.indentNo] > 1 ? "s" : ""} RAISED
-                              </p>
+                              <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}`}>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 font-medium underline-offset-2 hover:underline cursor-pointer" data-testid={`text-grn-count-${indent.id}`}>
+                                  {indentGrnCounts[indent.indentNo]} GRN{indentGrnCounts[indent.indentNo] > 1 ? "s" : ""} RAISED ↗
+                                </p>
+                              </Link>
                             ) : null}
                           </div>
                           {getStatusBadge(indent.status)}

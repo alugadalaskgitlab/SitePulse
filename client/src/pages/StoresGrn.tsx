@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, FileText } from "lucide-react";
@@ -26,12 +26,20 @@ const emptyLine = (): GrnLine => ({ itemId: "", qty: "", rate: "", uom: "" });
 
 interface Props { isNew?: boolean; detailId?: number }
 
+type PurchaseIndentSummary = { id: number; indentNo: string; status: string };
+
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const searchParams = new URLSearchParams(search);
+  const returnTo = searchParams.get("returnTo") || "/stores";
+  const indentRefFilter = searchParams.get("indentRef") || "";
+
   const [showForm, setShowForm] = useState(!!isNew);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [indentFilter, setIndentFilter] = useState(indentRefFilter);
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
@@ -45,12 +53,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
 
+  const { data: purchaseIndents = [] } = useQuery<PurchaseIndentSummary[]>({
+    queryKey: ["/api/purchase-indents"],
+    select: (data: any[]) => data.map(d => ({ id: d.id, indentNo: d.indentNo, status: d.status })),
+  });
+
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
+      if (indentFilter) p.set("indentRef", indentFilter);
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -129,7 +143,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/stores">
+          <Link href={returnTo}>
             <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex items-center gap-2 flex-1">
@@ -239,7 +253,29 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Indent Reference</Label>
-                    <Input value={form.indentRef} onChange={e => setForm(f => ({ ...f, indentRef: e.target.value }))} placeholder="e.g. PI-2026-001" data-testid="input-grn-indent" />
+                    <Select
+                      value={form.indentRef || "__none__"}
+                      onValueChange={v => setForm(f => ({ ...f, indentRef: v === "__none__" ? "" : v }))}
+                    >
+                      <SelectTrigger className="text-xs" data-testid="select-grn-indent">
+                        <SelectValue placeholder="Select indent (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None / No indent</SelectItem>
+                        {purchaseIndents.map(pi => (
+                          <SelectItem key={pi.id} value={pi.indentNo}>
+                            {pi.indentNo}
+                            <span className="ml-2 text-muted-foreground text-[10px]">{pi.status.toUpperCase()}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.indentRef && (
+                      <p className="text-[10px] text-muted-foreground">Or type manually:</p>
+                    )}
+                    {form.indentRef && !purchaseIndents.find(p => p.indentNo === form.indentRef) && (
+                      <Input value={form.indentRef} onChange={e => setForm(f => ({ ...f, indentRef: e.target.value }))} placeholder="e.g. PI-2026-001" className="text-xs h-7 mt-1" data-testid="input-grn-indent-manual" />
+                    )}
                   </div>
                   <div className="space-y-2 sm:col-span-2">
                     <Label className="text-xs">Remarks</Label>
@@ -306,8 +342,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Label className="text-xs text-muted-foreground">To</Label>
                 <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
               </div>
-              {(dateFrom || dateTo) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</Button>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Indent</Label>
+                <Input className="h-8 w-36 text-xs" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
+              </div>
+              {(dateFrom || dateTo || indentFilter) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); }}>Clear</Button>
               )}
             </div>
 

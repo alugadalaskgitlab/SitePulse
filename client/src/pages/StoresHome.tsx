@@ -1,19 +1,26 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, ChevronRight, Plus, ClipboardList,
   ArrowDownToLine, ArrowUpFromLine, Home, Layers, RotateCcw,
-  BarChart3, PackageCheck,
+  BarChart3,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 
+const BULK_RETURN = encodeURIComponent("/stores?tab=bulk");
+const ITEMS_RETURN = encodeURIComponent("/stores?tab=items");
+
 export default function StoresHome() {
   const { sectionVisible } = useAuth();
   const canBulk = sectionVisible("plant_materials");
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const tabParam = params.get("tab");
+  const activeTab = tabParam === "items" ? "items" : (tabParam === "bulk" && canBulk) ? "bulk" : canBulk ? "bulk" : "items";
 
   const { data: stock = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/stores/stock-summary"],
@@ -29,8 +36,9 @@ export default function StoresHome() {
     return acc;
   }, {});
 
-  const defaultTab = canBulk ? "bulk" : "items";
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  function handleTabChange(val: string) {
+    navigate(`/stores?tab=${val}`, { replace: true });
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -53,7 +61,7 @@ export default function StoresHome() {
       </header>
 
       <div className="max-w-5xl mx-auto p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-5">
           <TabsList className="w-full sm:w-auto">
             {canBulk && (
               <TabsTrigger value="bulk" className="gap-2" data-testid="tab-bulk-materials">
@@ -74,7 +82,7 @@ export default function StoresHome() {
                 Aggregates, cement, bitumen, and other bulk materials received at the plant.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <Link href="/plant/material-receipts">
+                <Link href={`/plant/material-receipts?returnTo=${BULK_RETURN}`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-receipts">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
@@ -89,7 +97,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href="/plant/material-issues">
+                <Link href={`/plant/material-issues?returnTo=${BULK_RETURN}`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-issues">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
@@ -104,7 +112,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href="/plant/material-returns">
+                <Link href={`/plant/material-returns?returnTo=${BULK_RETURN}`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-returns">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
@@ -119,7 +127,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href="/plant/stock">
+                <Link href={`/plant/stock?returnTo=${BULK_RETURN}`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-stock">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
@@ -134,20 +142,6 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href="/plant/variance-report">
-                  <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-variance">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="w-11 h-11 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                        <PackageCheck className="w-5 h-5 text-red-600 dark:text-red-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-sm">Variance Report</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">Book vs physical stock comparison</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
-                    </CardContent>
-                  </Card>
-                </Link>
               </div>
             </TabsContent>
           )}
@@ -178,7 +172,7 @@ export default function StoresHome() {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Link href="/stores/grns/new">
+              <Link href={`/stores/grns/new?returnTo=${ITEMS_RETURN}`}>
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-green-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-new-grn">
                   <div className="w-9 h-9 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
                     <ArrowDownToLine className="w-4 h-4 text-green-600 dark:text-green-400" />
@@ -190,7 +184,7 @@ export default function StoresHome() {
                   <Plus className="w-4 h-4 text-slate-300 group-hover:text-green-500 ml-auto" />
                 </button>
               </Link>
-              <Link href="/stores/issues/new">
+              <Link href={`/stores/issues/new?returnTo=${ITEMS_RETURN}`}>
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex items-center gap-3 shadow-sm hover:border-orange-400 hover:shadow-md transition-all cursor-pointer" data-testid="button-new-issue">
                   <div className="w-9 h-9 bg-orange-100 dark:bg-orange-900/40 rounded-lg flex items-center justify-center group-hover:bg-orange-200 transition-colors">
                     <ArrowUpFromLine className="w-4 h-4 text-orange-600 dark:text-orange-400" />
@@ -247,10 +241,10 @@ export default function StoresHome() {
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <h3 className="font-semibold text-sm text-slate-700 dark:text-slate-200">Current Stock</h3>
                 <div className="flex gap-2">
-                  <Link href="/stores/grns">
+                  <Link href={`/stores/grns?returnTo=${ITEMS_RETURN}`}>
                     <Button variant="outline" size="sm" className="text-xs h-7" data-testid="button-view-grns">GRN History</Button>
                   </Link>
-                  <Link href="/stores/issues">
+                  <Link href={`/stores/issues?returnTo=${ITEMS_RETURN}`}>
                     <Button variant="outline" size="sm" className="text-xs h-7" data-testid="button-view-issues">Issue History</Button>
                   </Link>
                 </div>

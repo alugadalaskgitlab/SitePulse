@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ChevronLeft, Plus, Trash2, ArrowUpFromLine, X, Loader2, Eye } from "lucide-react";
@@ -31,6 +31,8 @@ interface Props { isNew?: boolean; detailId?: number }
 export default function StoresIssue({ isNew, detailId }: Props) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const returnTo = new URLSearchParams(search).get("returnTo") || "/stores";
   const [showForm, setShowForm] = useState(!!isNew);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -139,7 +141,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/stores">
+          <Link href={returnTo}>
             <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex items-center gap-2 flex-1">
