@@ -7313,6 +7313,15 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // RMC Plant Names — distinct list for dropdown
+  app.get("/api/rmc/plants", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_daily_reports")) return;
+      const names = await storage.getDistinctRmcPlantNames();
+      res.json(names);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // RMC Stock Summary
   app.get("/api/rmc/stock-summary", async (req, res) => {
     try {

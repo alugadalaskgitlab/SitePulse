@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle, XCircle } from "lucide-react";
 import type { RmcBatchRecordWithDesign, RmcCubeTest } from "@shared/schema";
@@ -24,12 +25,19 @@ interface DailyReport {
 
 export default function RmcDailyReport() {
   const [date, setDate] = useState(today);
-  const [plantName, setPlantName] = useState("");
+  const ALL_PLANTS = "__ALL__";
+  const [plantSelect, setPlantSelect] = useState(ALL_PLANTS);
+  const plantName = plantSelect === ALL_PLANTS ? "" : plantSelect;
 
-  const plantParam = plantName.trim() ? `&plantName=${encodeURIComponent(plantName.trim())}` : "";
+  const { data: plantNames = [] } = useQuery<string[]>({
+    queryKey: ["/api/rmc/plants"],
+    queryFn: () => apiRequest("GET", "/api/rmc/plants").then(r => r.json()),
+  });
+
+  const plantParam = plantName ? `&plantName=${encodeURIComponent(plantName)}` : "";
 
   const { data: report, isLoading } = useQuery<DailyReport>({
-    queryKey: ["/api/rmc/daily-report", date, plantName.trim()],
+    queryKey: ["/api/rmc/daily-report", date, plantName],
     queryFn: () => apiRequest("GET", `/api/rmc/daily-report?date=${date}${plantParam}`).then(r => r.json()),
     enabled: !!date,
   });
@@ -50,16 +58,18 @@ export default function RmcDailyReport() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="input-plant" className="text-sm whitespace-nowrap">Plant</Label>
-            <Input
-              id="input-plant"
-              type="text"
-              placeholder="All plants"
-              value={plantName}
-              onChange={e => setPlantName(e.target.value)}
-              className="w-36"
-              data-testid="input-plant-name"
-            />
+            <Label className="text-sm whitespace-nowrap">Plant</Label>
+            <Select value={plantSelect} onValueChange={setPlantSelect}>
+              <SelectTrigger className="w-40" data-testid="select-plant-name">
+                <SelectValue placeholder="All plants" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_PLANTS}>All plants</SelectItem>
+                {plantNames.map(name => (
+                  <SelectItem key={name} value={name} data-testid={`option-plant-${name}`}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" data-testid="input-date" />
           {report && (

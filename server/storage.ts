@@ -775,6 +775,7 @@ export interface IStorage {
   getOpenBreakdownCount(): Promise<number>;
 
   // RMC Plant Module (Task #697)
+  getDistinctRmcPlantNames(): Promise<string[]>;
   getRmcMixDesigns(plantName?: string): Promise<RmcMixDesign[]>;
   getRmcMixDesign(id: number): Promise<RmcMixDesign | undefined>;
   createRmcMixDesign(d: InsertRmcMixDesign): Promise<RmcMixDesign>;
@@ -17239,6 +17240,14 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`
       ALTER TABLE plant_settings ADD COLUMN IF NOT EXISTS plant_type text DEFAULT 'hma'
     `));
+  }
+
+  async getDistinctRmcPlantNames(): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ plantName: rmcBatchRecords.plantName })
+      .from(rmcBatchRecords)
+      .orderBy(asc(rmcBatchRecords.plantName));
+    return rows.map(r => r.plantName).filter(Boolean) as string[];
   }
 
   async getRmcMixDesigns(plantName?: string): Promise<RmcMixDesign[]> {
