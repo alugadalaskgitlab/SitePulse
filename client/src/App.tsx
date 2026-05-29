@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { AuthProvider } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import type { SectionKey } from "@shared/permissions";
 import Login from "@/pages/Login";
 import UserManagement from "@/pages/UserManagement";
@@ -170,6 +171,7 @@ function gated(Component: ComponentType<any>, section?: SectionKey) {
 }
 
 function AuthedShell() {
+  const { rmcEnabled } = useFeatureFlags();
   return (
     <div className="min-h-screen bg-background relative">
       <Watermark />
@@ -197,12 +199,12 @@ function AuthedShell() {
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
             <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
             <Route path="/plant/maintenance" component={gated(PlantMaintenance, "plant_equipment")} />
-            <Route path="/plant/rmc/mix-designs" component={gated(RmcMixDesigns, "plant_production")} />
-            <Route path="/plant/rmc/batch-records" component={gated(RmcBatchRecords, "plant_production")} />
-            <Route path="/plant/rmc/raw-materials" component={gated(RmcRawMaterials, "plant_materials")} />
-            <Route path="/plant/rmc/cube-tests" component={gated(RmcCubeTests, "plant_production")} />
-            <Route path="/plant/rmc/daily-report" component={gated(RmcDailyReport, "plant_daily_reports")} />
-            <Route path="/plant/rmc/delivery-challans" component={gated(RmcDeliveryChallans, "plant_production")} />
+            {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={gated(RmcMixDesigns, "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/batch-records" component={gated(RmcBatchRecords, "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={gated(RmcRawMaterials, "plant_materials")} />}
+            {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gated(RmcCubeTests, "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gated(RmcDailyReport, "plant_daily_reports")} />}
+            {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gated(RmcDeliveryChallans, "plant_production")} />}
             <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
             <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />

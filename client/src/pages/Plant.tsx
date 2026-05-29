@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export default function Plant() {
 
   const [activeTab, setActiveTab] = useState(tabParam || "operations");
   const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { rmcEnabled } = useFeatureFlags();
 
   const { data: allPlantSettings } = useQuery<PlantSettings[]>({
     queryKey: ['/api/plant-module/plant-settings'],
@@ -167,13 +169,13 @@ export default function Plant() {
 
         {reportsVisible && (
           <TabsContent value="reports" className="mt-6">
-            <ReportsTab plantType={currentPlantType} />
+            <ReportsTab plantType={currentPlantType} rmcEnabled={rmcEnabled} />
           </TabsContent>
         )}
 
         {stockVisible && (
           <TabsContent value="stock" className="mt-6">
-            <StockDetailsTab plantType={currentPlantType} />
+            <StockDetailsTab plantType={currentPlantType} rmcEnabled={rmcEnabled} />
           </TabsContent>
         )}
 
@@ -191,8 +193,9 @@ export default function Plant() {
 function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; plantName?: string }) {
   const { appendPlantContext } = useOrigin();
   const { sectionVisible } = useAuth();
+  const { rmcEnabled } = useFeatureFlags();
   const opLink = (path: string) => appendPlantContext(path, { defaultTab: "operations" });
-  const isRmc = plantType === "rmc";
+  const isRmc = plantType === "rmc" && rmcEnabled;
 
   const { data: openCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/maintenance/open-count"],
@@ -232,60 +235,6 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {!isRmc && sectionVisible("plant_materials") && (
-      <Link href={opLink("/plant/material-receipts")}>
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <Package className="w-7 h-7 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Material Receipts</h3>
-              <p className="text-sm text-muted-foreground">Record incoming materials by party/job</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      )}
-
-      {!isRmc && sectionVisible("plant_materials") && (
-      <Link href={opLink("/plant/material-issues")}>
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-              <ArrowUpRight className="w-7 h-7 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Material Issues</h3>
-              <p className="text-sm text-muted-foreground">Issue materials to sites from central store</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      )}
-
-      {!isRmc && sectionVisible("plant_materials") && (
-      <Link href={opLink("/plant/material-returns")}>
-        <Card className="hover-elevate cursor-pointer h-full">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <RotateCcw className="w-7 h-7 text-green-600 dark:text-green-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg">Material Returns</h3>
-              <p className="text-sm text-muted-foreground">Return issued materials back to plant stock</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      )}
-
       {!isRmc && sectionVisible("plant_production") && (
       <Link href={opLink("/plant/dispatches")}>
         <Card className="hover-elevate cursor-pointer h-full">
@@ -559,9 +508,9 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
   );
 }
 
-function ReportsTab({ plantType = "hma" }: { plantType?: string }) {
+function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
   const { sectionVisible } = useAuth();
-  const isRmc = plantType === "rmc";
+  const isRmc = plantType === "rmc" && rmcEnabled;
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
     const sep = path.includes("?") ? "&" : "?";
@@ -642,8 +591,8 @@ function ReportsTab({ plantType = "hma" }: { plantType?: string }) {
   );
 }
 
-function StockDetailsTab({ plantType = "hma" }: { plantType?: string }) {
-  const isRmc = plantType === "rmc";
+function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
+  const isRmc = plantType === "rmc" && rmcEnabled;
   const { appendOrigin } = useOrigin();
   const { sectionVisible, isAdmin } = useAuth();
   const { toast } = useToast();

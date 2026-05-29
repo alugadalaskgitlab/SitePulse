@@ -72,6 +72,9 @@ isValidation = true
 VAPID_PUBLIC_KEY = "BLd9s-RA4C4aHcxhghJGdnmLnCaq6S2fE8EjX9rkn2RfIIGZjHFGoA5Ne0Hk7tMDv5shoPemCSjaqYlLCSCfN0o"
 VAPID_SUBJECT = "mailto:admin@hlc-sitelog.com"
 
+[userenv.development]
+ENABLE_RMC = "true"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000

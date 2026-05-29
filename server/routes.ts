@@ -64,10 +64,21 @@ function verifyRoleCookie(val: string | undefined): 'admin' | 'manager' | null {
   return role as 'admin' | 'manager';
 }
 
+// Feature flag: set ENABLE_RMC=true in the environment to enable the RMC plant module.
+// In production, leave this unset (or set to 'false') to hide the RMC module entirely.
+const RMC_ENABLED = process.env.ENABLE_RMC === "true";
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ============================================
+  // FEATURE CONFIG — returns runtime feature flags to the frontend
+  // ============================================
+  app.get("/api/config", (_req, res) => {
+    res.json({ rmcEnabled: RMC_ENABLED });
+  });
 
   // ============================================
   // AUTH ROUTES (Task #229) — registered first so they're not gated by
@@ -6953,7 +6964,13 @@ export async function registerRoutes(
   // Seed Data
   // ============================================
   // RMC PLANT MODULE (Task #697)
+  // All /api/rmc/* routes are gated on the ENABLE_RMC environment flag.
+  // Set ENABLE_RMC=true in development; leave unset in production to hide the module.
   // ============================================
+  app.use("/api/rmc", (req, res, next) => {
+    if (!RMC_ENABLED) return res.status(503).json({ message: "RMC module is not enabled in this environment." });
+    next();
+  });
 
   // Mix Designs
   app.get("/api/rmc/mix-designs", async (req, res) => {

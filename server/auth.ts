@@ -546,6 +546,8 @@ export const PUBLIC_API_PATHS = new Set<string>([
   "/api/auth/me",
   "/api/auth/logout",
   "/api/auth/device-status",
+  // Feature flags — read before the user is authenticated.
+  "/api/config",
   // Estimator portal — separate auth.
   "/api/estimator/session",
   // Estimator guide PDF — gated by estimator admin cookie inside the handler.
