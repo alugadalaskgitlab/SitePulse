@@ -334,6 +334,7 @@ export default function SiteDashboard() {
         progressData.push({
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
           Site: getBaseSiteName(dpr.site),
+          "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
           Activity: p.activity || "",
           Side: p.side || "",
           "Chainage From": p.chainageFrom || "",
@@ -359,6 +360,7 @@ export default function SiteDashboard() {
           structureData.push({
             Date: format(new Date(dpr.date), "dd/MM/yyyy"),
             Site: getBaseSiteName(dpr.site),
+            "Work Type": "Structure",
             "Structure Type": s.structureType || "",
             "Sub-type": s.structureSubType || "",
             "Name/Location": s.structureName || "",
@@ -384,6 +386,7 @@ export default function SiteDashboard() {
         equipmentData.push({
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
           Site: getBaseSiteName(dpr.site),
+          "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
           Machine: e.machine || "",
           "Vehicle No": e.vehicleNo || "",
           Owner: getEquipmentOwnerInfo(e),
@@ -410,6 +413,7 @@ export default function SiteDashboard() {
         labourData.push({
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
           Site: getBaseSiteName(dpr.site),
+          "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
           Category: l.category || "",
           Gender: l.gender || "",
           Count: l.count || 0,
@@ -430,6 +434,7 @@ export default function SiteDashboard() {
         materialsData.push({
           Date: format(new Date(dpr.date), "dd/MM/yyyy"),
           Site: getBaseSiteName(dpr.site),
+          "Work Type": (dpr as any).workType === "structure" ? "Structure" : "Road",
           Type: m.type || "",
           Material: m.material || "",
           Quantity: m.quantity || 0,
@@ -444,7 +449,8 @@ export default function SiteDashboard() {
       XLSX.utils.book_append_sheet(wb, materialsSheet, "Materials");
     }
     
-    const fileName = `SiteReports_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    const workTypeSuffix = filters.workType ? `_${filters.workType === "structure" ? "Structure" : "Road"}` : "";
+    const fileName = `SiteReports${workTypeSuffix}_${format(new Date(), "yyyy-MM-dd")}.xlsx`;
     XLSX.writeFile(wb, fileName);
     toast({ title: "Export Complete", description: `Downloaded ${fileName} with ${dprs.length} reports` });
   };
@@ -473,6 +479,7 @@ export default function SiteDashboard() {
     if (filters.dateTo) filterLines.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filterLines.push(`Site: ${filters.site}`);
     if (filters.engineer) filterLines.push(`Engineer: ${filters.engineer}`);
+    if (filters.workType) filterLines.push(`Work Type: ${filters.workType === "structure" ? "Structure" : "Road"}`);
     if (filters.activity) filterLines.push(`Activity: ${filters.activity}`);
     if (filters.equipment) filterLines.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filterLines.push(`With Diesel Usage`);
@@ -658,7 +665,8 @@ export default function SiteDashboard() {
       }
     });
     
-    const fileName = `SiteReports_Detailed_${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    const pdfWorkTypeSuffix = filters.workType ? `_${filters.workType === "structure" ? "Structure" : "Road"}` : "";
+    const fileName = `SiteReports_Detailed${pdfWorkTypeSuffix}_${format(new Date(), "yyyy-MM-dd")}.pdf`;
     doc.save(fileName);
     toast({ title: "Export Complete", description: `Downloaded ${fileName} with ${dprs.length} detailed reports` });
   };
@@ -700,6 +708,7 @@ export default function SiteDashboard() {
     if (filters.dateTo) filtersText.push(`To: ${format(new Date(filters.dateTo), "dd MMM yyyy")}`);
     if (filters.site) filtersText.push(`Site: ${filters.site}`);
     if (filters.engineer) filtersText.push(`Engineer: ${filters.engineer}`);
+    if (filters.workType) filtersText.push(`Work Type: ${filters.workType === "structure" ? "Structure" : "Road"}`);
     if (filters.activity) filtersText.push(`Activity: ${filters.activity}`);
     if (filters.equipment) filtersText.push(`Equipment: ${filters.equipment}`);
     if (filters.hasDiesel) filtersText.push(`With Diesel Usage`);
