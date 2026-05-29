@@ -152,7 +152,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
 
   const addStoreItemMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/stores/items", data),
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/stores/items", data); return res.json(); },
     onSuccess: (newItem: any) => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: `"${newItem.name}" added to catalogue` });

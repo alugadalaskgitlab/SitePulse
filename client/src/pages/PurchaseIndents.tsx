@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, Package } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -80,12 +80,14 @@ function MaterialCombobox({
   materialId,
   materials,
   onChange,
+  onAddNew,
   "data-testid": testId,
 }: {
   description: string;
   materialId: number | null;
   materials: PlantMaterial[];
   onChange: (desc: string, materialId: number | null, uom?: string) => void;
+  onAddNew?: (typedName: string) => void;
   "data-testid"?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -94,6 +96,8 @@ function MaterialCombobox({
   const filtered = description
     ? activeList.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
     : activeList;
+
+  const showDropdown = open && (filtered.length > 0 || !!onAddNew);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -118,7 +122,7 @@ function MaterialCombobox({
         data-testid={testId}
         autoComplete="off"
       />
-      {open && filtered.length > 0 && (
+      {showDropdown && (
         <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto text-sm">
           {filtered.map(m => (
             <div
@@ -134,6 +138,20 @@ function MaterialCombobox({
               <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{(m.defaultUom || "").toUpperCase()}</span>
             </div>
           ))}
+          {onAddNew && (
+            <div
+              className="px-3 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-2 text-blue-600 dark:text-blue-400 border-t border-muted"
+              onMouseDown={e => {
+                e.preventDefault();
+                onAddNew(description);
+                setOpen(false);
+              }}
+              data-testid="option-add-new-store-item"
+            >
+              <Plus className="w-3 h-3 flex-shrink-0" />
+              <span>{description.trim() ? `Add "${description.trim()}" to store catalogue` : "Add new store item…"}</span>
+            </div>
+          )}
         </div>
       )}
       {materialId && (
@@ -372,7 +390,7 @@ export default function PurchaseIndents() {
   const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Spares", uom: "NOS" });
 
   const addStoreItemMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/stores/items", data),
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/stores/items", data); return res.json(); },
     onSuccess: (newItem: any) => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: `"${newItem.name}" added to store catalogue` });
@@ -1223,20 +1241,13 @@ export default function PurchaseIndents() {
                             };
                             setFormItems(updated);
                           }}
-                          data-testid={`input-item-desc-${index}`}
-                        />
-                        <button
-                          type="button"
-                          className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-0.5 mt-0.5 transition-colors"
-                          onClick={() => {
+                          onAddNew={(typedName) => {
                             setAddStoreItemTargetIdx(index);
-                            setAddStoreItemForm({ name: item.description || "", category: "Spares", uom: item.uom });
+                            setAddStoreItemForm({ name: typedName || "", category: "Spares", uom: item.uom });
                             setAddStoreItemOpen(true);
                           }}
-                          data-testid={`button-add-store-item-${index}`}
-                        >
-                          <Package className="w-3 h-3" /> Add to store item catalogue
-                        </button>
+                          data-testid={`input-item-desc-${index}`}
+                        />
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
