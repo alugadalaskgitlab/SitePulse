@@ -22,7 +22,7 @@ import { format } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
-import { STRUCTURE_TYPES, getSubTypes, getStages, getItemsOfWork } from "@shared/structureHierarchy";
+import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 
 interface ProgressEntry {
   activity: string;
@@ -570,32 +570,35 @@ export default function SiteEntry() {
           {workType === "structure" ? (
             structureItems.map((item, idx) => {
               const subTypes = getSubTypes(item.structureType);
-              const currentSubType = subTypes.includes(item.structureSubType) ? item.structureSubType : subTypes[0];
-              const stages = getStages(item.structureType, currentSubType);
-              const currentStage = stages.includes(item.stage) ? item.stage : stages[0];
-              const itemsOfWork = getItemsOfWork(item.structureType, currentSubType, currentStage);
-              const currentItemOfWork = itemsOfWork.includes(item.itemOfWork) ? item.itemOfWork : itemsOfWork[0];
+              const selectType = STRUCTURE_TYPES.includes(item.structureType) ? item.structureType : "Other";
+              const isOtherType = selectType === "Other";
+              const selectSubType = item.structureSubType === "" ? subTypes[0] : (subTypes.includes(item.structureSubType) ? item.structureSubType : "Other");
+              const isOtherSubType = selectSubType === "Other";
+              const stages = getStages(item.structureType, isOtherSubType ? "Other" : selectSubType);
+              const selectStage = item.stage === "" ? stages[0] : (stages.includes(item.stage) ? item.stage : "Other");
+              const isOtherStage = selectStage === "Other";
+              const selectItem = STRUCTURE_ITEMS.includes(item.itemOfWork) ? item.itemOfWork : "Other";
+              const isOtherItem = selectItem === "Other";
               const updateField = (field: keyof StructureItem, val: any) => {
-                const u = structureItems.map((s, i) => i === idx ? { ...s, [field]: val } : s);
-                setStructureItems(u);
+                setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, [field]: val } : s));
               };
               const handleTypeChange = (val: string) => {
-                const subs = getSubTypes(val);
-                const sub = subs[0];
-                const stgs = getStages(val, sub);
-                const stg = stgs[0];
-                const iow = getItemsOfWork(val, sub, stg);
-                setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureType: val, structureSubType: sub, stage: stg, itemOfWork: iow[0] } : s));
+                if (val === "Other") {
+                  setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureType: "Other", structureSubType: "Other", stage: "Other" } : s));
+                } else {
+                  const subs = getSubTypes(val);
+                  const sub = subs[0];
+                  const stgs = getStages(val, sub);
+                  setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureType: val, structureSubType: sub, stage: stgs[0] } : s));
+                }
               };
               const handleSubTypeChange = (val: string) => {
-                const stgs = getStages(item.structureType, val);
-                const stg = stgs[0];
-                const iow = getItemsOfWork(item.structureType, val, stg);
-                setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureSubType: val, stage: stg, itemOfWork: iow[0] } : s));
-              };
-              const handleStageChange = (val: string) => {
-                const iow = getItemsOfWork(item.structureType, currentSubType, val);
-                setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, stage: val, itemOfWork: iow[0] } : s));
+                if (val === "Other") {
+                  setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureSubType: "Other", stage: "Other" } : s));
+                } else {
+                  const stgs = getStages(item.structureType, val);
+                  setStructureItems(structureItems.map((s, i) => i === idx ? { ...s, structureSubType: val, stage: stgs[0] } : s));
+                }
               };
               return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
@@ -606,37 +609,41 @@ export default function SiteEntry() {
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
+                  <div className="space-y-1">
                     <Label className="text-xs">Structure Type</Label>
-                    <Select value={item.structureType} onValueChange={handleTypeChange}>
+                    <Select value={selectType} onValueChange={handleTypeChange}>
                       <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
+                    {isOtherType && <Input placeholder="Specify type…" value={item.structureType !== "Other" ? item.structureType : ""} onChange={(e) => updateField("structureType", e.target.value || "Other")} data-testid={`input-structure-type-other-${idx}`} />}
                   </div>
-                  <div>
+                  <div className="space-y-1">
                     <Label className="text-xs">Sub-type</Label>
-                    <Select value={currentSubType} onValueChange={handleSubTypeChange}>
+                    <Select value={selectSubType} onValueChange={handleSubTypeChange}>
                       <SelectTrigger data-testid={`select-structure-subtype-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{subTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
+                    {isOtherSubType && <Input placeholder="Specify sub-type…" value={item.structureSubType !== "Other" ? item.structureSubType : ""} onChange={(e) => updateField("structureSubType", e.target.value || "Other")} data-testid={`input-structure-subtype-other-${idx}`} />}
                   </div>
                   <div className="sm:col-span-2">
                     <Label className="text-xs">Structure Name / Location</Label>
                     <Input placeholder="e.g. Culvert at km 12+400" value={item.structureName} onChange={(e) => updateField("structureName", e.target.value)} data-testid={`input-structure-name-${idx}`} />
                   </div>
-                  <div>
+                  <div className="space-y-1">
                     <Label className="text-xs">Stage / Part</Label>
-                    <Select value={currentStage} onValueChange={handleStageChange}>
+                    <Select value={selectStage} onValueChange={(val) => updateField("stage", val)}>
                       <SelectTrigger data-testid={`select-structure-stage-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{stages.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
+                    {isOtherStage && <Input placeholder="Specify stage…" value={item.stage !== "Other" ? item.stage : ""} onChange={(e) => updateField("stage", e.target.value || "Other")} data-testid={`input-structure-stage-other-${idx}`} />}
                   </div>
-                  <div>
+                  <div className="space-y-1">
                     <Label className="text-xs">Item of Work</Label>
-                    <Select value={currentItemOfWork} onValueChange={(val) => updateField("itemOfWork", val)}>
+                    <Select value={selectItem} onValueChange={(val) => updateField("itemOfWork", val)}>
                       <SelectTrigger data-testid={`select-structure-item-${idx}`}><SelectValue /></SelectTrigger>
-                      <SelectContent>{itemsOfWork.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
+                      <SelectContent>{STRUCTURE_ITEMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
                     </Select>
+                    {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
                   </div>
                   <div>
                     <Label className="text-xs">Quantity</Label>

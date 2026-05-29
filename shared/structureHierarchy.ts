@@ -1,176 +1,63 @@
-// DPR Structure — 4-level hierarchy
-// Level 1: structureType → Level 2: structureSubType → Level 3: stage → Level 4: itemOfWork
+// DPR Structure — 3-level cascade + fixed items list
+// Level 1: structureType → Level 2: structureSubType → Level 3: stage
+// Level 4 (itemOfWork): always the fixed STRUCTURE_ITEMS set
 
-export type StructureHierarchy = {
-  [type: string]: {
-    [subType: string]: {
-      [stage: string]: string[];
-    };
-  };
-};
+export type StageMap = { [subType: string]: string[] };
+export type StructureHierarchy = { [type: string]: StageMap };
 
 export const STRUCTURE_HIERARCHY: StructureHierarchy = {
   "Culvert": {
-    "Pipe Culvert": {
-      "Excavation":   ["Excavation", "Rock Cutting", "Other"],
-      "Bedding":      ["PCC Bedding", "Sand Bedding", "Granular Bedding", "Other"],
-      "Pipe Laying":  ["Pipe Laying", "Pipe Jointing", "Other"],
-      "Head Wall":    ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-      "Wing Wall":    ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-      "Backfilling":  ["Backfilling", "Compaction", "Other"],
-      "Other":        ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Box Culvert": {
-      "Excavation":   ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":   ["PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Walls":        ["RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Slab":         ["RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Head Wall":    ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-      "Wing Wall":    ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-      "Backfilling":  ["Backfilling", "Compaction", "Other"],
-      "Other":        ["Excavation", "PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Slab Culvert": {
-      "Excavation":           ["Excavation", "Rock Cutting", "Other"],
-      "Foundation / Abutment":["PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Deck Slab":            ["RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Head Wall":            ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-      "Backfilling":          ["Backfilling", "Compaction", "Other"],
-      "Other":                ["Excavation", "PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
+    "Pipe Culvert":  ["Excavation", "Bedding", "Pipe Laying", "Head Wall", "Wing Wall", "Backfilling", "Other"],
+    "Box Culvert":   ["Excavation", "Foundation", "Walls", "Slab", "Head Wall", "Wing Wall", "Backfilling", "Other"],
+    "Slab Culvert":  ["Excavation", "Foundation / Abutment", "Deck Slab", "Head Wall", "Backfilling", "Other"],
+    "Other":         ["Other"],
   },
-
   "Bridge": {
-    "Minor Bridge": {
-      "Excavation":    ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":    ["PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Pier / Abutment":["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Pier Cap":      ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Girder":        ["RCC M25", "RCC M30", "Prestressed", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Deck Slab":     ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Wearing Coat":  ["PCC M30", "Bituminous", "Other"],
-      "Backfilling":   ["Backfilling", "Compaction", "Other"],
-      "Other":         ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Major Bridge": {
-      "Excavation":    ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":    ["PCC", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Pier / Abutment":["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Pier Cap":      ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Girder":        ["RCC M30", "Prestressed", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Deck Slab":     ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Wearing Coat":  ["PCC M30", "Bituminous", "Other"],
-      "Backfilling":   ["Backfilling", "Compaction", "Other"],
-      "Other":         ["Excavation", "PCC", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
+    "Minor Bridge":  ["Excavation", "Foundation", "Pier / Abutment", "Pier Cap", "Girder", "Deck Slab", "Wearing Coat", "Backfilling", "Other"],
+    "Major Bridge":  ["Excavation", "Foundation", "Pier / Abutment", "Pier Cap", "Girder", "Deck Slab", "Wearing Coat", "Other"],
+    "ROB":           ["Excavation", "Foundation", "Pier / Abutment", "Pier Cap", "Girder", "Deck Slab", "Wearing Coat", "Other"],
+    "VUP / LUP":     ["Excavation", "Foundation", "Walls", "Slab", "Wearing Coat", "Backfilling", "Other"],
+    "Other":         ["Other"],
   },
-
   "CD Work": {
-    "Causeway": {
-      "Excavation":  ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":  ["PCC", "RCC M20", "Shuttering", "De-shuttering", "Other"],
-      "Body Wall":   ["RCC M20", "Masonry", "Shuttering", "De-shuttering", "Other"],
-      "Apron":       ["PCC", "RCC M20", "Other"],
-      "Flooring":    ["PCC", "RCC M20", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M20", "Masonry", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-    },
-    "Vented Causeway": {
-      "Excavation":  ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":  ["PCC", "RCC M20", "Shuttering", "De-shuttering", "Other"],
-      "Piers":       ["RCC M20", "Shuttering", "De-shuttering", "Other"],
-      "Slab":        ["RCC M20", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "RCC M25", "Shuttering", "De-shuttering", "Backfilling", "Masonry", "Other"],
-    },
+    "Causeway":         ["Excavation", "Foundation", "Body Wall", "Apron", "Flooring", "Backfilling", "Other"],
+    "Vented Causeway":  ["Excavation", "Foundation", "Piers", "Slab", "Backfilling", "Other"],
+    "Other":            ["Other"],
   },
-
   "Retaining Wall": {
-    "Gravity Wall": {
-      "Excavation":  ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":  ["PCC", "RCC M20", "Shuttering", "De-shuttering", "Other"],
-      "Body Wall":   ["RCC M20", "Masonry", "Shuttering", "De-shuttering", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Filter Media", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M20", "Masonry", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-    },
-    "Cantilever Wall": {
-      "Excavation":  ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":  ["PCC", "RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Stem":        ["RCC M25", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Filter Media", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M25", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Counter-fort Wall": {
-      "Excavation":   ["Excavation", "Rock Cutting", "Other"],
-      "Foundation":   ["PCC", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Base Slab":    ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Stem":         ["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Counter-forts":["RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Backfilling":  ["Backfilling", "Compaction", "Filter Media", "Other"],
-      "Other":        ["Excavation", "PCC", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "RCC M25", "Masonry", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-    },
+    "Other": ["Excavation", "Foundation", "Body Wall", "Backfilling", "Other"],
   },
-
   "Drain": {
-    "RCC Drain": {
-      "Excavation":  ["Excavation", "Other"],
-      "Foundation":  ["PCC", "RCC M20", "Shuttering", "De-shuttering", "Other"],
-      "Side Walls":  ["RCC M20", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Cover Slab":  ["RCC M20", "Precast Cover", "Shuttering", "De-shuttering", "Bar Bending", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M20", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Other"],
-    },
-    "Masonry Drain": {
-      "Excavation":  ["Excavation", "Other"],
-      "Foundation":  ["PCC", "Masonry", "Other"],
-      "Side Walls":  ["Masonry", "Plaster", "Other"],
-      "Cover Slab":  ["RCC M20", "Precast Cover", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Other"],
-      "Other":       ["Excavation", "PCC", "RCC M20", "Masonry", "Plaster", "Backfilling", "Other"],
-    },
-    "Catch Water Drain": {
-      "Excavation":  ["Excavation", "Other"],
-      "Lining":      ["PCC", "Masonry", "RCC M20", "Other"],
-      "Backfilling": ["Backfilling", "Compaction", "Other"],
-      "Other":       ["Excavation", "PCC", "Masonry", "RCC M20", "Backfilling", "Other"],
-    },
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "Masonry", "Shuttering", "De-shuttering", "Backfilling", "Other"],
-    },
+    "Lined Drain":      ["Excavation", "Foundation", "Side Walls", "Cover Slab", "Backfilling", "Other"],
+    "Unlined Drain":    ["Excavation", "Other"],
+    "Catch Water Drain":["Excavation", "Lining", "Other"],
+    "Other":            ["Other"],
   },
-
   "Other": {
-    "Other": {
-      "Other": ["Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30", "Shuttering", "De-shuttering", "Backfilling", "Bar Bending", "Masonry", "Plaster", "Other"],
-    },
+    "Other": ["Other"],
   },
 };
 
 export const STRUCTURE_TYPES = Object.keys(STRUCTURE_HIERARCHY);
 
+// Fixed set of items of work — same across all stages
+export const STRUCTURE_ITEMS = [
+  "Excavation", "PCC", "RCC M20", "RCC M25", "RCC M30",
+  "Shuttering", "De-shuttering", "Backfilling", "Other",
+];
+
+// Resolve to a known type key for hierarchy lookup (custom values → "Other")
+function effectiveType(val: string): string {
+  return STRUCTURE_TYPES.includes(val) ? val : "Other";
+}
+
 export function getSubTypes(structureType: string): string[] {
-  const entry = STRUCTURE_HIERARCHY[structureType];
-  return entry ? Object.keys(entry) : ["Other"];
+  return Object.keys(STRUCTURE_HIERARCHY[effectiveType(structureType)]);
 }
 
 export function getStages(structureType: string, subType: string): string[] {
-  const entry = STRUCTURE_HIERARCHY[structureType]?.[subType];
-  return entry ? Object.keys(entry) : ["Other"];
-}
-
-export function getItemsOfWork(structureType: string, subType: string, stage: string): string[] {
-  const items = STRUCTURE_HIERARCHY[structureType]?.[subType]?.[stage];
-  return items ?? ["Other"];
+  const typeMap = STRUCTURE_HIERARCHY[effectiveType(structureType)];
+  const knownSubs = Object.keys(typeMap);
+  const effectiveSub = knownSubs.includes(subType) ? subType : "Other";
+  return typeMap[effectiveSub] ?? ["Other"];
 }

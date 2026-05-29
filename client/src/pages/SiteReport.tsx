@@ -254,8 +254,10 @@ export default function SiteReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Structure Type</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Sub-type</TableHead>
                     <TableHead>Name / Location</TableHead>
+                    <TableHead>Stage</TableHead>
                     <TableHead>Item of Work</TableHead>
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead>Unit</TableHead>
@@ -266,7 +268,9 @@ export default function SiteReport() {
                   {(dpr as any).structureItems?.map((item: any, i: number) => (
                     <TableRow key={i} data-testid={`row-structure-${i}`}>
                       <TableCell><Badge variant="secondary">{item.structureType}</Badge></TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{item.structureSubType || '-'}</TableCell>
                       <TableCell className="font-medium">{item.structureName || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{item.stage || '-'}</TableCell>
                       <TableCell>{item.itemOfWork}</TableCell>
                       <TableCell className="text-right font-semibold">{item.quantity != null ? item.quantity : '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>

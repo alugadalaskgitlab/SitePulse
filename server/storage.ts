@@ -1596,7 +1596,9 @@ export class DatabaseStorage implements IStorage {
           (original as any).structureItems.map((s: any) => ({
             dprId,
             structureType: s.structureType,
+            structureSubType: s.structureSubType ?? null,
             structureName: s.structureName,
+            stage: s.stage ?? null,
             itemOfWork: s.itemOfWork,
             quantity: s.quantity,
             uom: s.uom,
