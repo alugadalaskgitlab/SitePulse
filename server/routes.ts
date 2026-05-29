@@ -6786,6 +6786,7 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         section: req.query.section as string | undefined,
+        siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
       });
       res.json(issues);
     } catch (err) {

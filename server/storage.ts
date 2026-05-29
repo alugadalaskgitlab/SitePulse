@@ -756,7 +756,7 @@ export interface IStorage {
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   deleteStoreGrn(id: number): Promise<boolean>;
-  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string }): Promise<StoreIssueWithItems[]>;
+  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
   createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
   deleteStoreIssue(id: number): Promise<boolean>;
@@ -16917,11 +16917,12 @@ export class DatabaseStorage implements IStorage {
     return { ...issue, items: items as (StoreIssueItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string }): Promise<StoreIssueWithItems[]> {
+  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number }): Promise<StoreIssueWithItems[]> {
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(storeIssues.date, filters.dateTo));
     if (filters?.section) conds.push(eq(storeIssues.issuedToSection, filters.section));
+    if (filters?.siteId) conds.push(eq(storeIssues.siteId, filters.siteId));
     const issues = await db.select().from(storeIssues)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeIssues.date), desc(storeIssues.id));

@@ -17,10 +17,13 @@ const SECTIONS = [{ value: "plant", label: "Plant" }, { value: "site", label: "S
 const PURPOSES = ["Breakdown Repair", "Scheduled Service", "Preventive Maintenance", "Site Work", "General Use", "Other"];
 
 type StoreItem = { id: number; name: string; category: string; uom: string };
+type Site = { id: number; name: string; isActive: boolean };
 type IssueLine = { itemId: string; qty: string; uom: string };
 type IssueWithItems = {
   id: number; issueNumber: string; date: string;
-  issuedToSection: string; issuedToDetail: string | null; purpose: string | null; remarks: string | null;
+  issuedToSection: string; issuedToDetail: string | null;
+  siteId: number | null;
+  purpose: string | null; remarks: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; uom: string }[];
 };
 
@@ -37,10 +40,11 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sectionFilter, setSectionFilter] = useState("__all__");
+  const [siteFilter, setSiteFilter] = useState("__all__");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
-    date: TODAY, issuedToSection: "plant", issuedToDetail: "", purpose: "", remarks: "",
+    date: TODAY, issuedToSection: "plant", issuedToDetail: "", siteId: "", purpose: "", remarks: "",
   });
   const [lines, setLines] = useState<IssueLine[]>([emptyLine()]);
 
@@ -49,17 +53,19 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   }, [detailId]);
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
+  const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const { data: stock = [] } = useQuery<any[]>({ queryKey: ["/api/stores/stock-summary"] });
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
 
   const { data: issues = [], isLoading } = useQuery<IssueWithItems[]>({
-    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter],
+    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter, siteFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (sectionFilter !== "__all__") p.set("section", sectionFilter);
+      if (siteFilter !== "__all__") p.set("siteId", siteFilter);
       const res = await fetch(`/api/stores/issues${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -81,7 +87,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "Issue Voucher created" });
       setShowForm(false);
-      setForm({ date: TODAY, issuedToSection: "plant", issuedToDetail: "", purpose: "", remarks: "" });
+      setForm({ date: TODAY, issuedToSection: "plant", issuedToDetail: "", siteId: "", purpose: "", remarks: "" });
       setLines([emptyLine()]);
       if (isNew) navigate("/stores/issues");
     },
@@ -109,14 +115,30 @@ export default function StoresIssue({ isNew, detailId }: Props) {
     });
   }
 
+  function handleSectionChange(v: string) {
+    setForm(f => ({ ...f, issuedToSection: v, issuedToDetail: "", siteId: "" }));
+  }
+
+  function handleSiteSelect(siteIdStr: string) {
+    const site = sites.find(s => String(s.id) === siteIdStr);
+    setForm(f => ({
+      ...f,
+      siteId: siteIdStr,
+      issuedToDetail: site ? site.name : "",
+    }));
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validLines = lines.filter(l => l.itemId && l.qty);
     if (!validLines.length) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
+    const isSite = form.issuedToSection === "site";
     createMutation.mutate({
       issue: {
-        ...form,
+        date: form.date,
+        issuedToSection: form.issuedToSection,
         issuedToDetail: form.issuedToDetail || null,
+        siteId: isSite && form.siteId ? parseInt(form.siteId) : null,
         purpose: form.purpose || null,
         remarks: form.remarks || null,
       },
@@ -136,6 +158,8 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   }
 
   const sectionLabel = (s: string) => SECTIONS.find(x => x.value === s)?.label ?? s;
+  const siteName = (id: number | null) => id ? (sites.find(s => s.id === id)?.name ?? null) : null;
+  const hasFilters = !!(dateFrom || dateTo || sectionFilter !== "__all__" || siteFilter !== "__all__");
 
   return (
     <div className="min-h-screen bg-background">
@@ -165,8 +189,14 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     <span className="font-mono text-lg font-bold text-orange-700 dark:text-orange-400" data-testid="text-issue-detail-number">{selectedIssue.issueNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedIssue.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     <Badge variant="outline" className="text-[10px]">{sectionLabel(selectedIssue.issuedToSection)}</Badge>
+                    {selectedIssue.siteId && siteName(selectedIssue.siteId)
+                      ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{siteName(selectedIssue.siteId)}</Badge>
+                      : null}
                   </div>
-                  {selectedIssue.issuedToDetail && <p className="text-base font-semibold mt-1">{selectedIssue.issuedToDetail}</p>}
+                  {/* Show site name from FK if available; fall back to free-text detail for legacy records */}
+                  {!selectedIssue.siteId && selectedIssue.issuedToDetail && (
+                    <p className="text-base font-semibold mt-1">{selectedIssue.issuedToDetail}</p>
+                  )}
                   {selectedIssue.purpose && <p className="text-xs text-muted-foreground">{selectedIssue.purpose}</p>}
                   {selectedIssue.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedIssue.remarks}</p>}
                 </div>
@@ -237,15 +267,33 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Issued To (Section) *</Label>
-                    <Select value={form.issuedToSection} onValueChange={v => setForm(f => ({ ...f, issuedToSection: v }))}>
+                    <Select value={form.issuedToSection} onValueChange={handleSectionChange}>
                       <SelectTrigger data-testid="select-section"><SelectValue /></SelectTrigger>
                       <SelectContent>{SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Detail (Equipment / Site Name)</Label>
-                    <Input value={form.issuedToDetail} onChange={e => setForm(f => ({ ...f, issuedToDetail: e.target.value }))} placeholder="e.g. Paver MH-01, Site A" data-testid="input-issued-to-detail" />
-                  </div>
+
+                  {/* Site → dropdown; plant/other → free text */}
+                  {form.issuedToSection === "site" ? (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Site / Project *</Label>
+                      <Select value={form.siteId || "__none__"} onValueChange={v => v === "__none__" ? handleSiteSelect("") : handleSiteSelect(v)}>
+                        <SelectTrigger data-testid="select-site-issue"><SelectValue placeholder="Select site" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Select site —</SelectItem>
+                          {sites.filter(s => s.isActive).map(s => (
+                            <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Detail (Equipment / Location)</Label>
+                      <Input value={form.issuedToDetail} onChange={e => setForm(f => ({ ...f, issuedToDetail: e.target.value }))} placeholder="e.g. Paver MH-01, Workshop" data-testid="input-issued-to-detail" />
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label className="text-xs">Purpose</Label>
                     <Select value={form.purpose || "__none__"} onValueChange={v => setForm(f => ({ ...f, purpose: v === "__none__" ? "" : v }))}>
@@ -342,8 +390,15 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   {SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {(dateFrom || dateTo || sectionFilter !== "__all__") && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); }}>Clear</Button>
+              <Select value={siteFilter} onValueChange={setSiteFilter}>
+                <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-site-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Sites</SelectItem>
+                  {sites.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {hasFilters && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); }}>Clear</Button>
               )}
             </div>
 
@@ -354,38 +409,49 @@ export default function StoresIssue({ isNew, detailId }: Props) {
               <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No issue vouchers found.</CardContent></Card>
             ) : (
               <div className="space-y-3">
-                {issues.map(issue => (
-                  <Card key={issue.id} className="cursor-pointer hover-elevate" onClick={() => openDetail(issue)} data-testid={`card-issue-${issue.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-sm font-bold text-orange-700 dark:text-orange-400">{issue.issueNumber}</span>
-                            <span className="text-xs text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-                              {sectionLabel(issue.issuedToSection)}
-                            </span>
+                {issues.map(issue => {
+                  const issueSiteName = siteName(issue.siteId);
+                  return (
+                    <Card key={issue.id} className="cursor-pointer hover-elevate" onClick={() => openDetail(issue)} data-testid={`card-issue-${issue.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-sm font-bold text-orange-700 dark:text-orange-400">{issue.issueNumber}</span>
+                              <span className="text-xs text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                                {sectionLabel(issue.issuedToSection)}
+                              </span>
+                              {issueSiteName && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                  {issueSiteName}
+                                </span>
+                              )}
+                            </div>
+                            {/* For legacy issues (no siteId FK) that have free-text detail */}
+                            {!issue.siteId && issue.issuedToDetail && (
+                              <div className="text-sm font-medium mt-1">{issue.issuedToDetail}</div>
+                            )}
+                            {issue.purpose && <div className="text-xs text-muted-foreground">{issue.purpose}</div>}
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {issue.items.length} item{issue.items.length !== 1 ? "s" : ""}
+                              {" — "}
+                              {issue.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
+                            </div>
                           </div>
-                          {issue.issuedToDetail && <div className="text-sm font-medium mt-1">{issue.issuedToDetail}</div>}
-                          {issue.purpose && <div className="text-xs text-muted-foreground">{issue.purpose}</div>}
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {issue.items.length} item{issue.items.length !== 1 ? "s" : ""}
-                            {" — "}
-                            {issue.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
+                          <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(issue)} data-testid={`button-view-issue-${issue.id}`}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this Issue Voucher?")) deleteMutation.mutate(issue.id); }} data-testid={`button-delete-issue-${issue.id}`}>
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(issue)} data-testid={`button-view-issue-${issue.id}`}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this Issue Voucher?")) deleteMutation.mutate(issue.id); }} data-testid={`button-delete-issue-${issue.id}`}>
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </>

@@ -531,6 +531,7 @@ export const materialReturns = pgTable("material_returns", {
   isPlantCommon: integer("is_plant_common").default(0),
   vehicleNumber: text("vehicle_number"),
   notes: text("notes"),
+  siteId: integer("site_id"), // nullable; which site this return is attributed to
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("material_returns_date_idx").on(table.date),
@@ -1799,6 +1800,7 @@ export const storeIssues = pgTable("store_issues", {
   date: date("date").notNull(),
   issuedToSection: text("issued_to_section").notNull(), // plant, site, other
   issuedToDetail: text("issued_to_detail"),
+  siteId: integer("site_id").references(() => sites.id), // nullable FK; set when issuedToSection = "site"
   purpose: text("purpose"),
   remarks: text("remarks"),
   createdAt: timestamp("created_at").defaultNow(),
