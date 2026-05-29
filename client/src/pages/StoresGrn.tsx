@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 
 const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const STORE_CATEGORY_CODES: Record<string, string> = {
@@ -77,6 +78,7 @@ interface Props { isNew?: boolean; detailId?: number }
 
 export default function StoresGrn({ isNew, detailId }: Props) {
   const { toast } = useToast();
+  const { isAdmin, isManager } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
@@ -89,6 +91,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
   const [siteFilter, setSiteFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
+
+  const [editingAcceptance, setEditingAcceptance] = useState(false);
+  const [acceptanceEdit, setAcceptanceEdit] = useState({ acceptanceStatus: "accepted", acceptanceRemarks: "" });
 
   const [form, setForm] = useState({
     date: TODAY,
@@ -245,6 +250,17 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Error", variant: "destructive" }),
   });
 
+  const patchAcceptanceMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { acceptanceStatus: string; acceptanceRemarks: string | null } }) =>
+      apiRequest("PATCH", `/api/stores/grns/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: "Acceptance status updated" });
+      setEditingAcceptance(false);
+    },
+    onError: () => toast({ title: "Failed to update acceptance status", variant: "destructive" }),
+  });
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validLines = lines.filter(l => l.itemId && l.qty);
@@ -377,15 +393,102 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </tbody>
                 </table>
               </div>
+              {/* Inline acceptance editor */}
+              {editingAcceptance ? (
+                <div className="border rounded-md p-3 space-y-3 bg-muted/40" data-testid="panel-acceptance-edit">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Edit Acceptance Status</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Status</Label>
+                      <Select
+                        value={acceptanceEdit.acceptanceStatus}
+                        onValueChange={v => setAcceptanceEdit(prev => ({ ...prev, acceptanceStatus: v }))}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status-edit">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ACCEPTANCE_STATUS_OPTIONS.map(o => (
+                            <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">QC Remarks {(acceptanceEdit.acceptanceStatus === "partial" || acceptanceEdit.acceptanceStatus === "rejected") && <span className="text-destructive">*</span>}</Label>
+                      <Input
+                        className="h-8 text-xs"
+                        value={acceptanceEdit.acceptanceRemarks}
+                        onChange={e => setAcceptanceEdit(prev => ({ ...prev, acceptanceRemarks: e.target.value }))}
+                        placeholder="Reason / note"
+                        data-testid="input-acceptance-remarks-edit"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="gap-1 h-7 text-xs"
+                      disabled={patchAcceptanceMutation.isPending}
+                      data-testid="button-save-acceptance"
+                      onClick={() => {
+                        if ((acceptanceEdit.acceptanceStatus === "partial" || acceptanceEdit.acceptanceStatus === "rejected") && !acceptanceEdit.acceptanceRemarks.trim()) {
+                          toast({ title: "Please provide a reason for partial/rejected status", variant: "destructive" });
+                          return;
+                        }
+                        patchAcceptanceMutation.mutate({
+                          id: selectedGrn.id,
+                          data: {
+                            acceptanceStatus: acceptanceEdit.acceptanceStatus,
+                            acceptanceRemarks: acceptanceEdit.acceptanceRemarks.trim() || null,
+                          },
+                        });
+                      }}
+                    >
+                      {patchAcceptanceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => setEditingAcceptance(false)}
+                      data-testid="button-cancel-acceptance-edit"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex justify-between items-center">
                 <Button variant="outline" size="sm" onClick={closeDetail} data-testid="button-back-to-list" className="gap-1">
                   <ChevronLeft className="w-4 h-4" /> Back to list
                 </Button>
-                <Button variant="ghost" size="sm" className="text-destructive gap-1"
-                  onClick={() => { if (confirm("Delete this GRN?")) { deleteMutation.mutate(selectedGrn.id); closeDetail(); } }}
-                  data-testid="button-delete-detail-grn">
-                  <Trash2 className="w-4 h-4" /> Delete
-                </Button>
+                <div className="flex items-center gap-2">
+                  {(isAdmin || isManager) && !editingAcceptance && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-xs"
+                      data-testid="button-edit-acceptance"
+                      onClick={() => {
+                        setAcceptanceEdit({
+                          acceptanceStatus: selectedGrn.acceptanceStatus || "accepted",
+                          acceptanceRemarks: selectedGrn.acceptanceRemarks || "",
+                        });
+                        setEditingAcceptance(true);
+                      }}
+                    >
+                      <Pencil className="w-3 h-3" /> Edit Acceptance
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="text-destructive gap-1"
+                    onClick={() => { if (confirm("Delete this GRN?")) { deleteMutation.mutate(selectedGrn.id); closeDetail(); } }}
+                    data-testid="button-delete-detail-grn">
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -757,6 +757,7 @@ export interface IStorage {
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
+  updateStoreGrn(id: number, data: { acceptanceStatus: string; acceptanceRemarks?: string | null }): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
   getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
@@ -16942,6 +16943,12 @@ export class DatabaseStorage implements IStorage {
     if (items.length > 0) {
       await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: grn.id })));
     }
+    return this.buildGrnWithItems(grn);
+  }
+
+  async updateStoreGrn(id: number, data: { acceptanceStatus: string; acceptanceRemarks?: string | null }): Promise<StoreGrnWithItems | undefined> {
+    const [grn] = await db.update(storeGrns).set(data).where(eq(storeGrns.id, id)).returning();
+    if (!grn) return undefined;
     return this.buildGrnWithItems(grn);
   }
 

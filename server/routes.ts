@@ -6786,6 +6786,24 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/stores/grns/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "stores_inventory")) return;
+      const id = parseInt(req.params.id);
+      const { acceptanceStatus, acceptanceRemarks } = req.body;
+      if (!acceptanceStatus) return res.status(400).json({ error: "acceptanceStatus is required" });
+      if (!["accepted", "partial", "rejected"].includes(acceptanceStatus)) {
+        return res.status(400).json({ error: "Invalid acceptanceStatus value" });
+      }
+      const result = await storage.updateStoreGrn(id, { acceptanceStatus, acceptanceRemarks: acceptanceRemarks ?? null });
+      if (!result) return res.status(404).json({ error: "GRN not found" });
+      res.json(result);
+    } catch (err) {
+      console.error("PATCH /api/stores/grns/:id:", err);
+      res.status(500).json({ error: "Failed to update GRN" });
+    }
+  });
+
   app.delete("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
