@@ -7539,6 +7539,52 @@ export async function registerRoutes(
         }
         doc.fillColor("#000");
         doc.y = sy + 26;
+
+        // ── Grade-wise pass/fail breakdown ──────────────────────────────────
+        const batchGradeMap = new Map<number, string>();
+        for (const br of report.batchRecords) {
+          batchGradeMap.set(br.id, br.grade);
+        }
+        const gradeTestMap = new Map<string, { pass: number; fail: number }>();
+        for (const t of report.cubeTests) {
+          if (t.passFail !== "pass" && t.passFail !== "fail") continue;
+          const grade = batchGradeMap.get(t.batchRecordId);
+          if (!grade) continue;
+          const cur = gradeTestMap.get(grade) ?? { pass: 0, fail: 0 };
+          if (t.passFail === "pass") cur.pass++;
+          else cur.fail++;
+          gradeTestMap.set(grade, cur);
+        }
+        if (gradeTestMap.size > 0) {
+          const gradeRows = Array.from(gradeTestMap.entries())
+            .map(([grade, counts]) => ({ grade, ...counts }))
+            .sort((a, b) => a.grade.localeCompare(b.grade));
+          // Sub-header
+          if (doc.y > 750) { doc.addPage(); }
+          const ghY = doc.y;
+          doc.rect(40, ghY, 515, 16).fill("#d4e8d4").stroke();
+          doc.fontSize(8).font("Helvetica-Bold").fillColor("#000");
+          doc.text("Grade", 44, ghY + 3, { width: 150 });
+          doc.text("Pass", 194, ghY + 3, { width: 80, align: "right" });
+          doc.text("Fail", 294, ghY + 3, { width: 80, align: "right" });
+          doc.text("Pass Rate", 394, ghY + 3, { width: 157, align: "right" });
+          doc.y = ghY + 18;
+          for (const row of gradeRows) {
+            if (doc.y > 760) { doc.addPage(); }
+            const gy = doc.y;
+            doc.rect(40, gy, 515, 14).stroke();
+            const total = row.pass + row.fail;
+            const rate = ((row.pass / total) * 100).toFixed(1);
+            const rateColor = row.fail === 0 ? "#007700" : row.fail / total >= 0.5 ? "#cc0000" : "#996600";
+            doc.fontSize(8).font("Helvetica").fillColor("#000");
+            doc.text(row.grade, 44, gy + 2, { width: 150 });
+            doc.fillColor("#007700").text(String(row.pass), 194, gy + 2, { width: 80, align: "right" });
+            doc.fillColor(row.fail > 0 ? "#cc0000" : "#000").text(String(row.fail), 294, gy + 2, { width: 80, align: "right" });
+            doc.fillColor(rateColor).text(`${rate}%`, 394, gy + 2, { width: 157, align: "right" });
+            doc.fillColor("#000");
+            doc.y = gy + 16;
+          }
+        }
         doc.moveDown(0.5);
       }
 
