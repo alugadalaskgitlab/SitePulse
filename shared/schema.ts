@@ -186,6 +186,7 @@ export const plantSettings = pgTable("plant_settings", {
   id: serial("id").primaryKey(),
   plantName: text("plant_name").notNull(),
   plantType: text("plant_type").default("hma"), // "hma" | "rmc"
+  siteId: integer("site_id").references(() => sites.id), // nullable FK; null = shared/mobile plant
   bitumenTank1LitresPerCm: real("bitumen_tank1_litres_per_cm"),
   bitumenTank2LitresPerCm: real("bitumen_tank2_litres_per_cm"),
   bitumenDensityKgPerL: real("bitumen_density_kg_per_l"),

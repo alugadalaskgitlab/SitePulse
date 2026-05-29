@@ -2254,6 +2254,7 @@ export class DatabaseStorage implements IStorage {
       const [inserted] = await tx.insert(plantSettings).values({
         plantName: newName,
         plantType: existing.plantType,
+        siteId: existing.siteId,
         bitumenTank1LitresPerCm: existing.bitumenTank1LitresPerCm,
         bitumenTank2LitresPerCm: existing.bitumenTank2LitresPerCm,
         bitumenDensityKgPerL: existing.bitumenDensityKgPerL,

@@ -3377,6 +3377,7 @@ export async function registerRoutes(
       const parsed = insertPlantSettingsSchema.parse({
         plantName,
         plantType: req.body?.plantType ?? "hma",
+        siteId: req.body?.siteId ?? null,
         bitumenTank1LitresPerCm: req.body?.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,

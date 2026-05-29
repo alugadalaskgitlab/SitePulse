@@ -1113,6 +1113,13 @@ function PlantTypeConfigSection() {
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addType, setAddType] = useState<string>("hma");
+  const [addSiteId, setAddSiteId] = useState<string>("");
+
+  // ── Assign-site dialog state ─────────────────────────────────────────────────
+  const [assignSiteTarget, setAssignSiteTarget] = useState<PlantSettings | null>(null);
+  const [assignSiteId, setAssignSiteId] = useState<string>("");
+
+  const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
 
@@ -1122,6 +1129,7 @@ function PlantTypeConfigSection() {
       if (!editTarget) throw new Error("No plant selected");
       const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(editTarget.plantName)}`, {
         plantType: editType,
+        siteId: editTarget.siteId ?? null,
         bitumenTank1LitresPerCm: editTarget.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: editTarget.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: editTarget.bitumenDensityKgPerL ?? null,
@@ -1181,6 +1189,7 @@ function PlantTypeConfigSection() {
       }
       const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(name)}`, {
         plantType: addType,
+        siteId: addSiteId ? parseInt(addSiteId) : null,
         bitumenTank1LitresPerCm: null,
         bitumenTank2LitresPerCm: null,
         bitumenDensityKgPerL: null,
@@ -1194,6 +1203,31 @@ function PlantTypeConfigSection() {
       setAddOpen(false);
       setAddName("");
       setAddType("hma");
+      setAddSiteId("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Assign / update site for an existing plant
+  const assignSiteMutation = useMutation({
+    mutationFn: async () => {
+      if (!assignSiteTarget) throw new Error("No plant selected");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(assignSiteTarget.plantName)}`, {
+        plantType: assignSiteTarget.plantType ?? "hma",
+        siteId: assignSiteId ? parseInt(assignSiteId) : null,
+        bitumenTank1LitresPerCm: assignSiteTarget.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: assignSiteTarget.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: assignSiteTarget.bitumenDensityKgPerL ?? null,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      const siteName = assignSiteId ? (sitesList.find(s => String(s.id) === assignSiteId)?.name ?? "selected site") : "none";
+      toast({ title: "Site assigned", description: assignSiteId ? `"${assignSiteTarget?.plantName}" linked to ${siteName}.` : `"${assignSiteTarget?.plantName}" is now unlinked from any site.` });
+      setAssignSiteTarget(null);
+      setAssignSiteId("");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -1227,44 +1261,65 @@ function PlantTypeConfigSection() {
             </p>
           )}
 
-          {allSettings.map((s) => (
-            <div
-              key={s.plantName}
-              className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30"
-              data-testid={`plant-row-${s.plantName}`}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate" data-testid={`text-plant-name-${s.plantName}`}>{s.plantName}</p>
-                <p className="text-xs text-muted-foreground">{PLANT_TYPE_LABELS[s.plantType ?? "hma"] ?? s.plantType}</p>
+          {allSettings.map((s) => {
+            const linkedSite = s.siteId ? sitesList.find(x => x.id === s.siteId) : null;
+            return (
+              <div
+                key={s.plantName}
+                className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30"
+                data-testid={`plant-row-${s.plantName}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-sm truncate" data-testid={`text-plant-name-${s.plantName}`}>{s.plantName}</p>
+                    {linkedSite ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" data-testid={`badge-site-${s.plantName}`}>
+                        {linkedSite.name}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground" data-testid={`badge-no-site-${s.plantName}`}>Shared / Mobile</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{PLANT_TYPE_LABELS[s.plantType ?? "hma"] ?? s.plantType}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setAssignSiteTarget(s); setAssignSiteId(s.siteId ? String(s.siteId) : ""); }}
+                  data-testid={`btn-assign-site-${s.plantName}`}
+                >
+                  <MapPin className="w-3 h-3 mr-1" />
+                  Site
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setEditTarget(s); setEditType(s.plantType ?? "hma"); }}
+                  data-testid={`btn-edit-type-${s.plantName}`}
+                >
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Type
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setRenameTarget(s); setRenameTo(s.plantName); }}
+                  data-testid={`btn-rename-${s.plantName}`}
+                >
+                  Rename
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteTarget(s)}
+                  data-testid={`btn-delete-plant-${s.plantName}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setEditTarget(s); setEditType(s.plantType ?? "hma"); }}
-                data-testid={`btn-edit-type-${s.plantName}`}
-              >
-                <Pencil className="w-3 h-3 mr-1" />
-                Edit Type
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setRenameTarget(s); setRenameTo(s.plantName); }}
-                data-testid={`btn-rename-${s.plantName}`}
-              >
-                Rename
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setDeleteTarget(s)}
-                data-testid={`btn-delete-plant-${s.plantName}`}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
 
           <Button
             variant="outline"
@@ -1381,7 +1436,7 @@ function PlantTypeConfigSection() {
       </AlertDialog>
 
       {/* ── Add Plant Dialog ───────────────────────────────────────────────────── */}
-      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); } }}>
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Another Plant</DialogTitle>
@@ -1414,14 +1469,62 @@ function PlantTypeConfigSection() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Site / Project <span className="text-muted-foreground text-xs">(optional — leave blank for shared/mobile plant)</span></Label>
+              <Select value={addSiteId || "__none__"} onValueChange={v => setAddSiteId(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1" data-testid="select-add-plant-site">
+                  <SelectValue placeholder="Not assigned to a site" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Shared / Mobile plant —</SelectItem>
+                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddType("hma"); }} data-testid="btn-cancel-add-plant">Cancel</Button>
+              <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); }} data-testid="btn-cancel-add-plant">Cancel</Button>
               <Button
                 onClick={() => addMutation.mutate()}
                 disabled={addMutation.isPending || !addName.trim()}
                 data-testid="btn-confirm-add-plant"
               >
                 {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Plant"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Assign Site Dialog ─────────────────────────────────────────────────── */}
+      <Dialog open={!!assignSiteTarget} onOpenChange={(o) => { if (!o) { setAssignSiteTarget(null); setAssignSiteId(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Site / Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Link <strong>{assignSiteTarget?.plantName}</strong> to a site so its production, fuel, and shift data rolls up to that project.
+            </p>
+            <div>
+              <Label>Site / Project</Label>
+              <Select value={assignSiteId || "__none__"} onValueChange={v => setAssignSiteId(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1" data-testid="select-assign-site">
+                  <SelectValue placeholder="Shared / Mobile plant" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Shared / Mobile plant (no site) —</SelectItem>
+                  {sitesList.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setAssignSiteTarget(null); setAssignSiteId(""); }} data-testid="btn-cancel-assign-site">Cancel</Button>
+              <Button
+                onClick={() => assignSiteMutation.mutate()}
+                disabled={assignSiteMutation.isPending}
+                data-testid="btn-confirm-assign-site"
+              >
+                {assignSiteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
               </Button>
             </div>
           </div>
