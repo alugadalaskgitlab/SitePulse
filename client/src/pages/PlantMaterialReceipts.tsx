@@ -77,6 +77,9 @@ export default function PlantMaterialReceipts() {
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
   const [tankNumber, setTankNumber] = useState<string>("");
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
+  const [indentRef, setIndentRef] = useState("");
 
   interface ReceiptFormData {
     date: string;
@@ -90,11 +93,14 @@ export default function PlantMaterialReceipts() {
     vehicleNumber: string;
     challanNumber: string;
     tankNumber: string;
+    invoiceNo: string;
+    invoiceDate: string;
+    indentRef: string;
   }
 
   const formData = useMemo<ReceiptFormData>(() => ({
-    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber
-  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber]);
+    date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef
+  }), [date, time, partyId, materialId, quantity, uom, supplier, transporter, vehicleNumber, challanNumber, tankNumber, invoiceNo, invoiceDate, indentRef]);
 
   const handleRestoreDraft = useCallback((data: ReceiptFormData) => {
     setDate(data.date);
@@ -108,6 +114,9 @@ export default function PlantMaterialReceipts() {
     setVehicleNumber(data.vehicleNumber);
     setChallanNumber(data.challanNumber);
     setTankNumber(data.tankNumber || "");
+    setInvoiceNo(data.invoiceNo || "");
+    setInvoiceDate(data.invoiceDate || "");
+    setIndentRef(data.indentRef || "");
   }, []);
 
   const { hasDraft, draftAge, lastSavedAt, isDirty, restoreDraft, discardDraft, clearDraft } = useAutosave<ReceiptFormData>({
@@ -219,6 +228,9 @@ export default function PlantMaterialReceipts() {
     setVehicleNumber("");
     setChallanNumber("");
     setTankNumber("");
+    setInvoiceNo("");
+    setInvoiceDate("");
+    setIndentRef("");
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -234,6 +246,9 @@ export default function PlantMaterialReceipts() {
     setVehicleNumber(receipt.vehicleNumber || "");
     setChallanNumber(receipt.challanNumber || "");
     setTankNumber(receipt.tankNumber ? String(receipt.tankNumber) : "");
+    setInvoiceNo((receipt as any).invoiceNo || "");
+    setInvoiceDate((receipt as any).invoiceDate || "");
+    setIndentRef((receipt as any).indentRef || "");
     setDialogOpen(true);
   };
 
@@ -268,6 +283,9 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         challanNumber,
+        invoiceNo: invoiceNo || null,
+        invoiceDate: invoiceDate || null,
+        indentRef: indentRef || null,
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
       };
       updateMutation.mutate({ id: editingReceipt.id, data: updateData });
@@ -284,6 +302,9 @@ export default function PlantMaterialReceipts() {
         transporter,
         vehicleNumber,
         challanNumber,
+        invoiceNo: invoiceNo || null,
+        invoiceDate: invoiceDate || null,
+        indentRef: indentRef || null,
         tankNumber: (isTankMaterial && tankNumber && tankNumber !== "none") ? parseInt(tankNumber) : null,
       };
       createMutation.mutate(data);
@@ -380,6 +401,9 @@ export default function PlantMaterialReceipts() {
         UOM: r.uom,
         "Vehicle No": r.vehicleNumber || "",
         "Challan No": r.challanNumber || "",
+        "Invoice No": (r as any).invoiceNo || "",
+        "Invoice Date": (r as any).invoiceDate || "",
+        "Indent Ref": (r as any).indentRef || "",
         Supplier: r.supplier || "",
         Transporter: r.transporter || "",
         "Party/Job": getPartyName(r.partyId),
@@ -439,18 +463,21 @@ export default function PlantMaterialReceipts() {
         getMaterialName(r.materialId),
         `${r.quantity} ${r.uom}`,
         r.vehicleNumber || "-",
+        r.challanNumber || "-",
+        (r as any).invoiceNo || "-",
         r.supplier || "-",
         r.transporter || "-",
         getPartyName(r.partyId),
+        (r as any).indentRef || "-",
       ]);
       
       autoTable(doc, {
         startY: filterDateFrom || filterDateTo ? 34 : 28,
-        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Supplier", "Transporter", "Party/Job"]],
+        head: [["Date", "Time", "Material", "Quantity", "Vehicle No", "Challan", "Invoice No", "Supplier", "Transporter", "Party/Job", "Indent Ref"]],
         body: tableData,
         theme: "striped",
         headStyles: { fillColor: [59, 130, 246] },
-        styles: { fontSize: 7 },
+        styles: { fontSize: 6 },
         margin: { left: 14, right: 14 },
       });
       
@@ -530,6 +557,8 @@ export default function PlantMaterialReceipts() {
                 <th>UOM</th>
                 <th>Vehicle</th>
                 <th>Challan</th>
+                <th>Invoice No</th>
+                <th>Indent Ref</th>
                 <th>Supplier</th>
                 <th>Transporter</th>
                 <th>Party/Job</th>
@@ -545,6 +574,8 @@ export default function PlantMaterialReceipts() {
                   <td>${r.uom}</td>
                   <td>${r.vehicleNumber || '-'}</td>
                   <td>${r.challanNumber || '-'}</td>
+                  <td>${(r as any).invoiceNo || '-'}</td>
+                  <td>${(r as any).indentRef || '-'}</td>
                   <td>${r.supplier || '-'}</td>
                   <td>${r.transporter || '-'}</td>
                   <td>${getPartyName(r.partyId)}</td>
@@ -713,6 +744,22 @@ export default function PlantMaterialReceipts() {
                   <Label>Receipt No. <span className="text-destructive">*</span></Label>
                   <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value.toUpperCase())} placeholder="Receipt/Challan No. (Required)" data-testid="input-challan" className={!challanNumber.trim() ? "border-destructive/50" : ""} />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Invoice No. <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value.toUpperCase())} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
+                </div>
+                <div>
+                  <Label>Invoice Date <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} data-testid="input-invoice-date" />
+                </div>
+              </div>
+
+              <div>
+                <Label>Indent Ref. <span className="text-muted-foreground text-xs">(optional — link to purchase indent)</span></Label>
+                <Input value={indentRef} onChange={(e) => setIndentRef(e.target.value.toUpperCase())} placeholder="e.g. PI-2024-001" data-testid="input-indent-ref" />
               </div>
 
               <div className="space-y-1.5">
@@ -935,6 +982,24 @@ export default function PlantMaterialReceipts() {
                                     <span className="text-muted-foreground text-xs block">Party/Job</span>
                                     <span className="font-medium">{getPartyName(receipt.partyId)}</span>
                                   </div>
+                                  {(receipt as any).invoiceNo && (
+                                    <div>
+                                      <span className="text-muted-foreground text-xs block">Invoice No</span>
+                                      <span className="font-medium">{(receipt as any).invoiceNo}</span>
+                                    </div>
+                                  )}
+                                  {(receipt as any).invoiceDate && (
+                                    <div>
+                                      <span className="text-muted-foreground text-xs block">Invoice Date</span>
+                                      <span className="font-medium">{(receipt as any).invoiceDate}</span>
+                                    </div>
+                                  )}
+                                  {(receipt as any).indentRef && (
+                                    <div>
+                                      <span className="text-muted-foreground text-xs block">Indent Ref</span>
+                                      <Badge variant="outline" className="text-xs border-violet-400 text-violet-700 dark:text-violet-400">{(receipt as any).indentRef}</Badge>
+                                    </div>
+                                  )}
                                   {receipt.tankNumber && (
                                     <div>
                                       <span className="text-muted-foreground text-xs block">Tank</span>

@@ -2,15 +2,19 @@ import { useState, useEffect } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, Badge as BadgeIcon } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+
+const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "Others"];
+const STORE_UOMS = ["Nos", "Pcs", "Set", "Liters", "Ltrs", "Kg", "Grams", "Meters", "Feet", "Roll", "Bag", "Box", "Pair", "Pack"];
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 
@@ -57,6 +61,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
   const [suggestedIndents, setSuggestedIndents] = useState<PurchaseIndentFull[]>([]);
+
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [addItemTargetIdx, setAddItemTargetIdx] = useState<number | null>(null);
+  const [addItemForm, setAddItemForm] = useState({ name: "", category: "Spares", uom: "Nos" });
 
   useEffect(() => {
     if (detailId) setSelectedId(detailId);
@@ -141,6 +149,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (isNew) navigate("/stores/grns");
     },
     onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
+  });
+
+  const addStoreItemMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/stores/items", data),
+    onSuccess: (newItem: any) => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: `"${newItem.name}" added to catalogue` });
+      if (addItemTargetIdx !== null) {
+        updateLine(addItemTargetIdx, "itemId", String(newItem.id));
+      }
+      setAddItemOpen(false);
+      setAddItemForm({ name: "", category: "Spares", uom: "Nos" });
+      setAddItemTargetIdx(null);
+    },
+    onError: () => toast({ title: "Error adding item", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -399,23 +422,32 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     return (
                       <div key={idx} className="space-y-1" data-testid={`grn-line-${idx}`}>
                         <div className="grid grid-cols-12 gap-2 items-center">
-                          <div className="col-span-4">
-                            <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
-                              <SelectTrigger className="text-xs h-8" data-testid={`select-item-${idx}`}>
-                                <SelectValue placeholder="Select item…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.length === 0 ? (
-                                  <div className="px-3 py-2 text-xs text-muted-foreground">No items in catalogue. Add via Item Master first.</div>
-                                ) : (
-                                  items.map(it => (
+                          <div className="col-span-4 flex gap-1">
+                            <div className="flex-1 min-w-0">
+                              <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
+                                <SelectTrigger className="text-xs h-8 w-full" data-testid={`select-item-${idx}`}>
+                                  <SelectValue placeholder="Select item…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {items.map(it => (
                                     <SelectItem key={it.id} value={String(it.id)}>
                                       {it.name} <span className="text-muted-foreground">({it.category})</span>
                                     </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0"
+                              title="Add new item to catalogue"
+                              onClick={() => { setAddItemTargetIdx(idx); setAddItemForm({ name: "", category: "Spares", uom: "Nos" }); setAddItemOpen(true); }}
+                              data-testid={`button-add-item-inline-${idx}`}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </Button>
                           </div>
                           <div className="col-span-2">
                             <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-qty-${idx}`} />
@@ -475,6 +507,55 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             </CardContent>
           </Card>
         )}
+
+        {/* Inline add-item dialog */}
+        <Dialog open={addItemOpen} onOpenChange={open => { setAddItemOpen(open); if (!open) setAddItemTargetIdx(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Add New Item to Catalogue</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Item Name *</Label>
+                <Input
+                  value={addItemForm.name}
+                  onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Engine Oil 15W40"
+                  data-testid="input-new-item-name"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Category *</Label>
+                  <Select value={addItemForm.category} onValueChange={v => setAddItemForm(f => ({ ...f, category: v }))}>
+                    <SelectTrigger className="text-xs" data-testid="select-new-item-category"><SelectValue /></SelectTrigger>
+                    <SelectContent>{STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">UOM *</Label>
+                  <Select value={addItemForm.uom} onValueChange={v => setAddItemForm(f => ({ ...f, uom: v }))}>
+                    <SelectTrigger className="text-xs" data-testid="select-new-item-uom"><SelectValue /></SelectTrigger>
+                    <SelectContent>{STORE_UOMS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setAddItemOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!addItemForm.name.trim() || addStoreItemMutation.isPending}
+                  onClick={() => addStoreItemMutation.mutate({ name: addItemForm.name.trim(), category: addItemForm.category, uom: addItemForm.uom, isActive: 1 })}
+                  data-testid="button-save-new-item"
+                >
+                  {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add & Select"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {!selectedId && !showForm && (
           <>

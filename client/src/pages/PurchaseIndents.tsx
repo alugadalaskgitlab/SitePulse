@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, Package } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -365,6 +366,31 @@ export default function PurchaseIndents() {
   const [showForceCloseConfirm, setShowForceCloseConfirm] = useState(false);
   const [forceCloseReason, setForceCloseReason] = useState("");
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
+
+  const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
+  const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
+  const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Spares", uom: "NOS" });
+
+  const addStoreItemMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/stores/items", data),
+    onSuccess: (newItem: any) => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: `"${newItem.name}" added to store catalogue` });
+      if (addStoreItemTargetIdx !== null) {
+        const updated = [...formItems];
+        updated[addStoreItemTargetIdx] = {
+          ...updated[addStoreItemTargetIdx],
+          description: newItem.name.toUpperCase(),
+          uom: newItem.uom.toUpperCase(),
+        };
+        setFormItems(updated);
+      }
+      setAddStoreItemOpen(false);
+      setAddStoreItemForm({ name: "", category: "Spares", uom: "NOS" });
+      setAddStoreItemTargetIdx(null);
+    },
+    onError: () => toast({ title: "Error adding store item", variant: "destructive" }),
+  });
 
   const [reportFilterDateFrom, setReportFilterDateFrom] = useState("");
   const [reportFilterDateTo, setReportFilterDateTo] = useState("");
@@ -1199,6 +1225,18 @@ export default function PurchaseIndents() {
                           }}
                           data-testid={`input-item-desc-${index}`}
                         />
+                        <button
+                          type="button"
+                          className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-0.5 mt-0.5 transition-colors"
+                          onClick={() => {
+                            setAddStoreItemTargetIdx(index);
+                            setAddStoreItemForm({ name: item.description || "", category: "Spares", uom: item.uom });
+                            setAddStoreItemOpen(true);
+                          }}
+                          data-testid={`button-add-store-item-${index}`}
+                        >
+                          <Package className="w-3 h-3" /> Add to store item catalogue
+                        </button>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
@@ -2122,6 +2160,63 @@ export default function PurchaseIndents() {
         </>
       )}
 
+      <Dialog open={addStoreItemOpen} onOpenChange={open => { setAddStoreItemOpen(open); if (!open) setAddStoreItemTargetIdx(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Store Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">ITEM NAME *</Label>
+              <Input
+                value={addStoreItemForm.name}
+                onChange={e => setAddStoreItemForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. BEARING 6205"
+                className="uppercase"
+                data-testid="input-new-store-item-name"
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">CATEGORY *</Label>
+                <Select value={addStoreItemForm.category} onValueChange={v => setAddStoreItemForm(f => ({ ...f, category: v }))}>
+                  <SelectTrigger className="text-xs" data-testid="select-new-store-item-category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "Others"].map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">UOM *</Label>
+                <Select value={addStoreItemForm.uom} onValueChange={v => setAddStoreItemForm(f => ({ ...f, uom: v }))}>
+                  <SelectTrigger className="text-xs" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["NOS", "PCS", "SET", "KG", "LITERS", "METERS", "FEET", "ROLL", "BOX", "PAIR", "PACK"].map(u => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Item will be added to the store catalogue and the description above will be filled in automatically.</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setAddStoreItemOpen(false)}>Cancel</Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!addStoreItemForm.name.trim() || addStoreItemMutation.isPending}
+                onClick={() => addStoreItemMutation.mutate({ name: addStoreItemForm.name.trim(), category: addStoreItemForm.category, uom: addStoreItemForm.uom, isActive: 1 })}
+                data-testid="button-save-new-store-item"
+              >
+                {addStoreItemMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add to Catalogue"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
