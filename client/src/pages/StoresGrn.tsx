@@ -434,7 +434,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                   } else {
                                     updateLine(idx, "itemId", v);
                                     const it = items.find(i => String(i.id) === v);
-                                    if (it) updateLine(idx, "uom", it.defaultUom || "NOS");
+                                    if (it) updateLine(idx, "uom", it.uom || "NOS");
                                   }
                                 }}
                               >

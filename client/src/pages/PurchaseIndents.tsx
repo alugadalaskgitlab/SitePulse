@@ -400,7 +400,6 @@ export default function PurchaseIndents() {
           ...updated[addStoreItemTargetIdx],
           description: newItem.name.toUpperCase(),
           uom: (newItem.uom || "NOS").toUpperCase(),
-          materialId: newItem.id,
         };
         setFormItems(updated);
       }
