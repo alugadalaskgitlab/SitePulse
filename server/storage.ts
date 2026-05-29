@@ -321,6 +321,7 @@ export interface IStorage {
   listPlantSettings(): Promise<PlantSettings[]>;
   upsertPlantSettings(input: InsertPlantSettings): Promise<PlantSettings>;
   deletePlantSettings(plantName: string): Promise<boolean>;
+  renamePlantSettings(oldName: string, newName: string): Promise<PlantSettings>;
   // Plant Module Phase-1 - Masters
   getParties(): Promise<Party[]>;
   createParty(party: InsertParty): Promise<Party>;
@@ -2242,6 +2243,25 @@ export class DatabaseStorage implements IStorage {
   async deletePlantSettings(plantName: string): Promise<boolean> {
     const result = await db.delete(plantSettings).where(eq(plantSettings.plantName, plantName));
     return ((result as any).rowCount ?? 0) > 0;
+  }
+
+  async renamePlantSettings(oldName: string, newName: string): Promise<PlantSettings> {
+    return db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(plantSettings).where(eq(plantSettings.plantName, oldName)).limit(1);
+      if (!existing) throw new Error(`Plant "${oldName}" not found`);
+      const [conflict] = await tx.select().from(plantSettings).where(eq(plantSettings.plantName, newName)).limit(1);
+      if (conflict) throw new Error(`A plant named "${newName}" already exists`);
+      const [inserted] = await tx.insert(plantSettings).values({
+        plantName: newName,
+        plantType: existing.plantType,
+        bitumenTank1LitresPerCm: existing.bitumenTank1LitresPerCm,
+        bitumenTank2LitresPerCm: existing.bitumenTank2LitresPerCm,
+        bitumenDensityKgPerL: existing.bitumenDensityKgPerL,
+        updatedAt: new Date(),
+      }).returning();
+      await tx.delete(plantSettings).where(eq(plantSettings.plantName, oldName));
+      return inserted;
+    });
   }
 
   // ============================================

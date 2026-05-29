@@ -3401,6 +3401,23 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/plant-module/plant-settings/:plantName/rename", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const oldName = decodeURIComponent(req.params.plantName).trim();
+      const newName = (req.body?.newName ?? "").trim();
+      if (!oldName) return res.status(400).json({ message: "plantName is required" });
+      if (!newName) return res.status(400).json({ message: "newName is required" });
+      if (oldName === newName) return res.status(400).json({ message: "New name must be different from current name" });
+      const renamed = await storage.renamePlantSettings(oldName, newName);
+      res.json(renamed);
+    } catch (err: any) {
+      if (err?.message?.includes("already exists")) return res.status(409).json({ message: err.message });
+      if (err?.message?.includes("not found")) return res.status(404).json({ message: err.message });
+      res.status(500).json({ message: err.message || "Failed to rename plant settings" });
+    }
+  });
+
   app.get("/api/plant-module/shift-logs/plants", async (_req, res) => {
     try {
       const all = await storage.getPlantShiftLogs({});

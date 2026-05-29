@@ -1097,129 +1097,337 @@ function PlantTypeConfigSection() {
   const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettings[]>({
     queryKey: ['/api/plant-module/plant-settings'],
   });
-  const setting = allSettings[0];
-  const isCreating = !settingsLoading && !setting;
 
-  const [editedPlantName, setEditedPlantName] = useState("");
-  const [plantType, setPlantType] = useState<string>("hma");
+  // ── Edit-type dialog state ──────────────────────────────────────────────────
+  const [editTarget, setEditTarget] = useState<PlantSettings | null>(null);
+  const [editType, setEditType] = useState<string>("hma");
 
-  useEffect(() => {
-    if (setting) {
-      setEditedPlantName(setting.plantName);
-      setPlantType(setting.plantType ?? "hma");
-    }
-  }, [setting?.plantName, setting?.plantType]);
+  // ── Rename dialog state ─────────────────────────────────────────────────────
+  const [renameTarget, setRenameTarget] = useState<PlantSettings | null>(null);
+  const [renameTo, setRenameTo] = useState("");
 
-  const nameChanged = !isCreating && editedPlantName.trim() !== setting?.plantName;
-  const typeChanged = !isCreating && plantType !== (setting?.plantType ?? "hma");
-  const hasChanges = isCreating ? !!editedPlantName.trim() : (nameChanged || typeChanged);
+  // ── Delete confirmation state ───────────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<PlantSettings | null>(null);
 
-  const saveMutation = useMutation({
+  // ── Add-plant dialog state ──────────────────────────────────────────────────
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addType, setAddType] = useState<string>("hma");
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
+
+  // Save edited type
+  const editTypeMutation = useMutation({
     mutationFn: async () => {
-      const newName = editedPlantName.trim();
-      if (!newName) throw new Error("Plant name is required");
-      // If renaming: delete the old entry first, then upsert under the new name.
-      if (!isCreating && nameChanged) {
-        const delRes = await apiRequest("DELETE", `/api/plant-module/plant-settings/${encodeURIComponent(setting!.plantName)}`);
-        if (!delRes.ok) { const e = await delRes.json(); throw new Error(e.message || "Failed to remove old name"); }
-      }
-      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(newName)}`, {
-        plantType,
-        bitumenTank1LitresPerCm: setting?.bitumenTank1LitresPerCm ?? null,
-        bitumenTank2LitresPerCm: setting?.bitumenTank2LitresPerCm ?? null,
-        bitumenDensityKgPerL: setting?.bitumenDensityKgPerL ?? null,
+      if (!editTarget) throw new Error("No plant selected");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(editTarget.plantName)}`, {
+        plantType: editType,
+        bitumenTank1LitresPerCm: editTarget.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: editTarget.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: editTarget.bitumenDensityKgPerL ?? null,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
-      const typeLabel = PLANT_TYPE_LABELS[plantType] ?? plantType;
-      if (isCreating) {
-        toast({ title: "Plant created", description: `"${editedPlantName.trim()}" added as ${typeLabel}.` });
-      } else if (nameChanged) {
-        toast({ title: "Plant renamed", description: `Plant renamed to "${editedPlantName.trim()}" · type: ${typeLabel}.` });
-      } else {
-        toast({ title: "Plant settings saved", description: `Type updated to ${typeLabel}.` });
+      invalidate();
+      setEditTarget(null);
+      toast({ title: "Plant type updated", description: `"${editTarget?.plantName}" is now ${PLANT_TYPE_LABELS[editType] ?? editType}.` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Rename: single atomic server-side endpoint (validates duplicate, uses DB transaction)
+  const renameMutation = useMutation({
+    mutationFn: async () => {
+      if (!renameTarget) throw new Error("No plant selected");
+      const newName = renameTo.trim();
+      if (!newName) throw new Error("Plant name is required");
+      const res = await apiRequest("POST", `/api/plant-module/plant-settings/${encodeURIComponent(renameTarget.plantName)}/rename`, { newName });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Plant renamed", description: `Renamed to "${renameTo.trim()}". Existing records referencing the old name are not updated automatically.` });
+      setRenameTarget(null);
+      setRenameTo("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Delete plant
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!deleteTarget) throw new Error("No plant selected");
+      const res = await apiRequest("DELETE", `/api/plant-module/plant-settings/${encodeURIComponent(deleteTarget.plantName)}`);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Plant removed", description: `"${deleteTarget?.plantName}" has been deleted.` });
+      setDeleteTarget(null);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Add new plant
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const name = addName.trim();
+      if (!name) throw new Error("Plant name is required");
+      if (allSettings.some(s => s.plantName.toLowerCase() === name.toLowerCase())) {
+        throw new Error("A plant with this name already exists");
       }
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(name)}`, {
+        plantType: addType,
+        bitumenTank1LitresPerCm: null,
+        bitumenTank2LitresPerCm: null,
+        bitumenDensityKgPerL: null,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Plant added", description: `"${addName.trim()}" created as ${PLANT_TYPE_LABELS[addType] ?? addType}.` });
+      setAddOpen(false);
+      setAddName("");
+      setAddType("hma");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   if (settingsLoading) return null;
 
+  const isEmpty = allSettings.length === 0;
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-            <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="flex-1">
+              <CardTitle>Plant Configuration</CardTitle>
+              <CardDescription>
+                {isEmpty
+                  ? "No plants configured yet. Add your first plant to get started."
+                  : "Manage plant entries — rename, change type, add or remove plants."}
+              </CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle>{isCreating ? "Add Plant Configuration" : "Plant Configuration"}</CardTitle>
-            <CardDescription>
-              {isCreating
-                ? "No plant has been set up yet. Enter a name and type to configure this module."
-                : "Edit the plant name or switch between plant modes."}
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <Label htmlFor="input-plant-name">
-            Plant Name {isCreating && <span className="text-destructive">*</span>}
-          </Label>
-          <Input
-            id="input-plant-name"
-            value={editedPlantName}
-            onChange={(e) => setEditedPlantName(e.target.value)}
-            placeholder="e.g., Main Plant, Site A HMA Plant"
-            className="mt-1 max-w-sm"
-            data-testid="input-plant-name"
-          />
-          {isCreating && (
-            <p className="text-xs text-muted-foreground mt-1">
-              This name appears across all plant records, reports, and shift logs.
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {isEmpty && (
+            <p className="text-sm text-muted-foreground py-2">
+              Use the button below to add your first plant.
             </p>
           )}
-          {nameChanged && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3 inline" />
-              {" "}Renaming the plant updates this settings entry. Existing shift logs, daily reports, and other records that reference the old name are not automatically updated.
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <Label>Plant Type</Label>
-            <Select value={plantType} onValueChange={setPlantType}>
-              <SelectTrigger className="mt-1 w-64" data-testid="select-plant-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hma">Hot Mix Asphalt (HMA)</SelectItem>
-                <SelectItem value="rmc">Ready Mix Concrete (RMC)</SelectItem>
-                <SelectItem value="mixed">Mixed (HMA + RMC)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+
+          {allSettings.map((s) => (
+            <div
+              key={s.plantName}
+              className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30"
+              data-testid={`plant-row-${s.plantName}`}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate" data-testid={`text-plant-name-${s.plantName}`}>{s.plantName}</p>
+                <p className="text-xs text-muted-foreground">{PLANT_TYPE_LABELS[s.plantType ?? "hma"] ?? s.plantType}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setEditTarget(s); setEditType(s.plantType ?? "hma"); }}
+                data-testid={`btn-edit-type-${s.plantName}`}
+              >
+                <Pencil className="w-3 h-3 mr-1" />
+                Edit Type
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setRenameTarget(s); setRenameTo(s.plantName); }}
+                data-testid={`btn-rename-${s.plantName}`}
+              >
+                Rename
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteTarget(s)}
+                data-testid={`btn-delete-plant-${s.plantName}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          ))}
+
           <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || !hasChanges}
-            className="mt-6"
-            data-testid="btn-save-plant-type"
+            variant="outline"
+            className="w-full mt-2"
+            onClick={() => setAddOpen(true)}
+            data-testid="btn-add-plant"
           >
-            {saveMutation.isPending
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : isCreating ? "Create Plant" : "Save Changes"}
+            <Plus className="w-4 h-4 mr-2" />
+            Add Another Plant
           </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          HMA shows shift logs, heating, and dispatch tracking. RMC shows batch records, cube tests, and raw material receipts. Mixed shows both.
-        </p>
-      </CardContent>
-    </Card>
+
+          <p className="text-xs text-muted-foreground pt-1">
+            HMA shows shift logs, heating, and dispatch tracking. RMC shows batch records, cube tests, and raw material receipts. Mixed shows both.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Edit Type Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Plant Type</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Changing the type for <strong>{editTarget?.plantName}</strong> will affect which tabs and features are shown for this plant.
+            </p>
+            <div>
+              <Label>Plant Type</Label>
+              <Select value={editType} onValueChange={setEditType}>
+                <SelectTrigger className="mt-1" data-testid="select-edit-plant-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hma">Hot Mix Asphalt (HMA)</SelectItem>
+                  <SelectItem value="rmc">Ready Mix Concrete (RMC)</SelectItem>
+                  <SelectItem value="mixed">Mixed (HMA + RMC)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditTarget(null)} data-testid="btn-cancel-edit-type">Cancel</Button>
+              <Button
+                onClick={() => editTypeMutation.mutate()}
+                disabled={editTypeMutation.isPending || editType === (editTarget?.plantType ?? "hma")}
+                data-testid="btn-save-edit-type"
+              >
+                {editTypeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Rename Dialog ─────────────────────────────────────────────────────── */}
+      <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o) { setRenameTarget(null); setRenameTo(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Plant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Renaming only updates this settings entry. Existing shift logs, daily reports, dispatch records, and any other data that references <strong>{renameTarget?.plantName}</strong> will <em>not</em> be updated automatically.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="input-rename-plant">New Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="input-rename-plant"
+                value={renameTo}
+                onChange={(e) => setRenameTo(e.target.value)}
+                placeholder="e.g., Site A HMA Plant"
+                className="mt-1"
+                data-testid="input-rename-plant"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setRenameTarget(null); setRenameTo(""); }} data-testid="btn-cancel-rename">Cancel</Button>
+              <Button
+                onClick={() => renameMutation.mutate()}
+                disabled={renameMutation.isPending || !renameTo.trim() || renameTo.trim() === renameTarget?.plantName}
+                data-testid="btn-confirm-rename"
+              >
+                {renameMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Rename"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ────────────────────────────────────────────────── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete plant?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{deleteTarget?.plantName}</strong> from plant configuration. Existing records that reference this plant will not be affected, but you will no longer be able to manage its settings here.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="btn-cancel-delete-plant">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              data-testid="btn-confirm-delete-plant"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Add Plant Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Another Plant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="input-add-plant-name">Plant Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="input-add-plant-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g., RMC Plant, Site B HMA"
+                className="mt-1"
+                data-testid="input-add-plant-name"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                This name appears across all plant records, reports, and shift logs for this plant.
+              </p>
+            </div>
+            <div>
+              <Label>Plant Type</Label>
+              <Select value={addType} onValueChange={setAddType}>
+                <SelectTrigger className="mt-1" data-testid="select-add-plant-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hma">Hot Mix Asphalt (HMA)</SelectItem>
+                  <SelectItem value="rmc">Ready Mix Concrete (RMC)</SelectItem>
+                  <SelectItem value="mixed">Mixed (HMA + RMC)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddType("hma"); }} data-testid="btn-cancel-add-plant">Cancel</Button>
+              <Button
+                onClick={() => addMutation.mutate()}
+                disabled={addMutation.isPending || !addName.trim()}
+                data-testid="btn-confirm-add-plant"
+              >
+                {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Plant"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
