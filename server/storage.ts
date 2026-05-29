@@ -116,6 +116,8 @@ import {
   sites,
   type Site,
   type InsertSite,
+  userSiteAccess,
+  type UserSiteAccess,
   type BitumenDipReading,
   type InsertBitumenDipReading,
   type LdoFlowReading,
@@ -297,7 +299,7 @@ function isLdoOrDieselMaterial(name: string): boolean {
 
 export interface IStorage {
   // DPRs
-  getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]>;
+  getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]>;
   getDprsWithDetails(): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
@@ -849,6 +851,11 @@ export interface IStorage {
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
   deletePushSubscriptionsByUserId(userId: number): Promise<void>;
   
+  // User Site Access (Permission System v2)
+  getUserPermittedSiteIds(userId: number): Promise<number[] | null>;
+  getUserSiteAccess(userId: number): Promise<UserSiteAccess[]>;
+  setUserSiteAccess(userId: number, siteIds: number[]): Promise<void>;
+
   // Sites Master
   getSites(): Promise<Site[]>;
   createSite(site: InsertSite): Promise<Site>;
@@ -1314,7 +1321,7 @@ function execDmlRowCount(result: unknown, context = "db.execute DML"): number {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string }): Promise<Dpr[]> {
+  async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]> {
     let conditions = [];
     
     conditions.push(eq(dprs.isSuperseded, false));
@@ -1322,6 +1329,13 @@ export class DatabaseStorage implements IStorage {
     if (filters?.engineer) conditions.push(eq(dprs.engineer, filters.engineer));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
+    // Permission System v2: if permitted site names are provided, filter to those sites only
+    if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
+      conditions.push(inArray(dprs.site, filters.permittedSiteNames));
+    } else if (filters?.permittedSiteNames && filters.permittedSiteNames.length === 0) {
+      // User has site restrictions but none match → return nothing
+      return [];
+    }
 
     return await db.select()
       .from(dprs)
@@ -7841,6 +7855,28 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(desc(truckDispatches.date), desc(truckDispatches.id));
   }
+  // User Site Access (Permission System v2)
+  async getUserPermittedSiteIds(userId: number): Promise<number[] | null> {
+    const rows = await db.select({ siteId: userSiteAccess.siteId })
+      .from(userSiteAccess)
+      .where(eq(userSiteAccess.userId, userId));
+    if (rows.length === 0) return null; // null = all sites
+    return rows.map((r) => r.siteId);
+  }
+
+  async getUserSiteAccess(userId: number): Promise<UserSiteAccess[]> {
+    return db.select().from(userSiteAccess).where(eq(userSiteAccess.userId, userId));
+  }
+
+  async setUserSiteAccess(userId: number, siteIds: number[]): Promise<void> {
+    await db.delete(userSiteAccess).where(eq(userSiteAccess.userId, userId));
+    if (siteIds.length > 0) {
+      await db.insert(userSiteAccess).values(
+        siteIds.map((siteId) => ({ userId, siteId, accessLevel: "full" as const }))
+      );
+    }
+  }
+
   // Sites Master
   async getSites(): Promise<Site[]> {
     return db.select().from(sites).orderBy(asc(sites.name));

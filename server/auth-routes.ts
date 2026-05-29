@@ -519,6 +519,36 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
+  // Site Access (Permission System v2)
+  app.get("/api/auth/users/:id/site-access", requireAuth, requireUserMgmt("view"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const u = await getUserById(id);
+      if (!u) return res.status(404).json({ error: "not_found" });
+      const rows = await storage.getUserSiteAccess(id);
+      const siteIds = rows.map((r) => r.siteId);
+      res.json({ siteIds, allSites: siteIds.length === 0 });
+    } catch (err) {
+      console.error("[GET /api/auth/users/:id/site-access]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  app.put("/api/auth/users/:id/site-access", requireAuth, requireUserMgmt("edit"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const u = await getUserById(id);
+      if (!u) return res.status(404).json({ error: "not_found" });
+      const parsed = z.object({ siteIds: z.array(z.number().int().positive()) }).parse(req.body);
+      await storage.setUserSiteAccess(id, parsed.siteIds);
+      res.json({ ok: true, siteIds: parsed.siteIds, allSites: parsed.siteIds.length === 0 });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PUT /api/auth/users/:id/site-access]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   app.post("/api/auth/users/:id/copy-permissions", requireAuth, requireUserMgmt("edit"), async (req, res) => {
     try {
       const id = Number(req.params.id);

@@ -1710,6 +1710,24 @@ export const userPermissions = pgTable("user_permissions", {
   userSectionUq: uniqueIndex("user_permissions_user_section_uq").on(t.userId, t.sectionKey),
 }));
 
+// ============================================
+// USER SITE ACCESS (Permission System v2)
+// ============================================
+// If a user has NO rows here → they can see ALL sites (admin / backward-compat).
+// If they have rows → they only see data for those sites.
+export const userSiteAccess = pgTable("user_site_access", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  accessLevel: text("access_level").notNull().default("full"), // "full" | "view_only"
+}, (t) => ({
+  userSiteUq: uniqueIndex("user_site_access_user_site_uq").on(t.userId, t.siteId),
+}));
+
+export const insertUserSiteAccessSchema = createInsertSchema(userSiteAccess).omit({ id: true });
+export type UserSiteAccess = typeof userSiteAccess.$inferSelect;
+export type InsertUserSiteAccess = z.infer<typeof insertUserSiteAccessSchema>;
+
 export const userDevices = pgTable("user_devices", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

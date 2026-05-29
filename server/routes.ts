@@ -157,12 +157,23 @@ export async function registerRoutes(
   // List DPRs with filters
   app.get(api.dprs.list.path, async (req, res) => {
     try {
-      const filters = {
+      const filters: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] } = {
         site: req.query.site as string | undefined,
         engineer: req.query.engineer as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
       };
+      // Permission System v2: restrict to user's permitted sites
+      if (req.authUser && !req.authUser.isAdmin) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null) {
+          const allSites = await storage.getSites();
+          const nameSet = new Set(
+            allSites.filter((s) => permittedIds.includes(s.id)).map((s) => s.name)
+          );
+          filters.permittedSiteNames = Array.from(nameSet);
+        }
+      }
       const dprs = await storage.getDprs(filters);
       res.json(dprs);
     } catch (err) {

@@ -47,6 +47,7 @@ import {
   Copy,
   Pencil,
   ArrowLeft,
+  MapPin,
 } from "lucide-react";
 
 type SafeUser = {
@@ -745,6 +746,11 @@ function PermissionsDialog({
       label: "Admin",
       sections: ["user_management", "device_approval"],
     },
+    {
+      id: "site-access",
+      label: "Site Access",
+      sections: [],
+    },
   ];
 
   function PermMatrix({ sections, labelOverrides, rowKeySuffix }: { sections: SectionKey[]; labelOverrides?: Partial<Record<SectionKey, string>>; rowKeySuffix?: string }) {
@@ -921,6 +927,8 @@ function PermissionsDialog({
                   </div>
                   <PermMatrix sections={g.sections} />
                 </div>
+              ) : g.id === "site-access" ? (
+                <SiteAccessTab userId={userId} isAdmin={permsQ.data?.isAdmin ?? false} />
               ) : (
                 <div>
                   <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 pb-1 border-b mb-2">
@@ -950,6 +958,112 @@ function PermissionsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const sitesQ = useQuery<{ id: number; name: string; isActive: number }[]>({
+    queryKey: ["/api/sites"],
+  });
+
+  const accessQ = useQuery<{ siteIds: number[]; allSites: boolean }>({
+    queryKey: ["/api/auth/users", userId, "site-access"],
+  });
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [allSites, setAllSites] = useState(true);
+
+  useEffect(() => {
+    if (accessQ.data) {
+      setAllSites(accessQ.data.allSites);
+      setSelectedIds(new Set(accessQ.data.siteIds));
+    }
+  }, [accessQ.data]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const siteIds = allSites ? [] : Array.from(selectedIds);
+      const r = await apiRequest("PUT", `/api/auth/users/${userId}/site-access`, { siteIds });
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Site access saved" });
+      qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "site-access"] });
+    },
+    onError: (e: Error | { message?: string }) => {
+      toast({ title: "Save failed", description: (e as Error)?.message ?? "", variant: "destructive" });
+    },
+  });
+
+  const activeSites = (sitesQ.data ?? []).filter((s) => s.isActive !== 0);
+
+  if (accessQ.isLoading || sitesQ.isLoading) {
+    return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {isAdmin && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          This user is an Admin — they always see all sites regardless of site access settings.
+        </div>
+      )}
+      <div className="flex items-center gap-3 px-1">
+        <Switch
+          id="all-sites-toggle"
+          checked={allSites}
+          onCheckedChange={(v) => {
+            setAllSites(v);
+            if (v) setSelectedIds(new Set());
+          }}
+          data-testid="switch-all-sites"
+        />
+        <label htmlFor="all-sites-toggle" className="text-sm font-medium cursor-pointer">
+          All sites (Admin behaviour — no restrictions)
+        </label>
+      </div>
+      {!allSites && (
+        <div className="border rounded overflow-hidden">
+          <div className="bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <MapPin className="h-3 w-3" /> Permitted sites
+          </div>
+          <div className="max-h-56 overflow-y-auto divide-y">
+            {activeSites.length === 0 && (
+              <p className="px-3 py-4 text-sm text-muted-foreground">No active sites found.</p>
+            )}
+            {activeSites.map((site) => (
+              <label
+                key={site.id}
+                className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 text-sm"
+                data-testid={`row-site-access-${site.id}`}
+              >
+                <Checkbox
+                  checked={selectedIds.has(site.id)}
+                  onCheckedChange={(v) => {
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (v) next.add(site.id); else next.delete(site.id);
+                      return next;
+                    });
+                  }}
+                  data-testid={`checkbox-site-${site.id}`}
+                />
+                {site.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-site-access">
+          {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+          Save Site Access
+        </Button>
+      </div>
+    </div>
   );
 }
 
