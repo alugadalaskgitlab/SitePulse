@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useSearch } from "wouter";
 
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, Plus, Pencil, Power, Package, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Power, Package, AlertTriangle, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,8 @@ export default function StoresItems() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<StoreItem | null>(null);
   const [form, setForm] = useState(defaultForm);
+  const [searchText, setSearchText] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
 
   const { data: items = [], isLoading } = useQuery<StoreItem[]>({
     queryKey: ["/api/stores/items", showInactive],
@@ -98,6 +100,16 @@ export default function StoresItems() {
   const activeItems = items.filter(i => i.isActive === 1);
   const inactiveItems = items.filter(i => i.isActive !== 1);
 
+  const displayedItems = useMemo(() => {
+    const all = [...activeItems, ...inactiveItems];
+    const q = searchText.trim().toLowerCase();
+    return all.filter(item => {
+      const matchesSearch = !q || item.name.toLowerCase().includes(q);
+      const matchesCategory = filterCategory === "all" || item.category === filterCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [activeItems, inactiveItems, searchText, filterCategory]);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
@@ -115,6 +127,37 @@ export default function StoresItems() {
           <Button onClick={openNew} size="sm" className="gap-1" data-testid="button-add-item">
             <Plus className="w-4 h-4" /> Add Item
           </Button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder="Search items..."
+              className="pl-8 pr-8 h-9 text-sm"
+              data-testid="input-search-items"
+            />
+            {searchText && (
+              <button
+                onClick={() => setSearchText("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                data-testid="button-clear-search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-full sm:w-44 h-9 text-sm" data-testid="select-filter-category">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
 
         {isLoading ? (
@@ -137,7 +180,13 @@ export default function StoresItems() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...activeItems, ...inactiveItems].map((item, i) => {
+                  {displayedItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        No items match your search.
+                      </td>
+                    </tr>
+                  ) : displayedItems.map((item) => {
                     const stock = stockMap[item.id];
                     const isLow = item.isActive === 1 && stock?.isLowStock;
                     return (
