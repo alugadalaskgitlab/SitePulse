@@ -836,7 +836,7 @@ export default function SiteDashboard() {
         <div class="report-card">
           <div class="report-header">
             <div class="report-site">${index + 1}. ${getBaseSiteName(dpr.site)}</div>
-            <div class="report-meta">Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"} | Work Type: ${(dpr as any).workType === "structure" ? "Structure" : "Road"}</div>
+            <div class="report-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">Date: ${format(new Date(dpr.date), "dd MMM yyyy")} | Engineer: ${dpr.engineer} | Role: ${dpr.role || "N/A"} | <span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600;${(dpr as any).workType === "structure" ? "background:#dbeafe;color:#1e40af;" : "background:#fef3c7;color:#92400e;"}">${(dpr as any).workType === "structure" ? "Structure" : "Road"}</span></div>
           </div>
           <div class="report-body">
             ${progressHtml}
