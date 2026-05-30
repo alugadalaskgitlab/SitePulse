@@ -738,22 +738,8 @@ export default function PlantMaterialReceipts() {
               </div>
 
               <div>
-                <Label>Party/Job</Label>
-                <Select value={partyId} onValueChange={setPartyId}>
-                  <SelectTrigger data-testid="select-party">
-                    <SelectValue placeholder="Select party" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parties?.map((party) => (
-                      <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
                 <Label>Material</Label>
-                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
+                <Select value={materialId} onValueChange={(v) => { setMaterialId(v); setTankNumber(""); setIndentRef(""); setIndentComboSearch(""); const m = materials?.find(x => x.id === parseInt(v)); if (m) setUom(m.defaultUom || "Ton"); }}>
                   <SelectTrigger data-testid="select-material">
                     <SelectValue placeholder="Select material" />
                   </SelectTrigger>
@@ -797,6 +783,20 @@ export default function PlantMaterialReceipts() {
                   </div>
                 );
               })()}
+
+              <div>
+                <Label>Party/Job</Label>
+                <Select value={partyId} onValueChange={setPartyId}>
+                  <SelectTrigger data-testid="select-party">
+                    <SelectValue placeholder="Select party" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parties?.map((party) => (
+                      <SelectItem key={party.id} value={String(party.id)}>{party.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -862,9 +862,11 @@ export default function PlantMaterialReceipts() {
 
               {/* Indent Ref — searchable combobox + status card */}
               {(() => {
+                const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved");
+                const noPiForMaterial = !!materialId && approvedPIs.length === 0;
                 const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
                 const isNotApproved = selectedPI && selectedPI.status !== "approved";
-                const filteredPIs = allPurchaseIndents.filter(pi =>
+                const filteredPIs = approvedPIs.filter(pi =>
                   !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
                 );
                 const getStatusBadge = (status: string) => {
@@ -879,55 +881,64 @@ export default function PlantMaterialReceipts() {
                 return (
                   <div className="space-y-1.5">
                     <Label>Indent Ref. <span className="text-muted-foreground text-xs">(optional — link to purchase indent)</span></Label>
-                    <div ref={indentComboRef} className="relative">
-                      <div className="flex items-center gap-1">
-                        <Input
-                          value={indentRef || indentComboSearch}
-                          onChange={e => {
-                            const v = e.target.value;
-                            if (indentRef) {
-                              setIndentRef("");
-                              setIndentComboSearch(v);
-                            } else {
-                              setIndentComboSearch(v);
-                            }
-                            setIndentComboOpen(true);
-                            setIndentOverride(false);
-                          }}
-                          onFocus={() => setIndentComboOpen(true)}
-                          placeholder="Type PI number to search…"
-                          data-testid="input-indent-ref"
-                          autoComplete="off"
-                        />
-                        {indentRef && (
-                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0"
-                            onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); }}
-                          >
-                            <span className="sr-only">Clear</span>✕
-                          </Button>
+                    {noPiForMaterial && !indentRef ? (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2.5" data-testid="notice-pending-pi">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          No approved Purchase Indent for <strong>{selectedMaterialName}</strong> — save the receipt and regularise the indent later.
+                        </p>
+                      </div>
+                    ) : (
+                      <div ref={indentComboRef} className="relative">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            value={indentRef || indentComboSearch}
+                            onChange={e => {
+                              const v = e.target.value;
+                              if (indentRef) {
+                                setIndentRef("");
+                                setIndentComboSearch(v);
+                              } else {
+                                setIndentComboSearch(v);
+                              }
+                              setIndentComboOpen(true);
+                              setIndentOverride(false);
+                            }}
+                            onFocus={() => setIndentComboOpen(true)}
+                            placeholder="Type PI number to search…"
+                            data-testid="input-indent-ref"
+                            autoComplete="off"
+                          />
+                          {indentRef && (
+                            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0"
+                              onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); }}
+                            >
+                              <span className="sr-only">Clear</span>✕
+                            </Button>
+                          )}
+                        </div>
+                        {indentComboOpen && !indentRef && filteredPIs.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
+                            {filteredPIs.map(pi => (
+                              <div
+                                key={pi.id}
+                                className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  setIndentRef(pi.indentNo);
+                                  setIndentComboSearch("");
+                                  setIndentComboOpen(false);
+                                }}
+                                data-testid={`option-indent-${pi.indentNo}`}
+                              >
+                                <span className="font-semibold text-sm">{pi.indentNo}</span>
+                                {getStatusBadge(pi.status)}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      {indentComboOpen && !indentRef && filteredPIs.length > 0 && (
-                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
-                          {filteredPIs.map(pi => (
-                            <div
-                              key={pi.id}
-                              className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                setIndentRef(pi.indentNo);
-                                setIndentComboSearch("");
-                                setIndentComboOpen(false);
-                              }}
-                              data-testid={`option-indent-${pi.indentNo}`}
-                            >
-                              <span className="font-semibold text-sm">{pi.indentNo}</span>
-                              {getStatusBadge(pi.status)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    )}
                     {selectedPI && (
                       <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1161,6 +1172,9 @@ export default function PlantMaterialReceipts() {
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                 {receipt.vehicleNumber && <span className="text-xs text-muted-foreground">{receipt.vehicleNumber}</span>}
                                 {receipt.supplier && <span className="text-xs text-muted-foreground">{receipt.supplier}</span>}
+                                {(!(receipt as any).indentRef || indentStatusMap[(receipt as any).indentRef] !== "approved") && (
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
+                                )}
                               </div>
                               {canEdit && (
                                 <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
