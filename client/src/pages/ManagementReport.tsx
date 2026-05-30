@@ -110,8 +110,11 @@ export default function ManagementReport() {
   const [selectedSiteIds, setSelectedSiteIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState("materials");
 
-  // Fetch all sites for the filter panel
-  const { data: allSites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  // Fetch only the sites the current user can access (scope-aware endpoint).
+  // Non-admin users see only their permitted sites; admins see all.
+  const { data: allSites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/admin/management-report/accessible-sites"],
+  });
   const activeSites = useMemo(() => allSites.filter((s) => s.isActive !== 0), [allSites]);
 
   // Keep selected in sync when sites load (default = all)

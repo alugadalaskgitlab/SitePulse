@@ -76,6 +76,37 @@ export function registerManagementReportRoutes(app: Express) {
     (req: Request, res: Response, next: NextFunction) => requireAuth(req, res, next),
   ];
 
+  // ── 0. Accessible sites (for site selector — scope-aware) ────────────────
+  // Allows reports OR admin_settings permission; directly checks authPermissions
+  // so we never send two responses.
+  app.get("/api/admin/management-report/accessible-sites", ...mgmtAuth, async (req, res) => {
+    try {
+      if (!req.authUser) {
+        return res.status(401).json({ error: "not_authenticated" });
+      }
+      const { isAdmin } = req.authUser;
+      const perms = req.authPermissions;
+      const canView = isAdmin || perms?.["reports"]?.view || perms?.["admin_settings"]?.view;
+      if (!canView) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
+      const allSites = await db.select({
+        id: sitesTable.id, name: sitesTable.name, isActive: sitesTable.isActive,
+      }).from(sitesTable);
+
+      // Non-admin users: return only their permitted sites
+      if (!isAdmin) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        return res.json(allSites.filter((s) => permittedIds.includes(s.id)));
+      }
+      res.json(allSites);
+    } catch (err) {
+      console.error("management-report/accessible-sites:", err);
+      res.status(500).json({ error: "Failed to fetch accessible sites" });
+    }
+  });
+
   // ── 1. Materials Consumption ─────────────────────────────────────────────
   app.get("/api/admin/management-report/materials", ...mgmtAuth, async (req, res) => {
     try {
@@ -391,7 +422,9 @@ export function registerManagementReportRoutes(app: Express) {
       .innerJoin(vendorBillItems, eq(vendorBillItems.billId, vendorBills.id))
       .where(cond(billConds));
 
-      // Aggregate bills by site name, tracking status breakdown
+      // Aggregate bills by site name.
+      // Track both per-bill status (billId → status) and per-item amounts so
+      // statusBreakdown is counted ONCE per distinct bill, not per item row.
       type BillEntry = {
         siteName: string;
         billCount: number;
@@ -399,7 +432,8 @@ export function registerManagementReportRoutes(app: Express) {
         statusBreakdown: { draft: number; pending: number; approved: number; paid: number; other: number };
       };
       const billMap = new Map<string, BillEntry>();
-      const billIdBySite = new Map<string, Set<number>>();
+      // site → { billId → status } — used to deduplicate status counts
+      const billStatusBySite = new Map<string, Map<number, string>>();
 
       for (const r of billRows) {
         const sn = r.siteName || "Unassigned";
@@ -407,31 +441,35 @@ export function registerManagementReportRoutes(app: Express) {
         if (!billMap.has(sn)) {
           billMap.set(sn, { siteName: sn, billCount: 0, billValue: 0,
             statusBreakdown: { draft: 0, pending: 0, approved: 0, paid: 0, other: 0 } });
-          billIdBySite.set(sn, new Set());
+          billStatusBySite.set(sn, new Map());
         }
         const entry = billMap.get(sn)!;
+        // Accumulate item amounts (each row is one item)
         entry.billValue += Number(r.amount) || 0;
-        billIdBySite.get(sn)!.add(r.billId);
-        const s = (r.status || "draft").toLowerCase();
-        if (s === "draft")         entry.statusBreakdown.draft++;
-        else if (s === "pending")  entry.statusBreakdown.pending++;
-        else if (s === "approved") entry.statusBreakdown.approved++;
-        else if (s === "paid")     entry.statusBreakdown.paid++;
-        else                        entry.statusBreakdown.other++;
+        // Record bill status once per distinct bill — last write wins (all items share the same status)
+        billStatusBySite.get(sn)!.set(r.billId, (r.status || "draft").toLowerCase());
       }
-      // Distinct bill count per site (status counts are per item, billCount is per bill)
-      for (const [sn, ids] of billIdBySite) {
-        const e = billMap.get(sn);
-        if (e) e.billCount = ids.size;
+      // Finalise per-site bill counts and status breakdowns using distinct bills
+      for (const [sn, billStatuses] of billStatusBySite) {
+        const entry = billMap.get(sn)!;
+        entry.billCount = billStatuses.size;
+        for (const s of billStatuses.values()) {
+          if (s === "draft")         entry.statusBreakdown.draft++;
+          else if (s === "pending")  entry.statusBreakdown.pending++;
+          else if (s === "approved") entry.statusBreakdown.approved++;
+          else if (s === "paid")     entry.statusBreakdown.paid++;
+          else                        entry.statusBreakdown.other++;
+        }
       }
 
-      // Purchase indents aggregate (no siteId — date-filtered total only)
+      // Purchase indents aggregate — use distinct indent IDs to avoid
+      // overcounting when an indent has multiple items (leftJoin inflates count).
       const indentConds: any[] = [];
       if (dateFrom) indentConds.push(gte(purchaseIndents.date, dateFrom));
       if (dateTo)   indentConds.push(lte(purchaseIndents.date, dateTo));
 
       const [indentTotals] = await db.select({
-        cnt:   count(purchaseIndents.id),
+        cnt:   sql<number>`count(distinct ${purchaseIndents.id})`,
         value: sum(purchaseIndentItems.estAmount),
       })
       .from(purchaseIndents)

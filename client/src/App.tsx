@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
-import { AuthProvider } from "@/lib/auth-context";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import type { SectionKey } from "@shared/permissions";
@@ -179,6 +179,31 @@ function gated(Component: ComponentType<any>, section?: SectionKey) {
   };
 }
 
+// Grants access when the user has view permission on ANY of the listed sections.
+// Used for pages accessible to multiple distinct roles (e.g. reports OR admin_settings).
+function gatedEither(Component: ComponentType<any>, ...sections: SectionKey[]) {
+  return function GatedEitherRoute(params: any): ReactNode {
+    const { sectionVisible, isAdmin } = useAuth();
+    const canAccess = isAdmin || sections.some((s) => sectionVisible(s));
+    if (!canAccess) {
+      return (
+        <div className="mx-auto max-w-md text-center py-20 space-y-3">
+          <h2 className="text-xl font-semibold">No access</h2>
+          <p className="text-sm text-muted-foreground">
+            You don't have permission to view this section. Contact an
+            administrator if you think this is wrong.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <RequireAuth>
+        <Component {...params} />
+      </RequireAuth>
+    );
+  };
+}
+
 function AuthedShell() {
   const { rmcEnabled } = useFeatureFlags();
   return (
@@ -257,7 +282,7 @@ function AuthedShell() {
             <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
             <Route path="/admin/reports" component={gated(AdminReports, "reports")} />
-            <Route path="/admin/management-report" component={gated(ManagementReport, "reports")} />
+            <Route path="/admin/management-report" component={gatedEither(ManagementReport, "reports", "admin_settings")} />
             <Route path="/admin/mix-estimates" component={gated(MixEstimates, "reports")} />
             <Route path="/admin/mix-impact" component={gated(MixImpact, "reports")} />
             <Route path="/admin/mix-comparison" component={gated(MixComparativeReport, "reports")} />
