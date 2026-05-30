@@ -78,7 +78,6 @@ export function MultiProjectHome() {
           <Plus className="w-3.5 h-3.5" /> New Project
         </button>
       </div>
-
       <div className="flex h-[calc(100vh-52px)]">
         {/* Project list */}
         <div className="w-80 bg-white border-r border-zinc-200 flex flex-col">
@@ -142,7 +141,7 @@ export function MultiProjectHome() {
                   </div>
                   <div>
                     <div className="text-xl font-bold text-zinc-800">{s.value}</div>
-                    <div className="text-[10px] text-zinc-400">{s.label}</div>
+                    <div className="text-[10px] text-zinc-400 font-medium">{s.label}</div>
                   </div>
                 </div>
               ))}
