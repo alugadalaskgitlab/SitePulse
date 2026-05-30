@@ -246,6 +246,7 @@ export async function registerRoutes(
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         supplier: req.query.supplier as string | undefined,
+        workType: req.query.workType as string | undefined,
         ...(permittedSiteNames !== null ? { permittedSiteNames } : {}),
       };
       const results = await storage.getAllMaterialsReceived(filters);
@@ -453,6 +454,7 @@ export async function registerRoutes(
         site: req.query.site as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
+        workType: req.query.workType as string | undefined,
       };
       const purchases = await storage.getAllSitePurchases(filters);
       res.json(purchases);

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useSearch } from "wouter";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,9 +33,17 @@ export default function SitePurchasesReport() {
   const { toast } = useToast();
   const search = useSearch();
   const returnTo = new URLSearchParams(search).get("returnTo") || "/site/dashboard";
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [siteFilter, setSiteFilter] = useState("");
+
+  const [filters, setFilters] = usePersistedFilters(
+    "site-purchases-report:filters:v1",
+    {
+      dateFrom: "",
+      dateTo: "",
+      site: "",
+      workType: "",
+    },
+  );
+
   const [editingItem, setEditingItem] = useState<SitePurchaseItem | null>(null);
   const [editForm, setEditForm] = useState({
     itemDescription: "",
@@ -45,9 +54,10 @@ export default function SitePurchasesReport() {
     amount: "",
   });
   const queryString = new URLSearchParams({
-    ...(dateFrom && { dateFrom }),
-    ...(dateTo && { dateTo }),
-    ...(siteFilter && siteFilter !== "all" && { site: siteFilter }),
+    ...(filters.dateFrom && { dateFrom: filters.dateFrom }),
+    ...(filters.dateTo && { dateTo: filters.dateTo }),
+    ...(filters.site && filters.site !== "all" && { site: filters.site }),
+    ...(filters.workType && filters.workType !== "all" && { workType: filters.workType }),
   }).toString();
 
   const { data: purchases, isLoading } = useQuery<SitePurchaseItem[]>({
@@ -144,13 +154,13 @@ export default function SitePurchasesReport() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <Label className="text-xs">From Date</Label>
                 <Input
                   type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  value={filters.dateFrom}
+                  onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
                   data-testid="input-date-from"
                 />
               </div>
@@ -158,14 +168,14 @@ export default function SitePurchasesReport() {
                 <Label className="text-xs">To Date</Label>
                 <Input
                   type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  value={filters.dateTo}
+                  onChange={(e) => setFilters(f => ({ ...f, dateTo: e.target.value }))}
                   data-testid="input-date-to"
                 />
               </div>
               <div>
                 <Label className="text-xs">Site</Label>
-                <Select value={siteFilter} onValueChange={setSiteFilter}>
+                <Select value={filters.site || "all"} onValueChange={(v) => setFilters(f => ({ ...f, site: v === "all" ? "" : v }))}>
                   <SelectTrigger data-testid="select-site-filter">
                     <SelectValue placeholder="All Sites" />
                   </SelectTrigger>
@@ -174,6 +184,19 @@ export default function SitePurchasesReport() {
                     {uniqueSites.map(site => (
                       <SelectItem key={site} value={site}>{site}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Work Type</Label>
+                <Select value={filters.workType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "all" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-worktype-filter">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="road">Road</SelectItem>
+                    <SelectItem value="structure">Structure</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

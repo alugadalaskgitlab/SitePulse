@@ -876,7 +876,7 @@ export interface IStorage {
   seedSitesFromDprs(): Promise<number>;
 
   // Site Purchases Report
-  getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+  getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string }): Promise<any[]>;
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
@@ -886,7 +886,7 @@ export interface IStorage {
   deleteSiteMaterialTrip(id: number): Promise<void>;
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
-  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[] }): Promise<any[]>;
+  getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]>;
   getMaterialSuppliers(): Promise<string[]>;
   
   // Consumption Audit Log
@@ -7506,13 +7506,14 @@ export class DatabaseStorage implements IStorage {
   // Site Material Trips (Quick Entry)
   // ============================================
   
-  async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<any[]> {
+  async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string }): Promise<any[]> {
     let conditions: any[] = [
       or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
     ];
     
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
+    if (filters?.workType) conditions.push(eq(dprs.workType, filters.workType));
     
     const results = await db.select({
       id: sitePurchases.id,
@@ -7551,6 +7552,7 @@ export class DatabaseStorage implements IStorage {
     ];
     if (filters?.dateFrom) dieselConditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) dieselConditions.push(lte(dprs.date, filters.dateTo));
+    if (filters?.workType) dieselConditions.push(eq(dprs.workType, filters.workType));
 
     const dieselResults = await db.select({
       id: equipmentLogs.id,
@@ -7650,7 +7652,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
   }
 
-  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[] }): Promise<any[]> {
+  async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]> {
     // Permission System v2: if no sites permitted, return empty immediately
     if (filters?.permittedSiteNames !== undefined && filters.permittedSiteNames.length === 0) return [];
 
@@ -7662,6 +7664,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
       tripConditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
     }
+    // site_material_trips has no workType column — skip trip source entirely when filtering by workType
 
     const trips = await db.select().from(siteMaterialTrips)
       .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
@@ -7678,6 +7681,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
       dprConditions.push(inArray(dprs.site, filters.permittedSiteNames));
     }
+    if (filters?.workType) dprConditions.push(eq(dprs.workType, filters.workType));
 
     const dprMaterials = await db.select({
       id: materialLogs.id,
@@ -7750,6 +7754,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
       waterConditions.push(inArray(dprs.site, filters.permittedSiteNames));
     }
+    if (filters?.workType) waterConditions.push(eq(dprs.workType, filters.workType));
 
     const waterEntries = await db.select({
       id: equipmentLogs.id,
@@ -7796,6 +7801,11 @@ export class DatabaseStorage implements IStorage {
       dprResults = dprResults.filter(r => r.site.toUpperCase().trim() === filterSite);
       tripResults = tripResults.filter(r => (r.site || '').toUpperCase().trim() === filterSite);
       waterResults = waterResults.filter(r => r.site.toUpperCase().trim() === filterSite);
+    }
+
+    // Trips have no workType — exclude them entirely when a workType filter is active
+    if (filters?.workType) {
+      tripResults = [];
     }
 
     if (filters?.supplier) {

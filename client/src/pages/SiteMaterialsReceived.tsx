@@ -30,7 +30,7 @@ export default function SiteMaterialsReceived() {
 
   const mgmtReportSite = sp.get("from") === "management-report" ? (sp.get("site") || null) : null;
 
-  const urlFilterKeys = ["dateFrom", "dateTo", "site", "material", "supplier"];
+  const urlFilterKeys = ["dateFrom", "dateTo", "site", "material", "supplier", "workType"];
   const urlHasFilterParams = urlFilterKeys.some((k) => sp.has(k));
   const urlFilterDefaults = urlHasFilterParams ? {
     dateFrom: sp.get("dateFrom") ?? today,
@@ -38,16 +38,18 @@ export default function SiteMaterialsReceived() {
     site: sp.get("site") ?? "",
     material: sp.get("material") ?? "",
     supplier: sp.get("supplier") ?? "",
+    workType: sp.get("workType") ?? "",
   } : {};
 
   const [filters, setFilters, resetFilters] = usePersistedFilters(
-    "site-materials-received:filters:v1",
+    "site-materials-received:filters:v2",
     {
       dateFrom: today,
       dateTo: today,
       site: "",
       material: "",
       supplier: "",
+      workType: "",
       ...urlFilterDefaults,
     },
     { shouldHydrate: !urlHasFilterParams },
@@ -58,7 +60,8 @@ export default function SiteMaterialsReceived() {
     filters.dateTo !== today ||
     !!filters.site ||
     !!filters.material ||
-    !!filters.supplier;
+    !!filters.supplier ||
+    !!filters.workType;
 
   const buildUrl = () => {
     const params = new URLSearchParams();
@@ -67,6 +70,7 @@ export default function SiteMaterialsReceived() {
     if (filters.site) params.set("site", filters.site);
     if (filters.material) params.set("material", filters.material);
     if (filters.supplier) params.set("supplier", filters.supplier);
+    if (filters.workType) params.set("workType", filters.workType);
     const qs = params.toString();
     return qs ? `/api/materials-received?${qs}` : "/api/materials-received";
   };
@@ -145,7 +149,7 @@ export default function SiteMaterialsReceived() {
                 </Button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs">From Date</Label>
                 <Input type="date" value={filters.dateFrom} onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))} data-testid="input-date-from" />
@@ -181,6 +185,17 @@ export default function SiteMaterialsReceived() {
                   <SelectContent>
                     <SelectItem value="__all__">All Suppliers</SelectItem>
                     {supplierList.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Work Type</Label>
+                <Select value={filters.workType || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "__all__" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-worktype-filter"><SelectValue placeholder="All Types" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Types</SelectItem>
+                    <SelectItem value="road">Road</SelectItem>
+                    <SelectItem value="structure">Structure</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
