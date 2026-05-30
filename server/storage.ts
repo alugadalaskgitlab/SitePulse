@@ -547,7 +547,11 @@ export interface IStorage {
   // Ensures the 4 LDO dip columns added in Task #551 exist on bitumen_heating_sessions.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
   ensureHeatingSessionDipColumns(): Promise<void>;
-    ensureMaterialOpeningStockTankNumber(): Promise<void>;
+  ensureMaterialOpeningStockTankNumber(): Promise<void>;
+
+  // Ensures site_id FK columns exist on diesel_requirements and purchase_indents.
+  // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
+  ensureSiteIdColumns(): Promise<void>;
 
   // Removes duplicate dip rows from bitumen_dip_readings before the unique index is enforced,
   // keeping the lowest id per (date, tank_number, reading_type, plant_name).
@@ -561,6 +565,11 @@ export interface IStorage {
   // Removes duplicate slot (opening/closing) rows from ldo_flow_readings before the unique
   // index is applied, keeping the lowest id per (date, tank_number, reading_type, plant_name).
   deduplicateLdoFlowSlotReadings(): Promise<{ removed: number }>;
+
+  // One-time scan: attempts to infer siteId on existing diesel_requirements and purchase_indents
+  // rows where siteId is NULL. Neither table has a FK link to a site, so no rows can be resolved
+  // automatically — the migration records unresolved counts for auditability and marks itself done.
+  backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }>;
 
   // Idempotent: drops rows already tagged for each session, re-inserts opening/closing if values are present.
   backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }>;
@@ -8873,6 +8882,7 @@ export class DatabaseStorage implements IStorage {
         raisedBy: data.raisedBy.toUpperCase(),
         status: data.status || "pending",
         remarks: data.remarks?.toUpperCase() || data.remarks,
+        siteId: (data as any).siteId ?? null,
       }).returning();
 
       let items: PurchaseIndentItem[] = [];
@@ -9092,6 +9102,7 @@ export class DatabaseStorage implements IStorage {
         proposedBy: data.proposedBy.toUpperCase(),
         raisedBy: data.raisedBy.toUpperCase(),
         remarks: data.remarks?.toUpperCase() || data.remarks,
+        siteId: (data as any).siteId ?? null,
       };
 
       if (existing.status !== "pending") {
@@ -10070,6 +10081,7 @@ export class DatabaseStorage implements IStorage {
         totalPlanned: data.totalPlanned,
         status: data.status || "pending",
         remarks: data.remarks?.toUpperCase() || data.remarks,
+        siteId: (data as any).siteId ?? null,
       }).returning();
 
       let items: DieselRequirementItem[] = [];
@@ -10177,6 +10189,7 @@ export class DatabaseStorage implements IStorage {
         raisedBy: data.raisedBy.toUpperCase(),
         totalPlanned: data.totalPlanned,
         remarks: data.remarks?.toUpperCase() || data.remarks,
+        siteId: (data as any).siteId ?? null,
       };
 
       if (existing.status !== "pending") {
@@ -10603,6 +10616,55 @@ export class DatabaseStorage implements IStorage {
       await db.execute(sql.raw(`ALTER TABLE material_opening_stocks ADD COLUMN IF NOT EXISTS tank_number integer`));
       console.log("ensureMaterialOpeningStockTankNumber: column verified/added");
     }
+
+    async ensureSiteIdColumns(): Promise<void> {
+      await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS site_id integer REFERENCES sites(id) ON DELETE SET NULL`));
+      await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS site_id integer REFERENCES sites(id) ON DELETE SET NULL`));
+      console.log("ensureSiteIdColumns: site_id columns verified/added on diesel_requirements and purchase_indents");
+    }
+
+  async backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }> {
+    // IDEMPOTENCY: guarded by app_settings key "backfill_site_ids_diesel_indents_v1".
+    // Neither diesel_requirements nor purchase_indents carry any FK that can be
+    // joined to infer a site (no plant_name, no project link, no site FK via
+    // related entities in the current schema). Inference resolution is therefore
+    // 0 rows. The migration records unresolved counts for auditability and marks
+    // itself done so future startups skip the scan.
+    const MIGRATION_FLAG = "backfill_site_ids_diesel_indents_v1";
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, MIGRATION_FLAG)).limit(1);
+    if (existing.length > 0) {
+      console.log("backfillSiteIdsOnDieselAndIndents: already applied, skipping.");
+      return { dieselScanned: 0, dieselResolved: 0, dieselUnresolved: 0, indentsScanned: 0, indentsResolved: 0, indentsUnresolved: 0 };
+    }
+
+    const result = { dieselScanned: 0, dieselResolved: 0, dieselUnresolved: 0, indentsScanned: 0, indentsResolved: 0, indentsUnresolved: 0 };
+    try {
+      // Count NULL-siteId rows in diesel_requirements
+      const dieselNulls = await db.select({ id: dieselRequirements.id })
+        .from(dieselRequirements)
+        .where(isNull(dieselRequirements.siteId));
+      result.dieselScanned = dieselNulls.length;
+      // No inferable FK path — all existing rows remain unresolved (user must re-assign via edit form)
+      result.dieselUnresolved = dieselNulls.length;
+
+      // Count NULL-siteId rows in purchase_indents
+      const indentNulls = await db.select({ id: purchaseIndents.id })
+        .from(purchaseIndents)
+        .where(isNull(purchaseIndents.siteId));
+      result.indentsScanned = indentNulls.length;
+      result.indentsUnresolved = indentNulls.length;
+
+      console.log(`backfillSiteIdsOnDieselAndIndents: diesel — scanned ${result.dieselScanned}, resolved ${result.dieselResolved}, unresolved ${result.dieselUnresolved}`);
+      console.log(`backfillSiteIdsOnDieselAndIndents: indents — scanned ${result.indentsScanned}, resolved ${result.indentsResolved}, unresolved ${result.indentsUnresolved}`);
+
+      // Mark done — re-running would produce identical results (no-op inference)
+      await db.insert(appSettings).values({ key: MIGRATION_FLAG, value: "applied" });
+      console.log("backfillSiteIdsOnDieselAndIndents: migration flag recorded, will skip on future restarts.");
+    } catch (err) {
+      console.error("backfillSiteIdsOnDieselAndIndents: error during scan:", err);
+    }
+    return result;
+  }
 
   async backfillLdoFlowReadingsFromHeatingSessions(): Promise<{ sessionsScanned: number; rowsInserted: number; sessionsUpdated: number; sessionsSkipped: number; errors: number }> {
     // IDEMPOTENCY: category (B) — IDEMPOTENT OPERATION.

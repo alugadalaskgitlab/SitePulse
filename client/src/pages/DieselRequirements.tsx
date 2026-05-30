@@ -100,6 +100,7 @@ export default function DieselRequirements() {
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
+  const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formItems, setFormItems] = useState<FormItem[]>([
     { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
@@ -154,6 +155,10 @@ export default function DieselRequirements() {
 
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
+  });
+
+  const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
   });
 
   const { data: comparisonReport, isLoading: reportLoading } = useQuery<any>({
@@ -260,6 +265,7 @@ export default function DieselRequirements() {
     setFormDate(format(new Date(), "yyyy-MM-dd"));
     setFormRaisedBy("");
     setFormRemarks("");
+    setFormSiteId(null);
     setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
@@ -339,6 +345,7 @@ export default function DieselRequirements() {
       totalPlanned: formTotal,
       status: "pending",
       remarks: formRemarks.toUpperCase() || null,
+      siteId: formSiteId,
       items,
     };
 
@@ -390,6 +397,7 @@ export default function DieselRequirements() {
     setFormDate(selectedRequirement.date);
     setFormRaisedBy(selectedRequirement.raisedBy);
     setFormRemarks(selectedRequirement.remarks || "");
+    setFormSiteId((selectedRequirement as any).siteId ?? null);
     setFormItems(selectedRequirement.items.map(item => ({
       equipmentId: item.equipmentId,
       equipmentName: item.equipmentName,
@@ -663,7 +671,7 @@ export default function DieselRequirements() {
               )}
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-xs">DATE</Label>
                   <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} data-testid="input-form-date" />
@@ -671,6 +679,19 @@ export default function DieselRequirements() {
                 <div>
                   <Label className="text-xs">RAISED BY</Label>
                   <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
+                </div>
+                <div>
+                  <Label className="text-xs">SITE</Label>
+                  <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
+                    <SelectTrigger data-testid="select-form-site">
+                      <SelectValue placeholder="Select site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sitesList?.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-xs">REMARKS</Label>

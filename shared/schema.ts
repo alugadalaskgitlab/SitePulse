@@ -1343,6 +1343,7 @@ export const purchaseIndents = pgTable("purchase_indents", {
   rejectionReason: text("rejection_reason"),
   notifyMessage: text("notify_message"),
   createdAt: timestamp("created_at").defaultNow(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"),
@@ -1445,6 +1446,7 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   purchasedAt: text("purchased_at"),
   purchaseRemarks: text("purchase_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"),

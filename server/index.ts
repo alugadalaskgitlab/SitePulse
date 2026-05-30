@@ -137,6 +137,19 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureSiteIdColumns();
+  } catch (e) {
+    console.error("Startup: Failed to ensure site_id columns on diesel_requirements/purchase_indents:", e);
+  }
+
+  try {
+    const siteBackfill = await storage.backfillSiteIdsOnDieselAndIndents();
+    console.log(`Startup: backfillSiteIdsOnDieselAndIndents — diesel: scanned ${siteBackfill.dieselScanned}, resolved ${siteBackfill.dieselResolved}, unresolved ${siteBackfill.dieselUnresolved} | indents: scanned ${siteBackfill.indentsScanned}, resolved ${siteBackfill.indentsResolved}, unresolved ${siteBackfill.indentsUnresolved}`);
+  } catch (e) {
+    console.error("Startup: backfillSiteIdsOnDieselAndIndents failed:", e);
+  }
+
+  try {
     await storage.migrateLegacyGeneratorNamesToCanonical();
   } catch (e) {
     console.error("Startup: Failed to migrate legacy generator names:", e);

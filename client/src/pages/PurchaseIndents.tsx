@@ -364,6 +364,7 @@ export default function PurchaseIndents() {
   const [formProposedBy, setFormProposedBy] = useState("");
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
+  const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formItems, setFormItems] = useState<ItemRow[]>([
     { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null },
   ]);
@@ -437,6 +438,10 @@ export default function PurchaseIndents() {
 
   const { data: rawMaterialsList } = useQuery<any[]>({
     queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
   });
   const storeItemsList: StoreItem[] = (rawMaterialsList || [])
     .filter((m: any) => m.isActive !== 0)
@@ -667,6 +672,7 @@ export default function PurchaseIndents() {
     setFormProposedBy("");
     setFormRaisedBy("");
     setFormRemarks("");
+    setFormSiteId(null);
     setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
@@ -703,6 +709,7 @@ export default function PurchaseIndents() {
       raisedBy: formRaisedBy.toUpperCase(),
       remarks: formRemarks.toUpperCase() || null,
       status: "pending",
+      siteId: formSiteId,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
         qty: item.qty,
@@ -772,6 +779,7 @@ export default function PurchaseIndents() {
       setFormProposedBy(selectedIndent.proposedBy);
       setFormRaisedBy(selectedIndent.raisedBy);
       setFormRemarks(selectedIndent.remarks || "");
+      setFormSiteId((selectedIndent as any).siteId ?? null);
       setFormItems(selectedIndent.items.map(item => ({
         description: item.description,
         qty: item.qty,
@@ -1187,7 +1195,7 @@ export default function PurchaseIndents() {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
                   <Label className="text-xs uppercase">DATE</Label>
                   <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} data-testid="input-date" />
@@ -1196,6 +1204,19 @@ export default function PurchaseIndents() {
                   <Label className="text-xs uppercase">INDENT NO.</Label>
                   <Input value="AUTO-GENERATED" disabled className="bg-muted" data-testid="input-indent-no" />
                   <p className="text-xs text-muted-foreground mt-0.5">AUTO-GENERATED ON SAVE</p>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">SITE</Label>
+                  <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
+                    <SelectTrigger data-testid="select-site">
+                      <SelectValue placeholder="Select site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sitesList?.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-xs uppercase">PROPOSED BY</Label>
