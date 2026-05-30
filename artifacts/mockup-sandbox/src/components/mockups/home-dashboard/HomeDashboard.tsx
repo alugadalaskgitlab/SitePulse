@@ -186,7 +186,7 @@ export function HomeDashboard() {
           {/* Welcome */}
           <div>
             <h2 className="text-xl font-bold text-slate-900">Welcome back, Sunil</h2>
-            <p className="text-sm text-slate-500 mt-0.5">High Lane Constructions Pvt Ltd · {TODAY}</p>
+            <p className="text-sm text-slate-600 mt-0.5">High Lane Constructions Pvt Ltd · {TODAY}</p>
           </div>
 
           {/* ── Stat cards ── */}
@@ -201,8 +201,8 @@ export function HomeDashboard() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-slate-900 leading-none">{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
-                  <p className={`text-[11px] mt-0.5 font-medium ${s.alert ? "text-rose-500" : "text-slate-400"}`}>{s.sub}</p>
+                  <p className="text-xs text-slate-700 mt-1 font-medium">{s.label}</p>
+                  <p className={`text-[11px] mt-0.5 font-medium ${s.alert ? "text-rose-500" : "text-slate-600"}`}>{s.sub}</p>
                 </div>
               </div>
             ))}
@@ -221,7 +221,7 @@ export function HomeDashboard() {
                     <HardHat className="w-4 h-4 text-slate-500" />
                     <h3 className="text-sm font-semibold text-slate-800">Today's Site DPR Status</h3>
                   </div>
-                  <span className="text-xs text-slate-400">3 active sites</span>
+                  <span className="text-xs text-slate-600">3 active sites</span>
                 </div>
                 <div className="divide-y divide-slate-50">
                   {SITE_STATUS.map((s) => (
@@ -233,7 +233,7 @@ export function HomeDashboard() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-800 truncate">{s.site}</p>
                         {s.dprFiled
-                          ? <p className="text-xs text-slate-400 mt-0.5">Filed by {s.filedBy} at {s.time} · {s.materials} materials · {s.equipment} equipment</p>
+                          ? <p className="text-xs text-slate-600 mt-0.5">Filed by {s.filedBy} at {s.time} · {s.materials} materials · {s.equipment} equipment</p>
                           : <p className="text-xs text-amber-500 font-medium mt-0.5">DPR not yet filed</p>
                         }
                       </div>
@@ -266,11 +266,11 @@ export function HomeDashboard() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-slate-700">
                           <span className="font-medium">{r.who}</span>
-                          {" "}<span className="text-slate-500">{r.action}</span>
-                          {" — "}<span className="text-slate-600">{r.detail}</span>
+                          {" "}<span className="text-slate-700">{r.action}</span>
+                          {" — "}<span className="text-slate-700">{r.detail}</span>
                         </p>
                       </div>
-                      <span className="text-[11px] text-slate-400 flex-shrink-0 mt-0.5">{r.time}</span>
+                      <span className="text-[11px] text-slate-600 flex-shrink-0 mt-0.5">{r.time}</span>
                     </div>
                   ))}
                 </div>
@@ -298,7 +298,7 @@ export function HomeDashboard() {
                           <p className="text-sm font-medium text-slate-800 leading-snug truncate">{p.label}</p>
                           {p.urgent && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0" />}
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{p.sub}</p>
+                        <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{p.sub}</p>
                         <button className="mt-2 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </button>
@@ -324,7 +324,7 @@ export function HomeDashboard() {
                     { label: "Vehicles active", value: "12", color: "text-blue-600" },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500">{item.label}</span>
+                      <span className="text-xs text-slate-700">{item.label}</span>
                       <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
                     </div>
                   ))}
