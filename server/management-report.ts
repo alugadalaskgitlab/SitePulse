@@ -75,6 +75,20 @@ function cond(arr: any[]) {
   return arr.length ? and(...arr) : undefined;
 }
 
+/**
+ * Returns true only when the user has explicit per-site restrictions
+ * (getUserPermittedSiteIds returns a non-null array).
+ * Admins and unrestricted non-admins (null from storage) are NOT site-scoped.
+ * This is independent of any siteIds query param — it reflects the user's
+ * inherent permission state so global admin metrics are never hidden for
+ * users who are legitimately allowed to see cross-site data.
+ */
+async function getUserIsSiteScoped(req: any): Promise<boolean> {
+  if (!req.authUser || req.authUser.isAdmin) return false;
+  const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+  return permittedIds !== null;
+}
+
 /** Wraps requireAuth as a promise so we can await it inline in route handlers. */
 function authMiddleware(req: Request, res: Response): Promise<boolean> {
   return new Promise((resolve) => {
@@ -114,9 +128,15 @@ export function registerManagementReportRoutes(app: Express) {
         id: sitesTable.id, name: sitesTable.name, isActive: sitesTable.isActive,
       }).from(sitesTable);
 
-      // Non-admin users: return only their permitted sites
+      // Non-admin users: return only their permitted sites.
+      // getUserPermittedSiteIds() returns null when the user has no site restrictions
+      // (all sites visible) — must guard against calling .includes() on null.
       if (!isAdmin) {
         const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds === null) {
+          // Unrestricted non-admin (e.g., manager with reports permission but no per-site lock)
+          return res.json(allSites);
+        }
         return res.json(allSites.filter((s) => permittedIds.includes(s.id)));
       }
       res.json(allSites);
@@ -335,12 +355,14 @@ export function registerManagementReportRoutes(app: Express) {
     try {
       if (!assertViewReportOrAdmin(req, res)) return;
 
+      // isSiteScoped reflects the user's inherent restriction state — independent of
+      // query params. Admins and unrestricted non-admins are never site-scoped even
+      // when they pass siteIds= for filtering.
+      const isSiteScoped = await getUserIsSiteScoped(req);
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      // isSiteScoped: true when the user has site restrictions (effectiveIds is not null)
-      const isSiteScoped = effectiveIds !== null;
-      if (isSiteScoped && effectiveIds.length === 0) {
-        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCostGlobal: null } });
+      if (effectiveIds !== null && effectiveIds.length === 0) {
+        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCostGlobal: isSiteScoped ? null : 0 } });
       }
 
       const dateFrom = req.query.dateFrom as string | undefined;
@@ -494,12 +516,14 @@ export function registerManagementReportRoutes(app: Express) {
     try {
       if (!assertViewReportOrAdmin(req, res)) return;
 
+      // isSiteScoped reflects the user's inherent restriction state — independent of
+      // query params. Admins and unrestricted non-admins are never site-scoped even
+      // when they pass siteIds= for filtering.
+      const isSiteScoped = await getUserIsSiteScoped(req);
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      // isSiteScoped: true when the user has site restrictions (effectiveIds is not null)
-      const isSiteScoped = effectiveIds !== null;
-      if (isSiteScoped && effectiveIds.length === 0) {
-        return res.json({ bills: [], indents: null });
+      if (effectiveIds !== null && effectiveIds.length === 0) {
+        return res.json({ bills: [], indents: isSiteScoped ? null : { count: 0, value: 0 } });
       }
 
       const dateFrom = req.query.dateFrom as string | undefined;
