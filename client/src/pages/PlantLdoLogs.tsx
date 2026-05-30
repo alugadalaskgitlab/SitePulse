@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap, Pencil, Users, BarChart3 } from "lucide-react";
+import { ChevronLeft, Plus, Droplets, Loader2, TrendingUp, TrendingDown, Download, Printer, Zap, Pencil, Users, BarChart3, BarChart2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -18,7 +18,7 @@ import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { LdoLog, LdoFlowReading, LdoDipReading } from "@shared/schema";
+import type { LdoLog, LdoFlowReading, LdoDipReading, PlantSettings } from "@shared/schema";
 import { DEFAULT_LDO_NORM } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { getLdoUsableVolume } from "@shared/ldo-dip-chart";
@@ -43,6 +43,22 @@ export default function PlantLdoLogs() {
   const canExport = sectionCan("plant_stock", "view_reports");
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
+
+  // URL param support: when navigated from Management Report, pre-set date range
+  const mgmtReportContext = (() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("from") !== "management-report") return null;
+    return {
+      plantId: sp.get("plantId") ? Number(sp.get("plantId")) : null,
+      plantName: sp.get("plantName") || null,
+      filterDateFrom: sp.get("filterDateFrom") || "",
+      filterDateTo: sp.get("filterDateTo") || "",
+    };
+  })();
+
+  const [ldoFilterDateFrom, setLdoFilterDateFrom] = useState(mgmtReportContext?.filterDateFrom ?? "");
+  const [ldoFilterDateTo, setLdoFilterDateTo] = useState(mgmtReportContext?.filterDateTo ?? "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<LdoLog | null>(null);
   const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false);
@@ -166,8 +182,34 @@ export default function PlantLdoLogs() {
     tank2: computeTankStock(flowReadings, 2),
   };
 
+  // Fetch plant settings to resolve plantId → plantName when navigated from Management Report
+  const { data: plantSettingsList } = useQuery<PlantSettings[]>({
+    queryKey: ["/api/plant-module/plant-settings"],
+    enabled: !!mgmtReportContext?.plantId,
+  });
+
+  // Resolve the plant name from plantId (authoritative) falling back to URL-passed plantName
+  const resolvedPlantName = useMemo(() => {
+    if (!mgmtReportContext) return null;
+    if (mgmtReportContext.plantId && plantSettingsList) {
+      const plant = plantSettingsList.find((p) => p.id === mgmtReportContext.plantId);
+      if (plant) return plant.plantName;
+    }
+    return mgmtReportContext.plantName ?? null;
+  }, [mgmtReportContext, plantSettingsList]);
+
+  // When coming from Management Report with a plantId, wait until resolvedPlantName is known
+  // before fetching so we can pass plantName to the server for plant-scoped filtering.
   const { data: logs, isLoading } = useQuery<LdoLog[]>({
-    queryKey: ["/api/plant-module/ldo-logs"],
+    queryKey: ["/api/plant-module/ldo-logs", resolvedPlantName ?? null],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (resolvedPlantName) qs.set("plantName", resolvedPlantName);
+      const res = await fetch(`/api/plant-module/ldo-logs${qs.toString() ? `?${qs}` : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch LDO logs");
+      return res.json();
+    },
+    enabled: !mgmtReportContext?.plantId || resolvedPlantName !== null,
   });
 
   const [ldoTab, setLdoTab] = useState<"actual" | "contractor" | "efficiency">("actual");
@@ -191,6 +233,16 @@ export default function PlantLdoLogs() {
 
   const totalTheoretical = contractorData?.reduce((s, r) => s + r.theoreticalLdoL, 0) ?? 0;
   const totalActualDip = logs?.reduce((s, l) => s + (l.ldoConsumed ?? 0), 0) ?? 0;
+
+  const filteredLogs = useMemo(() => {
+    if (!logs) return [];
+    return logs.filter((l) => {
+      if (ldoFilterDateFrom && l.date < ldoFilterDateFrom) return false;
+      if (ldoFilterDateTo && l.date > ldoFilterDateTo) return false;
+      return true;
+    });
+  }, [logs, ldoFilterDateFrom, ldoFilterDateTo]);
+  const isDateFiltered = !!(ldoFilterDateFrom || ldoFilterDateTo);
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
@@ -321,9 +373,9 @@ export default function PlantLdoLogs() {
   };
 
   const exportToExcel = async () => {
-    if (!logs?.length) return;
+    if (!filteredLogs.length) return;
     try {
-      const data = logs.map(log => ({
+      const data = filteredLogs.map(log => ({
         Date: log.date,
         "Opening Stock (L)": log.openingStock || 0,
         "LDO Received (L)": log.ldoReceived || 0,
@@ -373,7 +425,7 @@ export default function PlantLdoLogs() {
   };
 
   const exportToPDF = async () => {
-    if (!logs?.length) return;
+    if (!filteredLogs.length) return;
     try {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       doc.setFontSize(16);
@@ -381,7 +433,7 @@ export default function PlantLdoLogs() {
       doc.setFontSize(10);
       doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 22);
       
-      const tableData = logs.map(log => [
+      const tableData = filteredLogs.map(log => [
         log.date,
         log.openingStock?.toString() || "-",
         log.ldoReceived?.toString() || "-",
@@ -437,7 +489,7 @@ export default function PlantLdoLogs() {
   };
 
   const handlePrint = () => {
-    if (!logs?.length) return;
+    if (!filteredLogs.length) return;
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -484,7 +536,7 @@ export default function PlantLdoLogs() {
               </tr>
             </thead>
             <tbody>
-              ${logs.map(log => `
+              ${filteredLogs.map(log => `
                 <tr>
                   <td>${log.date}</td>
                   <td>${log.openingStock || '-'}</td>
@@ -518,6 +570,22 @@ export default function PlantLdoLogs() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Management Report context banner */}
+      {mgmtReportContext && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
+          <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
+          <span>
+            From Management Report
+            {resolvedPlantName && (
+              <> — Plant: <strong>{resolvedPlantName}</strong></>
+            )}
+            {(mgmtReportContext.filterDateFrom || mgmtReportContext.filterDateTo) && (
+              <> · Date range pre-set below</>
+            )}
+          </span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href={backLink}>
@@ -709,27 +777,57 @@ export default function PlantLdoLogs() {
 
         {/* ── Tab A: Actual Dip-Based Consumption ── */}
         <TabsContent value="actual" className="space-y-4 mt-4">
-          {canExport && (
-            <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
-              <p className="text-sm text-muted-foreground flex-1">Plant LDO logs — actual dip-based consumption (internal tracking)</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!logs?.length} data-testid="button-export-excel">
+          {/* Date range filter */}
+          <div className="flex flex-wrap items-end gap-3 p-4 rounded-lg bg-muted/50">
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Input
+                type="date"
+                value={ldoFilterDateFrom}
+                onChange={(e) => setLdoFilterDateFrom(e.target.value)}
+                className="w-40"
+                data-testid="input-ldo-filter-date-from"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Input
+                type="date"
+                value={ldoFilterDateTo}
+                onChange={(e) => setLdoFilterDateTo(e.target.value)}
+                className="w-40"
+                data-testid="input-ldo-filter-date-to"
+              />
+            </div>
+            {isDateFiltered && (
+              <Button size="sm" variant="ghost" onClick={() => { setLdoFilterDateFrom(""); setLdoFilterDateTo(""); }} data-testid="button-clear-ldo-filter">
+                Clear filter
+              </Button>
+            )}
+            {canExport && (
+              <div className="flex items-center gap-2 flex-wrap ml-auto">
+                <Button size="sm" variant="outline" className="gap-1" onClick={exportToExcel} disabled={!filteredLogs.length} data-testid="button-export-excel">
                   <Download className="w-4 h-4" /> Export Excel
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!logs?.length} data-testid="button-export-pdf">
+                <Button size="sm" variant="outline" className="gap-1" onClick={exportToPDF} disabled={!filteredLogs.length} data-testid="button-export-pdf">
                   <Download className="w-4 h-4" /> Export PDF
                 </Button>
                 <Button size="sm" variant="outline" className="gap-1" onClick={handlePrint} data-testid="button-print">
                   <Printer className="w-4 h-4" /> Print
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Droplets className="w-5 h-5" />
                 Actual Plant Consumption (Dip-Based)
+                {isDateFiltered && (
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    {filteredLogs.length} of {logs?.length ?? 0} entries
+                  </Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -737,9 +835,11 @@ export default function PlantLdoLogs() {
                 <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>
               ) : !logs?.length ? (
                 <p className="text-muted-foreground text-center py-8">No LDO logs recorded yet.</p>
+              ) : filteredLogs.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No entries match the selected date range.</p>
               ) : (
                 <div className="space-y-3">
-                  {logs.map((log) => {
+                  {filteredLogs.map((log) => {
                     const variance = log.variance || 0;
                     const isExcess = variance < 0;
                     return (

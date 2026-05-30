@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType } from "@shared/schema";
+import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
 
 export default function PlantDispatches() {
   const { toast } = useToast();
@@ -44,12 +44,19 @@ export default function PlantDispatches() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const PLANT_DISPATCHES_FILTER_URL_KEYS = [
-    "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner", "filterPlantName",
+    "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner", "filterPlantName", "plantId",
   ];
   const mgmtReportPlant = (() => {
     if (typeof window === "undefined") return null;
     const sp = new URLSearchParams(window.location.search);
     return sp.get("from") === "management-report" ? (sp.get("filterPlantName") || null) : null;
+  })();
+  const mgmtReportPlantId = (() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("from") !== "management-report") return null;
+    const raw = sp.get("plantId");
+    return raw ? Number(raw) : null;
   })();
 
   const urlHasDispatchFilterParams = (() => {
@@ -178,6 +185,26 @@ export default function PlantDispatches() {
   const { data: parties } = useQuery<Party[]>({
     queryKey: ["/api/plant-module/parties"],
   });
+
+  // Fetch plant settings so we can resolve plantId → plantName from URL params
+  const { data: plantSettingsList } = useQuery<PlantSettings[]>({
+    queryKey: ["/api/plant-module/plant-settings"],
+    enabled: !!mgmtReportPlantId,
+  });
+
+  // When navigated from Management Report with a plantId URL param, resolve the
+  // plant name from plant settings and pre-set the active plant filter. This
+  // fires once after settings load and only if filterPlantName is still unset.
+  const plantIdFilterApplied = useRef(false);
+  useEffect(() => {
+    if (plantIdFilterApplied.current) return;
+    if (!mgmtReportPlantId || !plantSettingsList) return;
+    const plant = plantSettingsList.find((p) => p.id === mgmtReportPlantId);
+    if (plant) {
+      setFilterPlantName(plant.plantName);
+      plantIdFilterApplied.current = true;
+    }
+  }, [mgmtReportPlantId, plantSettingsList]);
 
   const { data: bitumenTankBalances } = useQuery<{ tank1: number; tank2: number; total: number }>({
     queryKey: ["/api/plant-module/bitumen-tank-balances"],
@@ -798,10 +825,17 @@ export default function PlantDispatches() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Management Report context banner */}
-      {mgmtReportPlant && (
+      {(mgmtReportPlant || mgmtReportPlantId) && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
           <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
-          <span>From Management Report — Filtered to plant: <strong>{mgmtReportPlant}</strong></span>
+          <span>
+            From Management Report
+            {filterPlantName !== "all"
+              ? <> — Filtered to plant: <strong>{filterPlantName}</strong></>
+              : mgmtReportPlant
+                ? <> — Filtered to plant: <strong>{mgmtReportPlant}</strong></>
+                : null}
+          </span>
         </div>
       )}
 

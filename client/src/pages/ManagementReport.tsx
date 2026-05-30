@@ -30,11 +30,11 @@ interface MaterialRow {
   category: string; uom: string; qtyReceived: number; qtyIssued: number;
 }
 interface ProductionRow {
-  siteName: string; plantName: string; type: string;
+  siteName: string; plantName: string; plantId: number | null; type: string;
   mtProduced: number; dispatchCount: number; unit: string;
 }
 interface FuelPlantRow {
-  siteName: string; plantName: string;
+  siteName: string; plantName: string; plantId: number | null;
   ldoConsumedL: number; mtProduced: number; lPerMt: number | null;
 }
 interface FuelResponse {
@@ -605,7 +605,7 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums">{r.dispatchCount}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
-                                href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName, from: "management-report" })}
+                                href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, plantId: r.plantId != null ? String(r.plantId) : "", from: "management-report" })}
                                 label=""
                                 testId={`link-prod-detail-${i}`}
                               />
@@ -687,7 +687,7 @@ export default function ManagementReport() {
                               </TableCell>
                               <TableCell>
                                 <ViewDetailsLink
-                                  href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName, from: "management-report" })}
+                                  href={buildDeepLink("/plant/ldo-logs", { filterDateFrom: dateFrom, filterDateTo: dateTo, plantId: r.plantId != null ? String(r.plantId) : "", plantName: r.plantName, from: "management-report" })}
                                   label=""
                                   testId={`link-fuel-detail-${i}`}
                                 />

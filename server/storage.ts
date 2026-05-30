@@ -373,7 +373,7 @@ export interface IStorage {
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
   createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog>;
   
-  getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
+  getLdoLogs(filters?: { partyId?: number; partyIds?: number[]; plantName?: string; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
   createLdoLog(log: InsertLdoLog): Promise<LdoLog>;
   updateLdoLog(id: number, updates: Partial<InsertLdoLog>): Promise<LdoLog | undefined>;
   getLdoDailySummary(date: string, plantName?: string): Promise<{
@@ -3775,9 +3775,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // LDO Logs
-  async getLdoLogs(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]> {
+  async getLdoLogs(filters?: { partyId?: number; partyIds?: number[]; plantName?: string; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]> {
+    // If plantName given, resolve to partyIds via truckDispatches
+    let resolvedPartyIds = filters?.partyIds;
+    if (filters?.plantName && !filters?.partyId) {
+      const rows = await db
+        .selectDistinct({ partyId: truckDispatches.partyId })
+        .from(truckDispatches)
+        .where(eq(truckDispatches.plantName, filters.plantName));
+      resolvedPartyIds = rows.map(r => r.partyId).filter((id): id is number => id !== null);
+    }
+
     let conditions = [];
-    if (filters?.partyId) conditions.push(eq(ldoLogs.partyId, filters.partyId));
+    if (filters?.partyId) {
+      conditions.push(eq(ldoLogs.partyId, filters.partyId));
+    } else if (resolvedPartyIds !== undefined) {
+      if (resolvedPartyIds.length > 0) {
+        conditions.push(or(isNull(ldoLogs.partyId), inArray(ldoLogs.partyId, resolvedPartyIds)));
+      } else {
+        conditions.push(isNull(ldoLogs.partyId));
+      }
+    }
     if (filters?.dateFrom) conditions.push(gte(ldoLogs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(ldoLogs.date, filters.dateTo));
     

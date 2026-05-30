@@ -2188,6 +2188,7 @@ export async function registerRoutes(
     try {
       const filters = {
         partyId: req.query.partyId ? Number(req.query.partyId) : undefined,
+        plantName: req.query.plantName as string | undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
       };

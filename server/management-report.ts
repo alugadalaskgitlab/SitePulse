@@ -277,10 +277,11 @@ export function registerManagementReportRoutes(app: Express) {
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo   = req.query.dateTo   as string | undefined;
 
-      const psRows = await db.select({ plantName: plantSettings.plantName, siteId: plantSettings.siteId, plantType: plantSettings.plantType }).from(plantSettings);
+      const psRows = await db.select({ id: plantSettings.id, plantName: plantSettings.plantName, siteId: plantSettings.siteId, plantType: plantSettings.plantType }).from(plantSettings);
       const allSites = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable);
       const siteMap = new Map(allSites.map((s) => [s.id, s.name]));
       const plantToSiteId = new Map(psRows.map((p) => [p.plantName, p.siteId]));
+      const plantNameToId = new Map(psRows.map((p) => [p.plantName, p.id]));
 
       const permittedPlantNames = effectiveIds !== null
         ? psRows.filter((p) => p.siteId !== null && effectiveIds.includes(p.siteId)).map((p) => p.plantName)
@@ -316,16 +317,16 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(rmcConds))
       .groupBy(rmcBatchRecords.plantName);
 
-      type Row = { siteName: string; plantName: string; type: string; mtProduced: number; dispatchCount: number; unit: string };
+      type Row = { siteName: string; plantName: string; plantId: number | null; type: string; mtProduced: number; dispatchCount: number; unit: string };
       const result: Row[] = [];
 
       for (const r of hmpRows) {
         const siteId = plantToSiteId.get(r.plantName) ?? null;
-        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, type: "HMP", mtProduced: Number(r.mtProduced) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "MT" });
+        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, plantId: plantNameToId.get(r.plantName) ?? null, type: "HMP", mtProduced: Number(r.mtProduced) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "MT" });
       }
       for (const r of rmcRows) {
         const siteId = plantToSiteId.get(r.plantName) ?? null;
-        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, type: "RMC", mtProduced: Number(r.volumeM3) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "m³" });
+        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, plantId: plantNameToId.get(r.plantName) ?? null, type: "RMC", mtProduced: Number(r.volumeM3) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "m³" });
       }
 
       result.sort((a, b) => a.siteName.localeCompare(b.siteName) || a.plantName.localeCompare(b.plantName));
@@ -351,10 +352,11 @@ export function registerManagementReportRoutes(app: Express) {
       const dateTo   = req.query.dateTo   as string | undefined;
 
       // Plant ↔ site mapping
-      const psRows = await db.select({ plantName: plantSettings.plantName, siteId: plantSettings.siteId }).from(plantSettings);
+      const psRows = await db.select({ id: plantSettings.id, plantName: plantSettings.plantName, siteId: plantSettings.siteId }).from(plantSettings);
       const allSites = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable);
       const siteMap = new Map(allSites.map((s) => [s.id, s.name]));
       const plantToSiteId = new Map(psRows.map((p) => [p.plantName, p.siteId]));
+      const plantNameToId = new Map(psRows.map((p) => [p.plantName, p.id]));
 
       const permittedPlantNames = effectiveIds !== null
         ? psRows.filter((p) => p.siteId !== null && effectiveIds.includes(p.siteId)).map((p) => p.plantName)
@@ -376,13 +378,13 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(hmpConds))
       .groupBy(truckDispatches.plantName);
 
-      type PlantRow = { siteName: string; plantName: string; ldoConsumedL: number; mtProduced: number; lPerMt: number | null };
+      type PlantRow = { siteName: string; plantName: string; plantId: number | null; ldoConsumedL: number; mtProduced: number; lPerMt: number | null };
       const plants: PlantRow[] = fuelRows.map((r) => {
         const siteId   = plantToSiteId.get(r.plantName) ?? null;
         const siteName = siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName;
         const ldo  = Number(r.ldoConsumed)  || 0;
         const mt   = Number(r.mtProduced)   || 0;
-        return { siteName, plantName: r.plantName, ldoConsumedL: ldo, mtProduced: mt, lPerMt: mt > 0 ? Math.round((ldo / mt) * 100) / 100 : null };
+        return { siteName, plantName: r.plantName, plantId: plantNameToId.get(r.plantName) ?? null, ldoConsumedL: ldo, mtProduced: mt, lPerMt: mt > 0 ? Math.round((ldo / mt) * 100) / 100 : null };
       });
       plants.sort((a, b) => a.siteName.localeCompare(b.siteName));
 
