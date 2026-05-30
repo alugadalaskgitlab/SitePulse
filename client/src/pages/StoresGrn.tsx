@@ -516,6 +516,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {selectedGrn.status === "draft" ? getDraftBadge() : getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
+                    {selectedGrn.status === "draft" && !selectedGrn.indentRef && (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
+                    )}
+                    {selectedGrn.status === "draft" && selectedGrn.indentRef && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[10px] px-1.5 py-0" data-testid="badge-detail-ready-finalise">Ready to Finalise</Badge>
+                    )}
                     {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-xs text-muted-foreground">— No site assigned</span>; })()}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
@@ -570,11 +576,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               {selectedGrn.status === "draft" && finalisingDraft && (() => {
                 const pi = draftFinaliseIndentRef ? allIndentsGlobal.find(p => p.indentNo === draftFinaliseIndentRef) : null;
                 const isNotApproved = pi && pi.status !== "approved";
+                const approvedIndents = allIndentsGlobal.filter(p => p.status === "approved");
                 return (
                   <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
                     <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5" /> Finalise GRN — Link Indent &amp; Confirm
                     </p>
+                    {approvedIndents.length === 0 && (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2" data-testid="note-no-approved-pi">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-amber-700 dark:text-amber-300">No approved Purchase Indents found. Ask a manager to approve a PI before finalising, or proceed without one.</p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label className="text-xs">Indent Reference (optional)</Label>
                       <Select value={draftFinaliseIndentRef || "__none__"} onValueChange={v => { setDraftFinaliseIndentRef(v === "__none__" ? "" : v); setDraftFinaliseOverride(false); }}>
@@ -1334,6 +1347,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                             {grn.status === "draft" ? getDraftBadge() : (grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus))}
+                            {grn.status === "draft" && !grn.indentRef && (
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0" data-testid={`badge-awaiting-pi-${grn.id}`}>Awaiting PI</Badge>
+                            )}
+                            {grn.status === "draft" && grn.indentRef && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[10px] px-1.5 py-0" data-testid={`badge-ready-finalise-${grn.id}`}>Ready to Finalise</Badge>
+                            )}
                             {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
                             {grn.indentRef && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
