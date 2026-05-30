@@ -160,7 +160,7 @@ export default function AdminSettings() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
       <div className="flex items-center gap-4">
-        <Link href="/">
+        <Link href={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo") || "/admin/hub"}>
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ChevronLeft, ArrowDownToLine, ArrowUpFromLine, BookOpen } from "lucide-react";
@@ -17,6 +17,8 @@ type StockItem = { itemId: number; itemName: string; category: string; uom: stri
 
 export default function StoresLedger() {
   const { itemId } = useParams<{ itemId: string }>();
+  const _search = useSearch();
+  const _backHref = new URLSearchParams(_search).get("returnTo") || "/stores";
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -43,7 +45,7 @@ export default function StoresLedger() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/stores">
+          <Link href={_backHref}>
             <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex items-center gap-2 flex-1">

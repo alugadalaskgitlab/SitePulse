@@ -1,6 +1,5 @@
 import {
-  Users, Database, RefreshCw, Shield, MapPin,
-  Package, Wrench, Layers, HardHat,
+  Users, Database, RefreshCw, Shield, Settings,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -40,60 +39,20 @@ export default function MastersHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=parties`}
-              icon={Users}
-              title="Party Master"
-              description="Manage contractors, vendors, suppliers & sub-contractors"
+              href={`/plant/dashboard?tab=masters&returnTo=${HUB}`}
+              icon={Settings}
+              title="Master Data"
+              description="Manage parties, materials, equipment, mix templates, sites & personnel"
               accent="blue"
               iconBg="bg-blue-50"
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=sites`}
-              icon={MapPin}
-              title="Projects & Sites"
-              description="Manage active sites, project names & site configurations"
-              accent="teal"
-              iconBg="bg-teal-50"
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=materials`}
-              icon={Package}
-              title="Materials Master"
-              description="Manage material types, grades, categories & units"
-              accent="amber"
-              iconBg="bg-amber-50"
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=equipment`}
-              icon={Wrench}
-              title="Equipment Master"
-              description="Manage equipment list, categories & specifications"
-              accent="orange"
-              iconBg="bg-orange-50"
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=templates`}
-              icon={Layers}
-              title="Mix Design Templates"
-              description="Define mix design formulas & component ratios for batching"
-              accent="emerald"
-              iconBg="bg-emerald-50"
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}&tab=personnel`}
-              icon={HardHat}
-              title="Personnel"
-              description="Manage operators, supervisors, contractors & workforce"
-              accent="violet"
-              iconBg="bg-violet-50"
             />
             <HubActionTile
               href={`/stores/items?returnTo=${HUB}`}
               icon={Database}
               title="Store Item Catalogue"
               description="Manage store items, spare parts, tools & consumables catalogue"
-              accent="slate"
-              iconBg="bg-slate-100"
+              accent="amber"
+              iconBg="bg-amber-50"
             />
           </div>
         </div>

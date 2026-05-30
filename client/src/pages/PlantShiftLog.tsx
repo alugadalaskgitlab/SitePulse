@@ -39,7 +39,7 @@ type IdleRow = { startTime: string; endTime?: string | null; reason: string; rem
 
 export default function PlantShiftLog() {
   const { toast } = useToast();
-  const { isFromPortal, appendPlantContext } = useOrigin();
+  const { isFromPortal, appendPlantContext, getPlantBackLink } = useOrigin();
   const [, params] = useRoute("/plant/shift-log/:date");
   const [currentLocation] = useLocation();
   const today = format(new Date(), "yyyy-MM-dd");
@@ -52,7 +52,7 @@ export default function PlantShiftLog() {
   const [listDryerFilter, setListDryerFilter] = useState<"all" | "TANK_1" | "TANK_2">("all");
   // Always return to operations tab — shift logs live on the operations tab regardless
   // of which tab the user may have arrived from.
-  const backLink = isFromPortal ? "/" : "/plant/dashboard?tab=operations";
+  const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const [date, setDate] = useState(dateParam);
   const [shiftCode, setShiftCode] = useState("DAY");

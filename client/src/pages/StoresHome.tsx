@@ -53,7 +53,7 @@ export default function StoresHome() {
             <span className="ml-2 text-slate-400 text-xs hidden sm:inline">Inventory & Issue Tracking</span>
           </div>
         </div>
-        <Link href="/">
+        <Link href={params.get("returnTo") || "/"}>
           <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-200 hover:text-white hover:bg-slate-700 border border-slate-600" data-testid="button-home">
             <Home className="w-5 h-5" />
           </Button>

@@ -64,6 +64,7 @@ export default function RateCards() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const preselectedVendor = params.get("vendorName") || "";
+  const _backHref = params.get("returnTo") || "/finance/hub";
 
   // Page-level access enforced via <RequireAuth section="admin_settings"> in App.tsx.
   const [selectedVendor, setSelectedVendor] = useState(preselectedVendor);
@@ -459,7 +460,7 @@ export default function RateCards() {
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
       <div className="flex items-center gap-4 flex-wrap">
-        <Link href="/plant/vendor-bills">
+        <Link href={_backHref}>
           <Button variant="ghost" size="icon" data-testid="button-back-rate-cards">
             <ChevronLeft className="w-5 h-5" />
           </Button>

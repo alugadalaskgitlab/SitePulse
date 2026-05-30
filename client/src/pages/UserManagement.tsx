@@ -124,11 +124,11 @@ export default function UserManagement() {
   return (
     <div className="space-y-6" data-testid="page-user-management">
       <Link
-        href="/"
+        href={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo") || "/admin/hub"}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         data-testid="link-back-home"
       >
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Home
+        <ArrowLeft className="h-3.5 w-3.5" /> Back
       </Link>
       <div className="flex items-center justify-between">
         <div>

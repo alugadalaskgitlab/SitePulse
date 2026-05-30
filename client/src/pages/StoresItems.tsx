@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
+
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronLeft, Plus, Pencil, Power, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,8 @@ const defaultForm = { name: "", category: "Spares", uom: "Nos", minStockQty: "" 
 
 export default function StoresItems() {
   const { toast } = useToast();
+  const _search = useSearch();
+  const _returnTo = new URLSearchParams(_search).get("returnTo") || "/stores/hub";
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<StoreItem | null>(null);
@@ -92,7 +95,7 @@ export default function StoresItems() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <Link href="/stores">
+          <Link href={_returnTo}>
             <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex items-center gap-2 flex-1">

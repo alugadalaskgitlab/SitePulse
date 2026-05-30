@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
@@ -21,6 +21,8 @@ type RmcSummary = {
 };
 
 export default function RmcHub() {
+  const _search = useSearch();
+  const _backHref = new URLSearchParams(_search).get("returnTo") || "/";
   const { sectionVisible } = useAuth();
   const [activeTab, setActiveTab] = useState("operations");
 
@@ -116,7 +118,7 @@ export default function RmcHub() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center gap-4">
-        <Link href="/plant/dashboard">
+        <Link href={_backHref}>
           <Button variant="ghost" size="icon" data-testid="button-back-rmc-hub">
             <ChevronLeft className="w-5 h-5" />
           </Button>
