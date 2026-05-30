@@ -43,7 +43,7 @@ export default function ReportsHub() {
               enabled={sectionVisible("plant_heating")}
             />
             <HubActionTile
-              href="/plant/dispatch-log"
+              href="/plant/dispatches"
               icon={ClipboardList}
               title="Dispatch Log"
               description="All truck dispatches with mix type, tonnage & destination"
@@ -69,22 +69,22 @@ export default function ReportsHub() {
               enabled={sectionVisible("plant_materials")}
             />
             <HubActionTile
-              href="/plant/ldo-book"
+              href="/plant/ldo-reconciliation"
               icon={Fuel}
               title="LDO Book Reconciliation"
               description="LDO book-vs-physical reconciliation & audit"
               accent="blue"
               iconBg="bg-blue-100"
-              enabled={sectionVisible("plant_shift_logs")}
+              enabled={sectionVisible("plant_stock")}
             />
             <HubActionTile
-              href="/plant/stock-audit"
+              href="/plant/variance-report"
               icon={Layers}
-              title="Stock Audit & Variance"
+              title="Stock Variance Report"
               description="Physical stock audit comparison & variance report"
               accent="violet"
               iconBg="bg-violet-100"
-              enabled={sectionVisible("plant_materials")}
+              enabled={sectionVisible("plant_variance")}
             />
             <HubActionTile
               href="/site/materials-received"
