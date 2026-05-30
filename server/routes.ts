@@ -12,7 +12,9 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable } from "@shared/schema";
+import { db } from "./db";
+import { isNull, inArray as drizzleInArray } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendPushToAudience, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -6421,6 +6423,65 @@ export async function registerRoutes(
         res.status(500).json({ message: "Failed to fix orphan balances", error: String(err) });
       }
     });
+
+  // ====== SITE BACKFILL — assign siteId to historical diesel requirements & purchase indents ======
+
+  app.get("/api/admin/site-backfill/unassigned", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const [drRows, piRows, siteRows] = await Promise.all([
+        db.select({
+          id: dieselRequirementsTable.id,
+          date: dieselRequirementsTable.date,
+          raisedBy: dieselRequirementsTable.raisedBy,
+          status: dieselRequirementsTable.status,
+          totalPlanned: dieselRequirementsTable.totalPlanned,
+          totalApproved: dieselRequirementsTable.totalApproved,
+        }).from(dieselRequirementsTable).where(isNull(dieselRequirementsTable.siteId)),
+        db.select({
+          id: purchaseIndentsTable.id,
+          date: purchaseIndentsTable.date,
+          indentNo: purchaseIndentsTable.indentNo,
+          raisedBy: purchaseIndentsTable.raisedBy,
+          status: purchaseIndentsTable.status,
+        }).from(purchaseIndentsTable).where(isNull(purchaseIndentsTable.siteId)),
+        db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable).orderBy(sitesTable.name),
+      ]);
+      res.json({ dieselRequirements: drRows, purchaseIndents: piRows, sites: siteRows });
+    } catch (err) {
+      console.error("Error fetching unassigned site records:", err);
+      res.status(500).json({ message: "Failed to fetch unassigned records" });
+    }
+  });
+
+  const assignSiteSchema = z.object({
+    table: z.enum(["diesel_requirements", "purchase_indents"]),
+    ids: z.array(z.number().int().positive()).min(1),
+    siteId: z.number().int().positive(),
+  });
+
+  app.post("/api/admin/site-backfill/assign", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const { table, ids, siteId } = assignSiteSchema.parse(req.body);
+      if (table === "diesel_requirements") {
+        await db.update(dieselRequirementsTable)
+          .set({ siteId })
+          .where(drizzleInArray(dieselRequirementsTable.id, ids));
+      } else {
+        await db.update(purchaseIndentsTable)
+          .set({ siteId })
+          .where(drizzleInArray(purchaseIndentsTable.id, ids));
+      }
+      res.json({ updated: ids.length });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error assigning site to records:", err);
+      res.status(500).json({ message: "Failed to assign site" });
+    }
+  });
 
     // ====== USERS DIRECTORY ======
   app.get("/api/users/directory", async (req, res) => {

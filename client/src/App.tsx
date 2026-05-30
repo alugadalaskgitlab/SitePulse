@@ -87,6 +87,7 @@ import EquipmentHub from "@/pages/EquipmentHub";
 import ReportsHub from "@/pages/ReportsHub";
 import SiteHub from "@/pages/SiteHub";
 import MastersHub from "@/pages/MastersHub";
+import SiteBackfill from "@/pages/SiteBackfill";
 import StoresHub from "@/pages/StoresHub";
 import FinanceHub from "@/pages/FinanceHub";
 import NotFound from "@/pages/not-found";
@@ -283,6 +284,7 @@ function AuthedShell() {
             <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
             <Route path="/stores/issues/:id" component={gated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "stores_inventory")} />
             <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
+            <Route path="/admin/site-backfill" component={gated(SiteBackfill, "admin_settings")} />
             <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
             <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />

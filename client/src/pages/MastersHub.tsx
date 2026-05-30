@@ -1,5 +1,5 @@
 import {
-  Users, Database, RefreshCw, Shield, Settings,
+  Users, Database, RefreshCw, Shield, Settings, MapPin,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -85,6 +85,14 @@ export default function MastersHub() {
               description="Export or import selected table data for backup & transfer"
               accent="amber"
               iconBg="bg-amber-50"
+            />
+            <HubActionTile
+              href="/admin/site-backfill"
+              icon={MapPin}
+              title="Site Backfill"
+              description="Assign sites to historical diesel requirements & purchase indents with no site set"
+              accent="rose"
+              iconBg="bg-rose-50"
             />
           </div>
         </div>
