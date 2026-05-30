@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  FileText, Package, ShoppingCart, Fuel, ClipboardList, TrendingUp,
+  FileText, Package, ClipboardList, TrendingUp,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
+const HUB = "/site/hub";
 
 function KpiCard({ label, value, sub, highlight }: {
   label: string; value?: string | number; sub?: string; highlight?: "amber" | "green";
@@ -44,18 +45,7 @@ export default function SiteHub() {
     enabled: sectionVisible("site_dprs"),
   });
 
-  const { data: indents = [] } = useQuery<any[]>({
-    queryKey: ["/api/purchase-indents", TODAY],
-    queryFn: async () => {
-      const res = await fetch(`/api/purchase-indents?dateFrom=${TODAY}&dateTo=${TODAY}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: sectionVisible("site_procurement"),
-  });
-
   const activeSites = new Set(dprs.map((d: any) => d.site).filter(Boolean)).size || (dprs.length > 0 ? 1 : 0);
-  const pendingIndents = indents.filter((i: any) => i.status === "pending").length;
   const totalWorkforce = dprs.reduce((sum: number, d: any) =>
     sum + (parseInt(d.totalWorkers ?? d.manpowerCount ?? d.workforce ?? "0") || 0), 0
   );
@@ -88,10 +78,9 @@ export default function SiteHub() {
             sub="workers on site"
           />
           <KpiCard
-            label="Pending Indents"
-            value={sectionVisible("site_procurement") ? pendingIndents : undefined}
-            sub="awaiting approval"
-            highlight={pendingIndents > 0 ? "amber" : undefined}
+            label="Date"
+            value={format(new Date(), "dd MMM")}
+            sub={format(new Date(), "yyyy")}
           />
         </div>
 
@@ -102,7 +91,7 @@ export default function SiteHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href="/site/new"
+              href={`/site/new?returnTo=${HUB}`}
               icon={FileText}
               title="New Daily Progress Report"
               description="Record today's site progress, labour & equipment"
@@ -112,7 +101,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_dprs")}
             />
             <HubActionTile
-              href="/site/dashboard"
+              href={`/site/dashboard?returnTo=${HUB}`}
               icon={ClipboardList}
               title="DPR History"
               description="View, edit & track all submitted daily progress reports"
@@ -121,7 +110,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_dprs")}
             />
             <HubActionTile
-              href="/site/material-trips"
+              href={`/site/material-trips?returnTo=${HUB}`}
               icon={Package}
               title="Material Entry"
               description="Log incoming material receipts & deliveries to site"
@@ -130,7 +119,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_materials")}
             />
             <HubActionTile
-              href="/site/materials-received"
+              href={`/site/materials-received?returnTo=${HUB}`}
               icon={Package}
               title="Materials Received Report"
               description="Summary of all material receipts across date ranges"
@@ -139,26 +128,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_materials")}
             />
             <HubActionTile
-              href="/plant/purchase-indents"
-              icon={ShoppingCart}
-              title="Purchase Indents"
-              description="Raise material purchase requests & track approvals"
-              accent="violet"
-              iconBg="bg-violet-100"
-              badge={pendingIndents > 0 ? `${pendingIndents} pending` : undefined}
-              enabled={sectionVisible("site_procurement")}
-            />
-            <HubActionTile
-              href="/plant/diesel-requirements"
-              icon={Fuel}
-              title="Diesel Requirement"
-              description="Submit daily diesel order for site equipment"
-              accent="blue"
-              iconBg="bg-blue-100"
-              enabled={sectionVisible("site_diesel")}
-            />
-            <HubActionTile
-              href="/site/purchases"
+              href={`/site/purchases?returnTo=${HUB}`}
               icon={TrendingUp}
               title="Site Purchases Report"
               description="Purchases, expenses & procurement analysis for the site"

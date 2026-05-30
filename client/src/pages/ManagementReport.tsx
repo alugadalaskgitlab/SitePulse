@@ -14,7 +14,7 @@ import {
   ChevronLeft, Download, Loader2, Package, Factory, Fuel,
   Users, Receipt, Building2, RefreshCw, FileDown,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { format, startOfMonth, startOfWeek } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
@@ -119,6 +119,10 @@ function EmptyState({ loading }: { loading: boolean }) {
 export default function ManagementReport() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
+  const search = useSearch();
+  const _sp = new URLSearchParams(search);
+  const _returnTo = _sp.get("returnTo");
+  const backHref = (_returnTo && _returnTo.startsWith("/")) ? _returnTo : "/reports/hub";
 
   const [dateFrom, setDateFrom] = useState(MONTH_START);
   const [dateTo,   setDateTo]   = useState(TODAY);
@@ -349,7 +353,7 @@ export default function ManagementReport() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background border-b border-border px-4 py-3 flex items-center gap-3">
-        <Link href="/admin/reports">
+        <Link href={backHref}>
           <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" data-testid="btn-back">
             <ChevronLeft className="h-4 w-4" /> Reports
           </Button>

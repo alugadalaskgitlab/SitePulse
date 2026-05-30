@@ -19,7 +19,10 @@ export function useOrigin() {
   const urlRole = sp.get("role");
 
   const getBackLink = (defaultPath: string) => {
-    return isFromPortal ? "/" : defaultPath;
+    if (isFromPortal) return "/";
+    const returnTo = sp.get("returnTo");
+    if (returnTo && returnTo.startsWith("/")) return returnTo;
+    return defaultPath;
   };
 
   const appendOrigin = (path: string) => {

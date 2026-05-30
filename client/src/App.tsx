@@ -90,6 +90,8 @@ import EquipmentHub from "@/pages/EquipmentHub";
 import ReportsHub from "@/pages/ReportsHub";
 import SiteHub from "@/pages/SiteHub";
 import MastersHub from "@/pages/MastersHub";
+import StoresHub from "@/pages/StoresHub";
+import FinanceHub from "@/pages/FinanceHub";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -184,6 +186,16 @@ function Router() {
       <Route path="/admin/hub">
         <RequireAuth>
           <MastersHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/stores/hub">
+        <RequireAuth>
+          <StoresHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/finance/hub">
+        <RequireAuth>
+          <FinanceHub />
         </RequireAuth>
       </Route>
 

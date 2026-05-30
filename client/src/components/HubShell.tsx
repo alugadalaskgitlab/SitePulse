@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   TrendingUp, Settings, LayoutDashboard, LogOut,
-  Menu, ChevronRight, ListChecks,
+  Menu, ChevronRight, Calculator,
 } from "lucide-react";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
@@ -27,10 +27,15 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const isHome = location === "/";
 
-  const navItems = [
+  const canSeeEstimator = isAdmin || isManager;
+
+  const mainNavItems = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-    { href: "/plant/purchase-indents", icon: ListChecks, label: "Tasks" },
-    { href: "/admin/settings", icon: Settings, label: "Settings" },
+  ];
+
+  const bottomNavItems = [
+    ...(canSeeEstimator ? [{ href: "/estimator-login", icon: Calculator, label: "Estimator" }] : []),
+    ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings" }] : []),
   ];
 
   const SidebarContent = () => (
@@ -51,9 +56,9 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto flex flex-col">
         <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
-        {navItems.map((item) => {
+        {mainNavItems.map((item) => {
           const active = item.href === "/" ? isHome : location.startsWith(item.href);
           return (
             <Link key={item.href} href={item.href}>
@@ -71,6 +76,34 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
             </Link>
           );
         })}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Bottom nav items (Estimator, Settings) */}
+        {bottomNavItems.length > 0 && (
+          <>
+            <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
+            {bottomNavItems.map((item) => {
+              const active = location.startsWith(item.href);
+              return (
+                <Link key={item.href} href={item.href}>
+                  <a
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      active
+                        ? "bg-orange-500/15 text-orange-300 border border-orange-500/20"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4 flex-shrink-0" />
+                    {item.label}
+                  </a>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* User chip */}

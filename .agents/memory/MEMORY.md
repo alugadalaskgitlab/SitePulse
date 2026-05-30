@@ -1,0 +1,1 @@
+- [Internal Material Requisition](internal-requisition.md) — discussed feature for raise→store-check→issue/procure workflow; plan separately after nav task

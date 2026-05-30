@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Truck, Zap,
+  Activity, AlertTriangle, Fuel, Zap, Settings,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
+const HUB = "/equipment/hub";
 
 function KpiCard({ label, value, sub, warn }: {
   label: string; value?: string | number; sub?: string; warn?: boolean;
@@ -47,27 +48,10 @@ export default function EquipmentHub() {
     enabled: sectionVisible("plant_equipment"),
   });
 
-  const { data: dieselReqs = [] } = useQuery<any[]>({
-    queryKey: ["/api/diesel-requirements", TODAY],
-    queryFn: async () => {
-      const res = await fetch(`/api/diesel-requirements?dateFrom=${TODAY}&dateTo=${TODAY}`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    },
-    enabled: sectionVisible("site_diesel"),
-  });
-
   const activeCount = equipmentUsage.length;
   const breakdownCount = maintenance.filter((m: any) =>
     m.status === "breakdown" || m.status === "pending" || m.status === "open"
   ).length;
-  const totalDieselL = dieselReqs.reduce((s: number, r: any) => {
-    const itemsSum = (r.items || []).reduce(
-      (is: number, i: any) => is + (parseFloat(i.quantityApproved ?? i.quantity ?? "0") || 0), 0
-    );
-    return s + itemsSum;
-  }, 0);
 
   return (
     <HubShell
@@ -92,14 +76,15 @@ export default function EquipmentHub() {
             warn={breakdownCount > 0}
           />
           <KpiCard
-            label="Diesel Issued"
-            value={sectionVisible("site_diesel") ? (totalDieselL > 0 ? `${totalDieselL.toFixed(0)} L` : "—") : undefined}
-            sub="planned today"
-          />
-          <KpiCard
             label="Date"
             value={format(new Date(), "dd MMM")}
             sub={format(new Date(), "yyyy")}
+          />
+          <KpiCard
+            label="Fleet Status"
+            value={breakdownCount === 0 ? "OK" : "⚠"}
+            sub={breakdownCount === 0 ? "No open issues" : `${breakdownCount} open`}
+            warn={breakdownCount > 0}
           />
         </div>
 
@@ -110,7 +95,7 @@ export default function EquipmentHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href="/plant/equipment-usage"
+              href={`/plant/equipment-usage?returnTo=${HUB}`}
               icon={Activity}
               title="Equipment Usage Log"
               description="Record daily equipment hours, fuel usage & operator details"
@@ -119,7 +104,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("plant_equipment")}
             />
             <HubActionTile
-              href="/plant/maintenance"
+              href={`/plant/maintenance?returnTo=${HUB}`}
               icon={AlertTriangle}
               title="Maintenance & Breakdowns"
               description="Log breakdowns, track repairs & service history"
@@ -129,7 +114,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("plant_equipment")}
             />
             <HubActionTile
-              href="/plant/generator-logs"
+              href={`/plant/generator-logs?returnTo=${HUB}`}
               icon={Zap}
               title="Generator / DG Logs"
               description="Record diesel generator run logs & fuel consumption"
@@ -138,7 +123,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("plant_equipment")}
             />
             <HubActionTile
-              href="/plant/diesel-requirements"
+              href={`/plant/diesel-requirements?returnTo=${HUB}`}
               icon={Fuel}
               title="Daily Diesel Requirement"
               description="Plan & approve diesel allocation for fleet equipment"
@@ -147,8 +132,8 @@ export default function EquipmentHub() {
               enabled={sectionVisible("site_diesel")}
             />
             <HubActionTile
-              href="/admin/settings"
-              icon={Truck}
+              href={`/admin/settings?returnTo=${HUB}`}
+              icon={Settings}
               title="Equipment Master"
               description="Manage equipment list, categories & specifications"
               accent="slate"

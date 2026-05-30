@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Flame, ClipboardList, Truck, ShoppingCart, Fuel, BarChart3,
+  Flame, ClipboardList, Truck, BarChart3,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
+const HUB = "/plant/hub";
 
 function KpiCard({ label, value, sub }: { label: string; value?: string | number; sub?: string }) {
   return (
@@ -88,7 +89,7 @@ export default function HmpHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href="/plant/heating-sessions"
+              href={`/plant/heating-sessions?returnTo=${HUB}`}
               icon={Flame}
               title="Bitumen Heating Sessions"
               description="Log boiler runs & track hot-oil temperatures"
@@ -97,7 +98,7 @@ export default function HmpHub() {
               enabled={sectionVisible("plant_heating")}
             />
             <HubActionTile
-              href="/plant/shift-log"
+              href={`/plant/shift-log?returnTo=${HUB}`}
               icon={ClipboardList}
               title="Plant Shift Log"
               description="Record shift details, personnel & production"
@@ -106,7 +107,7 @@ export default function HmpHub() {
               enabled={sectionVisible("plant_shift_logs")}
             />
             <HubActionTile
-              href="/plant/dispatches"
+              href={`/plant/dispatches?returnTo=${HUB}`}
               icon={Truck}
               title="Production & Dispatches"
               description="Log truck loads with mix data & tonnage"
@@ -115,25 +116,7 @@ export default function HmpHub() {
               enabled={sectionVisible("plant_production")}
             />
             <HubActionTile
-              href="/plant/purchase-indents"
-              icon={ShoppingCart}
-              title="Purchase Indents"
-              description="Raise & track material purchase requests"
-              accent="blue"
-              iconBg="bg-blue-100"
-              enabled={sectionVisible("site_procurement")}
-            />
-            <HubActionTile
-              href="/plant/diesel-requirements"
-              icon={Fuel}
-              title="Daily Diesel Requirement"
-              description="Plan diesel allocation per equipment for today"
-              accent="yellow"
-              iconBg="bg-yellow-100"
-              enabled={sectionVisible("site_diesel")}
-            />
-            <HubActionTile
-              href="/plant/daily-report"
+              href={`/plant/daily-report?returnTo=${HUB}`}
               icon={BarChart3}
               title="Today's Plant Report"
               description="Quick summary of all plant activities today"

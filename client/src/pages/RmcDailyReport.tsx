@@ -53,7 +53,7 @@ export default function RmcDailyReport() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between gap-4 flex-wrap print:hidden">
         <div className="flex items-center gap-3">
-          <Link href="/plant">
+          <Link href="/plant/rmc">
             <Button variant="ghost" size="icon" data-testid="btn-back"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div>

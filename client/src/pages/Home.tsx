@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Factory, Wrench, Building2, BarChart2, HardHat,
-  Settings, ArrowRight,
+  Settings, ArrowRight, Package, Receipt,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { HubShell } from "@/components/HubShell";
@@ -12,6 +12,17 @@ import type { Site } from "@shared/schema";
 
 const MODULES = [
   {
+    id: "site",
+    title: "Site Operations",
+    description: "Daily progress reports, material entries & site activities",
+    icon: HardHat,
+    href: "/site/hub",
+    lightBg: "bg-teal-50",
+    iconColor: "text-teal-600",
+    hoverBorder: "hover:border-teal-300",
+    isAdmin: false,
+  },
+  {
     id: "hmp",
     title: "HMP Operations",
     description: "Shift logs, heating sessions & production dispatches",
@@ -20,19 +31,6 @@ const MODULES = [
     lightBg: "bg-orange-50",
     iconColor: "text-orange-600",
     hoverBorder: "hover:border-orange-300",
-    section: "hmp" as const,
-    isAdmin: false,
-  },
-  {
-    id: "equipment",
-    title: "Equipment & Fleet",
-    description: "Usage logs, breakdowns & diesel tracking",
-    icon: Wrench,
-    href: "/equipment/hub",
-    lightBg: "bg-blue-50",
-    iconColor: "text-blue-600",
-    hoverBorder: "hover:border-blue-300",
-    section: "equipment" as const,
     isAdmin: false,
   },
   {
@@ -44,49 +42,67 @@ const MODULES = [
     lightBg: "bg-emerald-50",
     iconColor: "text-emerald-600",
     hoverBorder: "hover:border-emerald-300",
-    section: "rmc" as const,
+    isAdmin: false,
+  },
+  {
+    id: "equipment",
+    title: "Equipment & Fleet",
+    description: "Usage logs, breakdowns & diesel tracking",
+    icon: Wrench,
+    href: "/equipment/hub",
+    lightBg: "bg-blue-50",
+    iconColor: "text-blue-600",
+    hoverBorder: "hover:border-blue-300",
+    isAdmin: false,
+  },
+  {
+    id: "stores",
+    title: "Stores & Inventory",
+    description: "GRNs, issue vouchers, item master & stock tracking",
+    icon: Package,
+    href: "/stores/hub",
+    lightBg: "bg-amber-50",
+    iconColor: "text-amber-600",
+    hoverBorder: "hover:border-amber-300",
+    isAdmin: false,
+  },
+  {
+    id: "finance",
+    title: "Procurement & Billing",
+    description: "Purchase indents, diesel requirements, vendor bills & rate cards",
+    icon: Receipt,
+    href: "/finance/hub",
+    lightBg: "bg-rose-50",
+    iconColor: "text-rose-600",
+    hoverBorder: "hover:border-rose-300",
     isAdmin: false,
   },
   {
     id: "reports",
     title: "Reports & Analysis",
-    description: "Production reports, stock ledgers & finance",
+    description: "Production reports, stock ledgers & management reports",
     icon: BarChart2,
     href: "/reports/hub",
     lightBg: "bg-purple-50",
     iconColor: "text-purple-600",
     hoverBorder: "hover:border-purple-300",
-    section: "reports" as const,
-    isAdmin: false,
-  },
-  {
-    id: "site",
-    title: "Site Operations",
-    description: "Daily progress reports & site activities",
-    icon: HardHat,
-    href: "/site/hub",
-    lightBg: "bg-teal-50",
-    iconColor: "text-teal-600",
-    hoverBorder: "hover:border-teal-300",
-    section: "site" as const,
     isAdmin: false,
   },
   {
     id: "masters",
     title: "Masters & Config",
-    description: "Parties, materials, equipment & personnel",
+    description: "Reference data, user management & app administration",
     icon: Settings,
     href: "/admin/hub",
     lightBg: "bg-slate-100",
     iconColor: "text-slate-600",
     hoverBorder: "hover:border-slate-300",
-    section: "masters" as const,
     isAdmin: true,
   },
 ];
 
 export default function Home() {
-  const { user, sectionVisible, isAdmin } = useAuth();
+  const { user, sectionVisible, isAdmin, isManager } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: sites } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
@@ -121,15 +137,25 @@ export default function Home() {
     sectionVisible("site_procurement") ||
     sectionVisible("site_diesel");
 
+  const canSeeStores = sectionVisible("stores_inventory");
+
+  const canSeeFinance =
+    sectionVisible("site_procurement") ||
+    sectionVisible("site_diesel") ||
+    sectionVisible("vendor_bills") ||
+    sectionVisible("admin_settings");
+
   const canSeeMasters = isAdmin;
 
   function canSeeSection(id: string) {
     switch (id) {
-      case "hmp": return canSeeHmp;
-      case "equipment": return canSeeEquipment;
-      case "rmc": return canSeeRmc;
-      case "reports": return canSeeReports;
       case "site": return canSeeSite;
+      case "hmp": return canSeeHmp;
+      case "rmc": return canSeeRmc;
+      case "equipment": return canSeeEquipment;
+      case "stores": return canSeeStores;
+      case "finance": return canSeeFinance;
+      case "reports": return canSeeReports;
       case "masters": return canSeeMasters;
       default: return false;
     }
@@ -186,7 +212,7 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-sm font-medium text-slate-500 group-hover:text-slate-800 transition-colors">
-                  <span>View Operations</span>
+                  <span>Open</span>
                   <ArrowRight className="w-4 h-4 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
                 </div>
               </a>
