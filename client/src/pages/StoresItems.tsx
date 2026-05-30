@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useSearch } from "wouter";
 
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, Plus, Pencil, Power, Package } from "lucide-react";
+import { ChevronLeft, Plus, Pencil, Power, Package, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ const CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools
 const UOMS = ["Nos", "Pcs", "Set", "Liters", "Ltrs", "Kg", "Grams", "Meters", "Feet", "Roll", "Bag", "Box", "Pair", "Pack"];
 
 type StoreItem = { id: number; name: string; category: string; uom: string; minStockQty: number | null; isActive: number };
+type StockBalance = { itemId: number; balance: number; minStockQty: number | null; isLowStock: boolean };
 
 const defaultForm = { name: "", category: "Spares", uom: "Nos", minStockQty: "" };
 
@@ -36,6 +37,12 @@ export default function StoresItems() {
       return res.json();
     },
   });
+
+  const { data: stockSummary = [] } = useQuery<StockBalance[]>({
+    queryKey: ["/api/stores/stock-summary"],
+  });
+
+  const stockMap = Object.fromEntries(stockSummary.map(s => [s.itemId, s]));
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/items", data),
@@ -124,17 +131,34 @@ export default function StoresItems() {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Category</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">UOM</th>
                     <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Min Stock</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Current Stock</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="px-4 py-3 w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...activeItems, ...inactiveItems].map((item, i) => (
-                    <tr key={item.id} className={`border-b border-muted/50 hover:bg-muted/20 ${item.isActive !== 1 ? "opacity-50" : ""}`} data-testid={`row-item-${item.id}`}>
-                      <td className="px-4 py-3 font-medium">{item.name}</td>
+                  {[...activeItems, ...inactiveItems].map((item, i) => {
+                    const stock = stockMap[item.id];
+                    const isLow = item.isActive === 1 && stock?.isLowStock;
+                    return (
+                    <tr key={item.id} className={`border-b border-muted/50 hover:bg-muted/20 ${item.isActive !== 1 ? "opacity-50" : ""} ${isLow ? "bg-yellow-50/40" : ""}`} data-testid={`row-item-${item.id}`}>
+                      <td className="px-4 py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          {item.name}
+                          {isLow && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200" data-testid={`badge-low-stock-${item.id}`}>
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              Low Stock
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.category}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.uom}</td>
                       <td className="px-4 py-3 text-right text-muted-foreground">{item.minStockQty ?? "—"}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${isLow ? "text-yellow-700" : "text-slate-700"}`} data-testid={`text-stock-${item.id}`}>
+                        {stock !== undefined ? stock.balance : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${item.isActive === 1 ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
                           {item.isActive === 1 ? "Active" : "Inactive"}
@@ -149,7 +173,8 @@ export default function StoresItems() {
                         </Button>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </CardContent>
