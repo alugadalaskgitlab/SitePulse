@@ -119,7 +119,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     acceptanceRemarks: "",
   });
   const [lines, setLines] = useState<GrnLine[]>([emptyLine()]);
-  const [suggestedIndents, setSuggestedIndents] = useState<PurchaseIndentFull[]>([]);
   const [grnCategory, setGrnCategory] = useState("Spares");
   const [indentComboSearch, setIndentComboSearch] = useState("");
   const [indentComboOpen, setIndentComboOpen] = useState(false);
@@ -165,13 +164,15 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
 
-  const { data: allPurchaseIndents = [] } = useQuery<PurchaseIndentFull[]>({
+  const { data: allIndentsGlobal = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
     select: (data: any[]) =>
       data.map(d => ({
         id: d.id,
         indentNo: d.indentNo,
         status: d.status,
+        date: d.date,
+        raisedBy: d.raisedBy,
         items: (d.items || []).map((it: any) => ({
           description: it.description || "",
           qty: it.qty,
@@ -180,7 +181,38 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         })),
       })),
   });
-  const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
+
+  const firstItemName = (() => {
+    const firstLine = lines[0];
+    if (!firstLine?.itemId) return "";
+    return items.find(i => String(i.id) === firstLine.itemId)?.name ?? "";
+  })();
+
+  const { data: itemIndents = [] } = useQuery<PurchaseIndentFull[]>({
+    queryKey: ["/api/purchase-indents/for-material", firstItemName],
+    queryFn: () => {
+      const url = firstItemName
+        ? `/api/purchase-indents/for-material?name=${encodeURIComponent(firstItemName)}`
+        : "/api/purchase-indents/for-material";
+      return fetch(url).then(r => r.json());
+    },
+    select: (data: any[]) => data.map(d => ({
+      id: d.id,
+      indentNo: d.indentNo,
+      status: d.status,
+      date: d.date,
+      raisedBy: d.raisedBy,
+      items: (d.items || []).map((it: any) => ({
+        description: it.description || "",
+        qty: it.qty,
+        uom: it.uom,
+        approvedQty: it.approvedQty ?? null,
+      })),
+    })),
+  });
+
+  const itemApprovedIndents = itemIndents.filter(pi => pi.status === "approved");
+  const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
     queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, draftOnly],
@@ -211,14 +243,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const selectedGrn = grns.find(g => g.id === selectedId) ?? null;
 
-  function findMatchingIndents(itemName: string): PurchaseIndentFull[] {
-    if (!itemName || !purchaseIndents.length) return [];
-    const lc = itemName.toLowerCase();
-    return purchaseIndents.filter(pi =>
-      pi.items.some(it => it.description.toLowerCase().includes(lc) || lc.includes(it.description.toLowerCase()))
-    );
-  }
-
   function updateLine(idx: number, key: keyof GrnLine, val: string) {
     setLines(prev => {
       const next = [...prev];
@@ -231,15 +255,24 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             setGrnCategory(item.category);
           }
         }
-        const matched = findMatchingIndents(item?.name || "");
-        setSuggestedIndents(matched);
-        if (matched.length === 1 && !form.indentRef) {
-          setForm(f => ({ ...f, indentRef: matched[0].indentNo }));
+        if (idx === 0) {
+          setForm(f => ({ ...f, indentRef: "" }));
+          setIndentComboSearch("");
+          setIndentOverride(false);
         }
       }
       return next;
     });
   }
+
+  useEffect(() => {
+    if (!showForm) return;
+    if (editingDraftId) return;
+    if (form.indentRef) return;
+    if (itemApprovedIndents.length === 1) {
+      setForm(f => ({ ...f, indentRef: itemApprovedIndents[0].indentNo }));
+    }
+  }, [itemApprovedIndents, showForm, editingDraftId]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
@@ -254,7 +287,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setShowForm(false);
       setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
-      setSuggestedIndents([]);
       setGrnCategory("Spares");
       setIndentOverride(false);
       setIndentComboSearch("");
@@ -291,7 +323,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setEditingDraftNumber("");
       setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
-      setSuggestedIndents([]);
       setGrnCategory("Spares");
       setIndentOverride(false);
       setIndentComboSearch("");
@@ -374,7 +405,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "Please provide a reason for partial/rejected status", variant: "destructive" });
       return;
     }
-    const selectedPI = allPurchaseIndents.find(pi => pi.indentNo === form.indentRef);
+    const selectedPI = allIndentsGlobal.find(pi => pi.indentNo === form.indentRef);
     if (selectedPI && selectedPI.status !== "approved" && !indentOverride) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed anyway.", variant: "destructive" });
       return;
@@ -429,7 +460,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     setEditingDraftNumber(grn.grnNumber);
     setIndentOverride(false);
     setIndentComboSearch("");
-    setSuggestedIndents([]);
     setSelectedId(null);
     navigate("/stores/grns");
     setShowForm(true);
@@ -448,7 +478,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   function cancelForm() {
     setShowForm(false);
-    setSuggestedIndents([]);
     setEditingDraftId(null);
     setEditingDraftNumber("");
     if (isNew) navigate("/stores/grns");
@@ -534,7 +563,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               {/* Inline draft finalise panel */}
               {selectedGrn.status === "draft" && finalisingDraft && (() => {
-                const pi = draftFinaliseIndentRef ? allPurchaseIndents.find(p => p.indentNo === draftFinaliseIndentRef) : null;
+                const pi = draftFinaliseIndentRef ? allIndentsGlobal.find(p => p.indentNo === draftFinaliseIndentRef) : null;
                 const isNotApproved = pi && pi.status !== "approved";
                 return (
                   <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
@@ -549,7 +578,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none__" className="text-xs text-muted-foreground">— No indent —</SelectItem>
-                          {allPurchaseIndents.map(p => (
+                          {allIndentsGlobal.map(p => (
                             <SelectItem key={p.id} value={p.indentNo} className="text-xs">{p.indentNo} ({p.status})</SelectItem>
                           ))}
                         </SelectContent>
@@ -756,217 +785,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* ── Header fields ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">GRN Date *</Label>
-                    <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-grn-date" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Supplier / Source *</Label>
-                    <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="Supplier name" required data-testid="input-grn-supplier" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Invoice / Challan No.</Label>
-                    <Input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Optional" data-testid="input-grn-invoice" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Invoice / Challan Date</Label>
-                    <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Site / Project (optional)</Label>
-                    <Select value={form.siteId} onValueChange={v => setForm(f => ({ ...f, siteId: v === "__none__" ? "" : v }))}>
-                      <SelectTrigger className="h-9 text-xs" data-testid="select-grn-site">
-                        <SelectValue placeholder="— Not assigned —" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__" className="text-xs text-muted-foreground">— Not assigned —</SelectItem>
-                        {sites.map(s => (
-                          <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Indent reference — searchable combobox + status card */}
-                {(() => {
-                  const selectedPI = form.indentRef ? allPurchaseIndents.find(pi => pi.indentNo === form.indentRef) : null;
-                  const isNotApproved = selectedPI && selectedPI.status !== "approved";
-                  const filteredPIs = allPurchaseIndents.filter(pi =>
-                    !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
-                  );
-                  return (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Indent Reference</Label>
-                        {suggestedIndents.length > 0 && !form.indentRef && (
-                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
-                            {suggestedIndents.length} match{suggestedIndents.length !== 1 ? "es" : ""}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Combobox */}
-                      <div ref={indentComboRef} className="relative">
-                        <div className="flex items-center gap-1">
-                          <Input
-                            className="text-xs flex-1"
-                            placeholder="Type PI number to search…"
-                            value={form.indentRef || indentComboSearch}
-                            onChange={e => {
-                              const v = e.target.value;
-                              if (form.indentRef) {
-                                setForm(f => ({ ...f, indentRef: "" }));
-                                setIndentComboSearch(v);
-                              } else {
-                                setIndentComboSearch(v);
-                              }
-                              setIndentComboOpen(true);
-                            }}
-                            onFocus={() => setIndentComboOpen(true)}
-                            data-testid="input-indent-ref"
-                          />
-                          {form.indentRef && (
-                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"
-                              onClick={() => { setForm(f => ({ ...f, indentRef: "" })); setIndentComboSearch(""); setIndentOverride(false); }}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </div>
-                        {indentComboOpen && !form.indentRef && filteredPIs.length > 0 && (
-                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
-                            <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">None / No indent</div>
-                            {filteredPIs.map(pi => (
-                              <div
-                                key={pi.id}
-                                className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
-                                onMouseDown={e => {
-                                  e.preventDefault();
-                                  setForm(f => ({ ...f, indentRef: pi.indentNo }));
-                                  setIndentComboSearch("");
-                                  setIndentComboOpen(false);
-                                }}
-                                data-testid={`option-indent-${pi.indentNo}`}
-                              >
-                                <span className="font-semibold">{pi.indentNo}</span>
-                                {getStatusBadgeGrn(pi.status)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Selected PI status card */}
-                      {selectedPI && (
-                        <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold">{selectedPI.indentNo}</span>
-                            {getStatusBadgeGrn(selectedPI.status)}
-                            <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
-                            {selectedPI.date && <span className="text-muted-foreground">· {selectedPI.date}</span>}
-                            {selectedPI.raisedBy && <span className="text-muted-foreground">by {selectedPI.raisedBy}</span>}
-                          </div>
-                          {selectedPI.items.slice(0, 3).map((it, i) => (
-                            <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
-                          ))}
-                          {selectedPI.items.length > 3 && <div className="text-muted-foreground">+{selectedPI.items.length - 3} more</div>}
-                        </div>
-                      )}
-
-                      {/* Warning + override if not approved */}
-                      {isNotApproved && (
-                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
-                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 space-y-1">
-                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                              This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
-                            </p>
-                            <label className="flex items-center gap-2 text-xs cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={indentOverride}
-                                onChange={e => setIndentOverride(e.target.checked)}
-                                data-testid="checkbox-indent-override"
-                              />
-                              <span className="text-amber-700 dark:text-amber-300">Override — I understand this GRN is being raised against an unapproved indent</span>
-                            </label>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Suggestions from item matching */}
-                      {suggestedIndents.length > 0 && !form.indentRef && (
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-muted-foreground">Matching indent{suggestedIndents.length > 1 ? "s" : ""} based on items:</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {suggestedIndents.map(pi => (
-                              <button
-                                key={pi.id}
-                                type="button"
-                                className="text-left rounded border border-violet-200 hover:bg-violet-50 bg-white dark:bg-zinc-900 dark:border-violet-800 dark:hover:bg-violet-900/20 px-2 py-1 text-[10px] leading-snug transition-colors"
-                                onClick={() => { setForm(f => ({ ...f, indentRef: pi.indentNo })); setIndentComboSearch(""); }}
-                                data-testid={`badge-indent-${pi.indentNo}`}
-                              >
-                                <div className="flex items-center gap-1 flex-wrap mb-0.5">
-                                  <span className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</span>
-                                  {getStatusBadgeGrn(pi.status)}
-                                </div>
-                                {pi.items.slice(0, 3).map((it, i) => (
-                                  <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
-                                ))}
-                                {pi.items.length > 3 && <div className="text-muted-foreground italic">+{pi.items.length - 3} more</div>}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
+                {/* ── GRN Date (first field) ── */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Remarks / Notes</Label>
-                  <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
-                </div>
-
-                {/* ── Acceptance Status ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-md border bg-muted/30">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Acceptance Status *</Label>
-                    <Select value={form.acceptanceStatus} onValueChange={v => setForm(f => ({ ...f, acceptanceStatus: v, acceptanceRemarks: v === "accepted" ? "" : f.acceptanceRemarks }))}>
-                      <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ACCEPTANCE_STATUS_OPTIONS.map(o => (
-                          <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {(form.acceptanceStatus === "partial" || form.acceptanceStatus === "rejected") && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">
-                        {form.acceptanceStatus === "rejected" ? "Rejection Reason *" : "Partial Acceptance Reason *"}
-                      </Label>
-                      <Input
-                        value={form.acceptanceRemarks}
-                        onChange={e => setForm(f => ({ ...f, acceptanceRemarks: e.target.value }))}
-                        placeholder={form.acceptanceStatus === "rejected" ? "Why were goods rejected?" : "What was accepted / what was not?"}
-                        required
-                        data-testid="input-acceptance-remarks"
-                      />
-                    </div>
-                  )}
+                  <Label className="text-xs">GRN Date *</Label>
+                  <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-grn-date" />
                 </div>
 
                 {/* ── Items received (item-first) ── */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Items Received *</Label>
-                  <p className="text-[10px] text-muted-foreground -mt-1">Select an item first — matching purchase indents will be suggested automatically.</p>
+                  <p className="text-[10px] text-muted-foreground -mt-1">Select items first — the approved purchase indent will be matched automatically.</p>
 
                   {/* Column headers */}
                   <div className="hidden sm:grid grid-cols-12 gap-2 px-1">
@@ -977,7 +805,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </div>
 
                   {lines.map((line, idx) => {
-                    const selectedItem = items.find(i => String(i.id) === line.itemId);
                     return (
                       <div key={idx} className="space-y-1" data-testid={`grn-line-${idx}`}>
                         <div className="grid grid-cols-12 gap-2 items-center">
@@ -1099,39 +926,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             )}
                           </div>
                         </div>
-                        {/* Per-line indent suggestion based on this item */}
-                        {selectedItem && (() => {
-                          const lineMatches = findMatchingIndents(selectedItem.name);
-                          if (!lineMatches.length) return null;
-                          return (
-                            <div className="pl-1 space-y-1">
-                              <span className="text-[10px] text-muted-foreground">Matching indent{lineMatches.length > 1 ? "s" : ""} for <span className="font-medium">{selectedItem.name}</span>:</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {lineMatches.map(pi => {
-                                  const isSelected = form.indentRef === pi.indentNo;
-                                  return (
-                                    <button
-                                      key={pi.id}
-                                      type="button"
-                                      className={`text-left rounded border px-2 py-1 text-[10px] leading-snug transition-colors ${isSelected ? "bg-violet-100 border-violet-400 text-violet-900 dark:bg-violet-800/40 dark:border-violet-600 dark:text-violet-100" : "bg-white border-violet-200 hover:bg-violet-50 dark:bg-zinc-900 dark:border-violet-800 dark:hover:bg-violet-900/20"}`}
-                                      onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
-                                      data-testid={`line-badge-indent-${idx}-${pi.indentNo}`}
-                                    >
-                                      <div className="flex items-center gap-1 flex-wrap mb-0.5">
-                                        <span className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</span>
-                                        {getStatusBadgeGrn(pi.status)}
-                                      </div>
-                                      {pi.items.slice(0, 3).map((it, i) => (
-                                        <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
-                                      ))}
-                                      {pi.items.length > 3 && <div className="text-muted-foreground italic">+{pi.items.length - 3} more</div>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })()}
                       </div>
                     );
                   })}
@@ -1139,6 +933,195 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <Button type="button" variant="outline" size="sm" className="text-xs gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-line">
                     <Plus className="w-3 h-3" /> Add Line
                   </Button>
+                </div>
+
+                {/* ── Indent reference — item-filtered, approved-only combobox ── */}
+                {(() => {
+                  const selectedPI = form.indentRef ? allIndentsGlobal.find(pi => pi.indentNo === form.indentRef) : null;
+                  const isNotApproved = selectedPI && selectedPI.status !== "approved";
+                  const filteredPIs = itemApprovedIndents.filter(pi =>
+                    !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
+                  );
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Indent Reference</Label>
+                        {firstItemName && itemApprovedIndents.length > 0 && !form.indentRef && (
+                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
+                            {itemApprovedIndents.length} approved match{itemApprovedIndents.length !== 1 ? "es" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Pending PI notice — no approved indent exists for this item */}
+                      {noPiForItem && !form.indentRef ? (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2.5" data-testid="notice-pending-pi">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 space-y-0.5">
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item</p>
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400">Save as draft and get the indent approved. Once approved, open this draft and link it before finalising.</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Combobox */}
+                          <div ref={indentComboRef} className="relative">
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="text-xs flex-1"
+                                placeholder={firstItemName ? "Search approved indents for this item…" : "Type PI number to search…"}
+                                value={form.indentRef || indentComboSearch}
+                                onChange={e => {
+                                  const v = e.target.value;
+                                  if (form.indentRef) {
+                                    setForm(f => ({ ...f, indentRef: "" }));
+                                    setIndentComboSearch(v);
+                                  } else {
+                                    setIndentComboSearch(v);
+                                  }
+                                  setIndentComboOpen(true);
+                                }}
+                                onFocus={() => setIndentComboOpen(true)}
+                                data-testid="input-indent-ref"
+                              />
+                              {form.indentRef && (
+                                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"
+                                  onClick={() => { setForm(f => ({ ...f, indentRef: "" })); setIndentComboSearch(""); setIndentOverride(false); }}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </div>
+                            {indentComboOpen && !form.indentRef && filteredPIs.length > 0 && (
+                              <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                                <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">Approved indents — select one</div>
+                                {filteredPIs.map(pi => (
+                                  <div
+                                    key={pi.id}
+                                    className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
+                                    onMouseDown={e => {
+                                      e.preventDefault();
+                                      setForm(f => ({ ...f, indentRef: pi.indentNo }));
+                                      setIndentComboSearch("");
+                                      setIndentComboOpen(false);
+                                    }}
+                                    data-testid={`option-indent-${pi.indentNo}`}
+                                  >
+                                    <span className="font-semibold">{pi.indentNo}</span>
+                                    {getStatusBadgeGrn(pi.status)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Selected PI status card */}
+                          {selectedPI && (
+                            <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold">{selectedPI.indentNo}</span>
+                                {getStatusBadgeGrn(selectedPI.status)}
+                                <span className="text-muted-foreground">{selectedPI.items.length} item{selectedPI.items.length !== 1 ? "s" : ""}</span>
+                                {selectedPI.date && <span className="text-muted-foreground">· {selectedPI.date}</span>}
+                                {selectedPI.raisedBy && <span className="text-muted-foreground">by {selectedPI.raisedBy}</span>}
+                              </div>
+                              {selectedPI.items.slice(0, 3).map((it, i) => (
+                                <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
+                              ))}
+                              {selectedPI.items.length > 3 && <div className="text-muted-foreground">+{selectedPI.items.length - 3} more</div>}
+                            </div>
+                          )}
+
+                          {/* Warning + override if not approved */}
+                          {isNotApproved && (
+                            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1 space-y-1">
+                                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                  This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
+                                </p>
+                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={indentOverride}
+                                    onChange={e => setIndentOverride(e.target.checked)}
+                                    data-testid="checkbox-indent-override"
+                                  />
+                                  <span className="text-amber-700 dark:text-amber-300">Override — I understand this GRN is being raised against an unapproved indent</span>
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Supplier / Invoice / Site ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Supplier / Source *</Label>
+                    <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="Supplier name" required data-testid="input-grn-supplier" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice / Challan No.</Label>
+                    <Input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Optional" data-testid="input-grn-invoice" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice / Challan Date</Label>
+                    <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Site / Project (optional)</Label>
+                    <Select value={form.siteId} onValueChange={v => setForm(f => ({ ...f, siteId: v === "__none__" ? "" : v }))}>
+                      <SelectTrigger className="h-9 text-xs" data-testid="select-grn-site">
+                        <SelectValue placeholder="— Not assigned —" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__" className="text-xs text-muted-foreground">— Not assigned —</SelectItem>
+                        {sites.map(s => (
+                          <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Remarks / Notes</Label>
+                  <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
+                </div>
+
+                {/* ── Acceptance Status ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-md border bg-muted/30">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Acceptance Status *</Label>
+                    <Select value={form.acceptanceStatus} onValueChange={v => setForm(f => ({ ...f, acceptanceStatus: v, acceptanceRemarks: v === "accepted" ? "" : f.acceptanceRemarks }))}>
+                      <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACCEPTANCE_STATUS_OPTIONS.map(o => (
+                          <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(form.acceptanceStatus === "partial" || form.acceptanceStatus === "rejected") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        {form.acceptanceStatus === "rejected" ? "Rejection Reason *" : "Partial Acceptance Reason *"}
+                      </Label>
+                      <Input
+                        value={form.acceptanceRemarks}
+                        onChange={e => setForm(f => ({ ...f, acceptanceRemarks: e.target.value }))}
+                        placeholder={form.acceptanceStatus === "rejected" ? "Why were goods rejected?" : "What was accepted / what was not?"}
+                        required
+                        data-testid="input-acceptance-remarks"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
@@ -1154,10 +1137,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     {(createMutation.isPending || replaceMutation.isPending) && isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
                     {editingDraftId ? "Update Draft" : "Save as Draft"}
                   </Button>
-                  <Button type="submit" className="gap-1" disabled={createMutation.isPending || replaceMutation.isPending} data-testid="button-save-grn">
-                    {(createMutation.isPending || replaceMutation.isPending) && !isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
-                    {editingDraftId ? "Finalise GRN" : "Save GRN"}
-                  </Button>
+                  {!(noPiForItem && !form.indentRef) && (
+                    <Button type="submit" className="gap-1" disabled={createMutation.isPending || replaceMutation.isPending} data-testid="button-save-grn">
+                      {(createMutation.isPending || replaceMutation.isPending) && !isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
+                      {editingDraftId ? "Finalise GRN" : "Save GRN"}
+                    </Button>
+                  )}
                 </div>
               </form>
             </CardContent>
