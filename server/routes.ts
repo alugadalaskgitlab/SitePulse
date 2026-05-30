@@ -6976,6 +6976,38 @@ export async function registerRoutes(
       }
       const result = await storage.createStoreIssue(issue, items);
       res.status(201).json(result);
+
+      // After responding: check if any issued item just crossed below its minimum stock level.
+      // We only notify on the crossing (was OK before, now low) to avoid spam for already-low items.
+      (async () => {
+        try {
+          // Build a map of itemId → qty issued in this voucher
+          const issuedQtyMap: Record<number, number> = {};
+          for (const it of (items as { itemId: number; qty: number }[])) {
+            issuedQtyMap[it.itemId] = (issuedQtyMap[it.itemId] ?? 0) + (parseFloat(String(it.qty)) || 0);
+          }
+          const issuedItemIds = new Set(Object.keys(issuedQtyMap).map(Number));
+
+          // Post-issue stock summary (filtered to issued items only)
+          const stockSummary = await storage.getStoreStockSummary();
+          const affected = stockSummary.filter(s => issuedItemIds.has(s.itemId) && s.minStockQty != null);
+
+          for (const item of affected) {
+            const preBalance = item.balance + (issuedQtyMap[item.itemId] ?? 0);
+            const wasOk = preBalance > (item.minStockQty ?? 0);
+            const nowLow = item.balance <= (item.minStockQty ?? 0);
+            if (wasOk && nowLow) {
+              sendPushToAll(
+                "⚠ Low Stock Alert",
+                `${item.itemName} is low — ${item.balance.toFixed(1)} ${item.uom ?? ''} remaining (min ${item.minStockQty})`,
+                "/stores/hub"
+              ).catch(() => {});
+            }
+          }
+        } catch {
+          // non-fatal — push failure must never affect the saved issue
+        }
+      })();
     } catch (err) {
       console.error("POST /api/stores/issues:", err);
       res.status(500).json({ error: "Failed to create issue voucher" });
