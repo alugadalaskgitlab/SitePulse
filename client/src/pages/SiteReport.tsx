@@ -193,6 +193,7 @@ export default function SiteReport() {
         site={dpr.site} 
         engineer={dpr.engineer} 
         submittedAt={dpr.submittedAt || undefined}
+        workType={(dpr as any).workType}
       />
 
       {/* Summary Cards */}

@@ -8,9 +8,10 @@ interface ReportHeaderProps {
   engineer: string;
   submittedAt?: string;
   showLogo?: boolean;
+  workType?: string;
 }
 
-export function ReportHeader({ date, site, engineer, submittedAt, showLogo = true }: ReportHeaderProps) {
+export function ReportHeader({ date, site, engineer, submittedAt, showLogo = true, workType }: ReportHeaderProps) {
   return (
     <div className="bg-card border rounded-xl p-6 shadow-sm print:shadow-none print:border-gray-300">
       {showLogo && (
@@ -22,7 +23,21 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
             data-testid="img-hlc-logo"
           />
           <div className="text-right">
-            <h2 className="text-lg font-bold text-foreground print:text-black">Daily Progress Report</h2>
+            <div className="flex items-center justify-end gap-2">
+              <h2 className="text-lg font-bold text-foreground print:text-black">Daily Progress Report</h2>
+              {workType && (
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border print:border ${
+                    workType === "structure"
+                      ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 print:bg-blue-50 print:text-blue-800 print:border-blue-300"
+                      : "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 print:bg-amber-50 print:text-amber-800 print:border-amber-300"
+                  }`}
+                  data-testid="badge-worktype-print"
+                >
+                  {workType === "structure" ? "Structure" : "Road"}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground print:text-gray-600">High Lane Constructions Pvt Ltd</p>
           </div>
         </div>
