@@ -106,6 +106,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [finalisingDraft, setFinalisingDraft] = useState(false);
   const [draftFinaliseIndentRef, setDraftFinaliseIndentRef] = useState("");
   const [draftFinaliseOverride, setDraftFinaliseOverride] = useState(false);
+  const [draftFinaliseComboSearch, setDraftFinaliseComboSearch] = useState("");
+  const [draftFinaliseComboOpen, setDraftFinaliseComboOpen] = useState(false);
+  const draftFinaliseComboRef = useRef<HTMLDivElement>(null);
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [editingDraftNumber, setEditingDraftNumber] = useState("");
 
@@ -150,6 +153,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
           setItemComboOpen(prev => prev[idx] ? { ...prev, [idx]: false } : prev);
         }
       });
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (draftFinaliseComboRef.current && !draftFinaliseComboRef.current.contains(e.target as Node)) {
+        setDraftFinaliseComboOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -247,6 +260,32 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   });
 
   const selectedGrn = grns.find(g => g.id === selectedId) ?? null;
+
+  const draftFirstItemName = selectedGrn?.items?.[0]?.itemName ?? "";
+  const { data: draftItemIndents = [] } = useQuery<PurchaseIndentFull[]>({
+    queryKey: ["/api/purchase-indents/for-material", draftFirstItemName],
+    queryFn: () => {
+      const url = draftFirstItemName
+        ? `/api/purchase-indents/for-material?name=${encodeURIComponent(draftFirstItemName)}`
+        : "/api/purchase-indents/for-material";
+      return fetch(url).then(r => r.json());
+    },
+    select: (data: any[]) => data.map(d => ({
+      id: d.id,
+      indentNo: d.indentNo,
+      status: d.status,
+      date: d.date,
+      raisedBy: d.raisedBy,
+      items: (d.items || []).map((it: any) => ({
+        description: it.description || "",
+        qty: it.qty,
+        uom: it.uom,
+        approvedQty: it.approvedQty ?? null,
+      })),
+    })),
+    enabled: finalisingDraft && !!draftFirstItemName,
+  });
+  const draftItemApprovedIndents = draftItemIndents.filter(pi => pi.status === "approved");
 
   function updateLine(idx: number, key: keyof GrnLine, val: string) {
     setLines(prev => {
@@ -574,33 +613,107 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               {/* Inline draft finalise panel */}
               {selectedGrn.status === "draft" && finalisingDraft && (() => {
-                const pi = draftFinaliseIndentRef ? allIndentsGlobal.find(p => p.indentNo === draftFinaliseIndentRef) : null;
+                const pi = draftFinaliseIndentRef ? (draftItemIndents.find(p => p.indentNo === draftFinaliseIndentRef) ?? allIndentsGlobal.find(p => p.indentNo === draftFinaliseIndentRef) ?? null) : null;
                 const isNotApproved = pi && pi.status !== "approved";
-                const approvedIndents = allIndentsGlobal.filter(p => p.status === "approved");
+                const noDraftPi = !!draftFirstItemName && draftItemApprovedIndents.length === 0;
+                const filteredDraftPIs = draftItemApprovedIndents.filter(p =>
+                  !draftFinaliseComboSearch || p.indentNo.toLowerCase().includes(draftFinaliseComboSearch.toLowerCase())
+                );
                 return (
                   <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
                     <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5" /> Finalise GRN — Link Indent &amp; Confirm
                     </p>
-                    {approvedIndents.length === 0 && (
-                      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2" data-testid="note-no-approved-pi">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-xs text-amber-700 dark:text-amber-300">No approved Purchase Indents found. Ask a manager to approve a PI before finalising, or proceed without one.</p>
-                      </div>
-                    )}
                     <div className="space-y-2">
-                      <Label className="text-xs">Indent Reference (optional)</Label>
-                      <Select value={draftFinaliseIndentRef || "__none__"} onValueChange={v => { setDraftFinaliseIndentRef(v === "__none__" ? "" : v); setDraftFinaliseOverride(false); }}>
-                        <SelectTrigger className="h-8 text-xs" data-testid="select-finalise-indent">
-                          <SelectValue placeholder="— No indent —" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__" className="text-xs text-muted-foreground">— No indent —</SelectItem>
-                          {allIndentsGlobal.map(p => (
-                            <SelectItem key={p.id} value={p.indentNo} className="text-xs">{p.indentNo} ({p.status})</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Indent Reference (optional)</Label>
+                        {draftFirstItemName && draftItemApprovedIndents.length > 0 && !draftFinaliseIndentRef && (
+                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
+                            {draftItemApprovedIndents.length} approved match{draftItemApprovedIndents.length !== 1 ? "es" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* No approved PI notice — shown as info alongside the combobox */}
+                      {noDraftPi && !draftFinaliseIndentRef && (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2" data-testid="note-no-approved-pi">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                          <p className="text-xs text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item. Ask a manager to approve a PI, or manually enter a PI number below and use the override.</p>
+                        </div>
+                      )}
+
+                      {/* Combobox — always shown */}
+                      <div ref={draftFinaliseComboRef} className="relative">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            className="text-xs flex-1 h-8"
+                            placeholder={draftFirstItemName ? "Search approved indents for this item…" : "Type PI number to search…"}
+                            value={draftFinaliseIndentRef || draftFinaliseComboSearch}
+                            onChange={e => {
+                              const v = e.target.value;
+                              if (draftFinaliseIndentRef) {
+                                setDraftFinaliseIndentRef("");
+                                setDraftFinaliseComboSearch(v);
+                                setDraftFinaliseOverride(false);
+                              } else {
+                                setDraftFinaliseComboSearch(v);
+                              }
+                              setDraftFinaliseComboOpen(true);
+                            }}
+                            onFocus={() => setDraftFinaliseComboOpen(true)}
+                            onBlur={() => {
+                              const typed = draftFinaliseComboSearch.trim();
+                              if (typed && !draftFinaliseIndentRef) {
+                                setDraftFinaliseIndentRef(typed);
+                                setDraftFinaliseComboSearch("");
+                                setDraftFinaliseComboOpen(false);
+                              }
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                const typed = draftFinaliseComboSearch.trim();
+                                if (typed && !draftFinaliseIndentRef) {
+                                  setDraftFinaliseIndentRef(typed);
+                                  setDraftFinaliseComboSearch("");
+                                  setDraftFinaliseComboOpen(false);
+                                }
+                              }
+                            }}
+                            data-testid="input-finalise-indent"
+                          />
+                          {draftFinaliseIndentRef && (
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"
+                              onClick={() => { setDraftFinaliseIndentRef(""); setDraftFinaliseComboSearch(""); setDraftFinaliseOverride(false); }}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                        {draftFinaliseComboOpen && !draftFinaliseIndentRef && filteredDraftPIs.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                            <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">Approved indents — select one</div>
+                            {filteredDraftPIs.map(p => (
+                              <div
+                                key={p.id}
+                                className="px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2"
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  setDraftFinaliseIndentRef(p.indentNo);
+                                  setDraftFinaliseComboSearch("");
+                                  setDraftFinaliseComboOpen(false);
+                                  setDraftFinaliseOverride(false);
+                                }}
+                                data-testid={`option-finalise-indent-${p.indentNo}`}
+                              >
+                                <span className="font-semibold">{p.indentNo}</span>
+                                {getStatusBadgeGrn(p.status)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selected PI card */}
                       {pi && (
                         <div className={`rounded-md border p-2 text-xs space-y-1 ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
                           <div className="flex items-center gap-2 flex-wrap">
@@ -611,12 +724,23 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           {pi.items.slice(0, 3).map((it, i) => (
                             <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
                           ))}
-                          {isNotApproved && (
-                            <label className="flex items-center gap-2 cursor-pointer pt-1">
+                          {pi.items.length > 3 && <div className="text-muted-foreground">+{pi.items.length - 3} more</div>}
+                        </div>
+                      )}
+
+                      {/* Override checkbox for non-approved PI */}
+                      {isNotApproved && (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 space-y-1">
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                              This indent is <strong>{pi.status.toUpperCase()}</strong> — not yet approved.
+                            </p>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer">
                               <input type="checkbox" checked={draftFinaliseOverride} onChange={e => setDraftFinaliseOverride(e.target.checked)} data-testid="checkbox-finalise-override" />
                               <span className="text-amber-700 dark:text-amber-300">Override — I understand this indent is not yet approved</span>
                             </label>
-                          )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -627,11 +751,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         disabled={finaliseMutation.isPending}
                         data-testid="button-confirm-finalise"
                         onClick={() => {
-                          if (isNotApproved && !draftFinaliseOverride) {
+                          const committedRef = draftFinaliseIndentRef || draftFinaliseComboSearch.trim() || null;
+                          if (committedRef && !draftFinaliseIndentRef) {
+                            setDraftFinaliseIndentRef(committedRef);
+                            setDraftFinaliseComboSearch("");
+                          }
+                          const resolvedPi = committedRef
+                            ? (draftItemIndents.find(p => p.indentNo === committedRef) ?? allIndentsGlobal.find(p => p.indentNo === committedRef) ?? null)
+                            : null;
+                          if (resolvedPi && resolvedPi.status !== "approved" && !draftFinaliseOverride) {
                             toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
                             return;
                           }
-                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: draftFinaliseIndentRef || null });
+                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: committedRef });
                         }}
                       >
                         {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
