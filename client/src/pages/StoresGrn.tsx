@@ -113,6 +113,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [indentComboSearch, setIndentComboSearch] = useState("");
   const [indentComboOpen, setIndentComboOpen] = useState(false);
   const indentComboRef = useRef<HTMLDivElement>(null);
+
+  const [itemComboSearch, setItemComboSearch] = useState<Record<number, string>>({});
+  const [itemComboOpen, setItemComboOpen] = useState<Record<number, boolean>>({});
+  const itemComboRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [indentOverride, setIndentOverride] = useState(false);
 
   useEffect(() => {
@@ -120,6 +124,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (indentComboRef.current && !indentComboRef.current.contains(e.target as Node)) {
         setIndentComboOpen(false);
       }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      Object.entries(itemComboRefs.current).forEach(([idxStr, ref]) => {
+        if (ref && !ref.contains(e.target as Node)) {
+          const idx = Number(idxStr);
+          setItemComboOpen(prev => prev[idx] ? { ...prev, [idx]: false } : prev);
+        }
+      });
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -742,35 +759,93 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <div key={idx} className="space-y-1" data-testid={`grn-line-${idx}`}>
                         <div className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-4 flex gap-1">
-                            <div className="flex-1 min-w-0">
-                              <Select
-                                value={line.itemId}
-                                onValueChange={v => {
-                                  if (v === "__add_new__") {
-                                    setAddItemTargetIdx(idx);
-                                    setAddItemForm({ name: "", category: "Spares", uom: "Nos" });
-                                    setAddItemOpen(true);
-                                  } else {
-                                    updateLine(idx, "itemId", v);
-                                    const it = items.find(i => String(i.id) === v);
-                                    if (it) updateLine(idx, "uom", it.uom || "NOS");
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className="text-xs h-8 w-full" data-testid={`select-item-${idx}`}>
-                                  <SelectValue placeholder="Select item…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {items.map(it => (
-                                    <SelectItem key={it.id} value={String(it.id)}>
-                                      {it.name} <span className="text-muted-foreground">({it.category})</span>
-                                    </SelectItem>
-                                  ))}
-                                  <SelectItem value="__add_new__" className="text-blue-600 dark:text-blue-400 font-medium border-t">
-                                    + Add new item to catalogue…
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
+                            <div className="flex-1 min-w-0 relative" ref={el => { itemComboRefs.current[idx] = el; }}>
+                              {(() => {
+                                const search = itemComboSearch[idx] ?? "";
+                                const isOpen = itemComboOpen[idx] ?? false;
+                                const selectedItem = items.find(i => String(i.id) === line.itemId);
+                                const filteredItems = items.filter(it =>
+                                  !search || it.name.toLowerCase().includes(search.toLowerCase()) || it.category.toLowerCase().includes(search.toLowerCase())
+                                );
+                                return (
+                                  <>
+                                    <div
+                                      className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-xs cursor-text w-full"
+                                      onClick={() => setItemComboOpen(prev => ({ ...prev, [idx]: true }))}
+                                      data-testid={`select-item-${idx}`}
+                                    >
+                                      {isOpen ? (
+                                        <input
+                                          autoFocus
+                                          className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-xs"
+                                          placeholder="Type to search items…"
+                                          value={search}
+                                          onChange={e => setItemComboSearch(prev => ({ ...prev, [idx]: e.target.value }))}
+                                          data-testid={`input-item-search-${idx}`}
+                                        />
+                                      ) : (
+                                        <span className={`flex-1 truncate ${selectedItem ? "" : "text-muted-foreground"}`}>
+                                          {selectedItem ? selectedItem.name : "Select item…"}
+                                        </span>
+                                      )}
+                                      {selectedItem && !isOpen && (
+                                        <button
+                                          type="button"
+                                          className="ml-auto flex-shrink-0 text-muted-foreground hover:text-foreground"
+                                          onMouseDown={e => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            updateLine(idx, "itemId", "");
+                                            updateLine(idx, "uom", "");
+                                            setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                          }}
+                                          data-testid={`button-clear-item-${idx}`}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                    {isOpen && (
+                                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                                        {filteredItems.length === 0 && (
+                                          <div className="px-3 py-2 text-muted-foreground italic">No items match "{search}"</div>
+                                        )}
+                                        {filteredItems.map(it => (
+                                          <div
+                                            key={it.id}
+                                            className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2 ${String(it.id) === line.itemId ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
+                                            onMouseDown={e => {
+                                              e.preventDefault();
+                                              updateLine(idx, "itemId", String(it.id));
+                                              updateLine(idx, "uom", it.uom || "NOS");
+                                              setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                              setItemComboOpen(prev => ({ ...prev, [idx]: false }));
+                                            }}
+                                            data-testid={`option-item-${idx}-${it.id}`}
+                                          >
+                                            <span className="truncate">{it.name}</span>
+                                            <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
+                                          </div>
+                                        ))}
+                                        <div
+                                          className="px-3 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium border-t flex items-center gap-1"
+                                          onMouseDown={e => {
+                                            e.preventDefault();
+                                            setAddItemTargetIdx(idx);
+                                            setAddItemForm({ name: search, category: "Spares", uom: "Nos" });
+                                            setAddItemOpen(true);
+                                            setItemComboOpen(prev => ({ ...prev, [idx]: false }));
+                                          }}
+                                          data-testid={`option-add-new-item-${idx}`}
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                          Add new item to catalogue…
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                             <Button
                               type="button"
