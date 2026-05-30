@@ -3,9 +3,11 @@ import { Link, useLocation } from "wouter";
 import {
   TrendingUp, Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
+  HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
 } from "lucide-react";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 interface HubShellProps {
   children: ReactNode;
@@ -15,8 +17,16 @@ interface HubShellProps {
   backLabel?: string;
 }
 
+interface NavItem {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  matchPrefix?: string;
+}
+
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
   const { user, isAdmin, isManager, logout } = useAuth();
+  const { rmcEnabled } = useFeatureFlags();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -29,14 +39,27 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const canSeeEstimator = isAdmin || isManager;
 
-  const mainNavItems = [
+  const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" },
+    { href: "/plant/hub", icon: Factory, label: "HMP Plant", matchPrefix: "/plant" },
+    ...(rmcEnabled ? [{ href: "/rmc/hub", icon: Building2, label: "RMC", matchPrefix: "/rmc" }] : []),
+    { href: "/equipment/hub", icon: Wrench, label: "Equipment", matchPrefix: "/equipment" },
+    { href: "/stores/hub", icon: Package, label: "Stores", matchPrefix: "/stores" },
+    { href: "/finance/hub", icon: Receipt, label: "Finance", matchPrefix: "/finance" },
+    { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
   ];
 
-  const bottomNavItems = [
+  const bottomNavItems: NavItem[] = [
     ...(canSeeEstimator ? [{ href: "/estimator-login", icon: Calculator, label: "Estimator" }] : []),
-    ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings" }] : []),
+    ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
   ];
+
+  const isNavActive = (item: NavItem) => {
+    if (item.href === "/") return isHome;
+    if (item.matchPrefix) return location.startsWith(item.matchPrefix);
+    return location.startsWith(item.href);
+  };
 
   const SidebarContent = () => (
     <>
@@ -59,7 +82,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto flex flex-col">
         <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
         {mainNavItems.map((item) => {
-          const active = item.href === "/" ? isHome : location.startsWith(item.href);
+          const active = isNavActive(item);
           return (
             <Link key={item.href} href={item.href}>
               <a
@@ -85,7 +108,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
           <>
             <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
             {bottomNavItems.map((item) => {
-              const active = location.startsWith(item.href);
+              const active = isNavActive(item);
               return (
                 <Link key={item.href} href={item.href}>
                   <a
