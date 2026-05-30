@@ -338,7 +338,7 @@ export function registerManagementReportRoutes(app: Express) {
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
       if (effectiveIds !== null && effectiveIds.length === 0) {
-        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCost: 0 } });
+        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCostGlobal: 0 } });
       }
 
       const dateFrom = req.query.dateFrom as string | undefined;
@@ -380,10 +380,32 @@ export function registerManagementReportRoutes(app: Express) {
       });
       plants.sort((a, b) => a.siteName.localeCompare(b.siteName));
 
-      // Aggregate LDO received from ldo_logs (plant-level daily log, not per plant)
+      // Aggregate LDO from ldo_logs — scope by site via partyId bridge:
+      // truckDispatches links plantName (→ permittedPlantNames) and partyId (→ ldoLogs.partyId).
+      // Collect distinct partyIds that dispatched from permitted plants within the date range.
+      const bridgeConds: any[] = [];
+      if (dateFrom) bridgeConds.push(gte(truckDispatches.date, dateFrom));
+      if (dateTo)   bridgeConds.push(lte(truckDispatches.date, dateTo));
+      if (permittedPlantNames !== null && permittedPlantNames.length > 0)
+        bridgeConds.push(inArray(truckDispatches.plantName, permittedPlantNames));
+
+      const partyIdRows = permittedPlantNames?.length === 0 ? [] : await db
+        .selectDistinct({ partyId: truckDispatches.partyId })
+        .from(truckDispatches)
+        .where(cond(bridgeConds));
+
+      const permittedPartyIds = partyIdRows
+        .map((r) => r.partyId)
+        .filter((id): id is number => id !== null);
+
       const ldoConds: any[] = [];
       if (dateFrom) ldoConds.push(gte(ldoLogs.date, dateFrom));
       if (dateTo)   ldoConds.push(lte(ldoLogs.date, dateTo));
+      // Site-scope: only include ldo_logs entries for parties linked to permitted plants
+      if (permittedPartyIds.length > 0)
+        ldoConds.push(inArray(ldoLogs.partyId, permittedPartyIds));
+      else if (permittedPlantNames !== null)
+        ldoConds.push(sql`false`); // no permitted parties found — return zero totals
 
       const [ldoTotals] = await db.select({
         received: sum(ldoLogs.ldoReceived),
@@ -392,7 +414,9 @@ export function registerManagementReportRoutes(app: Express) {
       .from(ldoLogs)
       .where(cond(ldoConds));
 
-      // Diesel cost from diesel_requirements (amount field = purchase cost)
+      // dieselRequirements has no site/plant reference in the schema so it cannot be
+      // site-scoped. Returned separately as a global (date-filtered) cost figure;
+      // the frontend labels it clearly as "All Sites".
       const drConds: any[] = [];
       if (dateFrom) drConds.push(gte(dieselRequirements.date, dateFrom));
       if (dateTo)   drConds.push(lte(dieselRequirements.date, dateTo));
@@ -406,9 +430,10 @@ export function registerManagementReportRoutes(app: Express) {
       res.json({
         plants,
         summary: {
-          ldoReceivedL: Number(ldoTotals?.received) || 0,
-          ldoConsumedL: Number(ldoTotals?.consumed) || 0,
-          dieselCost:   Number(drTotals?.cost) || 0,
+          ldoReceivedL:     Number(ldoTotals?.received) || 0,
+          ldoConsumedL:     Number(ldoTotals?.consumed) || 0,
+          // dieselCost is global (not site-scoped — schema has no site reference)
+          dieselCostGlobal: Number(drTotals?.cost) || 0,
         },
       });
     } catch (err) {
@@ -532,8 +557,9 @@ export function registerManagementReportRoutes(app: Express) {
         }
       }
 
-      // Purchase indents aggregate — use distinct indent IDs to avoid
-      // overcounting when an indent has multiple items (leftJoin inflates count).
+      // Purchase indents: no siteId/siteName column in the purchase_indents schema,
+      // so site-scoping is not possible. Returned as a global (date-filtered) summary;
+      // the frontend labels it "All Sites – not site-filtered".
       const indentConds: any[] = [];
       if (dateFrom) indentConds.push(gte(purchaseIndents.date, dateFrom));
       if (dateTo)   indentConds.push(lte(purchaseIndents.date, dateTo));

@@ -39,7 +39,7 @@ export default function Home() {
   const canSeeStores = sectionVisible("stores_inventory");
 
   const canSeeReports =
-    sectionVisible("plant_daily_reports") || sectionVisible("reports");
+    sectionVisible("plant_daily_reports") || sectionVisible("reports") || sectionVisible("admin_settings");
 
   const canSeeEstimates = sectionVisible("admin_settings");
   const canSeeAdmin = sectionVisible("admin_settings");

@@ -39,7 +39,12 @@ interface FuelPlantRow {
 }
 interface FuelResponse {
   plants: FuelPlantRow[];
-  summary: { ldoReceivedL: number; ldoConsumedL: number; dieselCost: number };
+  summary: {
+    ldoReceivedL: number;
+    ldoConsumedL: number;
+    /** Global diesel purchase cost — not site-scoped (schema has no site column) */
+    dieselCostGlobal: number;
+  };
 }
 interface LabourRow {
   siteName: string; contractor: string; category: string; totalMandays: number;
@@ -578,7 +583,7 @@ export default function ManagementReport() {
                   {[
                     { label: "Diesel Received (LDO Log)", value: fmt(fuelData.summary.ldoReceivedL) + " L", icon: "↓" },
                     { label: "Diesel Consumed (LDO Log)", value: fmt(fuelData.summary.ldoConsumedL) + " L", icon: "↑" },
-                    { label: "Diesel Purchase Cost", value: fmtCur(fuelData.summary.dieselCost), icon: "₹" },
+                    { label: "Diesel Purchase Cost (All Sites)", value: fmtCur(fuelData.summary.dieselCostGlobal), icon: "₹" },
                   ].map((item) => (
                     <Card key={item.label}>
                       <CardContent className="pt-3 pb-3">
@@ -762,7 +767,7 @@ export default function ManagementReport() {
                     <div className="flex items-center gap-4">
                       <Building2 className="h-8 w-8 text-muted-foreground flex-shrink-0" />
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Purchase Indents (all sites, date range)</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">Purchase Indents (all sites — not site-filtered)</p>
                         <p className="text-2xl font-bold tabular-nums">{financialsData.indents.count}</p>
                         <p className="text-sm text-muted-foreground">
                           Est. value: <span className="font-semibold text-foreground">{fmtCur(financialsData.indents.value)}</span>
