@@ -6814,6 +6814,7 @@ export async function registerRoutes(
         supplier: req.query.supplier as string | undefined,
         indentRef: req.query.indentRef as string | undefined,
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        acceptanceStatus: req.query.acceptanceStatus as string | undefined,
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);

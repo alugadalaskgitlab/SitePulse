@@ -90,6 +90,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [dateTo, setDateTo] = useState("");
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
   const [siteFilter, setSiteFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
@@ -153,13 +154,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter, statusFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (indentFilter) p.set("indentRef", indentFilter);
       if (siteFilter) p.set("siteId", siteFilter);
+      if (statusFilter) p.set("acceptanceStatus", statusFilter);
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -907,6 +909,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Input className="h-8 w-36 text-xs" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
               <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-status-filter">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All statuses</SelectItem>
+                    <SelectItem value="accepted">Accepted</SelectItem>
+                    <SelectItem value="partial">Partially Accepted</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
                 <Label className="text-xs text-muted-foreground">Site</Label>
                 <Select value={siteFilter} onValueChange={v => setSiteFilter(v === "__all__" ? "" : v)}>
                   <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-site-filter">
@@ -920,8 +936,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              {(dateFrom || dateTo || indentFilter || siteFilter) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); }}>Clear</Button>
+              {(dateFrom || dateTo || indentFilter || siteFilter || statusFilter) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); setStatusFilter(""); }}>Clear</Button>
               )}
             </div>
 
