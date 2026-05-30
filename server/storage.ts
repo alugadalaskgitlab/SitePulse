@@ -766,6 +766,7 @@ export interface IStorage {
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
   getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
+  getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
@@ -17022,6 +17023,30 @@ export class DatabaseStorage implements IStorage {
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
     return Promise.all(grns.map(g => this.buildGrnWithItems(g)));
+  }
+
+  async getRecentGrnItemIds(limit = 5): Promise<number[]> {
+    const rows = await db
+      .selectDistinctOn([storeGrnItems.itemId], {
+        itemId: storeGrnItems.itemId,
+        grnId: storeGrnItems.grnId,
+      })
+      .from(storeGrnItems)
+      .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
+      .where(ne(storeGrns.status, "draft"))
+      .orderBy(storeGrnItems.itemId, desc(storeGrns.id));
+    // Re-sort by most-recent grn then take top N unique item ids
+    const sorted = rows.sort((a, b) => b.grnId - a.grnId);
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const r of sorted) {
+      if (!seen.has(r.itemId)) {
+        seen.add(r.itemId);
+        result.push(r.itemId);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
   }
 
   async getStoreGrnCountsByIndentRef(): Promise<Record<string, number>> {

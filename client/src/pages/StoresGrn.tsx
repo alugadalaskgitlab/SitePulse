@@ -163,6 +163,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/grns/recent-items"] });
 
   const { data: allIndentsGlobal = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
@@ -817,6 +818,11 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                 const filteredItems = items.filter(it =>
                                   !search || it.name.toLowerCase().includes(search.toLowerCase()) || it.category.toLowerCase().includes(search.toLowerCase())
                                 );
+                                const recentItems = !search
+                                  ? recentItemIds.map(id => items.find(it => it.id === id)).filter((it): it is StoreItem => !!it)
+                                  : [];
+                                const recentItemIdSet = new Set(recentItems.map(it => it.id));
+                                const remainingItems = filteredItems.filter(it => !recentItemIdSet.has(it.id));
                                 return (
                                   <>
                                     <div
@@ -860,7 +866,36 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                         {filteredItems.length === 0 && (
                                           <div className="px-3 py-2 text-muted-foreground italic">No items match "{search}"</div>
                                         )}
-                                        {filteredItems.map(it => (
+                                        {recentItems.length > 0 && (
+                                          <>
+                                            <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                              Recently Used
+                                            </div>
+                                            {recentItems.map(it => (
+                                              <div
+                                                key={`recent-${it.id}`}
+                                                className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2 ${String(it.id) === line.itemId ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
+                                                onMouseDown={e => {
+                                                  e.preventDefault();
+                                                  updateLine(idx, "itemId", String(it.id));
+                                                  updateLine(idx, "uom", it.uom || "NOS");
+                                                  setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                                  setItemComboOpen(prev => ({ ...prev, [idx]: false }));
+                                                }}
+                                                data-testid={`option-recent-item-${idx}-${it.id}`}
+                                              >
+                                                <span className="truncate">{it.name}</span>
+                                                <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
+                                              </div>
+                                            ))}
+                                            {remainingItems.length > 0 && (
+                                              <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                                                All Items
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                        {remainingItems.map(it => (
                                           <div
                                             key={it.id}
                                             className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-between gap-2 ${String(it.id) === line.itemId ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}

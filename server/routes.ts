@@ -6825,6 +6825,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stores/grns/recent-items", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const ids = await storage.getRecentGrnItemIds(limit);
+      res.json(ids);
+    } catch (err) {
+      console.error("GET /api/stores/grns/recent-items:", err);
+      res.status(500).json({ error: "Failed to fetch recent GRN items" });
+    }
+  });
+
   app.get("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
