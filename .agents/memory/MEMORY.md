@@ -1,1 +1,2 @@
 - [Internal Material Requisition](internal-requisition.md) — discussed feature for raise→store-check→issue/procure workflow; plan separately after nav task
+- [Commercial Strategy](commercial-strategy.md) — Option A (per-customer deployments), 3+ customers in sight, multi-project mockup on canvas, navigation fixes applied May 2026

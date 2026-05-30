@@ -150,15 +150,6 @@ export default function StoresHub() {
                 iconBg="bg-emerald-100"
                 enabled={canBulk}
               />
-              <HubActionTile
-                href={`/stores?tab=bulk&returnTo=${HUB}`}
-                icon={Package}
-                title="Stores Dashboard"
-                description="Consolidated view of bulk & store item movements"
-                accent="slate"
-                iconBg="bg-slate-100"
-                enabled={canBulk}
-              />
             </div>
           </div>
         )}

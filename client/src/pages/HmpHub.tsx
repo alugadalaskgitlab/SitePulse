@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Flame, ClipboardList, Truck, BarChart3,
+  Flame, ClipboardList, Truck, BarChart3, Droplets, Gauge, FileSearch,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -123,6 +123,42 @@ export default function HmpHub() {
               accent="purple"
               iconBg="bg-purple-100"
               enabled={sectionVisible("plant_daily_reports")}
+            />
+          </div>
+        </div>
+
+        {/* Fuel & Bitumen tracking */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+            Fuel & Bitumen Tracking
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <HubActionTile
+              href={`/plant/bitumen-stock?returnTo=${HUB}`}
+              icon={Droplets}
+              title="Bitumen Stock Tracker"
+              description="Dip readings, tank levels & bitumen stock balance"
+              accent="yellow"
+              iconBg="bg-yellow-100"
+              enabled={sectionVisible("plant_bitumen")}
+            />
+            <HubActionTile
+              href={`/plant/ldo-flow-meter?returnTo=${HUB}`}
+              icon={Gauge}
+              title="LDO Flow Meter"
+              description="LDO meter readings, dip logs & fuel consumption"
+              accent="blue"
+              iconBg="bg-blue-100"
+              enabled={sectionVisible("plant_ldo")}
+            />
+            <HubActionTile
+              href={`/plant/ldo-reconciliation?returnTo=${HUB}`}
+              icon={FileSearch}
+              title="LDO Book vs Physical"
+              description="Reconcile book stock against physical dip readings"
+              accent="slate"
+              iconBg="bg-slate-100"
+              enabled={sectionVisible("plant_stock")}
             />
           </div>
         </div>

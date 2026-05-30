@@ -39,15 +39,7 @@ export function useOrigin() {
     if (returnTo && returnTo.startsWith("/")) {
       return returnTo;
     }
-    const tab = opts.forceTab
-      ?? (urlTab && PLANT_TAB_VALUES.has(urlTab)
-        ? urlTab
-        : opts.defaultTab || "operations");
-    const role = opts.role !== undefined ? opts.role : urlRole;
-    const params = new URLSearchParams();
-    params.set("tab", tab);
-    if (role) params.set("role", role);
-    return `/plant/dashboard?${params.toString()}`;
+    return "/plant/hub";
   };
 
   // Forwards the inbound `tab` (and `role`) onto a deeper-page URL so its
