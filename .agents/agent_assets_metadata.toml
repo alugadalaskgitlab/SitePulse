@@ -48,6 +48,24 @@ uri = "file://attached_assets/logos/sitepulse-tagline-c.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "dGG6Y_YG_XD4P_oIWr2Ig"
+uri = "file://attached_assets/logos/sitepulse-combo-1.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "dhXBDkQ2drEUADpi35BRq"
+uri = "file://attached_assets/logos/sitepulse-combo-2.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "5yu1x6gnP5jDT7v5niSvy"
+uri = "file://attached_assets/logos/sitepulse-combo-3.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "6X_EUnnsaGQR3BhESXZ5F"
 uri = "file://attached_assets/logos/sitepulse-concept-a.png"
@@ -89,3 +107,21 @@ id = "U0YuvSQdhfjTGCWm4Fmvb"
 uri = "file://attached_assets/logos/sitepulse-tagline-c.png"
 type = "image"
 title = "Tagline C — \"Live Ops. Not Just Logs.\""
+
+[[outputs]]
+id = "7-EytYtmzkTyF6FNWcwSG"
+uri = "file://attached_assets/logos/sitepulse-combo-1.png"
+type = "image"
+title = "Combo 1 — \"Beyond the Logbook. Live ops. Live data.\""
+
+[[outputs]]
+id = "N5-33mrt_7ob-6S-PlCI2"
+uri = "file://attached_assets/logos/sitepulse-combo-2.png"
+type = "image"
+title = "Combo 2 — \"Beyond logs. Live intelligence.\""
+
+[[outputs]]
+id = "Wg2IojhdDitNECGN-gclO"
+uri = "file://attached_assets/logos/sitepulse-combo-3.png"
+type = "image"
+title = "Combo 3 — \"Live Ops — Beyond the Logbook.\""
