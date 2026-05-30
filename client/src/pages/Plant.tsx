@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
