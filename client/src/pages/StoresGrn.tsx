@@ -837,11 +837,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                 onClick={() => { setForm(f => ({ ...f, indentRef: pi.indentNo })); setIndentComboSearch(""); }}
                                 data-testid={`badge-indent-${pi.indentNo}`}
                               >
-                                <div className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</div>
-                                {pi.items.slice(0, 2).map((it, i) => (
+                                <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                                  <span className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</span>
+                                  {getStatusBadgeGrn(pi.status)}
+                                </div>
+                                {pi.items.slice(0, 3).map((it, i) => (
                                   <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
                                 ))}
-                                {pi.items.length > 2 && <div className="text-muted-foreground">+{pi.items.length - 2} more</div>}
+                                {pi.items.length > 3 && <div className="text-muted-foreground italic">+{pi.items.length - 3} more</div>}
                               </button>
                             ))}
                           </div>
@@ -1041,11 +1044,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                       onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
                                       data-testid={`line-badge-indent-${idx}-${pi.indentNo}`}
                                     >
-                                      <div className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</div>
-                                      {pi.items.slice(0, 2).map((it, i) => (
+                                      <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                                        <span className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</span>
+                                        {getStatusBadgeGrn(pi.status)}
+                                      </div>
+                                      {pi.items.slice(0, 3).map((it, i) => (
                                         <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
                                       ))}
-                                      {pi.items.length > 2 && <div className="text-muted-foreground">+{pi.items.length - 2} more</div>}
+                                      {pi.items.length > 3 && <div className="text-muted-foreground italic">+{pi.items.length - 3} more</div>}
                                     </button>
                                   );
                                 })}
