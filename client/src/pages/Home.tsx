@@ -93,7 +93,11 @@ export default function Home() {
     {
       id: "reports",
       show: canSeeReports,
-      href: sectionVisible("plant_daily_reports") ? "/plant/daily-reports" : "/admin/reports",
+      href: sectionVisible("plant_daily_reports")
+        ? "/plant/daily-reports"
+        : sectionVisible("reports")
+          ? "/admin/reports"
+          : "/admin/management-report",
       label: "Reports & Analysis",
       description: "Plant daily reports, heating trends, RMC summaries & historical data",
       icon: BarChart3,

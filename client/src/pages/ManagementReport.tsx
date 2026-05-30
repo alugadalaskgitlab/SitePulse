@@ -15,7 +15,7 @@ import {
   Users, Receipt, Building2, RefreshCw, FileDown,
 } from "lucide-react";
 import { Link } from "wouter";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, startOfWeek } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -74,12 +74,13 @@ const fmtCur = (n: number) => `₹${fmt(n, 0)}`;
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const MONTH_START = format(startOfMonth(new Date()), "yyyy-MM-dd");
+const WEEK_START  = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
 
 // Quick presets
 const PRESETS = [
+  { label: "This Week",  from: WEEK_START,  to: TODAY },
   { label: "This Month", from: MONTH_START, to: TODAY },
-  { label: "Last 7 Days", from: format(new Date(Date.now() - 6 * 86400000), "yyyy-MM-dd"), to: TODAY },
-  { label: "Today", from: TODAY, to: TODAY },
+  { label: "Today",      from: TODAY,       to: TODAY },
 ];
 
 // Build query string

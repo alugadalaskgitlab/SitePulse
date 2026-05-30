@@ -536,7 +536,9 @@ export function registerManagementReportRoutes(app: Express) {
 
       for (const r of billRows) {
         const sn = r.siteName || "Unassigned";
-        if (permittedSiteNames !== null && sn !== "Unassigned" && !permittedSiteNames.includes(sn)) continue;
+        // For site-scoped users: exclude ANY bill whose site is not in their permitted list,
+        // including "Unassigned" rows (no site on the bill = cannot confirm they are permitted).
+        if (permittedSiteNames !== null && !permittedSiteNames.includes(sn)) continue;
         if (!billMap.has(sn)) {
           billMap.set(sn, { siteName: sn, billCount: 0, billValue: 0,
             statusBreakdown: { draft: 0, pending: 0, approved: 0, paid: 0, other: 0 } });
