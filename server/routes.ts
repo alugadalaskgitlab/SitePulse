@@ -7241,6 +7241,18 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.get("/api/rmc/summary-range", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+      const plantName = req.query.plantName as string | undefined;
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo = req.query.dateTo as string | undefined;
+      if (!dateFrom || !dateTo) return res.status(400).json({ message: "dateFrom and dateTo are required" });
+      const rows = await storage.getRmcSummaryRange(dateFrom, dateTo, plantName);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get("/api/rmc/batch-records", async (req, res) => {
     try {
       if (!assertView(req, res, "plant_production")) return;

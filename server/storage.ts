@@ -828,6 +828,7 @@ export interface IStorage {
 
   getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]>;
   getRmcTodaySummary(plantName?: string, date?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number; byGrade: { grade: string; volumeM3: number; batchesCount: number }[] }>;
+  getRmcSummaryRange(dateFrom: string, dateTo: string, plantName?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number }[]>;
   ensureRmcTables(): Promise<void>;
 
   // Site Material Logs Summary
@@ -17756,6 +17757,28 @@ export class DatabaseStorage implements IStorage {
       .map(([grade, v]) => ({ grade, ...v }))
       .sort((a, b) => a.grade.localeCompare(b.grade));
     return { date: targetDate, totalVolumeM3, totalBatches, byGrade };
+  }
+
+  async getRmcSummaryRange(dateFrom: string, dateTo: string, plantName?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number }[]> {
+    const records = await this.getRmcBatchRecords({ dateFrom, dateTo, plantName });
+    const dayMap = new Map<string, { totalVolumeM3: number; totalBatches: number }>();
+    for (const r of records) {
+      const cur = dayMap.get(r.date) ?? { totalVolumeM3: 0, totalBatches: 0 };
+      dayMap.set(r.date, {
+        totalVolumeM3: cur.totalVolumeM3 + r.totalVolumeM3,
+        totalBatches: cur.totalBatches + (r.batchesCount ?? 1),
+      });
+    }
+    // Build a complete list of dates in range (so zero-production days appear)
+    const result: { date: string; totalVolumeM3: number; totalBatches: number }[] = [];
+    const start = new Date(dateFrom);
+    const end = new Date(dateTo);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      const day = dayMap.get(key) ?? { totalVolumeM3: 0, totalBatches: 0 };
+      result.push({ date: key, ...day });
+    }
+    return result;
   }
 
   async getRmcStockSummary(plantName?: string): Promise<{ materialName: string; category: string; totalReceived: number; totalConsumed: number; balance: number; uom: string; balanceKg: number | null }[]> {
