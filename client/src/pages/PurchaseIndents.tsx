@@ -1123,6 +1123,14 @@ export default function PurchaseIndents() {
                             {totalAmt > 0 && ` \u2022 \u20B9 ${totalAmt.toLocaleString("en-IN")} PURCHASED`}
                           </p>
                           <div className="flex flex-wrap gap-1 mt-2 items-center">
+                            {(indent as any).siteId && sitesList && (() => {
+                              const site = sitesList.find(s => s.id === (indent as any).siteId);
+                              return site ? (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${indent.id}`}>
+                                  {site.name}
+                                </Badge>
+                              ) : null;
+                            })()}
                             {priorities.map(p => (
                               <span key={p}>{getPriorityBadge(p)}</span>
                             ))}

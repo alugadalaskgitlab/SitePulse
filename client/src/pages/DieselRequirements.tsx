@@ -618,9 +618,19 @@ export default function DieselRequirements() {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-center flex-wrap gap-2">
                         <div>
-                          <p className="font-bold text-sm" data-testid={`text-date-${req.id}`}>
-                            {formatDate(req.date)} {isToday && "(TODAY)"}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-sm" data-testid={`text-date-${req.id}`}>
+                              {formatDate(req.date)} {isToday && "(TODAY)"}
+                            </p>
+                            {(req as any).siteId && sitesList && (() => {
+                              const site = sitesList.find(s => s.id === (req as any).siteId);
+                              return site ? (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${req.id}`}>
+                                  {site.name}
+                                </Badge>
+                              ) : null;
+                            })()}
+                          </div>
                           <p className="text-xs text-muted-foreground mt-1">
                             Raised by {req.raisedBy}
                             {req.items && ` \u2022 ${req.items.length} equipment/DGs`}
