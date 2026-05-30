@@ -198,6 +198,11 @@ function Router() {
           <FinanceHub />
         </RequireAuth>
       </Route>
+      <Route path="/rmc/hub">
+        <RequireAuth>
+          <RmcHub />
+        </RequireAuth>
+      </Route>
 
       {/* All other authenticated routes get the full shell with AppHeader. */}
       <Route>

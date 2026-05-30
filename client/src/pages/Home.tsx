@@ -38,7 +38,7 @@ const MODULES = [
     title: "RMC Operations",
     description: "Ready-mix batching, delivery challans & cube tests",
     icon: Building2,
-    href: "/plant/rmc",
+    href: "/rmc/hub",
     lightBg: "bg-emerald-50",
     iconColor: "text-emerald-600",
     hoverBorder: "hover:border-emerald-300",
