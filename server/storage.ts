@@ -7514,6 +7514,7 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
+      workType: dprs.workType,
     })
     .from(sitePurchases)
     .innerJoin(dprs, eq(sitePurchases.dprId, dprs.id))
@@ -7550,6 +7551,7 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
+      workType: dprs.workType,
     })
     .from(equipmentLogs)
     .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
@@ -7570,6 +7572,7 @@ export class DatabaseStorage implements IStorage {
         site: this.getBaseSiteName(row.site),
         engineer: row.engineer,
         source: "diesel" as const,
+        workType: row.workType || null,
       }));
 
     if (filters?.site) {
@@ -7677,6 +7680,7 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
+      workType: dprs.workType,
     })
     .from(materialLogs)
     .innerJoin(dprs, eq(materialLogs.dprId, dprs.id))
@@ -7699,6 +7703,7 @@ export class DatabaseStorage implements IStorage {
       enteredBy: row.engineer || null,
       time: null,
       notes: null,
+      workType: row.workType || null,
     }));
 
     let tripResults = trips.map(t => ({
@@ -7747,6 +7752,7 @@ export class DatabaseStorage implements IStorage {
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
+      workType: dprs.workType,
     })
     .from(equipmentLogs)
     .innerJoin(dprs, eq(equipmentLogs.dprId, dprs.id))
@@ -7770,6 +7776,7 @@ export class DatabaseStorage implements IStorage {
         enteredBy: row.engineer || null,
         time: row.startTime || null,
         notes: row.numberOfTrips ? `${row.numberOfTrips} trip(s)` : null,
+        workType: row.workType || null,
       }));
 
     if (filters?.site) {

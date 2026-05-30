@@ -209,6 +209,7 @@ export default function SiteMaterialsReceived() {
                       <th className="text-right p-2 border text-xs">Qty / UOM</th>
                       <th className="text-left p-2 border text-xs">Supplier</th>
                       <th className="text-left p-2 border text-xs">Receipt No.</th>
+                      <th className="text-center p-2 border text-xs">Work Type</th>
                       <th className="text-center p-2 border text-xs">Source</th>
                       <th className="text-center p-2 border text-xs w-10"></th>
                     </tr>
@@ -226,6 +227,15 @@ export default function SiteMaterialsReceived() {
                         <td className="p-2 border text-xs text-right">{trip.quantity} {trip.uom}</td>
                         <td className="p-2 border text-xs">{trip.supplier || "-"}</td>
                         <td className="p-2 border text-xs">{trip.receiptNumber || "-"}</td>
+                        <td className="p-2 border text-center">
+                          {trip.workType ? (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                              {trip.workType === "structure" ? "STRUCTURE" : "ROAD"}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">-</span>
+                          )}
+                        </td>
                         <td className="p-2 border text-center">
                           {trip.source === "dpr" ? (
                             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">DPR</span>

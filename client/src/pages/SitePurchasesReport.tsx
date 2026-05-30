@@ -25,6 +25,7 @@ interface SitePurchaseItem {
   site: string;
   engineer: string;
   source?: "purchase" | "diesel";
+  workType?: string | null;
 }
 
 export default function SitePurchasesReport() {
@@ -213,6 +214,7 @@ export default function SitePurchasesReport() {
                       <th className="text-left p-2 font-medium">Date</th>
                       <th className="text-left p-2 font-medium">Site</th>
                       <th className="text-center p-2 font-medium">Source</th>
+                      <th className="text-center p-2 font-medium">Work Type</th>
                       <th className="text-left p-2 font-medium">Item</th>
                       <th className="text-left p-2 font-medium">Vendor</th>
                       <th className="text-left p-2 font-medium">Bill No</th>
@@ -232,6 +234,15 @@ export default function SitePurchasesReport() {
                           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.source === 'diesel' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700'}`}>
                             {p.source === 'diesel' ? 'DIESEL' : 'PURCHASE'}
                           </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          {p.workType ? (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                              {p.workType === "structure" ? "STRUCTURE" : "ROAD"}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">-</span>
+                          )}
                         </td>
                         <td className="p-2">{p.itemDescription}</td>
                         <td className="p-2">{p.vendor || "-"}</td>
@@ -259,7 +270,7 @@ export default function SitePurchasesReport() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t font-bold">
-                      <td colSpan={8} className="p-2 text-right">Total:</td>
+                      <td colSpan={9} className="p-2 text-right">Total:</td>
                       <td className="p-2 text-right">{totalAmount.toFixed(3)}</td>
                       <td colSpan={2}></td>
                     </tr>
