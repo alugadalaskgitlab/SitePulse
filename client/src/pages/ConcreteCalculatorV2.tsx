@@ -142,6 +142,9 @@ interface ProjectV2 {
   defaultMarginPct: number;
   // Commercial
   clientRatePerRM: number;
+  // Per-grade IS overrides (user can override IS 10262 / IS 456 defaults per grade)
+  targetFckOverrides: Record<string, number>;
+  wcRatioOverrides: Record<string, number>;
 }
 
 interface StateV2 {
@@ -261,6 +264,8 @@ const DEFAULT_PROJECT: ProjectV2 = {
   defaultOverheadPct: 8,
   defaultMarginPct: 10,
   clientRatePerRM: 0,
+  targetFckOverrides: {},
+  wcRatioOverrides: {},
 };
 
 const DEFAULT_STATE: StateV2 = {
@@ -281,6 +286,13 @@ function landedPerMT(tab: { purchaseRate: number; uom: AggUom; leadKm: number; f
   const base = toRatePerMT(tab.purchaseRate, tab.uom);
   const freight = tab.payload > 0 ? (tab.leadKm * 2 * tab.freightRate) / tab.payload : 0;
   return base + freight;
+}
+
+function getGradeTargetFck(grade: string, project: ProjectV2): number {
+  return project.targetFckOverrides?.[grade] ?? MIX_PRESETS[grade]?.targetFck ?? 0;
+}
+function getGradeWcRatio(grade: string, project: ProjectV2): number {
+  return project.wcRatioOverrides?.[grade] ?? MIX_PRESETS[grade]?.wcRatio ?? 0.5;
 }
 
 function concreteMatPerM3(grade: string, project: ProjectV2, loc: LocationV2): number {
@@ -1276,7 +1288,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                     <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b space-y-0.5">
                       <div>Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA</div>
                       <div className="text-[9px] text-blue-600 dark:text-blue-400" title="IS 10262:2019 — Target mean strength fck + 1.65σ  |  IS 456:2000 — Max W/C ratio">
-                        IS ref: Target fck {bd.mix.targetFck} MPa (σ={bd.mix.sigma}) · W/C ≤ {bd.mix.wcRatio}
+                        IS ref: Target fck {getGradeTargetFck(bd.grade, project)} MPa (σ={bd.mix.sigma}) · W/C ≤ {getGradeWcRatio(bd.grade, project).toFixed(2)}
                       </div>
                     </div>
                     <table className="w-full">
@@ -1663,6 +1675,8 @@ function normalizeState(raw: StateV2): StateV2 {
     admixDosageL: (p as any).admixDosageL ?? DEFAULT_PROJECT.admixDosageL,
     admixRatePerL: (p as any).admixRatePerL ?? DEFAULT_PROJECT.admixRatePerL,
     pettyLabourEnabled: (p as any).pettyLabourEnabled ?? true,
+    targetFckOverrides: (p as any).targetFckOverrides ?? {},
+    wcRatioOverrides: (p as any).wcRatioOverrides ?? {},
   };
   return {
     ...raw,
@@ -1954,49 +1968,97 @@ export default function ConcreteCalculatorV2() {
                   <GradeSelect label="Side Walls Grade" value={state.project.wallGrade} onChange={v => updProject("wallGrade", v)} />
                   <GradeSelect label="Cover Slab Grade" value={state.project.slabGrade} onChange={v => updProject("slabGrade", v)} />
                 </div>
-                {/* IS 10262 / IS 456 reference for selected grades */}
+                {/* IS 10262 / IS 456 — editable design basis per grade */}
                 {(() => {
                   const grades = Array.from(new Set([
                     state.project.pccGrade, state.project.invertGrade,
                     state.project.wallGrade, state.project.slabGrade,
-                  ])).sort((a, b) => {
-                    const n = (g: string) => parseInt(g.replace("M", "")) || 0;
-                    return n(a) - n(b);
-                  });
+                  ])).sort((a, b) => parseInt(a.replace("M","")) - parseInt(b.replace("M","")));
                   return (
                     <div className="mt-2 rounded border border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/30 px-3 py-2">
                       <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">
-                        IS 10262:2019 / IS 456:2000 — Design Basis for Selected Grades
+                        IS Design Basis — editable (IS 10262:2019 / IS 456:2000)
                       </p>
                       <div className="overflow-x-auto">
                         <table className="text-[11px] w-full">
                           <thead>
                             <tr className="text-blue-600 dark:text-blue-400">
-                              <th className="text-left font-medium pr-4 pb-0.5">Grade</th>
-                              <th className="text-right font-medium pr-4 pb-0.5">fck (MPa)</th>
-                              <th className="text-right font-medium pr-4 pb-0.5">σ (MPa)</th>
-                              <th className="text-right font-medium pr-4 pb-0.5">Target fck (MPa)</th>
-                              <th className="text-right font-medium pb-0.5">Max W/C</th>
+                              <th className="text-left font-medium pr-3 pb-1">Grade</th>
+                              <th className="text-right font-medium pr-3 pb-1">fck (MPa)</th>
+                              <th className="text-right font-medium pr-3 pb-1">σ (IS)</th>
+                              <th className="text-right font-medium pr-3 pb-1">Target fck (MPa) ✎</th>
+                              <th className="text-right font-medium pb-1">Max W/C ✎</th>
                             </tr>
                           </thead>
                           <tbody>
                             {grades.map(g => {
-                              const p = MIX_PRESETS[g];
+                              const preset = MIX_PRESETS[g];
+                              if (!preset) return null;
                               const fck = parseInt(g.replace("M", "")) || 0;
-                              return p ? (
+                              const curTargetFck = getGradeTargetFck(g, state.project);
+                              const curWcRatio = getGradeWcRatio(g, state.project);
+                              const hasTargetOverride = state.project.targetFckOverrides?.[g] !== undefined;
+                              const hasWcOverride = state.project.wcRatioOverrides?.[g] !== undefined;
+                              return (
                                 <tr key={g} className="text-slate-700 dark:text-slate-300">
-                                  <td className="font-semibold pr-4 py-0.5">{g}</td>
-                                  <td className="text-right pr-4 tabular-nums">{fck}</td>
-                                  <td className="text-right pr-4 tabular-nums">{p.sigma}</td>
-                                  <td className="text-right pr-4 tabular-nums font-semibold">{p.targetFck}</td>
-                                  <td className="text-right tabular-nums">{p.wcRatio.toFixed(2)}</td>
+                                  <td className="font-semibold pr-3 py-1">{g}</td>
+                                  <td className="text-right pr-3 tabular-nums">{fck}</td>
+                                  <td className="text-right pr-3 tabular-nums">{preset.sigma}</td>
+                                  <td className="text-right pr-3 py-0.5">
+                                    <div className="flex flex-col items-end gap-0.5">
+                                      <input
+                                        type="number" step="0.05" min="0"
+                                        value={curTargetFck}
+                                        onChange={e => {
+                                          const v = parseFloat(e.target.value);
+                                          updProject("targetFckOverrides", { ...state.project.targetFckOverrides, [g]: isNaN(v) ? preset.targetFck : v });
+                                        }}
+                                        className="w-16 text-right text-[11px] border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        data-testid={`input-target-fck-${g}`}
+                                      />
+                                      {hasTargetOverride && (
+                                        <button type="button" onClick={() => {
+                                          const next = { ...state.project.targetFckOverrides };
+                                          delete next[g];
+                                          updProject("targetFckOverrides", next);
+                                        }} className="text-[9px] text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
+                                          reset to {preset.targetFck}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="text-right py-0.5">
+                                    <div className="flex flex-col items-end gap-0.5">
+                                      <input
+                                        type="number" step="0.01" min="0" max="1"
+                                        value={curWcRatio}
+                                        onChange={e => {
+                                          const v = parseFloat(e.target.value);
+                                          updProject("wcRatioOverrides", { ...state.project.wcRatioOverrides, [g]: isNaN(v) ? preset.wcRatio : v });
+                                        }}
+                                        className="w-14 text-right text-[11px] border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        data-testid={`input-wc-ratio-${g}`}
+                                      />
+                                      {hasWcOverride && (
+                                        <button type="button" onClick={() => {
+                                          const next = { ...state.project.wcRatioOverrides };
+                                          delete next[g];
+                                          updProject("wcRatioOverrides", next);
+                                        }} className="text-[9px] text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
+                                          reset to {preset.wcRatio.toFixed(2)}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
                                 </tr>
-                              ) : null;
+                              );
                             })}
                           </tbody>
                         </table>
                       </div>
-                      <p className="text-[9px] text-slate-400 mt-1">Target fck = fck + 1.65 × σ  (Good degree of control, IS 10262:2019 Table 1)</p>
+                      <p className="text-[9px] text-slate-400 mt-1">
+                        IS defaults: Target fck = fck + 1.65 × σ (IS 10262:2019 Table 1) · Max W/C per IS 456:2000 · Values editable for site-specific QC data
+                      </p>
                     </div>
                   );
                 })()}
