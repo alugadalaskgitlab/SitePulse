@@ -93,6 +93,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
+  const [supplierFilter, setSupplierFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
@@ -182,12 +183,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter, statusFilter, draftOnly],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, draftOnly],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (indentFilter) p.set("indentRef", indentFilter);
+      if (supplierFilter) p.set("supplier", supplierFilter);
       if (siteFilter) p.set("siteId", siteFilter);
       if (statusFilter) p.set("acceptanceStatus", statusFilter);
       if (draftOnly) p.set("status", "draft");
@@ -1228,6 +1230,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Input className="h-8 w-36 text-xs" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
               <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Supplier</Label>
+                <Input className="h-8 w-40 text-xs" placeholder="Supplier name" value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} data-testid="input-supplier-filter" />
+              </div>
+              <div className="flex items-center gap-2">
                 <Label className="text-xs text-muted-foreground">Status</Label>
                 <Button
                   variant={draftOnly ? "default" : "outline"}
@@ -1265,8 +1271,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              {(dateFrom || dateTo || indentFilter || siteFilter || statusFilter || draftOnly) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); setStatusFilter(""); setDraftOnly(false); }}>Clear</Button>
+              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || draftOnly) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setDraftOnly(false); }}>Clear</Button>
               )}
             </div>
 
