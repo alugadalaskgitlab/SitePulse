@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -48,12 +48,30 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   });
   const [lines, setLines] = useState<IssueLine[]>([emptyLine()]);
 
+  const [itemComboSearch, setItemComboSearch] = useState<Record<number, string>>({});
+  const [itemComboOpen, setItemComboOpen] = useState<Record<number, boolean>>({});
+  const itemComboRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
   useEffect(() => {
     if (detailId) setSelectedId(detailId);
   }, [detailId]);
 
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      Object.entries(itemComboRefs.current).forEach(([idxStr, ref]) => {
+        const idx = parseInt(idxStr);
+        if (ref && !ref.contains(e.target as Node)) {
+          setItemComboOpen(prev => prev[idx] ? { ...prev, [idx]: false } : prev);
+        }
+      });
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/issues/recent-items"] });
 
   const { data: stock = [] } = useQuery<any[]>({ queryKey: ["/api/stores/stock-summary"] });
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
@@ -320,18 +338,111 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     return (
                       <div key={idx} className="grid grid-cols-12 gap-2 items-end" data-testid={`issue-line-${idx}`}>
                         <div className="col-span-5">
-                          <Select value={line.itemId} onValueChange={v => updateLine(idx, "itemId", v)}>
-                            <SelectTrigger className="text-xs h-8" data-testid={`select-issue-item-${idx}`}>
-                              <SelectValue placeholder="Select item" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {items.map(it => (
-                                <SelectItem key={it.id} value={String(it.id)}>
-                                  {it.name} <span className="text-muted-foreground">— Stock: {(stockMap[it.id] ?? 0).toFixed(1)} {it.uom}</span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {(() => {
+                            const search = itemComboSearch[idx] ?? "";
+                            const isOpen = itemComboOpen[idx] ?? false;
+                            const filteredItems = items.filter(it =>
+                              !search || it.name.toLowerCase().includes(search.toLowerCase()) || it.category.toLowerCase().includes(search.toLowerCase())
+                            );
+                            const recentItems = !search
+                              ? recentItemIds.map(id => items.find(it => it.id === id)).filter((it): it is StoreItem => !!it)
+                              : [];
+                            const recentItemIdSet = new Set(recentItems.map(it => it.id));
+                            const remainingItems = filteredItems.filter(it => !recentItemIdSet.has(it.id));
+                            return (
+                              <div className="relative" ref={el => { itemComboRefs.current[idx] = el; }}>
+                                <div
+                                  className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-xs cursor-text w-full"
+                                  onClick={() => setItemComboOpen(prev => ({ ...prev, [idx]: true }))}
+                                  data-testid={`select-issue-item-${idx}`}
+                                >
+                                  {isOpen ? (
+                                    <input
+                                      autoFocus
+                                      className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-xs"
+                                      placeholder="Type to search items…"
+                                      value={search}
+                                      onChange={e => setItemComboSearch(prev => ({ ...prev, [idx]: e.target.value }))}
+                                      data-testid={`input-issue-item-search-${idx}`}
+                                    />
+                                  ) : (
+                                    <span className={`flex-1 truncate ${selectedItem ? "" : "text-muted-foreground"}`}>
+                                      {selectedItem ? selectedItem.name : "Select item…"}
+                                    </span>
+                                  )}
+                                  {selectedItem && !isOpen && (
+                                    <button
+                                      type="button"
+                                      className="ml-auto flex-shrink-0 text-muted-foreground hover:text-foreground"
+                                      onMouseDown={e => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        updateLine(idx, "itemId", "");
+                                        updateLine(idx, "uom", "");
+                                        setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                      }}
+                                      data-testid={`button-clear-issue-item-${idx}`}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                                {isOpen && (
+                                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                                    {filteredItems.length === 0 && (
+                                      <div className="px-3 py-2 text-muted-foreground italic">No items match "{search}"</div>
+                                    )}
+                                    {recentItems.length > 0 && (
+                                      <>
+                                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                          Recently Used
+                                        </div>
+                                        {recentItems.map(it => (
+                                          <div
+                                            key={`recent-${it.id}`}
+                                            className={`px-3 py-2 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center justify-between gap-2 ${String(it.id) === line.itemId ? "bg-orange-50 dark:bg-orange-900/20 font-medium" : ""}`}
+                                            onMouseDown={e => {
+                                              e.preventDefault();
+                                              updateLine(idx, "itemId", String(it.id));
+                                              updateLine(idx, "uom", it.uom || "NOS");
+                                              setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                              setItemComboOpen(prev => ({ ...prev, [idx]: false }));
+                                            }}
+                                            data-testid={`option-recent-issue-item-${idx}-${it.id}`}
+                                          >
+                                            <span className="truncate">{it.name}</span>
+                                            <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
+                                          </div>
+                                        ))}
+                                        {remainingItems.length > 0 && (
+                                          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                                            All Items
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                    {remainingItems.map(it => (
+                                      <div
+                                        key={it.id}
+                                        className={`px-3 py-2 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center justify-between gap-2 ${String(it.id) === line.itemId ? "bg-orange-50 dark:bg-orange-900/20 font-medium" : ""}`}
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          updateLine(idx, "itemId", String(it.id));
+                                          updateLine(idx, "uom", it.uom || "NOS");
+                                          setItemComboSearch(prev => ({ ...prev, [idx]: "" }));
+                                          setItemComboOpen(prev => ({ ...prev, [idx]: false }));
+                                        }}
+                                        data-testid={`option-issue-item-${idx}-${it.id}`}
+                                      >
+                                        <span className="truncate">{it.name}</span>
+                                        <span className="text-muted-foreground flex-shrink-0">({it.category})</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {avail !== null && (
                             <p className={`text-[10px] mt-0.5 ${over ? "text-red-600" : "text-muted-foreground"}`}>
                               Available: {avail.toFixed(2)} {selectedItem?.uom} {over ? "⚠ exceeds stock" : ""}

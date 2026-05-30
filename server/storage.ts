@@ -774,6 +774,7 @@ export interface IStorage {
   deleteStoreGrn(id: number): Promise<boolean>;
   getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
+  getRecentIssueItemIds(limit?: number): Promise<number[]>;
   createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
   deleteStoreIssue(id: number): Promise<boolean>;
   getStoreStockSummary(): Promise<StoreStockBalance[]>;
@@ -17078,6 +17079,28 @@ export class DatabaseStorage implements IStorage {
       .orderBy(storeGrnItems.itemId, desc(storeGrns.id));
     // Re-sort by most-recent grn then take top N unique item ids
     const sorted = rows.sort((a, b) => b.grnId - a.grnId);
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const r of sorted) {
+      if (!seen.has(r.itemId)) {
+        seen.add(r.itemId);
+        result.push(r.itemId);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
+  }
+
+  async getRecentIssueItemIds(limit = 5): Promise<number[]> {
+    const rows = await db
+      .selectDistinctOn([storeIssueItems.itemId], {
+        itemId: storeIssueItems.itemId,
+        issueId: storeIssueItems.issueId,
+      })
+      .from(storeIssueItems)
+      .innerJoin(storeIssues, eq(storeIssueItems.issueId, storeIssues.id))
+      .orderBy(storeIssueItems.itemId, desc(storeIssues.id));
+    const sorted = rows.sort((a, b) => b.issueId - a.issueId);
     const seen = new Set<number>();
     const result: number[] = [];
     for (const r of sorted) {

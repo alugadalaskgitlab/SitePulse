@@ -7006,6 +7006,18 @@ export async function registerRoutes(
   });
 
   // Issue Vouchers
+  app.get("/api/stores/issues/recent-items", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const ids = await storage.getRecentIssueItemIds(limit);
+      res.json(ids);
+    } catch (err) {
+      console.error("GET /api/stores/issues/recent-items:", err);
+      res.status(500).json({ error: "Failed to fetch recent issue items" });
+    }
+  });
+
   app.get("/api/stores/issues", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;
