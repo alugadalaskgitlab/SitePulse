@@ -31,15 +31,25 @@ interface ProductionRow {
   siteName: string; plantName: string; type: string;
   mtProduced: number; dispatchCount: number; unit: string;
 }
-interface FuelRow {
+interface FuelPlantRow {
   siteName: string; plantName: string;
   ldoConsumedL: number; mtProduced: number; lPerMt: number | null;
+}
+interface FuelResponse {
+  plants: FuelPlantRow[];
+  summary: { ldoReceivedL: number; ldoConsumedL: number; dieselCost: number };
 }
 interface LabourRow {
   siteName: string; contractor: string; category: string; totalMandays: number;
 }
+interface BillEntry {
+  siteName: string;
+  billCount: number;
+  billValue: number;
+  statusBreakdown: { draft: number; pending: number; approved: number; paid: number; other: number };
+}
 interface FinancialsResponse {
-  bills: { siteName: string; billCount: number; billValue: number; statuses: Record<string, number> }[];
+  bills: BillEntry[];
   indents: { count: number; value: number };
 }
 
@@ -119,7 +129,7 @@ export default function ManagementReport() {
     queryKey: [`/api/admin/management-report/production?${qs}`],
     enabled: activeTab === "production" && !!qs,
   });
-  const { data: fuelData, isFetching: fuelLoading } = useQuery<FuelRow[]>({
+  const { data: fuelData, isFetching: fuelLoading } = useQuery<FuelResponse>({
     queryKey: [`/api/admin/management-report/fuel?${qs}`],
     enabled: activeTab === "fuel" && !!qs,
   });
@@ -169,11 +179,18 @@ export default function ManagementReport() {
         })));
       } else if (activeTab === "fuel" && fuelData) {
         sheetName = "Fuel";
-        ws = XLSX.utils.json_to_sheet(fuelData.map((r) => ({
+        const plantRows = fuelData.plants.map((r) => ({
           Site: r.siteName, Plant: r.plantName,
           "LDO Consumed (L)": r.ldoConsumedL, "MT Produced": r.mtProduced,
           "L/MT Ratio": r.lPerMt ?? "",
-        })));
+        }));
+        plantRows.push({
+          Site: "TOTAL (LDO Log)", Plant: "",
+          "LDO Consumed (L)": fuelData.summary.ldoConsumedL,
+          "MT Produced": 0,
+          "L/MT Ratio": "",
+        } as any);
+        ws = XLSX.utils.json_to_sheet(plantRows);
       } else if (activeTab === "labour" && labourData) {
         sheetName = "Labour";
         ws = XLSX.utils.json_to_sheet(labourData.map((r) => ({
@@ -184,6 +201,8 @@ export default function ManagementReport() {
         sheetName = "Financials";
         const rows = financialsData.bills.map((r) => ({
           Site: r.siteName, "Bill Count": r.billCount, "Bill Value (₹)": r.billValue,
+          "Draft": r.statusBreakdown.draft, "Pending": r.statusBreakdown.pending,
+          "Approved": r.statusBreakdown.approved, "Paid": r.statusBreakdown.paid,
         }));
         ws = XLSX.utils.json_to_sheet(rows);
       } else {
@@ -453,60 +472,81 @@ export default function ManagementReport() {
 
           {/* ── Fuel & LDO ── */}
           <TabsContent value="fuel" className="mt-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Fuel className="h-4 w-4 text-muted-foreground" />
-                  Fuel &amp; LDO Summary
-                  {fuelData && <Badge variant="secondary" className="ml-auto">{fuelData.length} plants</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {fuelLoading || !fuelData ? (
-                  <EmptyState loading={fuelLoading} />
-                ) : fuelData.length === 0 ? (
-                  <EmptyState loading={false} />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead>Site / Plant</TableHead>
-                          <TableHead>Plant</TableHead>
-                          <TableHead className="text-right">LDO Consumed (L)</TableHead>
-                          <TableHead className="text-right">MT Produced</TableHead>
-                          <TableHead className="text-right">L/MT Ratio</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {fuelData.map((r, i) => (
-                          <TableRow key={i} className="text-sm" data-testid={`row-fuel-${i}`}>
-                            <TableCell className="text-xs text-muted-foreground font-medium">{r.siteName}</TableCell>
-                            <TableCell>{r.plantName}</TableCell>
-                            <TableCell className="text-right tabular-nums">{fmt(r.ldoConsumedL)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{fmt(r.mtProduced)}</TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {r.lPerMt !== null ? (
-                                <span className={r.lPerMt > 10 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                                  {r.lPerMt}
-                                </span>
-                              ) : "—"}
-                            </TableCell>
+            <div className="space-y-4">
+              {/* LDO Log summary banner */}
+              {fuelData && (
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Diesel Received (LDO Log)", value: fmt(fuelData.summary.ldoReceivedL) + " L", icon: "↓" },
+                    { label: "Diesel Consumed (LDO Log)", value: fmt(fuelData.summary.ldoConsumedL) + " L", icon: "↑" },
+                    { label: "Diesel Purchase Cost", value: fmtCur(fuelData.summary.dieselCost), icon: "₹" },
+                  ].map((item) => (
+                    <Card key={item.label}>
+                      <CardContent className="pt-3 pb-3">
+                        <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                        <p className="text-xl font-bold tabular-nums">{item.value}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Per-plant breakdown from dispatches */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Fuel className="h-4 w-4 text-muted-foreground" />
+                    Per-Plant LDO Consumption (from Dispatches)
+                    {fuelData && <Badge variant="secondary" className="ml-auto">{fuelData.plants.length} plants</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {fuelLoading || !fuelData ? (
+                    <EmptyState loading={fuelLoading} />
+                  ) : fuelData.plants.length === 0 ? (
+                    <EmptyState loading={false} />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead>Site</TableHead>
+                            <TableHead>Plant</TableHead>
+                            <TableHead className="text-right">LDO Consumed (L)</TableHead>
+                            <TableHead className="text-right">MT Produced</TableHead>
+                            <TableHead className="text-right">L/MT Ratio</TableHead>
                           </TableRow>
-                        ))}
-                        <TotalsRow label="Total"
-                          cells={[
-                            fmt(fuelData.reduce((a, r) => a + r.ldoConsumedL, 0)),
-                            fmt(fuelData.reduce((a, r) => a + r.mtProduced, 0)),
-                            "",
-                          ]}
-                        />
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        </TableHeader>
+                        <TableBody>
+                          {fuelData.plants.map((r, i) => (
+                            <TableRow key={i} className="text-sm" data-testid={`row-fuel-${i}`}>
+                              <TableCell className="text-xs text-muted-foreground font-medium">{r.siteName}</TableCell>
+                              <TableCell>{r.plantName}</TableCell>
+                              <TableCell className="text-right tabular-nums">{fmt(r.ldoConsumedL)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{fmt(r.mtProduced)}</TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {r.lPerMt !== null ? (
+                                  <span className={r.lPerMt > 10 ? "text-red-600 dark:text-red-400 font-medium" : ""}>
+                                    {r.lPerMt}
+                                  </span>
+                                ) : "—"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          <TotalsRow label="Total"
+                            cells={[
+                              fmt(fuelData.plants.reduce((a, r) => a + r.ldoConsumedL, 0)),
+                              fmt(fuelData.plants.reduce((a, r) => a + r.mtProduced, 0)),
+                              "",
+                            ]}
+                          />
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ── Labour ── */}
@@ -579,8 +619,12 @@ export default function ManagementReport() {
                         <TableHeader>
                           <TableRow className="bg-muted/30">
                             <TableHead>Site</TableHead>
-                            <TableHead className="text-right">Bills Raised</TableHead>
+                            <TableHead className="text-right">Bills</TableHead>
                             <TableHead className="text-right">Total Value</TableHead>
+                            <TableHead className="text-right">Draft</TableHead>
+                            <TableHead className="text-right">Pending</TableHead>
+                            <TableHead className="text-right">Approved</TableHead>
+                            <TableHead className="text-right">Paid</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -589,12 +633,20 @@ export default function ManagementReport() {
                               <TableCell className="font-medium">{r.siteName}</TableCell>
                               <TableCell className="text-right tabular-nums">{r.billCount}</TableCell>
                               <TableCell className="text-right tabular-nums font-medium">{fmtCur(r.billValue)}</TableCell>
+                              <TableCell className="text-right tabular-nums text-muted-foreground">{r.statusBreakdown.draft || "—"}</TableCell>
+                              <TableCell className="text-right tabular-nums text-amber-600">{r.statusBreakdown.pending || "—"}</TableCell>
+                              <TableCell className="text-right tabular-nums text-green-600">{r.statusBreakdown.approved || "—"}</TableCell>
+                              <TableCell className="text-right tabular-nums text-blue-600">{r.statusBreakdown.paid || "—"}</TableCell>
                             </TableRow>
                           ))}
                           <TotalsRow label="Total"
                             cells={[
                               financialsData.bills.reduce((a, r) => a + r.billCount, 0),
                               fmtCur(financialsData.bills.reduce((a, r) => a + r.billValue, 0)),
+                              financialsData.bills.reduce((a, r) => a + r.statusBreakdown.draft, 0),
+                              financialsData.bills.reduce((a, r) => a + r.statusBreakdown.pending, 0),
+                              financialsData.bills.reduce((a, r) => a + r.statusBreakdown.approved, 0),
+                              financialsData.bills.reduce((a, r) => a + r.statusBreakdown.paid, 0),
                             ]}
                           />
                         </TableBody>

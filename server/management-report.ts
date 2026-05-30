@@ -1,8 +1,12 @@
 /**
  * Cross-site Management Report — aggregation endpoints.
  * Pure reporting layer: read-only, no business logic.
+ *
+ * Auth: each route explicitly runs requireAuth before assertView,
+ * so it is safe regardless of where registerManagementReportRoutes
+ * is called relative to the global app.use("/api", requireAuth) block.
  */
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import {
   eq, and, gte, lte, inArray, isNull, or, sum, count, sql,
@@ -14,9 +18,12 @@ import {
   purchaseIndents, purchaseIndentItems,
   vendorBills, vendorBillItems,
   sites as sitesTable,
+  ldoLogs,
+  dieselRequirements,
 } from "@shared/schema";
 import { storage } from "./storage";
 import { assertView } from "./auth-routes";
+import { requireAuth } from "./auth";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -40,31 +47,37 @@ async function getEffectiveSiteIds(req: any, selectedIds: number[] | null): Prom
 async function siteIdsToNames(ids: number[] | null): Promise<string[] | null> {
   if (ids === null) return null;
   if (ids.length === 0) return [];
-  const rows = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable).where(inArray(sitesTable.id, ids));
+  const rows = await db.select({ id: sitesTable.id, name: sitesTable.name })
+    .from(sitesTable).where(inArray(sitesTable.id, ids));
   return rows.map((r) => r.name);
-}
-
-async function plantNamesForSiteIds(ids: number[] | null): Promise<string[] | null> {
-  if (ids === null) return null;
-  if (ids.length === 0) return [];
-  const rows = await db.select({ plantName: plantSettings.plantName })
-    .from(plantSettings)
-    .where(and(
-      inArray(plantSettings.siteId, ids),
-    ));
-  return rows.map((r) => r.plantName);
 }
 
 function cond(arr: any[]) {
   return arr.length ? and(...arr) : undefined;
 }
 
+/** Wraps requireAuth as a promise so we can await it inline in route handlers. */
+function authMiddleware(req: Request, res: Response): Promise<boolean> {
+  return new Promise((resolve) => {
+    requireAuth(req, res, () => resolve(true));
+    // If requireAuth calls res.status().json() it ends the response; resolve false.
+    res.on("finish", () => resolve(false));
+  });
+}
+
 // ── Route registration ───────────────────────────────────────────────────────
 
 export function registerManagementReportRoutes(app: Express) {
 
+  // Shared auth middleware applied to every management report route.
+  // This is explicit per-route auth so the endpoints are safe regardless
+  // of where this function is called relative to the global requireAuth block.
+  const mgmtAuth = [
+    (req: Request, res: Response, next: NextFunction) => requireAuth(req, res, next),
+  ];
+
   // ── 1. Materials Consumption ─────────────────────────────────────────────
-  app.get("/api/admin/management-report/materials", async (req, res) => {
+  app.get("/api/admin/management-report/materials", ...mgmtAuth, async (req, res) => {
     try {
       if (!assertView(req, res, "reports")) return;
 
@@ -107,19 +120,17 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(issConds))
       .groupBy(storeIssues.siteId, storeIssueItems.itemId);
 
-      // Fetch lookup maps
+      // Lookup maps
       const allSites = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable);
       const siteMap  = new Map(allSites.map((s) => [s.id, s.name]));
-
       const allItems = await db.select({ id: storeItems.id, name: storeItems.name, category: storeItems.category, uom: storeItems.uom }).from(storeItems);
       const itemMap  = new Map(allItems.map((i) => [i.id, i]));
 
       type Row = { siteId: number | null; siteName: string; itemName: string; category: string; uom: string; qtyReceived: number; qtyIssued: number };
-      const key = (sId: number | null, iId: number) => `${sId}-${iId}`;
       const rowMap = new Map<string, Row>();
 
       const getOrCreate = (siteId: number | null, itemId: number): Row => {
-        const k = key(siteId, itemId);
+        const k = `${siteId}-${itemId}`;
         if (!rowMap.has(k)) {
           const item = itemMap.get(itemId);
           rowMap.set(k, {
@@ -140,7 +151,6 @@ export function registerManagementReportRoutes(app: Express) {
 
       const result = Array.from(rowMap.values())
         .sort((a, b) => a.siteName.localeCompare(b.siteName) || a.itemName.localeCompare(b.itemName));
-
       res.json(result);
     } catch (err) {
       console.error("management-report/materials:", err);
@@ -149,7 +159,7 @@ export function registerManagementReportRoutes(app: Express) {
   });
 
   // ── 2. Plant Production ──────────────────────────────────────────────────
-  app.get("/api/admin/management-report/production", async (req, res) => {
+  app.get("/api/admin/management-report/production", ...mgmtAuth, async (req, res) => {
     try {
       if (!assertView(req, res, "reports")) return;
 
@@ -160,28 +170,20 @@ export function registerManagementReportRoutes(app: Express) {
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo   = req.query.dateTo   as string | undefined;
 
-      // plantName ↔ site mapping
       const psRows = await db.select({ plantName: plantSettings.plantName, siteId: plantSettings.siteId, plantType: plantSettings.plantType }).from(plantSettings);
       const allSites = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable);
       const siteMap = new Map(allSites.map((s) => [s.id, s.name]));
       const plantToSiteId = new Map(psRows.map((p) => [p.plantName, p.siteId]));
-      const plantToType   = new Map(psRows.map((p) => [p.plantName, p.plantType]));
 
       const permittedPlantNames = effectiveIds !== null
         ? psRows.filter((p) => p.siteId !== null && effectiveIds.includes(p.siteId)).map((p) => p.plantName)
         : null;
 
-      // HMP dispatches
       const hmpConds: any[] = [];
       if (dateFrom) hmpConds.push(gte(truckDispatches.date, dateFrom));
       if (dateTo)   hmpConds.push(lte(truckDispatches.date, dateTo));
-      if (permittedPlantNames !== null) {
-        if (permittedPlantNames.length === 0) {
-          // no permitted HMP plants
-        } else {
-          hmpConds.push(inArray(truckDispatches.plantName, permittedPlantNames));
-        }
-      }
+      if (permittedPlantNames !== null && permittedPlantNames.length > 0)
+        hmpConds.push(inArray(truckDispatches.plantName, permittedPlantNames));
 
       const hmpRows = permittedPlantNames?.length === 0 ? [] : await db.select({
         plantName:     truckDispatches.plantName,
@@ -192,17 +194,11 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(hmpConds))
       .groupBy(truckDispatches.plantName);
 
-      // RMC batches
       const rmcConds: any[] = [];
       if (dateFrom) rmcConds.push(gte(rmcBatchRecords.date, dateFrom));
       if (dateTo)   rmcConds.push(lte(rmcBatchRecords.date, dateTo));
-      if (permittedPlantNames !== null) {
-        if (permittedPlantNames.length === 0) {
-          // no permitted RMC plants
-        } else {
-          rmcConds.push(inArray(rmcBatchRecords.plantName, permittedPlantNames));
-        }
-      }
+      if (permittedPlantNames !== null && permittedPlantNames.length > 0)
+        rmcConds.push(inArray(rmcBatchRecords.plantName, permittedPlantNames));
 
       const rmcRows = permittedPlantNames?.length === 0 ? [] : await db.select({
         plantName:     rmcBatchRecords.plantName,
@@ -218,13 +214,11 @@ export function registerManagementReportRoutes(app: Express) {
 
       for (const r of hmpRows) {
         const siteId = plantToSiteId.get(r.plantName) ?? null;
-        const siteName = siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName;
-        result.push({ siteName, plantName: r.plantName, type: "HMP", mtProduced: Number(r.mtProduced) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "MT" });
+        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, type: "HMP", mtProduced: Number(r.mtProduced) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "MT" });
       }
       for (const r of rmcRows) {
         const siteId = plantToSiteId.get(r.plantName) ?? null;
-        const siteName = siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName;
-        result.push({ siteName, plantName: r.plantName, type: "RMC", mtProduced: Number(r.volumeM3) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "m³" });
+        result.push({ siteName: siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName, plantName: r.plantName, type: "RMC", mtProduced: Number(r.volumeM3) || 0, dispatchCount: Number(r.dispatchCount) || 0, unit: "m³" });
       }
 
       result.sort((a, b) => a.siteName.localeCompare(b.siteName) || a.plantName.localeCompare(b.plantName));
@@ -236,17 +230,20 @@ export function registerManagementReportRoutes(app: Express) {
   });
 
   // ── 3. Fuel & LDO ───────────────────────────────────────────────────────
-  app.get("/api/admin/management-report/fuel", async (req, res) => {
+  app.get("/api/admin/management-report/fuel", ...mgmtAuth, async (req, res) => {
     try {
       if (!assertView(req, res, "reports")) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      if (effectiveIds !== null && effectiveIds.length === 0) return res.json([]);
+      if (effectiveIds !== null && effectiveIds.length === 0) {
+        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCost: 0 } });
+      }
 
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo   = req.query.dateTo   as string | undefined;
 
+      // Plant ↔ site mapping
       const psRows = await db.select({ plantName: plantSettings.plantName, siteId: plantSettings.siteId }).from(plantSettings);
       const allSites = await db.select({ id: sitesTable.id, name: sitesTable.name }).from(sitesTable);
       const siteMap = new Map(allSites.map((s) => [s.id, s.name]));
@@ -256,12 +253,12 @@ export function registerManagementReportRoutes(app: Express) {
         ? psRows.filter((p) => p.siteId !== null && effectiveIds.includes(p.siteId)).map((p) => p.plantName)
         : null;
 
+      // Per-plant LDO consumed from dispatches
       const hmpConds: any[] = [];
       if (dateFrom) hmpConds.push(gte(truckDispatches.date, dateFrom));
       if (dateTo)   hmpConds.push(lte(truckDispatches.date, dateTo));
-      if (permittedPlantNames !== null && permittedPlantNames.length > 0) {
+      if (permittedPlantNames !== null && permittedPlantNames.length > 0)
         hmpConds.push(inArray(truckDispatches.plantName, permittedPlantNames));
-      }
 
       const fuelRows = permittedPlantNames?.length === 0 ? [] : await db.select({
         plantName:   truckDispatches.plantName,
@@ -272,17 +269,47 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(hmpConds))
       .groupBy(truckDispatches.plantName);
 
-      type Row = { siteName: string; plantName: string; ldoConsumedL: number; mtProduced: number; lPerMt: number | null };
-      const result: Row[] = fuelRows.map((r) => {
+      type PlantRow = { siteName: string; plantName: string; ldoConsumedL: number; mtProduced: number; lPerMt: number | null };
+      const plants: PlantRow[] = fuelRows.map((r) => {
         const siteId   = plantToSiteId.get(r.plantName) ?? null;
         const siteName = siteId ? (siteMap.get(siteId) ?? r.plantName) : r.plantName;
         const ldo  = Number(r.ldoConsumed)  || 0;
         const mt   = Number(r.mtProduced)   || 0;
         return { siteName, plantName: r.plantName, ldoConsumedL: ldo, mtProduced: mt, lPerMt: mt > 0 ? Math.round((ldo / mt) * 100) / 100 : null };
       });
+      plants.sort((a, b) => a.siteName.localeCompare(b.siteName));
 
-      result.sort((a, b) => a.siteName.localeCompare(b.siteName));
-      res.json(result);
+      // Aggregate LDO received from ldo_logs (plant-level daily log, not per plant)
+      const ldoConds: any[] = [];
+      if (dateFrom) ldoConds.push(gte(ldoLogs.date, dateFrom));
+      if (dateTo)   ldoConds.push(lte(ldoLogs.date, dateTo));
+
+      const [ldoTotals] = await db.select({
+        received: sum(ldoLogs.ldoReceived),
+        consumed: sum(ldoLogs.ldoConsumed),
+      })
+      .from(ldoLogs)
+      .where(cond(ldoConds));
+
+      // Diesel cost from diesel_requirements (amount field = purchase cost)
+      const drConds: any[] = [];
+      if (dateFrom) drConds.push(gte(dieselRequirements.date, dateFrom));
+      if (dateTo)   drConds.push(lte(dieselRequirements.date, dateTo));
+
+      const [drTotals] = await db.select({
+        cost: sum(dieselRequirements.amount),
+      })
+      .from(dieselRequirements)
+      .where(cond(drConds));
+
+      res.json({
+        plants,
+        summary: {
+          ldoReceivedL: Number(ldoTotals?.received) || 0,
+          ldoConsumedL: Number(ldoTotals?.consumed) || 0,
+          dieselCost:   Number(drTotals?.cost) || 0,
+        },
+      });
     } catch (err) {
       console.error("management-report/fuel:", err);
       res.status(500).json({ error: "Failed to fetch fuel report" });
@@ -290,7 +317,7 @@ export function registerManagementReportRoutes(app: Express) {
   });
 
   // ── 4. Labour / Mandays ──────────────────────────────────────────────────
-  app.get("/api/admin/management-report/labour", async (req, res) => {
+  app.get("/api/admin/management-report/labour", ...mgmtAuth, async (req, res) => {
     try {
       if (!assertView(req, res, "reports")) return;
 
@@ -301,7 +328,6 @@ export function registerManagementReportRoutes(app: Express) {
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo   = req.query.dateTo   as string | undefined;
 
-      // Convert siteIds → site names for DPR text-field filtering
       const permittedSiteNames = await siteIdsToNames(effectiveIds);
       if (permittedSiteNames !== null && permittedSiteNames.length === 0) return res.json([]);
 
@@ -328,7 +354,6 @@ export function registerManagementReportRoutes(app: Express) {
         category:    r.category,
         totalMandays: Number(r.mandays) || 0,
       }));
-
       res.json(result);
     } catch (err) {
       console.error("management-report/labour:", err);
@@ -337,18 +362,19 @@ export function registerManagementReportRoutes(app: Express) {
   });
 
   // ── 5. Financials ────────────────────────────────────────────────────────
-  app.get("/api/admin/management-report/financials", async (req, res) => {
+  app.get("/api/admin/management-report/financials", ...mgmtAuth, async (req, res) => {
     try {
       if (!assertView(req, res, "reports")) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      if (effectiveIds !== null && effectiveIds.length === 0) return res.json({ bills: [], indents: { count: 0, value: 0 } });
+      if (effectiveIds !== null && effectiveIds.length === 0) {
+        return res.json({ bills: [], indents: { count: 0, value: 0 } });
+      }
 
       const dateFrom = req.query.dateFrom as string | undefined;
       const dateTo   = req.query.dateTo   as string | undefined;
 
-      // Vendor bills grouped by siteName from items
       const permittedSiteNames = await siteIdsToNames(effectiveIds);
 
       const billConds: any[] = [];
@@ -356,42 +382,50 @@ export function registerManagementReportRoutes(app: Express) {
       if (dateTo)   billConds.push(lte(vendorBills.billDate, dateTo));
 
       const billRows = await db.select({
-        siteName:  vendorBillItems.siteName,
-        billId:    vendorBills.id,
-        amount:    vendorBillItems.amount,
-        status:    vendorBills.status,
+        siteName: vendorBillItems.siteName,
+        billId:   vendorBills.id,
+        amount:   vendorBillItems.amount,
+        status:   vendorBills.status,
       })
       .from(vendorBills)
       .innerJoin(vendorBillItems, eq(vendorBillItems.billId, vendorBills.id))
       .where(cond(billConds));
 
-      // Aggregate bills by site name (filter by permitted sites)
-      type BillRow = { siteName: string; billCount: number; billValue: number; statuses: Record<string, number> };
-      const billMap = new Map<string, BillRow>();
+      // Aggregate bills by site name, tracking status breakdown
+      type BillEntry = {
+        siteName: string;
+        billCount: number;
+        billValue: number;
+        statusBreakdown: { draft: number; pending: number; approved: number; paid: number; other: number };
+      };
+      const billMap = new Map<string, BillEntry>();
+      const billIdBySite = new Map<string, Set<number>>();
+
       for (const r of billRows) {
         const sn = r.siteName || "Unassigned";
-        if (permittedSiteNames !== null && !permittedSiteNames.includes(sn) && sn !== "Unassigned") continue;
+        if (permittedSiteNames !== null && sn !== "Unassigned" && !permittedSiteNames.includes(sn)) continue;
         if (!billMap.has(sn)) {
-          billMap.set(sn, { siteName: sn, billCount: 0, billValue: 0, statuses: {} });
+          billMap.set(sn, { siteName: sn, billCount: 0, billValue: 0,
+            statusBreakdown: { draft: 0, pending: 0, approved: 0, paid: 0, other: 0 } });
+          billIdBySite.set(sn, new Set());
         }
         const entry = billMap.get(sn)!;
         entry.billValue += Number(r.amount) || 0;
-        const status = r.status || "draft";
-        entry.statuses[status] = (entry.statuses[status] || 0) + 1;
-      }
-      // Count distinct bills per site
-      const billIdBySite = new Map<string, Set<number>>();
-      for (const r of billRows) {
-        const sn = r.siteName || "Unassigned";
-        if (!billIdBySite.has(sn)) billIdBySite.set(sn, new Set());
         billIdBySite.get(sn)!.add(r.billId);
+        const s = (r.status || "draft").toLowerCase();
+        if (s === "draft")         entry.statusBreakdown.draft++;
+        else if (s === "pending")  entry.statusBreakdown.pending++;
+        else if (s === "approved") entry.statusBreakdown.approved++;
+        else if (s === "paid")     entry.statusBreakdown.paid++;
+        else                        entry.statusBreakdown.other++;
       }
+      // Distinct bill count per site (status counts are per item, billCount is per bill)
       for (const [sn, ids] of billIdBySite) {
-        const entry = billMap.get(sn);
-        if (entry) entry.billCount = ids.size;
+        const e = billMap.get(sn);
+        if (e) e.billCount = ids.size;
       }
 
-      // Purchase indents (no siteId — date-filtered total only)
+      // Purchase indents aggregate (no siteId — date-filtered total only)
       const indentConds: any[] = [];
       if (dateFrom) indentConds.push(gte(purchaseIndents.date, dateFrom));
       if (dateTo)   indentConds.push(lte(purchaseIndents.date, dateTo));
@@ -405,9 +439,10 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(indentConds));
 
       res.json({
-        bills:   Array.from(billMap.values()).sort((a, b) => a.siteName.localeCompare(b.siteName)),
+        bills: Array.from(billMap.values())
+          .sort((a, b) => a.siteName.localeCompare(b.siteName)),
         indents: {
-          count: Number(indentTotals?.cnt) || 0,
+          count: Number(indentTotals?.cnt)   || 0,
           value: Number(indentTotals?.value) || 0,
         },
       });
