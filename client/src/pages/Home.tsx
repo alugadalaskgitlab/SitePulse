@@ -1,133 +1,99 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  HardHat, Factory, Package, BarChart3, Settings, LogOut,
-  TrendingUp, Building2, ArrowUpRight, Calendar,
+  Factory, Wrench, Building2, BarChart2, HardHat,
+  Settings, ArrowRight,
 } from "lucide-react";
-import { AdminNotifications } from "@/components/AdminNotifications";
+import { Badge } from "@/components/ui/badge";
+import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import type { Site } from "@shared/schema";
 
+const MODULES = [
+  {
+    id: "hmp",
+    title: "HMP Operations",
+    description: "Shift logs, heating sessions & production dispatches",
+    icon: Factory,
+    href: "/plant/hub",
+    lightBg: "bg-orange-50",
+    iconColor: "text-orange-600",
+    hoverBorder: "hover:border-orange-300",
+    section: "hmp" as const,
+    isAdmin: false,
+  },
+  {
+    id: "equipment",
+    title: "Equipment & Fleet",
+    description: "Usage logs, breakdowns & diesel tracking",
+    icon: Wrench,
+    href: "/equipment/hub",
+    lightBg: "bg-blue-50",
+    iconColor: "text-blue-600",
+    hoverBorder: "hover:border-blue-300",
+    section: "equipment" as const,
+    isAdmin: false,
+  },
+  {
+    id: "rmc",
+    title: "RMC Operations",
+    description: "Ready-mix batching, delivery challans & cube tests",
+    icon: Building2,
+    href: "/plant/rmc",
+    lightBg: "bg-emerald-50",
+    iconColor: "text-emerald-600",
+    hoverBorder: "hover:border-emerald-300",
+    section: "rmc" as const,
+    isAdmin: false,
+  },
+  {
+    id: "reports",
+    title: "Reports & Analysis",
+    description: "Production reports, stock ledgers & finance",
+    icon: BarChart2,
+    href: "/reports/hub",
+    lightBg: "bg-purple-50",
+    iconColor: "text-purple-600",
+    hoverBorder: "hover:border-purple-300",
+    section: "reports" as const,
+    isAdmin: false,
+  },
+  {
+    id: "site",
+    title: "Site Operations",
+    description: "Daily progress reports & site activities",
+    icon: HardHat,
+    href: "/site/hub",
+    lightBg: "bg-teal-50",
+    iconColor: "text-teal-600",
+    hoverBorder: "hover:border-teal-300",
+    section: "site" as const,
+    isAdmin: false,
+  },
+  {
+    id: "masters",
+    title: "Masters & Config",
+    description: "Parties, materials, equipment & personnel",
+    icon: Settings,
+    href: "/admin/hub",
+    lightBg: "bg-slate-100",
+    iconColor: "text-slate-600",
+    hoverBorder: "hover:border-slate-300",
+    section: "masters" as const,
+    isAdmin: true,
+  },
+];
+
 export default function Home() {
-  const { user, sectionVisible, logout, isAdmin, isManager } = useAuth();
+  const { user, sectionVisible, isAdmin } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
   const { data: sites } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const activeSite = sites?.find((s) => s.isActive !== 0) ?? sites?.[0];
   const projectName = activeSite?.name ?? "HLC Projects";
 
-  const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
-  const initials = user?.fullName
-    ? user.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-    : user?.email?.slice(0, 2).toUpperCase() ?? "?";
-
-  // ── Visibility guards ──────────────────────────────────────────────────────
-  const canSeeSite =
-    sectionVisible("site_dprs") ||
-    sectionVisible("site_materials") ||
-    sectionVisible("site_procurement") ||
-    sectionVisible("site_diesel");
-
-  const canSeeHmp =
-    sectionVisible("plant_shift_logs") ||
-    sectionVisible("plant_heating") ||
-    sectionVisible("plant_production");
-
-  const canSeeRmc = rmcEnabled && sectionVisible("plant_production");
-
-  const canSeeStores = sectionVisible("stores_inventory");
-
-  const canSeeReports =
-    sectionVisible("plant_daily_reports") || sectionVisible("reports") || sectionVisible("admin_settings");
-
-  const canSeeEstimates = sectionVisible("admin_settings");
-  const canSeeAdmin = sectionVisible("admin_settings");
-
-  // ── Module card definitions ────────────────────────────────────────────────
-  const modules = [
-    {
-      id: "site",
-      show: canSeeSite,
-      href: "/site",
-      label: "Site Operations",
-      description: "Daily progress reports, labour, equipment & material entries",
-      icon: HardHat,
-      accent: "from-amber-600 to-amber-500",
-      iconBg: "bg-amber-500/20",
-      borderHover: "hover:border-amber-500/50",
-    },
-    {
-      id: "hmp",
-      show: canSeeHmp,
-      href: "/plant/dashboard",
-      label: "HMP Operations",
-      description: "Shift logs, heating sessions, production dispatches & LDO tracking",
-      icon: Factory,
-      accent: "from-yellow-600 to-yellow-500",
-      iconBg: "bg-yellow-500/20",
-      borderHover: "hover:border-yellow-500/50",
-    },
-    {
-      id: "rmc",
-      show: canSeeRmc,
-      href: "/plant/rmc",
-      label: "RMC Operations",
-      description: "Ready-mix dispatches, delivery challans & cube test QC",
-      icon: Building2,
-      accent: "from-teal-600 to-teal-500",
-      iconBg: "bg-teal-500/20",
-      borderHover: "hover:border-teal-500/50",
-    },
-    {
-      id: "stores",
-      show: canSeeStores,
-      href: "/stores",
-      label: "Stores & Materials",
-      description: "Inventory, GRN receipts, stock ledger & item master management",
-      icon: Package,
-      accent: "from-orange-600 to-orange-500",
-      iconBg: "bg-orange-500/20",
-      borderHover: "hover:border-orange-500/50",
-    },
-    {
-      id: "reports",
-      show: canSeeReports,
-      href: sectionVisible("plant_daily_reports")
-        ? "/plant/daily-reports"
-        : sectionVisible("reports")
-          ? "/admin/reports"
-          : "/admin/management-report",
-      label: "Reports & Analysis",
-      description: "Plant daily reports, heating trends, RMC summaries & historical data",
-      icon: BarChart3,
-      accent: "from-blue-600 to-blue-500",
-      iconBg: "bg-blue-500/20",
-      borderHover: "hover:border-blue-500/50",
-    },
-    {
-      id: "estimates",
-      show: canSeeEstimates,
-      href: "/estimator-login",
-      label: "Estimates Manager",
-      description: "Bituminous mix rate calculator, concrete BOQ analysis & saved estimates",
-      icon: TrendingUp,
-      accent: "from-violet-600 to-violet-500",
-      iconBg: "bg-violet-500/20",
-      borderHover: "hover:border-violet-500/50",
-    },
-    {
-      id: "admin",
-      show: canSeeAdmin,
-      href: "/admin/settings",
-      label: "App Management",
-      description: "User accounts, device approvals, permissions, plant config & data sync",
-      icon: Settings,
-      accent: "from-slate-600 to-slate-500",
-      iconBg: "bg-slate-500/20",
-      borderHover: "hover:border-slate-500/50",
-    },
-  ].filter((m) => m.show);
+  const firstName = user?.fullName?.split(" ")[0] ?? "";
 
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -136,118 +102,104 @@ export default function Home() {
     year: "numeric",
   });
 
+  const canSeeHmp =
+    sectionVisible("plant_shift_logs") ||
+    sectionVisible("plant_heating") ||
+    sectionVisible("plant_production");
+
+  const canSeeEquipment = sectionVisible("plant_equipment");
+  const canSeeRmc = rmcEnabled && sectionVisible("plant_production");
+
+  const canSeeReports =
+    sectionVisible("plant_daily_reports") ||
+    sectionVisible("reports") ||
+    sectionVisible("admin_settings");
+
+  const canSeeSite =
+    sectionVisible("site_dprs") ||
+    sectionVisible("site_materials") ||
+    sectionVisible("site_procurement") ||
+    sectionVisible("site_diesel");
+
+  const canSeeMasters = isAdmin;
+
+  function canSeeSection(id: string) {
+    switch (id) {
+      case "hmp": return canSeeHmp;
+      case "equipment": return canSeeEquipment;
+      case "rmc": return canSeeRmc;
+      case "reports": return canSeeReports;
+      case "site": return canSeeSite;
+      case "masters": return canSeeMasters;
+      default: return false;
+    }
+  }
+
+  const visibleModules = MODULES.filter((m) => canSeeSection(m.id));
+
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col text-white">
+    <HubShell title="Home Dashboard">
+      <div className="p-6 max-w-6xl mx-auto">
 
-      {/* ── Header ── */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 md:px-6 py-3 flex items-center gap-3">
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <div className="w-7 h-7 bg-amber-500 rounded-lg flex items-center justify-center shrink-0 shadow">
-            <TrendingUp className="w-4 h-4 text-white" />
-          </div>
-          <div className="min-w-0">
-            <span className="font-bold text-sm tracking-tight">SiteLog</span>
-            <span className="hidden sm:inline text-slate-500 text-sm mx-1.5">·</span>
-            <span className="hidden sm:inline text-slate-400 text-xs truncate">
-              High Lane Constructions Pvt Ltd
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {/* Bell + admin notifications — AdminNotifications renders its own trigger */}
-          <div data-testid="button-notifications">
-            <AdminNotifications />
-          </div>
-
-          {/* User chip */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800 rounded-lg">
-            <div className="w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center font-bold text-xs shrink-0" data-testid="text-current-user">
-              {initials}
-            </div>
-            <div className="text-left hidden sm:block">
-              <p className="text-xs font-semibold leading-tight truncate max-w-[120px]">
-                {user?.fullName || user?.email}
-              </p>
-              <p className="text-[10px] text-slate-400">{roleLabel}</p>
-            </div>
-          </div>
-
-          {/* Sign out */}
-          <button
-            onClick={() => { void logout(); }}
-            title="Sign out"
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-500 hover:text-red-400"
-            data-testid="button-logout"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </header>
-
-      {/* ── Project Banner ── */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800/80 to-slate-900 border-b border-slate-800 px-4 md:px-6 py-2.5">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider leading-none mb-0.5">
-              Active Project
-            </p>
-            <p className="text-sm font-bold text-white truncate">{projectName}</p>
-          </div>
-          <p className="text-xs text-slate-500 flex items-center gap-1.5 shrink-0">
-            <Calendar className="w-3 h-3" />
-            {today}
+        {/* Welcome banner */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Welcome back{firstName ? `, ${firstName}` : ""}
+          </h2>
+          <p className="text-slate-500 mt-1 text-sm">
+            {projectName} · {today}
           </p>
         </div>
-      </div>
 
-      {/* ── Module Grid ── */}
-      <div className="flex-1 px-4 md:px-6 py-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-6">
-            <h2 className="text-base font-semibold text-slate-200">
-              Welcome back{user?.fullName ? `, ${user.fullName.split(" ")[0]}` : ""}
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {modules.length} module{modules.length !== 1 ? "s" : ""} available
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4" data-testid="home-modules-grid">
-            {modules.map((mod) => (
-              <Link key={mod.id} href={mod.href}>
-                <a
-                  className={`group block text-left rounded-2xl overflow-hidden border border-slate-800 ${mod.borderHover} bg-slate-900 transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5`}
-                  data-testid={`card-${mod.id}`}
-                >
-                  {/* Gradient header strip */}
-                  <div className={`bg-gradient-to-br ${mod.accent} px-4 pt-4 pb-5`}>
-                    <div className="flex items-start justify-between">
-                      <div className={`w-10 h-10 ${mod.iconBg} rounded-xl border border-white/20 flex items-center justify-center`}>
-                        <mod.icon className="w-5 h-5 text-white" />
-                      </div>
-                      <ArrowUpRight className="w-4 h-4 text-white/50 mt-0.5 transition-all duration-200 group-hover:text-white/90 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        {/* Module grid */}
+        <div
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
+          data-testid="home-modules-grid"
+        >
+          {visibleModules.map((mod) => (
+            <Link key={mod.id} href={mod.href}>
+              <a
+                className={`group block bg-white rounded-2xl border border-slate-200 ${mod.hoverBorder} shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer`}
+                data-testid={`card-${mod.id}`}
+              >
+                <div className="p-5 pb-4">
+                  <div className="flex items-start justify-between mb-4">
+                    <div
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center ${mod.lightBg} ${mod.iconColor} group-hover:scale-110 transition-transform duration-200`}
+                    >
+                      <mod.icon className="w-6 h-6" />
                     </div>
+                    {mod.isAdmin && (
+                      <Badge
+                        variant="secondary"
+                        className="bg-slate-100 text-slate-600 border-slate-200"
+                      >
+                        Admin
+                      </Badge>
+                    )}
                   </div>
+                  <h3 className="text-base font-semibold text-slate-900">
+                    {mod.title}
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-1 leading-relaxed line-clamp-2">
+                    {mod.description}
+                  </p>
+                </div>
+                <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-sm font-medium text-slate-500 group-hover:text-slate-800 transition-colors">
+                  <span>View Operations</span>
+                  <ArrowRight className="w-4 h-4 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
+                </div>
+              </a>
+            </Link>
+          ))}
+        </div>
 
-                  {/* Label + description */}
-                  <div className="px-4 py-3">
-                    <h3 className="font-bold text-sm text-slate-100 leading-snug">{mod.label}</h3>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{mod.description}</p>
-                  </div>
-                </a>
-              </Link>
-            ))}
+        {visibleModules.length === 0 && (
+          <div className="text-center py-20 text-slate-400">
+            <p className="text-sm">No modules available. Contact an administrator.</p>
           </div>
-        </div>
+        )}
       </div>
-
-      {/* ── Footer ── */}
-      <div className="border-t border-slate-800/60 px-4 md:px-6 py-3">
-        <div className="max-w-5xl mx-auto text-center text-[10px] text-slate-700">
-          SiteLog · High Lane Constructions Pvt Ltd · Each card is shown only to users with the required permission
-        </div>
-      </div>
-    </div>
+    </HubShell>
   );
 }

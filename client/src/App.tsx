@@ -85,6 +85,11 @@ import RmcCubeTests from "@/pages/RmcCubeTests";
 import RmcDailyReport from "@/pages/RmcDailyReport";
 import RmcDeliveryChallans from "@/pages/RmcDeliveryChallans";
 import RmcHub from "@/pages/RmcHub";
+import HmpHub from "@/pages/HmpHub";
+import EquipmentHub from "@/pages/EquipmentHub";
+import ReportsHub from "@/pages/ReportsHub";
+import SiteHub from "@/pages/SiteHub";
+import MastersHub from "@/pages/MastersHub";
 import NotFound from "@/pages/not-found";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
 
@@ -150,10 +155,35 @@ function Router() {
       <Route path="/concrete-calculator" component={ConcreteCalculator} />
       <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
 
-      {/* Home gets its own full-page dark shell (no AppHeader / container wrapper). */}
+      {/* Home and hub pages use HubShell (sidebar layout) — no AppHeader wrapper. */}
       <Route path="/">
         <RequireAuth>
           <Home />
+        </RequireAuth>
+      </Route>
+      <Route path="/plant/hub">
+        <RequireAuth>
+          <HmpHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/equipment/hub">
+        <RequireAuth>
+          <EquipmentHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/reports/hub">
+        <RequireAuth>
+          <ReportsHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/site/hub">
+        <RequireAuth>
+          <SiteHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/admin/hub">
+        <RequireAuth>
+          <MastersHub />
         </RequireAuth>
       </Route>
 
