@@ -9,7 +9,7 @@ import {
 
 const DOMAIN = ""; // mockup — no real data
 
-const TODAY = "Saturday, 31 May 2026";
+const TODAY = "Sunday, 31 May 2026";
 const USER = { name: "Sunil Kumar", initials: "SK", role: "Admin" };
 
 const STATS = [
