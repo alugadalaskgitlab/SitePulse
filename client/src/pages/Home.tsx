@@ -1,5 +1,4 @@
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import {
   Factory, Wrench, Building2, BarChart2, HardHat,
   Settings, ArrowRight, Package, Receipt,
@@ -8,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
-import type { Site } from "@shared/schema";
 
 const MODULES = [
   {
@@ -105,9 +103,7 @@ export default function Home() {
   const { user, sectionVisible, isAdmin, isManager } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
-  const { data: sites } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
-  const activeSite = sites?.find((s) => s.isActive !== 0) ?? sites?.[0];
-  const projectName = activeSite?.name ?? "HLC Projects";
+  const projectName = "High Lane Constructions Pvt Ltd";
 
   const firstName = user?.fullName?.split(" ")[0] ?? "";
 

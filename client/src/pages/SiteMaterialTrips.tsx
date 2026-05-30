@@ -25,9 +25,9 @@ export default function SiteMaterialTrips() {
   const returnTo = (() => {
     try {
       const p = new URLSearchParams(searchString || "");
-      return decodeURIComponent(p.get("returnTo") || "") || "/site";
+      return decodeURIComponent(p.get("returnTo") || "") || "/site/hub";
     } catch {
-      return "/site";
+      return "/site/hub";
     }
   })();
   const { data: sitesList = [] } = useQuery<Site[]>({

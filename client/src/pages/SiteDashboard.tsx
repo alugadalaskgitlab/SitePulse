@@ -124,7 +124,7 @@ export default function SiteDashboard() {
   const hasRestoredRef = useRef(false);
   
   const { getBackLink, appendOrigin } = useOrigin();
-  const backLink = getBackLink("/site");
+  const backLink = getBackLink("/site/hub");
   
   useEffect(() => {
     if (hasRestoredRef.current) return;

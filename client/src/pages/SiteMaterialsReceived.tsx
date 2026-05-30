@@ -24,7 +24,7 @@ export default function SiteMaterialsReceived() {
   const { toast } = useToast();
   const search = useSearch();
   const sp = new URLSearchParams(search);
-  const returnTo = sp.get("returnTo") || "/site";
+  const returnTo = sp.get("returnTo") || "/site/hub";
 
   const today = format(new Date(), "yyyy-MM-dd");
 
