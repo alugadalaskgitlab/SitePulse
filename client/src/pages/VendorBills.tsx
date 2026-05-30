@@ -253,12 +253,14 @@ export default function VendorBills() {
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
+  const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const [filterDateFrom, setFilterDateFrom] = useState(_vbSp?.get("dateFrom") ?? "");
+  const [filterDateTo, setFilterDateTo] = useState(_vbSp?.get("dateTo") ?? "");
   const [filterVendor, setFilterVendor] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterParty, setFilterParty] = useState("all");
+  const [filterSite, setFilterSite] = useState(_vbSp?.get("site") ?? "");
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
@@ -1070,9 +1072,10 @@ export default function VendorBills() {
         if (bt !== target) return false;
       }
       if (filterParty !== "all" && !bill.items?.some((it: any) => it.suppliedTo === filterParty)) return false;
+      if (filterSite && !bill.items?.some((it: any) => it.siteName === filterSite)) return false;
       return true;
     });
-  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty]);
+  }, [bills, filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
   const gstBreakdown = useMemo(() => aggregateGstBreakdown(filteredBills), [filteredBills]);
 

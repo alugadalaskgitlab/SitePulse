@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   ChevronLeft, Download, Loader2, Package, Factory, Fuel,
-  Users, Receipt, Building2, RefreshCw, FileDown,
+  Users, Receipt, Building2, RefreshCw, FileDown, ExternalLink,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import { format, startOfMonth, startOfWeek } from "date-fns";
@@ -71,6 +71,29 @@ interface FinancialsResponse {
 
 const fmt = (n: number, dp = 2) => n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: dp });
 const fmtCur = (n: number) => `₹${fmt(n, 0)}`;
+
+function buildDeepLink(path: string, params: Record<string, string>) {
+  const p = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v) p.set(k, v); });
+  const qs = p.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+function ViewDetailsLink({ href, label = "View Details", testId }: { href: string; label?: string; testId?: string }) {
+  return (
+    <Link href={href}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
+        data-testid={testId}
+      >
+        <ExternalLink className="h-3 w-3" />
+        {label}
+      </Button>
+    </Link>
+  );
+}
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const MONTH_START = format(startOfMonth(new Date()), "yyyy-MM-dd");
@@ -499,6 +522,7 @@ export default function ManagementReport() {
                           <TableHead className="text-right">Qty Issued</TableHead>
                           <TableHead className="text-right">Closing Stock</TableHead>
                           <TableHead>Unit</TableHead>
+                          <TableHead />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -511,6 +535,13 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums">{fmt(r.qtyIssued)}</TableCell>
                             <TableCell className="text-right tabular-nums font-medium">{fmt(r.qtyReceived - r.qtyIssued)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{r.uom}</TableCell>
+                            <TableCell>
+                              <ViewDetailsLink
+                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: r.siteName })}
+                                label=""
+                                testId={`link-material-detail-${i}`}
+                              />
+                            </TableCell>
                           </TableRow>
                         ))}
                         {/* Per-site totals */}
@@ -521,10 +552,16 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums">{fmt(s.qtyIssued)}</TableCell>
                             <TableCell className="text-right tabular-nums">{fmt(s.qtyReceived - s.qtyIssued)}</TableCell>
                             <TableCell />
+                            <TableCell>
+                              <ViewDetailsLink
+                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: s.siteName })}
+                                testId={`link-mat-site-total-${i}`}
+                              />
+                            </TableCell>
                           </TableRow>
                         ))}
                         <TotalsRow label="Grand Total"
-                          cells={[fmt(matTotals.qtyReceived), fmt(matTotals.qtyIssued), fmt(matTotals.qtyReceived - matTotals.qtyIssued), ""]}
+                          cells={[fmt(matTotals.qtyReceived), fmt(matTotals.qtyIssued), fmt(matTotals.qtyReceived - matTotals.qtyIssued), "", ""]}
                         />
                       </TableBody>
                     </Table>
@@ -560,6 +597,7 @@ export default function ManagementReport() {
                           <TableHead className="text-right">Produced</TableHead>
                           <TableHead>Unit</TableHead>
                           <TableHead className="text-right">Dispatches</TableHead>
+                          <TableHead />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -573,10 +611,17 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums font-medium">{fmt(r.mtProduced)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{r.unit}</TableCell>
                             <TableCell className="text-right tabular-nums">{r.dispatchCount}</TableCell>
+                            <TableCell>
+                              <ViewDetailsLink
+                                href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName })}
+                                label=""
+                                testId={`link-prod-detail-${i}`}
+                              />
+                            </TableCell>
                           </TableRow>
                         ))}
                         <TotalsRow label="Grand Total"
-                          cells={[fmt(prodTotals.mt), "", prodTotals.dis]}
+                          cells={[fmt(prodTotals.mt), "", prodTotals.dis, ""]}
                         />
                       </TableBody>
                     </Table>
@@ -634,6 +679,7 @@ export default function ManagementReport() {
                             <TableHead className="text-right">LDO Consumed (L)</TableHead>
                             <TableHead className="text-right">MT Produced</TableHead>
                             <TableHead className="text-right">L/MT Ratio</TableHead>
+                            <TableHead />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -650,13 +696,20 @@ export default function ManagementReport() {
                                   </span>
                                 ) : "—"}
                               </TableCell>
+                              <TableCell>
+                                <ViewDetailsLink
+                                  href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName })}
+                                  label=""
+                                  testId={`link-fuel-detail-${i}`}
+                                />
+                              </TableCell>
                             </TableRow>
                           ))}
                           <TotalsRow label="Total"
                             cells={[
                               fmt(fuelData.plants.reduce((a, r) => a + r.ldoConsumedL, 0)),
                               fmt(fuelData.plants.reduce((a, r) => a + r.mtProduced, 0)),
-                              "",
+                              "", "",
                             ]}
                           />
                         </TableBody>
@@ -696,6 +749,7 @@ export default function ManagementReport() {
                           <TableHead>Contractor</TableHead>
                           <TableHead>Category</TableHead>
                           <TableHead className="text-right">Total Mandays</TableHead>
+                          <TableHead />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -705,9 +759,16 @@ export default function ManagementReport() {
                             <TableCell>{r.contractor}</TableCell>
                             <TableCell><Badge variant="outline" className="text-xs">{r.category}</Badge></TableCell>
                             <TableCell className="text-right tabular-nums font-medium">{r.totalMandays}</TableCell>
+                            <TableCell>
+                              <ViewDetailsLink
+                                href={buildDeepLink("/site/dashboard", { dateFrom, dateTo, site: r.siteName })}
+                                label=""
+                                testId={`link-labour-detail-${i}`}
+                              />
+                            </TableCell>
                           </TableRow>
                         ))}
-                        <TotalsRow label="Grand Total" cells={[labTotals, ""]} />
+                        <TotalsRow label="Grand Total" cells={[labTotals, "", ""]} />
                       </TableBody>
                     </Table>
                   </div>
@@ -744,6 +805,7 @@ export default function ManagementReport() {
                             <TableHead className="text-right">Pending</TableHead>
                             <TableHead className="text-right">Approved</TableHead>
                             <TableHead className="text-right">Paid</TableHead>
+                            <TableHead />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -756,6 +818,13 @@ export default function ManagementReport() {
                               <TableCell className="text-right tabular-nums text-amber-600">{r.statusBreakdown.pending || "—"}</TableCell>
                               <TableCell className="text-right tabular-nums text-green-600">{r.statusBreakdown.approved || "—"}</TableCell>
                               <TableCell className="text-right tabular-nums text-blue-600">{r.statusBreakdown.paid || "—"}</TableCell>
+                              <TableCell>
+                                <ViewDetailsLink
+                                  href={buildDeepLink("/plant/vendor-bills", { dateFrom, dateTo, site: r.siteName })}
+                                  label=""
+                                  testId={`link-bills-detail-${i}`}
+                                />
+                              </TableCell>
                             </TableRow>
                           ))}
                           <TotalsRow label="Total"
@@ -766,6 +835,7 @@ export default function ManagementReport() {
                               financialsData.bills.reduce((a, r) => a + r.statusBreakdown.pending, 0),
                               financialsData.bills.reduce((a, r) => a + r.statusBreakdown.approved, 0),
                               financialsData.bills.reduce((a, r) => a + r.statusBreakdown.paid, 0),
+                              "",
                             ]}
                           />
                         </TableBody>

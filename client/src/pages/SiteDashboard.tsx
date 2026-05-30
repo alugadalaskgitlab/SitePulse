@@ -77,6 +77,22 @@ export default function SiteDashboard() {
     const sp = new URLSearchParams(window.location.search);
     return SITE_DPR_FILTER_URL_KEYS.some((k) => sp.has(k));
   })();
+  const urlDprFilterDefaults = (() => {
+    if (typeof window === "undefined" || !urlHasDprFilterParams) return {};
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      site: sp.get("site") ?? "",
+      engineer: sp.get("engineer") ?? "",
+      dateFrom: sp.get("dateFrom") ?? "",
+      dateTo: sp.get("dateTo") ?? "",
+      activity: sp.get("activity") ?? "",
+      equipment: sp.get("equipment") ?? "",
+      hasDiesel: sp.get("hasDiesel") === "true",
+      material: sp.get("material") ?? "",
+      supplier: sp.get("supplier") ?? "",
+      workType: sp.get("workType") ?? "",
+    };
+  })();
   const [filters, setFilters, resetDprFilters] = usePersistedFilters(
     "site-dashboard:dpr-filters:v2",
     {
@@ -90,6 +106,7 @@ export default function SiteDashboard() {
       material: "",
       supplier: "",
       workType: "",
+      ...urlDprFilterDefaults,
     },
     { shouldHydrate: !urlHasDprFilterParams },
   );

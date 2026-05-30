@@ -28,6 +28,16 @@ export default function SiteMaterialsReceived() {
 
   const today = format(new Date(), "yyyy-MM-dd");
 
+  const urlFilterKeys = ["dateFrom", "dateTo", "site", "material", "supplier"];
+  const urlHasFilterParams = urlFilterKeys.some((k) => sp.has(k));
+  const urlFilterDefaults = urlHasFilterParams ? {
+    dateFrom: sp.get("dateFrom") ?? today,
+    dateTo: sp.get("dateTo") ?? today,
+    site: sp.get("site") ?? "",
+    material: sp.get("material") ?? "",
+    supplier: sp.get("supplier") ?? "",
+  } : {};
+
   const [filters, setFilters, resetFilters] = usePersistedFilters(
     "site-materials-received:filters:v1",
     {
@@ -36,8 +46,9 @@ export default function SiteMaterialsReceived() {
       site: "",
       material: "",
       supplier: "",
+      ...urlFilterDefaults,
     },
-    { shouldHydrate: true },
+    { shouldHydrate: !urlHasFilterParams },
   );
 
   const hasActiveFilters =

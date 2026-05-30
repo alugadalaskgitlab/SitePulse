@@ -44,12 +44,25 @@ export default function PlantDispatches() {
   // re-opens with the user's last-used filter set. URL params (if any are
   // ever added for shareable links) win over the saved set.
   const PLANT_DISPATCHES_FILTER_URL_KEYS = [
-    "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner",
+    "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner", "filterPlantName",
   ];
   const urlHasDispatchFilterParams = (() => {
     if (typeof window === "undefined") return false;
     const sp = new URLSearchParams(window.location.search);
     return PLANT_DISPATCHES_FILTER_URL_KEYS.some((k) => sp.has(k));
+  })();
+  const urlDispatchFilterDefaults = (() => {
+    if (typeof window === "undefined" || !urlHasDispatchFilterParams) return {};
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      filterDateFrom: sp.get("filterDateFrom") ?? "",
+      filterDateTo: sp.get("filterDateTo") ?? "",
+      filterPartyId: sp.get("filterPartyId") ?? "all",
+      filterMixType: sp.get("filterMixType") ?? "all",
+      filterVehicle: sp.get("filterVehicle") ?? "all",
+      filterOwner: sp.get("filterOwner") ?? "all",
+      filterPlantName: sp.get("filterPlantName") ?? "all",
+    };
   })();
   const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
     "plant-dispatches:last-filters:v1",
@@ -60,16 +73,19 @@ export default function PlantDispatches() {
       filterMixType: "all",
       filterVehicle: "all",
       filterOwner: "all",
+      filterPlantName: "all",
+      ...urlDispatchFilterDefaults,
     },
     { shouldHydrate: !urlHasDispatchFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterPartyId, filterMixType, filterVehicle, filterOwner } = persistedFilters;
+  const { filterDateFrom, filterDateTo, filterPartyId, filterMixType, filterVehicle, filterOwner, filterPlantName } = persistedFilters;
   const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
   const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
   const setFilterPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, filterPartyId: v }));
   const setFilterMixType = (v: string) => setPersistedFilters((f) => ({ ...f, filterMixType: v }));
   const setFilterVehicle = (v: string) => setPersistedFilters((f) => ({ ...f, filterVehicle: v }));
   const setFilterOwner = (v: string) => setPersistedFilters((f) => ({ ...f, filterOwner: v }));
+  const setFilterPlantName = (v: string) => setPersistedFilters((f) => ({ ...f, filterPlantName: v }));
   
   const authenticatedRole = "manager";
   
@@ -487,6 +503,7 @@ export default function PlantDispatches() {
     if (filterDateFrom && d.date < filterDateFrom) return false;
     if (filterDateTo && d.date > filterDateTo) return false;
     if (filterPartyId !== "all" && d.partyId !== parseInt(filterPartyId)) return false;
+    if (filterPlantName !== "all" && d.plantName !== filterPlantName) return false;
     if (filterMixType !== "all") {
       const template = templates?.find(t => t.id === d.mixTemplateId);
       if (template?.mixType?.toUpperCase() !== filterMixType) return false;
@@ -496,7 +513,7 @@ export default function PlantDispatches() {
     return true;
   }) || [];
 
-  const isFiltered = filterDateFrom || filterDateTo || filterPartyId !== "all" || filterMixType !== "all" || filterVehicle !== "all" || filterOwner !== "all";
+  const isFiltered = filterDateFrom || filterDateTo || filterPartyId !== "all" || filterMixType !== "all" || filterVehicle !== "all" || filterOwner !== "all" || filterPlantName !== "all";
 
   const allTotals = useMemo(() => {
     const all = dispatches || [];
