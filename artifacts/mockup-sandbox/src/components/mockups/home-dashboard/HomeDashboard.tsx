@@ -185,7 +185,7 @@ export function HomeDashboard() {
 
           {/* Welcome */}
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Welcome back, Sunil</h2>
+            <h2 className="text-xl font-bold text-slate-900">Welcome back, Sunil Kumar</h2>
             <p className="text-sm text-slate-600 mt-0.5">High Lane Constructions Pvt Ltd · {TODAY}</p>
           </div>
 
