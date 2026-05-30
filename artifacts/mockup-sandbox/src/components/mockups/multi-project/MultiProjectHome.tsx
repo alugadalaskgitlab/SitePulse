@@ -141,7 +141,7 @@ export function MultiProjectHome() {
                   </div>
                   <div>
                     <div className="text-xl font-bold text-zinc-800">{s.value}</div>
-                    <div className="text-[10px] text-zinc-400 font-medium">{s.label}</div>
+                    <div className="text-[10px] text-zinc-400 font-semibold">{s.label}</div>
                   </div>
                 </div>
               ))}
