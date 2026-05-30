@@ -224,6 +224,16 @@ export default function PlantMaterialReceipts() {
     })),
   });
 
+  // Auto-select indent when exactly one approved indent matches the material
+  useEffect(() => {
+    if (editingReceipt) return;          // don't clobber existing values in edit mode
+    if (indentRef) return;               // already set — don't overwrite
+    const approved = allPurchaseIndents.filter(pi => pi.status === "approved");
+    if (approved.length === 1) {
+      setIndentRef(approved[0].indentNo);
+    }
+  }, [allPurchaseIndents, editingReceipt]);
+
   const { data: nextReceiptNoData } = useQuery<{ number: string }>({
     queryKey: ["/api/plant-module/next-receipt-number", materialId],
     queryFn: () => fetch(`/api/plant-module/next-receipt-number?materialId=${materialId}`).then(r => r.json()),
