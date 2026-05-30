@@ -30,6 +30,24 @@ uri = "file://attached_assets/logos/sitepulse-concept-a-v2.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "1hHU5p8ShtI4GGU0_uUBD"
+uri = "file://attached_assets/logos/sitepulse-tagline-a.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "G8xQsjyoUodG1Iem53Umm"
+uri = "file://attached_assets/logos/sitepulse-tagline-b.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "p_Ih9MCg0iXDJJ87s-437"
+uri = "file://attached_assets/logos/sitepulse-tagline-c.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "6X_EUnnsaGQR3BhESXZ5F"
 uri = "file://attached_assets/logos/sitepulse-concept-a.png"
@@ -53,3 +71,21 @@ id = "Epsyez39qolWY4jSGmP86"
 uri = "file://attached_assets/logos/sitepulse-concept-a-v2.png"
 type = "image"
 title = "Concept A v2 — Road + Bridge + Pulse + Tagline"
+
+[[outputs]]
+id = "5fcIlNa08nuKing_Iu3rw"
+uri = "file://attached_assets/logos/sitepulse-tagline-a.png"
+type = "image"
+title = "Tagline A — \"Pulse over Paper.\""
+
+[[outputs]]
+id = "ulFGS3mf7FVqovNyVzXjB"
+uri = "file://attached_assets/logos/sitepulse-tagline-b.png"
+type = "image"
+title = "Tagline B — \"Beyond the Logbook.\""
+
+[[outputs]]
+id = "U0YuvSQdhfjTGCWm4Fmvb"
+uri = "file://attached_assets/logos/sitepulse-tagline-c.png"
+type = "image"
+title = "Tagline C — \"Live Ops. Not Just Logs.\""
