@@ -103,6 +103,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [finalisingDraft, setFinalisingDraft] = useState(false);
   const [draftFinaliseIndentRef, setDraftFinaliseIndentRef] = useState("");
   const [draftFinaliseOverride, setDraftFinaliseOverride] = useState(false);
+  const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
+  const [editingDraftNumber, setEditingDraftNumber] = useState("");
 
   const [form, setForm] = useState({
     date: TODAY,
@@ -275,6 +277,29 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Failed to finalise GRN", variant: "destructive" }),
   });
 
+  const replaceMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PUT", `/api/stores/grns/${editingDraftId}`, data),
+    onSuccess: (_res, variables) => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      const isDraft = variables?.grn?.status === "draft";
+      toast({ title: isDraft ? "Draft updated" : "GRN finalised — items added to stock" });
+      setIsSavingDraft(false);
+      setShowForm(false);
+      setEditingDraftId(null);
+      setEditingDraftNumber("");
+      setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
+      setLines([emptyLine()]);
+      setSuggestedIndents([]);
+      setGrnCategory("Spares");
+      setIndentOverride(false);
+      setIndentComboSearch("");
+    },
+    onError: () => {
+      setIsSavingDraft(false);
+      toast({ title: "Failed to update draft", variant: "destructive" });
+    },
+  });
+
   const addStoreItemMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/stores/items", data); return res.json(); },
     onSuccess: (newItem: any) => {
@@ -311,6 +336,31 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onError: () => toast({ title: "Failed to update acceptance status", variant: "destructive" }),
   });
 
+  function buildGrnPayload(status: "draft" | "finalized") {
+    const validLines = lines.filter(l => l.itemId && l.qty);
+    return {
+      grn: {
+        date: form.date,
+        supplier: form.supplier || "—",
+        invoiceNo: form.invoiceNo || null,
+        invoiceDate: form.invoiceDate || null,
+        siteId: form.siteId ? parseInt(form.siteId) : null,
+        indentRef: form.indentRef || null,
+        remarks: form.remarks || null,
+        acceptanceStatus: status === "draft" ? "accepted" : form.acceptanceStatus,
+        acceptanceRemarks: status === "draft" ? null : (form.acceptanceRemarks || null),
+        status,
+      },
+      items: validLines.map(l => ({
+        itemId: parseInt(l.itemId),
+        qty: parseFloat(l.qty),
+        rate: l.rate ? parseFloat(l.rate) : null,
+        uom: l.uom,
+      })),
+      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
+    };
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validLines = lines.filter(l => l.itemId && l.qty);
@@ -327,26 +377,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed anyway.", variant: "destructive" });
       return;
     }
-    createMutation.mutate({
-      grn: {
-        ...form,
-        invoiceNo: form.invoiceNo || null,
-        invoiceDate: form.invoiceDate || null,
-        siteId: form.siteId ? parseInt(form.siteId) : null,
-        indentRef: form.indentRef || null,
-        remarks: form.remarks || null,
-        acceptanceStatus: form.acceptanceStatus,
-        acceptanceRemarks: form.acceptanceRemarks || null,
-        status: "finalized",
-      },
-      items: validLines.map(l => ({
-        itemId: parseInt(l.itemId),
-        qty: parseFloat(l.qty),
-        rate: l.rate ? parseFloat(l.rate) : null,
-        uom: l.uom,
-      })),
-      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
-    });
+    const payload = buildGrnPayload("finalized");
+    if (editingDraftId) {
+      replaceMutation.mutate(payload);
+    } else {
+      createMutation.mutate(payload);
+    }
   }
 
   function handleSaveDraft(e: React.MouseEvent) {
@@ -357,27 +393,44 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       return;
     }
     setIsSavingDraft(true);
-    createMutation.mutate({
-      grn: {
-        date: form.date,
-        supplier: form.supplier || "—",
-        invoiceNo: form.invoiceNo || null,
-        invoiceDate: form.invoiceDate || null,
-        siteId: form.siteId ? parseInt(form.siteId) : null,
-        indentRef: form.indentRef || null,
-        remarks: form.remarks || null,
-        acceptanceStatus: "accepted",
-        acceptanceRemarks: null,
-        status: "draft",
-      },
-      items: validLines.map(l => ({
-        itemId: parseInt(l.itemId),
-        qty: parseFloat(l.qty),
-        rate: l.rate ? parseFloat(l.rate) : null,
-        uom: l.uom,
-      })),
-      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
+    const payload = buildGrnPayload("draft");
+    if (editingDraftId) {
+      replaceMutation.mutate(payload);
+    } else {
+      createMutation.mutate(payload);
+    }
+  }
+
+  function openDraftForEdit(grn: GrnWithItems) {
+    setForm({
+      date: grn.date,
+      supplier: grn.supplier === "—" ? "" : grn.supplier,
+      invoiceNo: grn.invoiceNo || "",
+      invoiceDate: grn.invoiceDate || "",
+      siteId: grn.siteId ? String(grn.siteId) : "",
+      indentRef: grn.indentRef || "",
+      remarks: grn.remarks || "",
+      acceptanceStatus: grn.acceptanceStatus || "accepted",
+      acceptanceRemarks: grn.acceptanceRemarks || "",
     });
+    setLines(grn.items.length > 0
+      ? grn.items.map(it => ({ itemId: String(it.itemId), qty: String(it.qty), rate: it.rate != null ? String(it.rate) : "", uom: it.uom }))
+      : [emptyLine()]
+    );
+    if (grn.items.length > 0) {
+      const firstItem = items.find(i => i.id === grn.items[0].itemId);
+      if (firstItem?.category && STORE_CATEGORIES.includes(firstItem.category)) {
+        setGrnCategory(firstItem.category);
+      }
+    }
+    setEditingDraftId(grn.id);
+    setEditingDraftNumber(grn.grnNumber);
+    setIndentOverride(false);
+    setIndentComboSearch("");
+    setSuggestedIndents([]);
+    setSelectedId(null);
+    navigate("/stores/grns");
+    setShowForm(true);
   }
 
   function openDetail(grn: GrnWithItems) {
@@ -394,6 +447,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   function cancelForm() {
     setShowForm(false);
     setSuggestedIndents([]);
+    setEditingDraftId(null);
+    setEditingDraftNumber("");
     if (isNew) navigate("/stores/grns");
   }
 
@@ -613,18 +668,29 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 </Button>
                 <div className="flex items-center gap-2">
                   {selectedGrn.status === "draft" && !finalisingDraft && (
-                    <Button
-                      size="sm"
-                      className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white"
-                      data-testid="button-finalise-grn"
-                      onClick={() => {
-                        setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
-                        setDraftFinaliseOverride(false);
-                        setFinalisingDraft(true);
-                      }}
-                    >
-                      <Zap className="w-3 h-3" /> Finalise GRN
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 text-xs border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                        data-testid="button-edit-draft"
+                        onClick={() => openDraftForEdit(selectedGrn)}
+                      >
+                        <Pencil className="w-3 h-3" /> Edit Draft
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white"
+                        data-testid="button-finalise-grn"
+                        onClick={() => {
+                          setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
+                          setDraftFinaliseOverride(false);
+                          setFinalisingDraft(true);
+                        }}
+                      >
+                        <Zap className="w-3 h-3" /> Finalise GRN
+                      </Button>
+                    </>
                   )}
                   {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && (
                     <Button
@@ -661,17 +727,22 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-wrap">
                   <h3 className="font-semibold text-sm flex items-center gap-2">
-                    <ArrowDownToLine className="w-4 h-4 text-green-600" /> New Goods Receipt Note
+                    <ArrowDownToLine className="w-4 h-4 text-green-600" />
+                    {editingDraftId
+                      ? <><span className="text-amber-600 dark:text-amber-400">Edit Draft</span> <span className="font-mono text-xs bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300">{editingDraftNumber}</span></>
+                      : "New Goods Receipt Note"}
                   </h3>
-                  <Select value={grnCategory} onValueChange={v => { setGrnCategory(v); }}>
-                    <SelectTrigger className="h-7 w-36 text-xs" data-testid="select-grn-category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {previewNum?.number && (
+                  {!editingDraftId && (
+                    <Select value={grnCategory} onValueChange={v => { setGrnCategory(v); }}>
+                      <SelectTrigger className="h-7 w-36 text-xs" data-testid="select-grn-category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {!editingDraftId && previewNum?.number && (
                     <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-grn-preview-number">
                       {previewNum.number}
                     </span>
@@ -1074,16 +1145,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     type="button"
                     variant="outline"
                     className="gap-1 text-amber-700 border-amber-400 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || replaceMutation.isPending}
                     onClick={handleSaveDraft}
                     data-testid="button-save-draft"
                   >
-                    {createMutation.isPending && isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
-                    Save as Draft
+                    {(createMutation.isPending || replaceMutation.isPending) && isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+                    {editingDraftId ? "Update Draft" : "Save as Draft"}
                   </Button>
-                  <Button type="submit" className="gap-1" disabled={createMutation.isPending} data-testid="button-save-grn">
-                    {createMutation.isPending && !isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
-                    Save GRN
+                  <Button type="submit" className="gap-1" disabled={createMutation.isPending || replaceMutation.isPending} data-testid="button-save-grn">
+                    {(createMutation.isPending || replaceMutation.isPending) && !isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
+                    {editingDraftId ? "Finalise GRN" : "Save GRN"}
                   </Button>
                 </div>
               </form>

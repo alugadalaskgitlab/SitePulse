@@ -760,6 +760,7 @@ export interface IStorage {
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
+  replaceStoreGrn(id: number, grnData: Partial<InsertStoreGrn>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
   getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
@@ -17018,6 +17019,16 @@ export class DatabaseStorage implements IStorage {
   async updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined> {
     const [grn] = await db.update(storeGrns).set(data).where(eq(storeGrns.id, id)).returning();
     if (!grn) return undefined;
+    return this.buildGrnWithItems(grn);
+  }
+
+  async replaceStoreGrn(id: number, grnData: Partial<InsertStoreGrn>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems | undefined> {
+    const [grn] = await db.update(storeGrns).set(grnData).where(eq(storeGrns.id, id)).returning();
+    if (!grn) return undefined;
+    await db.delete(storeGrnItems).where(eq(storeGrnItems.grnId, id));
+    if (items.length > 0) {
+      await db.insert(storeGrnItems).values(items.map(it => ({ ...it, grnId: id })));
+    }
     return this.buildGrnWithItems(grn);
   }
 

@@ -6896,6 +6896,26 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/stores/grns/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "stores_inventory")) return;
+      const id = parseInt(req.params.id);
+      const { grn, items } = req.body;
+      if (!grn || !items || !Array.isArray(items)) {
+        return res.status(400).json({ error: "grn and items are required" });
+      }
+      const existing = await storage.getStoreGrn(id);
+      if (!existing) return res.status(404).json({ error: "GRN not found" });
+      if (existing.status !== "draft") return res.status(400).json({ error: "Only draft GRNs can be replaced" });
+      const result = await storage.replaceStoreGrn(id, grn, items);
+      if (!result) return res.status(404).json({ error: "GRN not found" });
+      res.json(result);
+    } catch (err) {
+      console.error("PUT /api/stores/grns/:id:", err);
+      res.status(500).json({ error: "Failed to update GRN" });
+    }
+  });
+
   app.delete("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
