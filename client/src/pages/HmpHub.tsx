@@ -1,22 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { format } from "date-fns";
 import {
-  Flame, ClipboardList, Truck, ShoppingCart,
-  Fuel, BarChart3, ChevronRight,
+  Flame, ClipboardList, Truck, ShoppingCart, Fuel, BarChart3,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 
-interface KpiCardProps {
-  label: string;
-  value: string | number | undefined;
-  sub?: string;
-}
-
-function KpiCard({ label, value, sub }: KpiCardProps) {
+function KpiCard({ label, value, sub }: { label: string; value?: string | number; sub?: string }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
       <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
@@ -28,47 +21,16 @@ function KpiCard({ label, value, sub }: KpiCardProps) {
   );
 }
 
-interface ActionTileProps {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  accentColor: string;
-  iconBg: string;
-  enabled?: boolean;
-}
-
-function ActionTile({ href, icon: Icon, title, description, accentColor, iconBg, enabled = true }: ActionTileProps) {
-  if (!enabled) return null;
-  return (
-    <Link href={href}>
-      <a className={`group flex items-start gap-4 bg-white border border-slate-200 rounded-xl p-5 hover:border-${accentColor}-300 hover:shadow-md transition-all cursor-pointer`}
-        data-testid={`tile-${title.toLowerCase().replace(/\s+/g, "-")}`}
-      >
-        <div className={`p-3 ${iconBg} rounded-lg group-hover:scale-110 transition-transform flex-shrink-0`}>
-          <Icon className={`w-5 h-5 text-${accentColor}-600`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className={`font-semibold text-slate-800 group-hover:text-${accentColor}-600 transition-colors`}>
-            {title}
-          </h3>
-          <p className="text-sm text-slate-500 mt-0.5">{description}</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-all" />
-      </a>
-    </Link>
-  );
-}
-
 export default function HmpHub() {
   const { sectionVisible } = useAuth();
 
   const { data: shiftLogs = [] } = useQuery<any[]>({
-    queryKey: ["/api/plant/shift-log", TODAY],
+    queryKey: ["/api/plant-module/shift-logs", TODAY],
     queryFn: async () => {
-      const res = await fetch(`/api/plant/shift-log?date=${TODAY}`);
+      const res = await fetch(`/api/plant-module/shift-logs?dateFrom=${TODAY}&dateTo=${TODAY}`);
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     },
     enabled: sectionVisible("plant_shift_logs"),
   });
@@ -84,16 +46,7 @@ export default function HmpHub() {
   });
 
   const totalMT = dispatches.reduce((sum: number, d: any) => sum + (parseFloat(d.tonnage ?? d.quantity ?? "0") || 0), 0);
-
-  const { data: heatingSessions = [] } = useQuery<any[]>({
-    queryKey: ["/api/plant/heating-sessions", TODAY],
-    queryFn: async () => {
-      const res = await fetch(`/api/plant/heating-sessions?date=${TODAY}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: sectionVisible("plant_heating"),
-  });
+  const totalLdoL = shiftLogs.reduce((sum: number, l: any) => sum + (parseFloat(l.ldoConsumed ?? "0") || 0), 0);
 
   return (
     <HubShell
@@ -112,13 +65,13 @@ export default function HmpHub() {
             sub="logged"
           />
           <KpiCard
-            label="Dispatched"
-            value={sectionVisible("plant_production") && totalMT > 0 ? `${totalMT.toFixed(1)} MT` : undefined}
-            sub="today"
+            label="MT Dispatched"
+            value={sectionVisible("plant_production") ? (totalMT > 0 ? `${totalMT.toFixed(1)}` : "0") : undefined}
+            sub="metric tonnes"
           />
           <KpiCard
-            label="Heating Sessions"
-            value={sectionVisible("plant_heating") ? heatingSessions.length : undefined}
+            label="LDO Consumed"
+            value={sectionVisible("plant_shift_logs") ? (totalLdoL > 0 ? `${totalLdoL.toFixed(0)} L` : "—") : undefined}
             sub="today"
           />
           <KpiCard
@@ -134,57 +87,57 @@ export default function HmpHub() {
             Operations & Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ActionTile
+            <HubActionTile
               href="/plant/heating-sessions"
               icon={Flame}
               title="Bitumen Heating Sessions"
               description="Log boiler runs & track hot-oil temperatures"
-              accentColor="orange"
+              accent="orange"
               iconBg="bg-orange-100"
               enabled={sectionVisible("plant_heating")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/shift-log"
               icon={ClipboardList}
               title="Plant Shift Log"
               description="Record shift details, personnel & production"
-              accentColor="amber"
+              accent="amber"
               iconBg="bg-amber-100"
               enabled={sectionVisible("plant_shift_logs")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/dispatches"
               icon={Truck}
               title="Production & Dispatches"
               description="Log truck loads with mix data & tonnage"
-              accentColor="emerald"
+              accent="emerald"
               iconBg="bg-emerald-100"
               enabled={sectionVisible("plant_production")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/purchase-indents"
               icon={ShoppingCart}
               title="Purchase Indents"
               description="Raise & track material purchase requests"
-              accentColor="blue"
+              accent="blue"
               iconBg="bg-blue-100"
               enabled={sectionVisible("site_procurement")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/diesel-requirements"
               icon={Fuel}
               title="Daily Diesel Requirement"
               description="Plan diesel allocation per equipment for today"
-              accentColor="yellow"
+              accent="yellow"
               iconBg="bg-yellow-100"
               enabled={sectionVisible("site_diesel")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/daily-report"
               icon={BarChart3}
               title="Today's Plant Report"
               description="Quick summary of all plant activities today"
-              accentColor="purple"
+              accent="purple"
               iconBg="bg-purple-100"
               enabled={sectionVisible("plant_daily_reports")}
             />

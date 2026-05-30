@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  TrendingUp, Settings, LayoutDashboard, LogOut, Bell,
-  Menu, X, ChevronRight,
+  TrendingUp, Settings, LayoutDashboard, LogOut,
+  Menu, ChevronRight, ListChecks,
 } from "lucide-react";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
@@ -29,7 +29,8 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const navItems = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-    ...(isAdmin ? [{ href: "/admin/settings", icon: Settings, label: "App Management" }] : []),
+    { href: "/plant/purchase-indents", icon: ListChecks, label: "Tasks" },
+    { href: "/admin/settings", icon: Settings, label: "Settings" },
   ];
 
   const SidebarContent = () => (

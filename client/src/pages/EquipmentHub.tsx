@@ -1,57 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Truck,
-  Zap, ChevronRight,
+  Activity, AlertTriangle, Fuel, Truck, Zap,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
+import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 
-function KpiCard({ label, value, sub }: { label: string; value?: string | number; sub?: string }) {
+function KpiCard({ label, value, sub, warn }: {
+  label: string; value?: string | number; sub?: string; warn?: boolean;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+    <div className={`bg-white rounded-xl border p-5 shadow-sm ${warn ? "border-amber-200" : "border-slate-200"}`}>
       <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-3xl font-bold text-slate-800 tracking-tight">
+      <p className={`text-3xl font-bold tracking-tight ${warn ? "text-amber-700" : "text-slate-800"}`}>
         {value !== undefined ? value : <span className="text-slate-300">—</span>}
       </p>
       {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
     </div>
-  );
-}
-
-function ActionTile({
-  href, icon: Icon, title, description, accentColor, iconBg, enabled = true,
-}: {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  accentColor: string;
-  iconBg: string;
-  enabled?: boolean;
-}) {
-  if (!enabled) return null;
-  return (
-    <Link href={href}>
-      <a
-        className={`group flex items-start gap-4 bg-white border border-slate-200 rounded-xl p-5 hover:border-${accentColor}-300 hover:shadow-md transition-all cursor-pointer`}
-        data-testid={`tile-${title.toLowerCase().replace(/\s+/g, "-")}`}
-      >
-        <div className={`p-3 ${iconBg} rounded-lg group-hover:scale-110 transition-transform flex-shrink-0`}>
-          <Icon className={`w-5 h-5 text-${accentColor}-600`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className={`font-semibold text-slate-800 group-hover:text-${accentColor}-600 transition-colors`}>
-            {title}
-          </h3>
-          <p className="text-sm text-slate-500 mt-0.5">{description}</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-all" />
-      </a>
-    </Link>
   );
 }
 
@@ -69,7 +37,7 @@ export default function EquipmentHub() {
   });
 
   const { data: maintenance = [] } = useQuery<any[]>({
-    queryKey: ["/api/plant/maintenance", TODAY],
+    queryKey: ["/api/plant/maintenance"],
     queryFn: async () => {
       const res = await fetch(`/api/plant/maintenance`);
       if (!res.ok) return [];
@@ -79,10 +47,27 @@ export default function EquipmentHub() {
     enabled: sectionVisible("plant_equipment"),
   });
 
+  const { data: dieselReqs = [] } = useQuery<any[]>({
+    queryKey: ["/api/diesel-requirements", TODAY],
+    queryFn: async () => {
+      const res = await fetch(`/api/diesel-requirements?dateFrom=${TODAY}&dateTo=${TODAY}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: sectionVisible("site_diesel"),
+  });
+
   const activeCount = equipmentUsage.length;
   const breakdownCount = maintenance.filter((m: any) =>
-    m.status === "breakdown" || m.status === "pending"
+    m.status === "breakdown" || m.status === "pending" || m.status === "open"
   ).length;
+  const totalDieselL = dieselReqs.reduce((s: number, r: any) => {
+    const itemsSum = (r.items || []).reduce(
+      (is: number, i: any) => is + (parseFloat(i.quantityApproved ?? i.quantity ?? "0") || 0), 0
+    );
+    return s + itemsSum;
+  }, 0);
 
   return (
     <HubShell
@@ -104,16 +89,17 @@ export default function EquipmentHub() {
             label="Breakdowns"
             value={sectionVisible("plant_equipment") ? breakdownCount : undefined}
             sub="open items"
+            warn={breakdownCount > 0}
+          />
+          <KpiCard
+            label="Diesel Issued"
+            value={sectionVisible("site_diesel") ? (totalDieselL > 0 ? `${totalDieselL.toFixed(0)} L` : "—") : undefined}
+            sub="planned today"
           />
           <KpiCard
             label="Date"
             value={format(new Date(), "dd MMM")}
             sub={format(new Date(), "yyyy")}
-          />
-          <KpiCard
-            label="Diesel Req"
-            value={undefined}
-            sub="see reports"
           />
         </div>
 
@@ -123,48 +109,49 @@ export default function EquipmentHub() {
             Operations & Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ActionTile
+            <HubActionTile
               href="/plant/equipment-usage"
               icon={Activity}
               title="Equipment Usage Log"
               description="Record daily equipment hours, fuel usage & operator details"
-              accentColor="blue"
+              accent="blue"
               iconBg="bg-blue-100"
               enabled={sectionVisible("plant_equipment")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/maintenance"
               icon={AlertTriangle}
               title="Maintenance & Breakdowns"
               description="Log breakdowns, track repairs & service history"
-              accentColor="red"
+              accent="red"
               iconBg="bg-red-100"
+              badge={breakdownCount > 0 ? `${breakdownCount} open` : undefined}
               enabled={sectionVisible("plant_equipment")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/generator-logs"
               icon={Zap}
               title="Generator / DG Logs"
               description="Record diesel generator run logs & fuel consumption"
-              accentColor="yellow"
+              accent="yellow"
               iconBg="bg-yellow-100"
               enabled={sectionVisible("plant_equipment")}
             />
-            <ActionTile
+            <HubActionTile
               href="/plant/diesel-requirements"
               icon={Fuel}
               title="Daily Diesel Requirement"
               description="Plan & approve diesel allocation for fleet equipment"
-              accentColor="amber"
+              accent="amber"
               iconBg="bg-amber-100"
               enabled={sectionVisible("site_diesel")}
             />
-            <ActionTile
+            <HubActionTile
               href="/admin/settings"
               icon={Truck}
               title="Equipment Master"
               description="Manage equipment list, categories & specifications"
-              accentColor="slate"
+              accent="slate"
               iconBg="bg-slate-100"
               enabled={sectionVisible("admin_settings")}
             />
