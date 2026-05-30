@@ -23,7 +23,7 @@ const LS_KEY = "hlc_concrete_calc_v1";
 
 type AggUoM = "per_mt" | "per_cft" | "per_m3";
 
-interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: number; admixPct: number; }
+interface MixDesign { cementKg: number; caKg: number; faKg: number; wcRatio: number; admixPct: number; targetFck: number; sigma: number; }
 interface CATab { proportion: number; purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface CASourceOverride { purchaseRate: number; uom: AggUoM; leadKm: number; freightRate: number; payload: number; }
 interface BatchingRow { id: string; type: string; model: string; mode: "own" | "hired"; depreciation: number; fuel: number; operator: number; output: number; outputPerMonth: number; hireRate: number; hireMode: "per_day" | "per_m3" | "per_month"; }
@@ -112,13 +112,13 @@ interface CalcState {
 // ─── Mix Design presets ────────────────────────────────────────────────────────
 
 const MIX_PRESETS: Record<string, MixDesign> = {
-  M10: { cementKg: 220, caKg: 1200, faKg: 800, wcRatio: 0.60, admixPct: 0.20 },
-  M15: { cementKg: 280, caKg: 1180, faKg: 790, wcRatio: 0.58, admixPct: 0.25 },
-  M20: { cementKg: 320, caKg: 1150, faKg: 750, wcRatio: 0.55, admixPct: 0.30 },
-  M25: { cementKg: 380, caKg: 1100, faKg: 700, wcRatio: 0.50, admixPct: 0.35 },
-  M30: { cementKg: 420, caKg: 1080, faKg: 680, wcRatio: 0.45, admixPct: 0.40 },
-  M35: { cementKg: 450, caKg: 1050, faKg: 650, wcRatio: 0.42, admixPct: 0.45 },
-  M40: { cementKg: 480, caKg: 1020, faKg: 620, wcRatio: 0.38, admixPct: 0.50 },
+  M10: { cementKg: 220, caKg: 1200, faKg: 800, wcRatio: 0.60, admixPct: 0.20, targetFck: 15.8,  sigma: 3.5 },
+  M15: { cementKg: 280, caKg: 1180, faKg: 790, wcRatio: 0.60, admixPct: 0.25, targetFck: 20.8,  sigma: 3.5 },
+  M20: { cementKg: 320, caKg: 1150, faKg: 750, wcRatio: 0.55, admixPct: 0.30, targetFck: 26.6,  sigma: 4.0 },
+  M25: { cementKg: 380, caKg: 1100, faKg: 700, wcRatio: 0.50, admixPct: 0.35, targetFck: 31.6,  sigma: 4.0 },
+  M30: { cementKg: 420, caKg: 1080, faKg: 680, wcRatio: 0.45, admixPct: 0.40, targetFck: 38.25, sigma: 5.0 },
+  M35: { cementKg: 450, caKg: 1050, faKg: 650, wcRatio: 0.45, admixPct: 0.45, targetFck: 43.25, sigma: 5.0 },
+  M40: { cementKg: 480, caKg: 1020, faKg: 620, wcRatio: 0.40, admixPct: 0.50, targetFck: 48.25, sigma: 5.0 },
 };
 
 const STRUCTURE_TYPE_DEFAULTS: Record<string, { shutteringArea: number }> = {
@@ -218,6 +218,16 @@ const DEFAULT_STATE: CalcState = {
 
 type LegacyCalcState = Partial<CalcState> & { contractRate?: number; contractRateMode?: "per_m3" | "per_rm" };
 
+function hydrateMix(mix: Partial<MixDesign> | undefined, grade: string): MixDesign {
+  const preset = MIX_PRESETS[grade] ?? MIX_PRESETS["M25"];
+  return {
+    ...preset,
+    ...(mix || {}),
+    targetFck: mix?.targetFck ?? preset.targetFck,
+    sigma: mix?.sigma ?? preset.sigma,
+  };
+}
+
 function loadState(): CalcState {
   try {
     const saved = localStorage.getItem(LS_KEY);
@@ -226,6 +236,7 @@ function loadState(): CalcState {
       return {
         ...DEFAULT_STATE,
         ...loaded,
+        mix: hydrateMix(loaded.mix, loaded.grade ?? DEFAULT_STATE.grade),
         clientOfferedRate: loaded.clientOfferedRate ?? loaded.contractRate ?? 0,
         clientOfferedRateMode: loaded.clientOfferedRateMode ?? loaded.contractRateMode ?? "per_m3",
         pettyLabour: { ...DEFAULT_STATE.pettyLabour, ...(loaded.pettyLabour || {}) },
@@ -942,7 +953,7 @@ export default function ConcreteCalculator() {
       .then((est: ConcreteEstimate) => {
         try {
           const loaded = JSON.parse(est.state);
-          setS((prev) => ({ ...DEFAULT_STATE, ...loaded, qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) } }));
+          setS((prev) => ({ ...DEFAULT_STATE, ...loaded, mix: hydrateMix(loaded.mix, loaded.grade ?? DEFAULT_STATE.grade), qto: { ...DEFAULT_STATE.qto, ...(loaded.qto || {}) } }));
           setBreakdownGrade(loaded.grade ?? DEFAULT_STATE.grade);
           setBreakdownIsPcc(false);
           setSavedEstimateId(id);
@@ -1590,12 +1601,13 @@ export default function ConcreteCalculator() {
                 </CardHeader>
                 <HelpPanel id="mix-design" title="② Mix Design">
                 <ul className="space-y-1.5 list-disc list-outside ml-3">
-                <li>Auto-filled from Grade selection using IS:456/IS:10262 codal quantities — all values are editable</li>
+                <li>Auto-filled from Grade selection using IS 456 / IS 10262:2019 codal values — all values are editable</li>
                 <li><b>Lock Mix</b> — when locked (amber), changing the grade will NOT reset these values. Useful when you have a custom mix design from a lab report.</li>
                 <li><b>Cement kg/m³</b> — drives the ₹/m³ cement cost (quantity × price per 50 kg bag)</li>
                 <li><b>Coarse Agg kg/m³</b> — total CA weight; split across 20mm/10mm/6mm tabs by proportion</li>
                 <li><b>Fine Agg kg/m³</b> — for natural sand, volume is increased by bulkage factor (set in Section ③)</li>
-                <li><b>W/C Ratio</b> — informational only (not used in cost calculation)</li>
+                <li><b>W/C Ratio</b> — IS 456:2000 maximum W/C for the grade (informational only, not used in cost calculation)</li>
+                <li><b>Target fck (MPa)</b> — IS 10262:2019 target mean strength = fck + 1.65 × σ (informational; editable for site-specific QC data). σ shown below the field.</li>
                 <li><b>Admix %</b> — admixture dosage as % of cement weight; multiplied by rate ₹/L from Section ③</li>
                 </ul>
               </HelpPanel>
@@ -1616,11 +1628,17 @@ export default function ConcreteCalculator() {
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-1.5 max-w-xs">Selecting a grade auto-fills IS:456 quantities below. Lock the mix to prevent reset when grade changes.</p>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                     {numInput("Cement (kg/m³)", s.mix.cementKg, (v) => updateMix({ cementKg: v }), { testId: "input-cement-kg" })}
                     {numInput("Coarse Agg (kg/m³)", s.mix.caKg, (v) => updateMix({ caKg: v }))}
                     {numInput("Fine Agg (kg/m³)", s.mix.faKg, (v) => updateMix({ faKg: v }))}
                     {numInput("W/C Ratio", s.mix.wcRatio, (v) => updateMix({ wcRatio: v }), { step: 0.01 })}
+                    <div className="flex flex-col gap-1">
+                      {numInput("Target fck (MPa)", s.mix.targetFck, (v) => updateMix({ targetFck: v }), { step: 0.05 })}
+                      <p className="text-[10px] text-slate-400 leading-tight" title="IS 10262:2019 — Target mean strength = fck + 1.65 × σ">
+                        IS default · σ = {s.mix.sigma} MPa
+                      </p>
+                    </div>
                     {numInput("Admix %", s.mix.admixPct, (v) => updateMix({ admixPct: v }), { unit: "%", step: 0.05 })}
                   </div>
                   {s.mixLocked && (

@@ -151,14 +151,14 @@ interface StateV2 {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MIX_PRESETS: Record<string, { cementKg: number; caKg: number; faKg: number }> = {
-  M10: { cementKg: 220, caKg: 1200, faKg: 800 },
-  M15: { cementKg: 280, caKg: 1180, faKg: 790 },
-  M20: { cementKg: 320, caKg: 1150, faKg: 750 },
-  M25: { cementKg: 380, caKg: 1100, faKg: 700 },
-  M30: { cementKg: 420, caKg: 1080, faKg: 680 },
-  M35: { cementKg: 450, caKg: 1050, faKg: 650 },
-  M40: { cementKg: 480, caKg: 1020, faKg: 620 },
+const MIX_PRESETS: Record<string, { cementKg: number; caKg: number; faKg: number; wcRatio: number; targetFck: number; sigma: number }> = {
+  M10: { cementKg: 220, caKg: 1200, faKg: 800, wcRatio: 0.60, targetFck: 15.8,  sigma: 3.5 },
+  M15: { cementKg: 280, caKg: 1180, faKg: 790, wcRatio: 0.60, targetFck: 20.8,  sigma: 3.5 },
+  M20: { cementKg: 320, caKg: 1150, faKg: 750, wcRatio: 0.55, targetFck: 26.6,  sigma: 4.0 },
+  M25: { cementKg: 380, caKg: 1100, faKg: 700, wcRatio: 0.50, targetFck: 31.6,  sigma: 4.0 },
+  M30: { cementKg: 420, caKg: 1080, faKg: 680, wcRatio: 0.45, targetFck: 38.25, sigma: 5.0 },
+  M35: { cementKg: 450, caKg: 1050, faKg: 650, wcRatio: 0.45, targetFck: 43.25, sigma: 5.0 },
+  M40: { cementKg: 480, caKg: 1020, faKg: 620, wcRatio: 0.40, targetFck: 48.25, sigma: 5.0 },
 };
 
 const BAR_TYPE_LABELS: Record<BarTypeV2, string> = {
@@ -1030,7 +1030,7 @@ interface GradeLineItem { label: string; amount: number; }
 interface GradeBreakdown {
   grade: string;
   elements: string[];
-  mix: { cementKg: number; caKg: number; faKg: number };
+  mix: { cementKg: number; caKg: number; faKg: number; wcRatio: number; targetFck: number; sigma: number };
   lines: GradeLineItem[];
   directPerM3: number;
   ohPct: number; marginPct: number;
@@ -1273,8 +1273,11 @@ function RateSheet({ state }: { state: StateV2 }) {
                 </button>
                 {!isCollapsed && (
                   <>
-                    <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b">
-                      Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA
+                    <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b space-y-0.5">
+                      <div>Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA</div>
+                      <div className="text-[9px] text-blue-600 dark:text-blue-400" title="IS 10262:2019 — Target mean strength fck + 1.65σ  |  IS 456:2000 — Max W/C ratio">
+                        IS ref: Target fck {bd.mix.targetFck} MPa (σ={bd.mix.sigma}) · W/C ≤ {bd.mix.wcRatio}
+                      </div>
                     </div>
                     <table className="w-full">
                       <tbody>
@@ -1951,6 +1954,52 @@ export default function ConcreteCalculatorV2() {
                   <GradeSelect label="Side Walls Grade" value={state.project.wallGrade} onChange={v => updProject("wallGrade", v)} />
                   <GradeSelect label="Cover Slab Grade" value={state.project.slabGrade} onChange={v => updProject("slabGrade", v)} />
                 </div>
+                {/* IS 10262 / IS 456 reference for selected grades */}
+                {(() => {
+                  const grades = Array.from(new Set([
+                    state.project.pccGrade, state.project.invertGrade,
+                    state.project.wallGrade, state.project.slabGrade,
+                  ])).sort((a, b) => {
+                    const n = (g: string) => parseInt(g.replace("M", "")) || 0;
+                    return n(a) - n(b);
+                  });
+                  return (
+                    <div className="mt-2 rounded border border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/30 px-3 py-2">
+                      <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">
+                        IS 10262:2019 / IS 456:2000 — Design Basis for Selected Grades
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="text-[11px] w-full">
+                          <thead>
+                            <tr className="text-blue-600 dark:text-blue-400">
+                              <th className="text-left font-medium pr-4 pb-0.5">Grade</th>
+                              <th className="text-right font-medium pr-4 pb-0.5">fck (MPa)</th>
+                              <th className="text-right font-medium pr-4 pb-0.5">σ (MPa)</th>
+                              <th className="text-right font-medium pr-4 pb-0.5">Target fck (MPa)</th>
+                              <th className="text-right font-medium pb-0.5">Max W/C</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {grades.map(g => {
+                              const p = MIX_PRESETS[g];
+                              const fck = parseInt(g.replace("M", "")) || 0;
+                              return p ? (
+                                <tr key={g} className="text-slate-700 dark:text-slate-300">
+                                  <td className="font-semibold pr-4 py-0.5">{g}</td>
+                                  <td className="text-right pr-4 tabular-nums">{fck}</td>
+                                  <td className="text-right pr-4 tabular-nums">{p.sigma}</td>
+                                  <td className="text-right pr-4 tabular-nums font-semibold">{p.targetFck}</td>
+                                  <td className="text-right tabular-nums">{p.wcRatio.toFixed(2)}</td>
+                                </tr>
+                              ) : null;
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-1">Target fck = fck + 1.65 × σ  (Good degree of control, IS 10262:2019 Table 1)</p>
+                    </div>
+                  );
+                })()}
               </div>
 
               <Separator />
