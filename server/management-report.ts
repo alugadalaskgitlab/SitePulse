@@ -337,8 +337,10 @@ export function registerManagementReportRoutes(app: Express) {
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      if (effectiveIds !== null && effectiveIds.length === 0) {
-        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCostGlobal: 0 } });
+      // isSiteScoped: true when the user has site restrictions (effectiveIds is not null)
+      const isSiteScoped = effectiveIds !== null;
+      if (isSiteScoped && effectiveIds.length === 0) {
+        return res.json({ plants: [], summary: { ldoReceivedL: 0, ldoConsumedL: 0, dieselCostGlobal: null } });
       }
 
       const dateFrom = req.query.dateFrom as string | undefined;
@@ -415,25 +417,25 @@ export function registerManagementReportRoutes(app: Express) {
       .where(cond(ldoConds));
 
       // dieselRequirements has no site/plant reference in the schema so it cannot be
-      // site-scoped. Returned separately as a global (date-filtered) cost figure;
-      // the frontend labels it clearly as "All Sites".
-      const drConds: any[] = [];
-      if (dateFrom) drConds.push(gte(dieselRequirements.date, dateFrom));
-      if (dateTo)   drConds.push(lte(dieselRequirements.date, dateTo));
-
-      const [drTotals] = await db.select({
-        cost: sum(dieselRequirements.amount),
-      })
-      .from(dieselRequirements)
-      .where(cond(drConds));
+      // site-scoped. Only returned for unrestricted (admin) users; site-scoped users
+      // receive null so the frontend can hide the card entirely — no cross-site leakage.
+      let dieselCostGlobal: number | null = null;
+      if (!isSiteScoped) {
+        const drConds: any[] = [];
+        if (dateFrom) drConds.push(gte(dieselRequirements.date, dateFrom));
+        if (dateTo)   drConds.push(lte(dieselRequirements.date, dateTo));
+        const [drTotals] = await db.select({ cost: sum(dieselRequirements.amount) })
+          .from(dieselRequirements)
+          .where(cond(drConds));
+        dieselCostGlobal = Number(drTotals?.cost) || 0;
+      }
 
       res.json({
         plants,
         summary: {
-          ldoReceivedL:     Number(ldoTotals?.received) || 0,
-          ldoConsumedL:     Number(ldoTotals?.consumed) || 0,
-          // dieselCost is global (not site-scoped — schema has no site reference)
-          dieselCostGlobal: Number(drTotals?.cost) || 0,
+          ldoReceivedL:    Number(ldoTotals?.received) || 0,
+          ldoConsumedL:    Number(ldoTotals?.consumed) || 0,
+          dieselCostGlobal,   // null for site-scoped users
         },
       });
     } catch (err) {
@@ -494,8 +496,10 @@ export function registerManagementReportRoutes(app: Express) {
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
-      if (effectiveIds !== null && effectiveIds.length === 0) {
-        return res.json({ bills: [], indents: { count: 0, value: 0 } });
+      // isSiteScoped: true when the user has site restrictions (effectiveIds is not null)
+      const isSiteScoped = effectiveIds !== null;
+      if (isSiteScoped && effectiveIds.length === 0) {
+        return res.json({ bills: [], indents: null });
       }
 
       const dateFrom = req.query.dateFrom as string | undefined;
@@ -558,27 +562,30 @@ export function registerManagementReportRoutes(app: Express) {
       }
 
       // Purchase indents: no siteId/siteName column in the purchase_indents schema,
-      // so site-scoping is not possible. Returned as a global (date-filtered) summary;
-      // the frontend labels it "All Sites – not site-filtered".
-      const indentConds: any[] = [];
-      if (dateFrom) indentConds.push(gte(purchaseIndents.date, dateFrom));
-      if (dateTo)   indentConds.push(lte(purchaseIndents.date, dateTo));
-
-      const [indentTotals] = await db.select({
-        cnt:   sql<number>`count(distinct ${purchaseIndents.id})`,
-        value: sum(purchaseIndentItems.estAmount),
-      })
-      .from(purchaseIndents)
-      .leftJoin(purchaseIndentItems, eq(purchaseIndentItems.indentId, purchaseIndents.id))
-      .where(cond(indentConds));
+      // so site-scoping is not possible. Only returned for unrestricted (admin) users;
+      // site-scoped users receive null so the frontend hides the section entirely.
+      let indents: { count: number; value: number } | null = null;
+      if (!isSiteScoped) {
+        const indentConds: any[] = [];
+        if (dateFrom) indentConds.push(gte(purchaseIndents.date, dateFrom));
+        if (dateTo)   indentConds.push(lte(purchaseIndents.date, dateTo));
+        const [indentTotals] = await db.select({
+          cnt:   sql<number>`count(distinct ${purchaseIndents.id})`,
+          value: sum(purchaseIndentItems.estAmount),
+        })
+        .from(purchaseIndents)
+        .leftJoin(purchaseIndentItems, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+        .where(cond(indentConds));
+        indents = {
+          count: Number(indentTotals?.cnt)   || 0,
+          value: Number(indentTotals?.value) || 0,
+        };
+      }
 
       res.json({
         bills: Array.from(billMap.values())
           .sort((a, b) => a.siteName.localeCompare(b.siteName)),
-        indents: {
-          count: Number(indentTotals?.cnt)   || 0,
-          value: Number(indentTotals?.value) || 0,
-        },
+        indents,   // null for site-scoped users
       });
     } catch (err) {
       console.error("management-report/financials:", err);

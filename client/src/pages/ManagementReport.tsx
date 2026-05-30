@@ -42,8 +42,11 @@ interface FuelResponse {
   summary: {
     ldoReceivedL: number;
     ldoConsumedL: number;
-    /** Global diesel purchase cost — not site-scoped (schema has no site column) */
-    dieselCostGlobal: number;
+    /**
+     * Global diesel purchase cost (schema has no site column).
+     * null for site-scoped users — frontend must hide this card entirely.
+     */
+    dieselCostGlobal: number | null;
   };
 }
 interface LabourRow {
@@ -57,7 +60,11 @@ interface BillEntry {
 }
 interface FinancialsResponse {
   bills: BillEntry[];
-  indents: { count: number; value: number };
+  /**
+   * Global purchase indents (schema has no site column).
+   * null for site-scoped users — frontend must hide this section entirely.
+   */
+  indents: { count: number; value: number } | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -579,11 +586,14 @@ export default function ManagementReport() {
             <div className="space-y-4">
               {/* LDO Log summary banner */}
               {fuelData && (
-                <div className="grid grid-cols-3 gap-3">
+                <div className={`grid gap-3 ${fuelData.summary.dieselCostGlobal !== null ? "grid-cols-3" : "grid-cols-2"}`}>
                   {[
-                    { label: "Diesel Received (LDO Log)", value: fmt(fuelData.summary.ldoReceivedL) + " L", icon: "↓" },
-                    { label: "Diesel Consumed (LDO Log)", value: fmt(fuelData.summary.ldoConsumedL) + " L", icon: "↑" },
-                    { label: "Diesel Purchase Cost (All Sites)", value: fmtCur(fuelData.summary.dieselCostGlobal), icon: "₹" },
+                    { label: "Diesel Received (LDO Log)", value: fmt(fuelData.summary.ldoReceivedL) + " L" },
+                    { label: "Diesel Consumed (LDO Log)", value: fmt(fuelData.summary.ldoConsumedL) + " L" },
+                    // Only shown for unrestricted (admin) users — null means the user is site-scoped
+                    ...(fuelData.summary.dieselCostGlobal !== null
+                      ? [{ label: "Diesel Purchase Cost (All Sites)", value: fmtCur(fuelData.summary.dieselCostGlobal) }]
+                      : []),
                   ].map((item) => (
                     <Card key={item.label}>
                       <CardContent className="pt-3 pb-3">
@@ -760,8 +770,8 @@ export default function ManagementReport() {
                 </CardContent>
               </Card>
 
-              {/* Purchase Indents summary */}
-              {financialsData && (
+              {/* Purchase Indents summary — only shown to unrestricted (admin) users */}
+              {financialsData?.indents && (
                 <Card>
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-4">
