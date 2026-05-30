@@ -7885,12 +7885,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async setUserSiteAccess(userId: number, siteIds: number[]): Promise<void> {
-    await db.delete(userSiteAccess).where(eq(userSiteAccess.userId, userId));
-    if (siteIds.length > 0) {
-      await db.insert(userSiteAccess).values(
-        siteIds.map((siteId) => ({ userId, siteId, accessLevel: "full" as const }))
-      );
-    }
+    // Deduplicate and validate before touching the DB
+    const uniqueIds = Array.from(new Set(siteIds.filter((id) => Number.isInteger(id) && id > 0)));
+    await db.transaction(async (tx) => {
+      await tx.delete(userSiteAccess).where(eq(userSiteAccess.userId, userId));
+      if (uniqueIds.length > 0) {
+        await tx.insert(userSiteAccess).values(
+          uniqueIds.map((siteId) => ({ userId, siteId, accessLevel: "full" as const }))
+        );
+      }
+    });
   }
 
   // Sites Master
