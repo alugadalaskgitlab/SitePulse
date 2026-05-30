@@ -3868,6 +3868,38 @@ export default function ConcreteCalculator() {
                     <Button size="sm" variant="outline" className="h-7 text-xs print:hidden" onClick={() => window.print()}>Print</Button>
                   </CardHeader>
                   <CardContent className="px-4 pb-4">
+                    {/* Print-only Mix Design Basis — hidden on screen, visible when printing */}
+                    <div className="hidden print:block mb-4">
+                      <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+                        Mix Design Basis <span className="normal-case font-normal text-slate-500">(IS 10262:2019 / IS 456:2000)</span>
+                      </p>
+                      <table className="text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100">
+                            {["Grade", "fck (MPa)", "σ (MPa)", "Target fck (MPa)", "Max W/C"].map(h => (
+                              <th key={h} className="px-3 py-1.5 font-semibold text-slate-700 border border-slate-300 text-right first:text-left whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { grade: s.grade, mix: s.mix },
+                            ...(hasPCC && pccGrade !== s.grade
+                              ? [{ grade: pccGrade, mix: MIX_PRESETS[pccGrade] ?? MIX_PRESETS["M15"] }]
+                              : []),
+                          ].map(({ grade, mix }) => (
+                            <tr key={grade}>
+                              <td className="px-3 py-1.5 font-semibold text-slate-800 border border-slate-300">{grade}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{parseInt(grade.replace("M", ""))}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{mix.sigma}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-slate-800 border border-slate-300">{mix.targetFck}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{mix.wcRatio.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="text-[9px] text-slate-500 mt-1">Target fck = fck + 1.65 × σ &nbsp;·&nbsp; Values reflect any manual overrides</p>
+                    </div>
                     {renderTable(mainRows)}
                   </CardContent>
                 </Card>
@@ -4381,6 +4413,45 @@ export default function ConcreteCalculator() {
                         <div><span className="font-semibold">Date: </span>{s.date}</div>
                       </div>
                     </div>
+                    {/* Print-only Mix Design Basis — hidden on screen, visible when printing */}
+                    {(() => {
+                      const quotPccGrade = s.qto?.elementGrades?.pcc ?? "M15";
+                      const quotHasPCC = (s.qto?.pccDepth ?? 0) > 0;
+                      const quotGrades = [
+                        { grade: s.grade, mix: s.mix },
+                        ...(quotHasPCC && quotPccGrade !== s.grade
+                          ? [{ grade: quotPccGrade, mix: MIX_PRESETS[quotPccGrade] ?? MIX_PRESETS["M15"] }]
+                          : []),
+                      ];
+                      return (
+                        <div className="hidden print:block mb-5">
+                          <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+                            Mix Design Basis <span className="normal-case font-normal text-slate-500">(IS 10262:2019 / IS 456:2000)</span>
+                          </p>
+                          <table className="text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-100">
+                                {["Grade", "fck (MPa)", "σ (MPa)", "Target fck (MPa)", "Max W/C"].map(h => (
+                                  <th key={h} className="px-3 py-1.5 font-semibold text-slate-700 border border-slate-300 text-right first:text-left whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {quotGrades.map(({ grade, mix }) => (
+                                <tr key={grade}>
+                                  <td className="px-3 py-1.5 font-semibold text-slate-800 border border-slate-300">{grade}</td>
+                                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{parseInt(grade.replace("M", ""))}</td>
+                                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{mix.sigma}</td>
+                                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-slate-800 border border-slate-300">{mix.targetFck}</td>
+                                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 border border-slate-300">{mix.wcRatio.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p className="text-[9px] text-slate-500 mt-1">Target fck = fck + 1.65 × σ &nbsp;·&nbsp; Values reflect any manual overrides</p>
+                        </div>
+                      );
+                    })()}
                     <table className="text-xs w-full min-w-[500px] border-separate border-spacing-0">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/60 print:bg-slate-100">

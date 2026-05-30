@@ -1264,6 +1264,36 @@ function RateSheet({ state }: { state: StateV2 }) {
             </span>
           )}
         </div>
+        {/* Mix Design Basis — shown below grade cards, always visible (prints with the report) */}
+        <div className="border rounded-md overflow-hidden text-xs mb-1">
+          <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 flex items-center gap-2">
+            <span className="font-semibold">Mix Design Basis</span>
+            <span className="text-slate-300 text-[11px]">IS 10262:2019 / IS 456:2000</span>
+          </div>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/60">
+                {["Grade", "fck (MPa)", "σ (MPa)", "Target fck (MPa)", "Max W/C"].map(h => (
+                  <th key={h} className="px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600 text-right first:text-left whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {gradeBreakdowns.map((bd, i) => (
+                <tr key={bd.grade} className={i % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-slate-50/60 dark:bg-slate-800/20"}>
+                  <td className="px-3 py-1.5 font-semibold text-slate-800 dark:text-slate-200">{bd.grade}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">{parseInt(bd.grade.replace("M", ""))}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">{bd.mix.sigma}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-slate-800 dark:text-slate-200">{getGradeTargetFck(bd.grade, project)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">{getGradeWcRatio(bd.grade, project).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[9px] text-muted-foreground px-3 py-1 border-t border-slate-200 dark:border-slate-700">
+            Target fck = fck + 1.65 × σ &nbsp;·&nbsp; Values reflect any manual overrides entered in the Settings tab
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {gradeBreakdowns.map(bd => {
             const isCollapsed = collapsedGrades.has(bd.grade);
