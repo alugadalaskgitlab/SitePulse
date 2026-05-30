@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Calculator } from "lucide-react";
+import { ChevronLeft, Filter, Loader2, Fuel, Clock, Package, Activity, MapPin, Calendar, Download, Printer, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Calculator, LayoutDashboard, ArrowRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, parseISO, eachDayOfInterval, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -470,6 +470,22 @@ export default function AdminReports() {
         </div>
         
       </div>
+
+      {/* Management Report shortcut */}
+      <Link href="/admin/management-report">
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors border-primary/20" data-testid="card-management-report-link">
+          <CardContent className="pt-4 pb-4 flex items-center gap-4">
+            <div className="rounded-lg bg-primary/10 p-2.5 flex-shrink-0">
+              <LayoutDashboard className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Management Report</p>
+              <p className="text-xs text-muted-foreground">Cross-site aggregated view — materials, production, fuel, labour &amp; financials</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
 
       <MixEstimates embedded />
 

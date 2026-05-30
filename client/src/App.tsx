@@ -62,6 +62,7 @@ import RateCards from "@/pages/RateCards";
 import DataSync from "@/pages/DataSync";
 import AdminSettings from "@/pages/AdminSettings";
 import AdminReports from "@/pages/AdminReports";
+import ManagementReport from "@/pages/ManagementReport";
 import EstimatorLogin from "@/pages/EstimatorLogin";
 import EstimatorHub from "@/pages/EstimatorHub";
 import MixEstimates from "@/pages/MixEstimates";
@@ -256,6 +257,7 @@ function AuthedShell() {
             <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
             <Route path="/admin/reports" component={gated(AdminReports, "reports")} />
+            <Route path="/admin/management-report" component={gated(ManagementReport, "reports")} />
             <Route path="/admin/mix-estimates" component={gated(MixEstimates, "reports")} />
             <Route path="/admin/mix-impact" component={gated(MixImpact, "reports")} />
             <Route path="/admin/mix-comparison" component={gated(MixComparativeReport, "reports")} />

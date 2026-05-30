@@ -27,6 +27,7 @@ import {
   assertCreate,
   currentUserName,
 } from "./auth-routes";
+import { registerManagementReportRoutes } from "./management-report";
 
 const ESTIMATOR_COOKIE = 'hlc_est_role';
 
@@ -86,6 +87,7 @@ export async function registerRoutes(
   // cookie and is bypassed in isPublicApiPath().
   // ============================================
   registerAuthRoutes(app);
+  registerManagementReportRoutes(app);
 
   // Global API auth middleware. Applies to every /api/* request except the
   // public auth + estimator endpoints. Populates req.authUser, req.authPermissions.
