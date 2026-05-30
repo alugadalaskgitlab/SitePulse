@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Check, Circle, Info, Fuel, Settings, Copy, X, Download, Search, Edit, PlusCircle, BarChart2 } from "lucide-react";
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -254,6 +254,7 @@ export default function VendorBills() {
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
 
   const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const mgmtReportSite = _vbSp?.get("from") === "management-report" ? (_vbSp?.get("site") || null) : null;
   const [filterDateFrom, setFilterDateFrom] = useState(_vbSp?.get("dateFrom") ?? "");
   const [filterDateTo, setFilterDateTo] = useState(_vbSp?.get("dateTo") ?? "");
   const [filterVendor, setFilterVendor] = useState("all");
@@ -2681,6 +2682,14 @@ export default function VendorBills() {
           )}
         </div>
       </div>
+
+      {/* Management Report context banner */}
+      {mgmtReportSite && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
+          <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
+          <span>From Management Report — Filtered to: <strong>{mgmtReportSite}</strong></span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>

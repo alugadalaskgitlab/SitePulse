@@ -16,7 +16,7 @@ import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, ChevronRight, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Truck, Loader2, Lock, Trash2, Edit, Download, Printer, AlertTriangle, ChevronsUpDown, Check, X, BarChart2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -46,6 +46,12 @@ export default function PlantDispatches() {
   const PLANT_DISPATCHES_FILTER_URL_KEYS = [
     "filterDateFrom", "filterDateTo", "filterPartyId", "filterMixType", "filterVehicle", "filterOwner", "filterPlantName",
   ];
+  const mgmtReportPlant = (() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("from") === "management-report" ? (sp.get("filterPlantName") || null) : null;
+  })();
+
   const urlHasDispatchFilterParams = (() => {
     if (typeof window === "undefined") return false;
     const sp = new URLSearchParams(window.location.search);
@@ -791,6 +797,14 @@ export default function PlantDispatches() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Management Report context banner */}
+      {mgmtReportPlant && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
+          <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
+          <span>From Management Report — Filtered to plant: <strong>{mgmtReportPlant}</strong></span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">

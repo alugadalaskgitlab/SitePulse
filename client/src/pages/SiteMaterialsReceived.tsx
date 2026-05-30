@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { format } from "date-fns";
-import { ChevronLeft, Filter, X, Package, Loader2, Truck, Trash2 } from "lucide-react";
+import { ChevronLeft, Filter, X, Package, Loader2, Truck, Trash2, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,8 @@ export default function SiteMaterialsReceived() {
   const returnTo = sp.get("returnTo") || "/site";
 
   const today = format(new Date(), "yyyy-MM-dd");
+
+  const mgmtReportSite = sp.get("from") === "management-report" ? (sp.get("site") || null) : null;
 
   const urlFilterKeys = ["dateFrom", "dateTo", "site", "material", "supplier"];
   const urlHasFilterParams = urlFilterKeys.some((k) => sp.has(k));
@@ -122,6 +124,14 @@ export default function SiteMaterialsReceived() {
             <h1 className="text-2xl font-bold">Materials Received</h1>
           </div>
         </div>
+
+        {/* Management Report context banner */}
+        {mgmtReportSite && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
+            <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
+            <span>From Management Report — Filtered to: <strong>{mgmtReportSite}</strong></span>
+          </div>
+        )}
 
         {/* Filters */}
         <Card>

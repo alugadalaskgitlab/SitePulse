@@ -32,6 +32,7 @@ import {
   Trash2,
   Clock,
   Pencil,
+  BarChart2,
 } from "lucide-react";
 import type { EquipmentMasterType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,12 @@ export default function SiteDashboard() {
   const SITE_DPR_FILTER_URL_KEYS = [
     "site", "engineer", "dateFrom", "dateTo", "activity", "equipment", "hasDiesel", "material", "supplier", "workType",
   ];
+  const mgmtReportSite = (() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("from") === "management-report" ? (sp.get("site") || null) : null;
+  })();
+
   const urlHasDprFilterParams = (() => {
     if (typeof window === "undefined") return false;
     const sp = new URLSearchParams(window.location.search);
@@ -947,6 +954,14 @@ export default function SiteDashboard() {
           )}
         </div>
       </div>
+
+      {/* Management Report context banner */}
+      {mgmtReportSite && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" data-testid="banner-management-report">
+          <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
+          <span>From Management Report — Filtered to: <strong>{mgmtReportSite}</strong></span>
+        </div>
+      )}
 
       <div className="space-y-6 mt-6">
           <Card>

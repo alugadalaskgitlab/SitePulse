@@ -529,7 +529,7 @@ export default function ManagementReport() {
                             <TableCell className="text-xs text-muted-foreground">{r.uom}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
-                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: r.siteName })}
+                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: r.siteName, from: "management-report" })}
                                 label=""
                                 testId={`link-material-detail-${i}`}
                               />
@@ -546,7 +546,7 @@ export default function ManagementReport() {
                             <TableCell />
                             <TableCell>
                               <ViewDetailsLink
-                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: s.siteName })}
+                                href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: s.siteName, from: "management-report" })}
                                 testId={`link-mat-site-total-${i}`}
                               />
                             </TableCell>
@@ -605,7 +605,7 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums">{r.dispatchCount}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
-                                href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName })}
+                                href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName, from: "management-report" })}
                                 label=""
                                 testId={`link-prod-detail-${i}`}
                               />
@@ -687,7 +687,7 @@ export default function ManagementReport() {
                               </TableCell>
                               <TableCell>
                                 <ViewDetailsLink
-                                  href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName })}
+                                  href={buildDeepLink("/plant/dispatches", { filterDateFrom: dateFrom, filterDateTo: dateTo, filterPlantName: r.plantName, from: "management-report" })}
                                   label=""
                                   testId={`link-fuel-detail-${i}`}
                                 />
@@ -750,7 +750,7 @@ export default function ManagementReport() {
                             <TableCell className="text-right tabular-nums font-medium">{r.totalMandays}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
-                                href={buildDeepLink("/site/dashboard", { dateFrom, dateTo, site: r.siteName })}
+                                href={buildDeepLink("/site/dashboard", { dateFrom, dateTo, site: r.siteName, from: "management-report" })}
                                 label=""
                                 testId={`link-labour-detail-${i}`}
                               />
@@ -809,7 +809,7 @@ export default function ManagementReport() {
                               <TableCell className="text-right tabular-nums text-blue-600">{r.statusBreakdown.paid || "—"}</TableCell>
                               <TableCell>
                                 <ViewDetailsLink
-                                  href={buildDeepLink("/plant/vendor-bills", { dateFrom, dateTo, site: r.siteName })}
+                                  href={buildDeepLink("/plant/vendor-bills", { dateFrom, dateTo, site: r.siteName, from: "management-report" })}
                                   label=""
                                   testId={`link-bills-detail-${i}`}
                                 />
