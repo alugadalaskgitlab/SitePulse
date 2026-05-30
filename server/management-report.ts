@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import {
   storeGrns, storeGrnItems, storeIssues, storeIssueItems, storeItems,
+  materialIssues, plantMaterials,
   truckDispatches, rmcBatchRecords, plantSettings,
   labourLogs, dprs,
   purchaseIndents, purchaseIndentItems,
@@ -24,6 +25,24 @@ import {
 import { storage } from "./storage";
 import { assertView } from "./auth-routes";
 import { requireAuth } from "./auth";
+
+/**
+ * Permission check: grants access when the user has view permission on
+ * the `reports` section OR the `admin_settings` section (or is admin).
+ * Returns true and does NOT send a response when access is granted.
+ * Returns false and sends a 401/403 response when access is denied.
+ */
+function assertViewReportOrAdmin(req: Request, res: Response): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const m = req.authPermissions;
+  if (m?.["reports"]?.view || m?.["admin_settings"]?.view) return true;
+  res.status(403).json({ error: "forbidden" });
+  return false;
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -110,7 +129,7 @@ export function registerManagementReportRoutes(app: Express) {
   // ── 1. Materials Consumption ─────────────────────────────────────────────
   app.get("/api/admin/management-report/materials", ...mgmtAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "reports")) return;
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
@@ -180,6 +199,57 @@ export function registerManagementReportRoutes(app: Express) {
       for (const r of grnRows) getOrCreate(r.siteId, r.itemId).qtyReceived += Number(r.qty) || 0;
       for (const r of issRows) getOrCreate(r.siteId, r.itemId).qtyIssued   += Number(r.qty) || 0;
 
+      // Plant material issues: material_issues.issuedTo is a free-text site name.
+      // Filter by permitted site names; use plant_materials for item details.
+      const permittedSiteNamesForMat = await siteIdsToNames(effectiveIds);
+      const miConds: any[] = [];
+      if (dateFrom) miConds.push(gte(materialIssues.date, dateFrom));
+      if (dateTo)   miConds.push(lte(materialIssues.date, dateTo));
+      if (permittedSiteNamesForMat !== null) {
+        if (permittedSiteNamesForMat.length === 0) {
+          // no permitted sites — skip
+        } else {
+          miConds.push(inArray(materialIssues.issuedTo, permittedSiteNamesForMat));
+        }
+      }
+
+      const miRows = permittedSiteNamesForMat?.length === 0 ? [] : await db.select({
+        issuedTo: materialIssues.issuedTo,
+        materialId: materialIssues.materialId,
+        qty:      sum(materialIssues.quantity),
+        uom:      materialIssues.uom,
+      })
+      .from(materialIssues)
+      .where(cond(miConds))
+      .groupBy(materialIssues.issuedTo, materialIssues.materialId, materialIssues.uom);
+
+      // Lookup map for plant materials
+      const allPlantMats = await db.select({ id: plantMaterials.id, name: plantMaterials.name, category: plantMaterials.category, defaultUom: plantMaterials.defaultUom }).from(plantMaterials);
+      const plantMatMap = new Map(allPlantMats.map((m) => [m.id, m]));
+      // Reverse site name→id lookup
+      const siteNameToId = new Map(allSites.map((s) => [s.name, s.id]));
+
+      for (const r of miRows) {
+        const sn = r.issuedTo || "Unassigned";
+        // Resolve siteId from name; fall back to null
+        const sid = siteNameToId.get(sn) ?? null;
+        const mat = plantMatMap.get(r.materialId);
+        // Use a namespace prefix to avoid key collision with store items
+        const k = `plant-${sid ?? sn}-${r.materialId}`;
+        if (!rowMap.has(k)) {
+          rowMap.set(k, {
+            siteId:      sid,
+            siteName:    sn,
+            itemName:    mat?.name ?? `Plant Material #${r.materialId}`,
+            category:    mat?.category ?? "Plant",
+            uom:         r.uom ?? mat?.defaultUom ?? "",
+            qtyReceived: 0,
+            qtyIssued:   0,
+          });
+        }
+        rowMap.get(k)!.qtyIssued += Number(r.qty) || 0;
+      }
+
       const result = Array.from(rowMap.values())
         .sort((a, b) => a.siteName.localeCompare(b.siteName) || a.itemName.localeCompare(b.itemName));
       res.json(result);
@@ -192,7 +262,7 @@ export function registerManagementReportRoutes(app: Express) {
   // ── 2. Plant Production ──────────────────────────────────────────────────
   app.get("/api/admin/management-report/production", ...mgmtAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "reports")) return;
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
@@ -263,7 +333,7 @@ export function registerManagementReportRoutes(app: Express) {
   // ── 3. Fuel & LDO ───────────────────────────────────────────────────────
   app.get("/api/admin/management-report/fuel", ...mgmtAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "reports")) return;
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
@@ -350,7 +420,7 @@ export function registerManagementReportRoutes(app: Express) {
   // ── 4. Labour / Mandays ──────────────────────────────────────────────────
   app.get("/api/admin/management-report/labour", ...mgmtAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "reports")) return;
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);
@@ -395,7 +465,7 @@ export function registerManagementReportRoutes(app: Express) {
   // ── 5. Financials ────────────────────────────────────────────────────────
   app.get("/api/admin/management-report/financials", ...mgmtAuth, async (req, res) => {
     try {
-      if (!assertView(req, res, "reports")) return;
+      if (!assertViewReportOrAdmin(req, res)) return;
 
       const selectedIds = parseSiteIds(req.query.siteIds);
       const effectiveIds = await getEffectiveSiteIds(req, selectedIds);

@@ -12,12 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   ChevronLeft, Download, Loader2, Package, Factory, Fuel,
-  Users, Receipt, Building2, RefreshCw,
+  Users, Receipt, Building2, RefreshCw, FileDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { Site } from "@shared/schema";
 import { useAuth } from "@/lib/auth-context";
 
@@ -161,6 +163,89 @@ export default function ManagementReport() {
 
   const isSiteChecked = (id: number) => effectiveSelected.includes(id);
 
+  // ── PDF summary export (all tabs, condensed) ─────────────────────────────
+  const [pdfExporting, setPdfExporting] = useState(false);
+
+  const handleExportPdf = useCallback(async () => {
+    if (pdfExporting) return;
+    setPdfExporting(true);
+    try {
+      // Fetch all 5 tabs' data in parallel with the current filters
+      const base = `/api/admin/management-report`;
+      const [mat, prod, fuel, labour, fin] = await Promise.all([
+        fetch(`${base}/materials?${qs}`, { credentials: "include" }).then((r) => r.json()),
+        fetch(`${base}/production?${qs}`, { credentials: "include" }).then((r) => r.json()),
+        fetch(`${base}/fuel?${qs}`,       { credentials: "include" }).then((r) => r.json()),
+        fetch(`${base}/labour?${qs}`,     { credentials: "include" }).then((r) => r.json()),
+        fetch(`${base}/financials?${qs}`, { credentials: "include" }).then((r) => r.json()),
+      ]);
+
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const title = `Management Report — ${dateFrom} to ${dateTo}`;
+      doc.setFontSize(13);
+      doc.text(title, 14, 14);
+      doc.setFontSize(8);
+      doc.text(`Generated: ${format(new Date(), "dd MMM yyyy HH:mm")}`, 14, 20);
+
+      let y = 26;
+      const addSection = (heading: string, head: string[], rows: (string | number)[][]) => {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(heading, 14, y + 4);
+        doc.setFont("helvetica", "normal");
+        autoTable(doc, {
+          startY: y + 7,
+          head: [head],
+          body: rows.map((r) => r.map(String)),
+          styles: { fontSize: 7, cellPadding: 1.5 },
+          headStyles: { fillColor: [45, 55, 72], textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [248, 249, 250] },
+          margin: { left: 14, right: 14 },
+          didDrawPage: () => {},
+        });
+        y = (doc as any).lastAutoTable.finalY + 8;
+      };
+
+      // Materials
+      if (Array.isArray(mat) && mat.length) {
+        addSection("Materials (Store GRN + Issues + Plant Issues)", ["Site", "Item", "Category", "UOM", "Received", "Issued"],
+          mat.map((r: MaterialRow) => [r.siteName, r.itemName, r.category, r.uom, r.qtyReceived, r.qtyIssued]));
+      }
+
+      // Production
+      if (Array.isArray(prod) && prod.length) {
+        addSection("Plant Production", ["Site", "Plant", "Type", "MT Produced", "Dispatches", "Unit"],
+          prod.map((r: ProductionRow) => [r.siteName, r.plantName, r.type, r.mtProduced, r.dispatchCount, r.unit]));
+      }
+
+      // Fuel
+      if (fuel?.plants?.length) {
+        const fuelRows = fuel.plants.map((r: FuelPlantRow) => [r.siteName, r.plantName, r.ldoConsumedL, r.mtProduced, r.lPerMt ?? "—"]);
+        fuelRows.push(["TOTAL (LDO Log)", "", fuel.summary.ldoConsumedL, "", ""]);
+        addSection("Fuel & LDO", ["Site", "Plant", "LDO Consumed (L)", "MT Produced", "L/MT"], fuelRows);
+      }
+
+      // Labour
+      if (Array.isArray(labour) && labour.length) {
+        addSection("Labour / Mandays", ["Site", "Contractor", "Category", "Total Mandays"],
+          labour.map((r: LabourRow) => [r.siteName, r.contractor, r.category, r.totalMandays]));
+      }
+
+      // Financials
+      if (fin?.bills?.length) {
+        addSection("Vendor Bills by Site", ["Site", "Bills", "Total Value (₹)", "Draft", "Pending", "Approved", "Paid"],
+          fin.bills.map((r: any) => [r.siteName, r.billCount, r.billValue.toFixed(0), r.statusBreakdown.draft, r.statusBreakdown.pending, r.statusBreakdown.approved, r.statusBreakdown.paid]));
+      }
+
+      doc.save(`management-report-${dateFrom}-${dateTo}.pdf`);
+      toast({ title: "PDF exported", description: "All tabs included in summary." });
+    } catch {
+      toast({ title: "PDF export failed", variant: "destructive" });
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [pdfExporting, qs, dateFrom, dateTo, toast]);
+
   // ── Excel export ─────────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
     try {
@@ -264,10 +349,21 @@ export default function ManagementReport() {
           size="sm"
           variant="outline"
           className="gap-1.5"
-          onClick={handleExport}
-          data-testid="btn-export"
+          onClick={handleExportPdf}
+          disabled={pdfExporting}
+          data-testid="btn-export-pdf"
         >
-          <Download className="h-4 w-4" /> Export Excel
+          {pdfExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          PDF
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={handleExport}
+          data-testid="btn-export-excel"
+        >
+          <Download className="h-4 w-4" /> Excel
         </Button>
       </div>
 
