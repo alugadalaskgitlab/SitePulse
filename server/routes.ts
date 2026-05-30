@@ -6818,6 +6818,8 @@ export async function registerRoutes(
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
         acceptanceStatus: req.query.acceptanceStatus as string | undefined,
         status: req.query.status as string | undefined,
+        item: req.query.item as string | undefined,
+        category: req.query.category as string | undefined,
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);

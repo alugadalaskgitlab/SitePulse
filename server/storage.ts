@@ -217,7 +217,7 @@ import {
   type RmcRawMaterialReceipt,
   type InsertRmcRawMaterialReceipt,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import {
@@ -764,7 +764,7 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
@@ -17016,7 +17016,7 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string }): Promise<StoreGrnWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
@@ -17028,6 +17028,19 @@ export class DatabaseStorage implements IStorage {
     if (filters?.status) conds.push(eq(storeGrns.status, filters.status));
     if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
       conds.push(inArray(storeGrns.siteId, filters.permittedSiteIds));
+    }
+    if (filters?.item || filters?.category) {
+      const itemConds: any[] = [eq(storeGrnItems.grnId, storeGrns.id)];
+      if (filters.item) itemConds.push(ilike(storeItems.name, `%${filters.item}%`));
+      if (filters.category) itemConds.push(eq(storeItems.category, filters.category));
+      conds.push(
+        exists(
+          db.select({ one: sql`1` })
+            .from(storeGrnItems)
+            .leftJoin(storeItems, eq(storeGrnItems.itemId, storeItems.id))
+            .where(and(...itemConds))
+        )
+      );
     }
     const grns = await db.select().from(storeGrns)
       .where(conds.length ? and(...conds) : undefined)

@@ -96,6 +96,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [supplierFilter, setSupplierFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
@@ -216,7 +218,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, draftOnly],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -225,6 +227,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (supplierFilter) p.set("supplier", supplierFilter);
       if (siteFilter) p.set("siteId", siteFilter);
       if (statusFilter) p.set("acceptanceStatus", statusFilter);
+      if (categoryFilter) p.set("category", categoryFilter);
+      if (itemFilter) p.set("item", itemFilter);
       if (draftOnly) p.set("status", "draft");
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
@@ -1291,8 +1295,26 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || draftOnly) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setDraftOnly(false); }}>Clear</Button>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Category</Label>
+                <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-category-filter">
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__" className="text-xs text-muted-foreground">All categories</SelectItem>
+                    {STORE_CATEGORIES.map(c => (
+                      <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Item</Label>
+                <Input className="h-8 w-36 text-xs" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
+              </div>
+              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); }}>Clear</Button>
               )}
             </div>
 
