@@ -819,20 +819,30 @@ export async function registerRoutes(
   app.post("/api/dprs/:id/version", async (req, res) => {
     try {
       const originalId = Number(req.params.id);
-      const input = versionSchema.parse(req.body);
 
       // A new DPR version is a create-shaped action, but it requires edit
       // rights on the parent record too. Gate on edit (the stricter of the
       // two) since revising a DPR is logically an edit.
       if (!assertEdit(req, res, "site_dprs")) return;
+
+      // Permission System v2: check site access BEFORE parsing body so a
+      // restricted user cannot probe other sites even with a malformed payload.
+      const versionOriginal = await storage.getDpr(originalId);
+      if (!versionOriginal) {
+        return res.status(404).json({ message: "DPR not found" });
+      }
+      {
+        const permittedSiteNames = await getPermittedSiteNames(req);
+        if (permittedSiteNames !== null && !permittedSiteNames.includes(versionOriginal.site)) {
+          return res.status(403).json({ message: "Access denied for this site" });
+        }
+      }
+
+      const input = versionSchema.parse(req.body);
       const editedBy = input.editedBy || "engineer";
 
       if (editedBy === "engineer") {
-        const original = await storage.getDpr(originalId);
-        if (!original) {
-          return res.status(404).json({ message: "DPR not found" });
-        }
-        const equipment = Array.isArray(original.equipment) ? original.equipment : [];
+        const equipment = Array.isArray(versionOriginal.equipment) ? versionOriginal.equipment : [];
         const hasPendingClosing = equipment.some((e: any) =>
           e.machine && e.openingReading != null && e.closingReading == null
         );
@@ -878,6 +888,18 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = cloneSchema.parse(req.body);
       const editedBy = input.editedBy || (req.authUser?.isAdmin ? "admin" : "manager");
+
+      // Permission System v2: check site access before cloning
+      const cloneSource = await storage.getDpr(id);
+      if (!cloneSource) {
+        return res.status(404).json({ message: "Original DPR not found" });
+      }
+      {
+        const permittedSiteNames = await getPermittedSiteNames(req);
+        if (permittedSiteNames !== null && !permittedSiteNames.includes(cloneSource.site)) {
+          return res.status(403).json({ message: "Access denied for this site" });
+        }
+      }
 
       const cloned = await storage.cloneDpr(id, editedBy, input.clientTimestamp);
       if (!cloned) {
