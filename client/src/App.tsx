@@ -1,12 +1,8 @@
 import { Switch, Route } from "wouter";
-import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { queryClient } from "./lib/queryClient";
-import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { useToast } from "@/hooks/use-toast";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import RequireAuth from "@/components/RequireAuth";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -85,6 +81,7 @@ import RmcCubeTests from "@/pages/RmcCubeTests";
 import RmcDailyReport from "@/pages/RmcDailyReport";
 import RmcDeliveryChallans from "@/pages/RmcDeliveryChallans";
 import RmcHub from "@/pages/RmcHub";
+import { HubShell } from "@/components/HubShell";
 import HmpHub from "@/pages/HmpHub";
 import EquipmentHub from "@/pages/EquipmentHub";
 import ReportsHub from "@/pages/ReportsHub";
@@ -107,43 +104,6 @@ function Watermark() {
         className="w-64 h-64 md:w-80 md:h-80 object-contain opacity-[0.06]"
       />
     </div>
-  );
-}
-
-function AppHeader() {
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const { toast } = useToast();
-
-  function handleRefresh() {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    queryClient.invalidateQueries({}, { throwOnError: true }).then(() => {
-      toast({ description: "Data refreshed", duration: 2000 });
-    }).catch(() => {}).finally(() => {
-      setTimeout(() => setIsRefreshing(false), 600);
-    });
-  }
-
-  return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 items-center px-4 md:px-8 max-w-7xl">
-        <div className="flex items-center gap-2 flex-1 justify-center">
-          <img src={companyLogo} alt="HLC" className="h-8 w-8 rounded object-cover" />
-          <span className="font-semibold text-lg hidden sm:inline">High Lane Constructions Pvt Ltd</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          aria-label="Refresh data"
-          data-testid="button-global-refresh"
-          className="shrink-0"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
-    </header>
   );
 }
 
@@ -254,11 +214,9 @@ function gatedEither(Component: ComponentType<any>, ...sections: SectionKey[]) {
 function AuthedShell() {
   const { rmcEnabled } = useFeatureFlags();
   return (
-    <div className="min-h-screen bg-background relative">
+    <HubShell>
       <Watermark />
-      <AppHeader />
-      <main className="min-h-screen relative z-10">
-        <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
+      <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
             <Route path="/site" component={SiteHome} />
             <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
@@ -338,8 +296,7 @@ function AuthedShell() {
             <Route component={NotFound} />
           </Switch>
         </div>
-      </main>
-    </div>
+    </HubShell>
   );
 }
 

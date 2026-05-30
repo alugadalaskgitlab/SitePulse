@@ -4,14 +4,18 @@ import {
   TrendingUp, Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
+  RefreshCw,
 } from "lucide-react";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
 interface HubShellProps {
   children: ReactNode;
-  title: string;
+  title?: string;
   subtitle?: string;
   backHref?: string;
   backLabel?: string;
@@ -29,6 +33,18 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const { rmcEnabled } = useFeatureFlags();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { toast } = useToast();
+
+  function handleRefresh() {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    queryClient.invalidateQueries({}, { throwOnError: true }).then(() => {
+      toast({ description: "Data refreshed", duration: 2000 });
+    }).catch(() => {}).finally(() => {
+      setTimeout(() => setIsRefreshing(false), 600);
+    });
+  }
 
   const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
   const initials = user?.fullName
@@ -209,6 +225,17 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
           {/* Right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              aria-label="Refresh data"
+              data-testid="button-global-refresh"
+              className="text-slate-500 hover:text-slate-700 h-8 w-8"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </Button>
             <div data-testid="button-notifications">
               <AdminNotifications />
             </div>
