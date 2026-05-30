@@ -767,6 +767,7 @@ export interface IStorage {
   getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
+  getRecentGrnSuppliers(limit?: number, permittedSiteIds?: number[]): Promise<string[]>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
@@ -17065,6 +17066,30 @@ export class DatabaseStorage implements IStorage {
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
     return Promise.all(grns.map(g => this.buildGrnWithItems(g)));
+  }
+
+  async getRecentGrnSuppliers(limit = 5, permittedSiteIds?: number[]): Promise<string[]> {
+    const conds = [ne(storeGrns.status, "draft"), ne(storeGrns.supplier, "—")];
+    if (permittedSiteIds !== undefined) {
+      if (permittedSiteIds.length === 0) return [];
+      conds.push(inArray(storeGrns.siteId, permittedSiteIds));
+    }
+    const rows = await db
+      .select({ supplier: storeGrns.supplier, id: storeGrns.id })
+      .from(storeGrns)
+      .where(and(...conds))
+      .orderBy(desc(storeGrns.id));
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const r of rows) {
+      const s = r.supplier?.trim();
+      if (s && !seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        result.push(s);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
   }
 
   async getRecentGrnItemIds(limit = 5): Promise<number[]> {

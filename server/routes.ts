@@ -6903,6 +6903,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stores/grns/recent-suppliers", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const permittedIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : null;
+      const suppliers = await storage.getRecentGrnSuppliers(limit, permittedIds ?? undefined);
+      res.json(suppliers);
+    } catch (err) {
+      console.error("GET /api/stores/grns/recent-suppliers:", err);
+      res.status(500).json({ error: "Failed to fetch recent GRN suppliers" });
+    }
+  });
+
   app.get("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;

@@ -132,6 +132,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [itemComboSearch, setItemComboSearch] = useState<Record<number, string>>({});
   const [itemComboOpen, setItemComboOpen] = useState<Record<number, boolean>>({});
   const itemComboRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
   const [indentOverride, setIndentOverride] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
@@ -168,6 +170,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target as Node)) {
+        setSupplierDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemTargetIdx, setAddItemTargetIdx] = useState<number | null>(null);
   const [addItemForm, setAddItemForm] = useState({ name: "", category: "Spares", uom: "Nos" });
@@ -179,6 +191,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/grns/recent-items"] });
+  const { data: recentSuppliers = [] } = useQuery<string[]>({ queryKey: ["/api/stores/grns/recent-suppliers"] });
 
   const { data: allIndentsGlobal = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
@@ -1246,7 +1259,40 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Supplier / Source *</Label>
-                    <Input value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="Supplier name" required data-testid="input-grn-supplier" />
+                    <div className="relative" ref={supplierDropdownRef}>
+                      <Input
+                        value={form.supplier}
+                        onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+                        onFocus={() => setSupplierDropdownOpen(true)}
+                        placeholder="Supplier name"
+                        required
+                        autoComplete="off"
+                        data-testid="input-grn-supplier"
+                      />
+                      {supplierDropdownOpen && recentSuppliers.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs" data-testid="dropdown-recent-suppliers">
+                          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                            Recently Used
+                          </div>
+                          {recentSuppliers
+                            .filter(s => !form.supplier || s.toLowerCase().includes(form.supplier.toLowerCase()))
+                            .map(s => (
+                              <div
+                                key={s}
+                                className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 ${form.supplier.toLowerCase() === s.toLowerCase() ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  setForm(f => ({ ...f, supplier: s }));
+                                  setSupplierDropdownOpen(false);
+                                }}
+                                data-testid={`option-recent-supplier-${s.replace(/\s+/g, "-").toLowerCase()}`}
+                              >
+                                {s}
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Invoice / Challan No.</Label>
