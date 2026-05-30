@@ -100,6 +100,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
   const [acceptanceEdit, setAcceptanceEdit] = useState({ acceptanceStatus: "accepted", acceptanceRemarks: "" });
+  const [finalisingDraft, setFinalisingDraft] = useState(false);
+  const [draftFinaliseIndentRef, setDraftFinaliseIndentRef] = useState("");
+  const [draftFinaliseOverride, setDraftFinaliseOverride] = useState(false);
 
   const [form, setForm] = useState({
     date: TODAY,
@@ -265,6 +268,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN finalised — items added to stock" });
+      setFinalisingDraft(false);
+      setDraftFinaliseIndentRef("");
+      setDraftFinaliseOverride(false);
     },
     onError: () => toast({ title: "Failed to finalise GRN", variant: "destructive" }),
   });
@@ -469,6 +475,70 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </tbody>
                 </table>
               </div>
+              {/* Inline draft finalise panel */}
+              {selectedGrn.status === "draft" && finalisingDraft && (() => {
+                const pi = draftFinaliseIndentRef ? allPurchaseIndents.find(p => p.indentNo === draftFinaliseIndentRef) : null;
+                const isNotApproved = pi && pi.status !== "approved";
+                return (
+                  <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5" /> Finalise GRN — Link Indent &amp; Confirm
+                    </p>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Indent Reference (optional)</Label>
+                      <Select value={draftFinaliseIndentRef || "__none__"} onValueChange={v => { setDraftFinaliseIndentRef(v === "__none__" ? "" : v); setDraftFinaliseOverride(false); }}>
+                        <SelectTrigger className="h-8 text-xs" data-testid="select-finalise-indent">
+                          <SelectValue placeholder="— No indent —" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs text-muted-foreground">— No indent —</SelectItem>
+                          {allPurchaseIndents.map(p => (
+                            <SelectItem key={p.id} value={p.indentNo} className="text-xs">{p.indentNo} ({p.status})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {pi && (
+                        <div className={`rounded-md border p-2 text-xs space-y-1 ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {getStatusBadgeGrn(pi.status)}
+                            <span className="font-semibold">{pi.indentNo}</span>
+                            <span className="text-muted-foreground">· {pi.items.length} item{pi.items.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          {pi.items.slice(0, 3).map((it, i) => (
+                            <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
+                          ))}
+                          {isNotApproved && (
+                            <label className="flex items-center gap-2 cursor-pointer pt-1">
+                              <input type="checkbox" checked={draftFinaliseOverride} onChange={e => setDraftFinaliseOverride(e.target.checked)} data-testid="checkbox-finalise-override" />
+                              <span className="text-amber-700 dark:text-amber-300">Override — I understand this indent is not yet approved</span>
+                            </label>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="gap-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                        disabled={finaliseMutation.isPending}
+                        data-testid="button-confirm-finalise"
+                        onClick={() => {
+                          if (isNotApproved && !draftFinaliseOverride) {
+                            toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
+                            return;
+                          }
+                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: draftFinaliseIndentRef || null });
+                        }}
+                      >
+                        {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        Finalise GRN
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFinalisingDraft(false)} data-testid="button-cancel-finalise">Cancel</Button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Inline acceptance editor */}
               {editingAcceptance ? (
                 <div className="border rounded-md p-3 space-y-3 bg-muted/40" data-testid="panel-acceptance-edit">
@@ -542,20 +612,18 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <ChevronLeft className="w-4 h-4" /> Back to list
                 </Button>
                 <div className="flex items-center gap-2">
-                  {selectedGrn.status === "draft" && (
+                  {selectedGrn.status === "draft" && !finalisingDraft && (
                     <Button
                       size="sm"
                       className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white"
                       data-testid="button-finalise-grn"
-                      disabled={finaliseMutation.isPending}
                       onClick={() => {
-                        if (confirm("Finalise this GRN? Items will be added to stock.")) {
-                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: selectedGrn.indentRef });
-                        }
+                        setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
+                        setDraftFinaliseOverride(false);
+                        setFinalisingDraft(true);
                       }}
                     >
-                      {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                      Finalise GRN
+                      <Zap className="w-3 h-3" /> Finalise GRN
                     </Button>
                   )}
                   {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && (
