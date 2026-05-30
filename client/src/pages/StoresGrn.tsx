@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +39,10 @@ function getAcceptanceBadge(status: string) {
   }
 }
 
+function getDraftBadge() {
+  return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">DRAFT</Badge>;
+}
+
 function getStatusBadgeGrn(status: string) {
   switch (status) {
     case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">APPROVED</Badge>;
@@ -59,7 +63,7 @@ type GrnWithItems = {
   id: number; grnNumber: string; date: string; supplier: string;
   invoiceNo: string | null; invoiceDate: string | null; siteId: number | null;
   indentRef: string | null; remarks: string | null;
-  acceptanceStatus: string; acceptanceRemarks: string | null;
+  status: string; acceptanceStatus: string; acceptanceRemarks: string | null;
   items: { itemId: number; itemName: string; category: string; qty: number; rate: number | null; uom: string }[];
 };
 
@@ -91,6 +95,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [indentFilter, setIndentFilter] = useState(indentRefFilter);
   const [siteFilter, setSiteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [draftOnly, setDraftOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
@@ -118,6 +123,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [itemComboOpen, setItemComboOpen] = useState<Record<number, boolean>>({});
   const itemComboRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [indentOverride, setIndentOverride] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -171,7 +177,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const purchaseIndents = allPurchaseIndents.filter(d => d.status === "approved" || d.status === "pending");
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter, statusFilter],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, siteFilter, statusFilter, draftOnly],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -179,6 +185,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (indentFilter) p.set("indentRef", indentFilter);
       if (siteFilter) p.set("siteId", siteFilter);
       if (statusFilter) p.set("acceptanceStatus", statusFilter);
+      if (draftOnly) p.set("status", "draft");
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -231,7 +238,12 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
-      toast({ title: "GRN created successfully" });
+      if (isSavingDraft) {
+        toast({ title: "Draft saved", description: "Find it in the GRN list to finalise later." });
+      } else {
+        toast({ title: "GRN created — items added to stock" });
+      }
+      setIsSavingDraft(false);
       setShowForm(false);
       setForm({ date: TODAY, supplier: "", invoiceNo: "", invoiceDate: "", siteId: "", indentRef: "", remarks: "", acceptanceStatus: "accepted", acceptanceRemarks: "" });
       setLines([emptyLine()]);
@@ -241,7 +253,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setIndentComboSearch("");
       if (isNew) navigate("/stores/grns");
     },
-    onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
+    onError: () => {
+      setIsSavingDraft(false);
+      toast({ title: "Error creating GRN", variant: "destructive" });
+    },
+  });
+
+  const finaliseMutation = useMutation({
+    mutationFn: ({ id, indentRef }: { id: number; indentRef: string | null }) =>
+      apiRequest("PATCH", `/api/stores/grns/${id}`, { status: "finalized", indentRef }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      toast({ title: "GRN finalised — items added to stock" });
+    },
+    onError: () => toast({ title: "Failed to finalise GRN", variant: "destructive" }),
   });
 
   const addStoreItemMutation = useMutation({
@@ -306,6 +331,38 @@ export default function StoresGrn({ isNew, detailId }: Props) {
         remarks: form.remarks || null,
         acceptanceStatus: form.acceptanceStatus,
         acceptanceRemarks: form.acceptanceRemarks || null,
+        status: "finalized",
+      },
+      items: validLines.map(l => ({
+        itemId: parseInt(l.itemId),
+        qty: parseFloat(l.qty),
+        rate: l.rate ? parseFloat(l.rate) : null,
+        uom: l.uom,
+      })),
+      grnCategory: STORE_CATEGORY_CODES[grnCategory] || "GRN",
+    });
+  }
+
+  function handleSaveDraft(e: React.MouseEvent) {
+    e.preventDefault();
+    const validLines = lines.filter(l => l.itemId && l.qty);
+    if (!validLines.length) {
+      toast({ title: "Add at least one item with quantity", variant: "destructive" });
+      return;
+    }
+    setIsSavingDraft(true);
+    createMutation.mutate({
+      grn: {
+        date: form.date,
+        supplier: form.supplier || "—",
+        invoiceNo: form.invoiceNo || null,
+        invoiceDate: form.invoiceDate || null,
+        siteId: form.siteId ? parseInt(form.siteId) : null,
+        indentRef: form.indentRef || null,
+        remarks: form.remarks || null,
+        acceptanceStatus: "accepted",
+        acceptanceRemarks: null,
+        status: "draft",
       },
       items: validLines.map(l => ({
         itemId: parseInt(l.itemId),
@@ -361,7 +418,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-lg font-bold text-green-700 dark:text-green-400" data-testid="text-grn-detail-number">{selectedGrn.grnNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                    {getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
+                    {selectedGrn.status === "draft" ? getDraftBadge() : getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
                     {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-xs text-muted-foreground">— No site assigned</span>; })()}
                     {selectedGrn.indentRef && (
                       <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
@@ -485,7 +542,23 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <ChevronLeft className="w-4 h-4" /> Back to list
                 </Button>
                 <div className="flex items-center gap-2">
-                  {(isAdmin || isManager) && !editingAcceptance && (
+                  {selectedGrn.status === "draft" && (
+                    <Button
+                      size="sm"
+                      className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white"
+                      data-testid="button-finalise-grn"
+                      disabled={finaliseMutation.isPending}
+                      onClick={() => {
+                        if (confirm("Finalise this GRN? Items will be added to stock.")) {
+                          finaliseMutation.mutate({ id: selectedGrn.id, indentRef: selectedGrn.indentRef });
+                        }
+                      }}
+                    >
+                      {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                      Finalise GRN
+                    </Button>
+                  )}
+                  {(isAdmin || isManager) && !editingAcceptance && selectedGrn.status !== "draft" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -685,19 +758,25 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                       {/* Suggestions from item matching */}
                       {suggestedIndents.length > 0 && !form.indentRef && (
-                        <div className="flex flex-wrap gap-1.5">
-                          <span className="text-[10px] text-muted-foreground">Matching indents:</span>
-                          {suggestedIndents.map(pi => (
-                            <button
-                              key={pi.id}
-                              type="button"
-                              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200 transition-colors"
-                              onClick={() => { setForm(f => ({ ...f, indentRef: pi.indentNo })); setIndentComboSearch(""); }}
-                              data-testid={`badge-indent-${pi.indentNo}`}
-                            >
-                              {pi.indentNo}
-                            </button>
-                          ))}
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-muted-foreground">Matching indent{suggestedIndents.length > 1 ? "s" : ""} based on items:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {suggestedIndents.map(pi => (
+                              <button
+                                key={pi.id}
+                                type="button"
+                                className="text-left rounded border border-violet-200 hover:bg-violet-50 bg-white dark:bg-zinc-900 dark:border-violet-800 dark:hover:bg-violet-900/20 px-2 py-1 text-[10px] leading-snug transition-colors"
+                                onClick={() => { setForm(f => ({ ...f, indentRef: pi.indentNo })); setIndentComboSearch(""); }}
+                                data-testid={`badge-indent-${pi.indentNo}`}
+                              >
+                                <div className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</div>
+                                {pi.items.slice(0, 2).map((it, i) => (
+                                  <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
+                                ))}
+                                {pi.items.length > 2 && <div className="text-muted-foreground">+{pi.items.length - 2} more</div>}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -881,19 +960,28 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           const lineMatches = findMatchingIndents(selectedItem.name);
                           if (!lineMatches.length) return null;
                           return (
-                            <div className="flex items-center gap-1 pl-1">
-                              <span className="text-[10px] text-muted-foreground">Indent for {selectedItem.name}:</span>
-                              {lineMatches.map(pi => (
-                                <button
-                                  key={pi.id}
-                                  type="button"
-                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors ${form.indentRef === pi.indentNo ? "bg-violet-200 text-violet-800 dark:bg-violet-800/60 dark:text-violet-200" : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 hover:bg-violet-200"}`}
-                                  onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
-                                  data-testid={`line-badge-indent-${idx}-${pi.indentNo}`}
-                                >
-                                  {pi.indentNo}
-                                </button>
-                              ))}
+                            <div className="pl-1 space-y-1">
+                              <span className="text-[10px] text-muted-foreground">Matching indent{lineMatches.length > 1 ? "s" : ""} for <span className="font-medium">{selectedItem.name}</span>:</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {lineMatches.map(pi => {
+                                  const isSelected = form.indentRef === pi.indentNo;
+                                  return (
+                                    <button
+                                      key={pi.id}
+                                      type="button"
+                                      className={`text-left rounded border px-2 py-1 text-[10px] leading-snug transition-colors ${isSelected ? "bg-violet-100 border-violet-400 text-violet-900 dark:bg-violet-800/40 dark:border-violet-600 dark:text-violet-100" : "bg-white border-violet-200 hover:bg-violet-50 dark:bg-zinc-900 dark:border-violet-800 dark:hover:bg-violet-900/20"}`}
+                                      onClick={() => setForm(f => ({ ...f, indentRef: pi.indentNo }))}
+                                      data-testid={`line-badge-indent-${idx}-${pi.indentNo}`}
+                                    >
+                                      <div className="font-semibold text-violet-700 dark:text-violet-400">{pi.indentNo}</div>
+                                      {pi.items.slice(0, 2).map((it, i) => (
+                                        <div key={i} className="text-muted-foreground">{it.description} — {it.approvedQty ?? it.qty} {it.uom}</div>
+                                      ))}
+                                      {pi.items.length > 2 && <div className="text-muted-foreground">+{pi.items.length - 2} more</div>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })()}
@@ -908,8 +996,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <Button type="button" variant="ghost" onClick={cancelForm}>Cancel</Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-1 text-amber-700 border-amber-400 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                    disabled={createMutation.isPending}
+                    onClick={handleSaveDraft}
+                    data-testid="button-save-draft"
+                  >
+                    {createMutation.isPending && isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+                    Save as Draft
+                  </Button>
                   <Button type="submit" className="gap-1" disabled={createMutation.isPending} data-testid="button-save-grn">
-                    {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
+                    {createMutation.isPending && !isSavingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
                     Save GRN
                   </Button>
                 </div>
@@ -985,6 +1084,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-xs text-muted-foreground">Status</Label>
+                <Button
+                  variant={draftOnly ? "default" : "outline"}
+                  size="sm"
+                  className={`text-xs h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
+                  onClick={() => setDraftOnly(v => !v)}
+                  data-testid="button-drafts-only"
+                >
+                  <Clock className="w-3 h-3" />
+                  {draftOnly ? "Drafts only ×" : "Drafts only"}
+                </Button>
                 <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
                   <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-status-filter">
                     <SelectValue placeholder="All statuses" />
@@ -1011,8 +1120,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-              {(dateFrom || dateTo || indentFilter || siteFilter || statusFilter) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); setStatusFilter(""); }}>Clear</Button>
+              {(dateFrom || dateTo || indentFilter || siteFilter || statusFilter || draftOnly) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSiteFilter(""); setStatusFilter(""); setDraftOnly(false); }}>Clear</Button>
               )}
             </div>
 
@@ -1031,7 +1140,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                            {grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus)}
+                            {grn.status === "draft" ? getDraftBadge() : (grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus))}
                             {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
                             {grn.indentRef && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">

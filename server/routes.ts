@@ -6815,6 +6815,7 @@ export async function registerRoutes(
         indentRef: req.query.indentRef as string | undefined,
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
         acceptanceStatus: req.query.acceptanceStatus as string | undefined,
+        status: req.query.status as string | undefined,
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);
@@ -6862,12 +6863,31 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "stores_inventory")) return;
       const id = parseInt(req.params.id);
-      const { acceptanceStatus, acceptanceRemarks } = req.body;
-      if (!acceptanceStatus) return res.status(400).json({ error: "acceptanceStatus is required" });
-      if (!["accepted", "partial", "rejected"].includes(acceptanceStatus)) {
-        return res.status(400).json({ error: "Invalid acceptanceStatus value" });
+      const { acceptanceStatus, acceptanceRemarks, status, indentRef } = req.body;
+
+      const updateData: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null } = {};
+
+      if (acceptanceStatus !== undefined) {
+        if (!["accepted", "partial", "rejected"].includes(acceptanceStatus)) {
+          return res.status(400).json({ error: "Invalid acceptanceStatus value" });
+        }
+        updateData.acceptanceStatus = acceptanceStatus;
+        updateData.acceptanceRemarks = acceptanceRemarks ?? null;
       }
-      const result = await storage.updateStoreGrn(id, { acceptanceStatus, acceptanceRemarks: acceptanceRemarks ?? null });
+      if (status !== undefined) {
+        if (!["draft", "finalized"].includes(status)) {
+          return res.status(400).json({ error: "Invalid status value" });
+        }
+        updateData.status = status;
+      }
+      if (indentRef !== undefined) {
+        updateData.indentRef = indentRef ?? null;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: "No valid fields to update" });
+      }
+      const result = await storage.updateStoreGrn(id, updateData);
       if (!result) return res.status(404).json({ error: "GRN not found" });
       res.json(result);
     } catch (err) {

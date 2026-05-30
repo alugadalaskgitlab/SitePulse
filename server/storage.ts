@@ -755,11 +755,11 @@ export interface IStorage {
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
-  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string }): Promise<StoreGrnWithItems[]>;
+  getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string }): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
-  updateStoreGrn(id: number, data: { acceptanceStatus: string; acceptanceRemarks?: string | null }): Promise<StoreGrnWithItems | undefined>;
+  updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
   getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
@@ -16941,7 +16941,7 @@ export class DatabaseStorage implements IStorage {
     return { ...grn, items: items as (StoreGrnItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string }): Promise<StoreGrnWithItems[]> {
+  async getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string }): Promise<StoreGrnWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeGrns.date, filters.dateFrom));
@@ -16950,6 +16950,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.indentRef) conds.push(ilike(storeGrns.indentRef, `%${filters.indentRef}%`));
     if (filters?.siteId) conds.push(eq(storeGrns.siteId, filters.siteId));
     if (filters?.acceptanceStatus) conds.push(eq(storeGrns.acceptanceStatus, filters.acceptanceStatus));
+    if (filters?.status) conds.push(eq(storeGrns.status, filters.status));
     if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
       conds.push(inArray(storeGrns.siteId, filters.permittedSiteIds));
     }
@@ -17014,7 +17015,7 @@ export class DatabaseStorage implements IStorage {
     return this.buildGrnWithItems(grn);
   }
 
-  async updateStoreGrn(id: number, data: { acceptanceStatus: string; acceptanceRemarks?: string | null }): Promise<StoreGrnWithItems | undefined> {
+  async updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined> {
     const [grn] = await db.update(storeGrns).set(data).where(eq(storeGrns.id, id)).returning();
     if (!grn) return undefined;
     return this.buildGrnWithItems(grn);
@@ -17086,9 +17087,11 @@ export class DatabaseStorage implements IStorage {
   async getStoreStockSummary(): Promise<StoreStockBalance[]> {
     const allItems = await db.select().from(storeItems).where(eq(storeItems.isActive, 1)).orderBy(asc(storeItems.category), asc(storeItems.name));
     const grnTotals = await db.execute(sql`
-      SELECT item_id, COALESCE(SUM(qty), 0) AS total_in
-      FROM store_grn_items
-      GROUP BY item_id
+      SELECT gi.item_id, COALESCE(SUM(gi.qty), 0) AS total_in
+      FROM store_grn_items gi
+      JOIN store_grns g ON g.id = gi.grn_id
+      WHERE g.status != 'draft'
+      GROUP BY gi.item_id
     `);
     const issueTotals = await db.execute(sql`
       SELECT item_id, COALESCE(SUM(qty), 0) AS total_out
@@ -17127,6 +17130,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
       .where(and(
         eq(storeGrnItems.itemId, itemId),
+        ne(storeGrns.status, 'draft'),
         ...(filters?.dateFrom ? [gte(storeGrns.date, filters.dateFrom)] : []),
         ...(filters?.dateTo ? [lte(storeGrns.date, filters.dateTo)] : []),
       ));

@@ -1799,6 +1799,7 @@ export const storeGrns = pgTable("store_grns", {
   siteId: integer("site_id").references(() => sites.id),
   indentRef: text("indent_ref"),
   remarks: text("remarks"),
+  status: text("status").notNull().default("finalized"), // "draft" | "finalized"
   acceptanceStatus: text("acceptance_status").notNull().default("accepted"), // "accepted" | "partial" | "rejected"
   acceptanceRemarks: text("acceptance_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
