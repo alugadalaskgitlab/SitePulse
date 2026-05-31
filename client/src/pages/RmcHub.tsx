@@ -13,6 +13,7 @@ import {
 import {
   Truck, FileText,
   TestTube, FlaskConical, BarChart3, Layers, AlertTriangle, TrendingUp,
+  Fuel, ShoppingCart,
 } from "lucide-react";
 import { parseISO } from "date-fns";
 
@@ -74,8 +75,9 @@ export default function RmcHub() {
   const [activeTab, setActiveTab] = useState<"operations" | "reports">("operations");
 
   const canProduction = sectionVisible("plant_production");
-
   const canReports = sectionVisible("plant_daily_reports");
+  const canProcure = sectionVisible("site_procurement");
+  const canDieselReq = sectionVisible("site_diesel");
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -329,7 +331,6 @@ export default function RmcHub() {
                 iconBg="bg-teal-100"
                 enabled={canProduction}
               />
-
               <HubActionTile
                 href="/plant/rmc/cube-tests"
                 icon={TestTube}
@@ -347,6 +348,24 @@ export default function RmcHub() {
                 accent="teal"
                 iconBg="bg-teal-100"
                 enabled={canProduction}
+              />
+              <HubActionTile
+                href="/plant/purchase-indents"
+                icon={ShoppingCart}
+                title="Purchase Indent"
+                description="Raise and track purchase indents for RMC materials & consumables"
+                accent="blue"
+                iconBg="bg-blue-100"
+                enabled={canProcure}
+              />
+              <HubActionTile
+                href="/plant/diesel-requirements"
+                icon={Fuel}
+                title="Daily Diesel Requirement"
+                description="Plan & approve diesel allocation for RMC plant operations"
+                accent="amber"
+                iconBg="bg-amber-100"
+                enabled={canDieselReq}
               />
             </div>
           )}

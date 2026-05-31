@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  FileText, Package, ClipboardList, TrendingUp,
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -135,6 +135,24 @@ export default function SiteHub() {
               accent="rose"
               iconBg="bg-rose-100"
               enabled={sectionVisible("site_procurement")}
+            />
+            <HubActionTile
+              href="/plant/purchase-indents"
+              icon={ShoppingCart}
+              title="Purchase Indent"
+              description="Raise and track purchase indents for site materials & requirements"
+              accent="blue"
+              iconBg="bg-blue-100"
+              enabled={sectionVisible("site_procurement")}
+            />
+            <HubActionTile
+              href="/plant/diesel-requirements"
+              icon={Fuel}
+              title="Daily Diesel Requirement"
+              description="Plan & approve diesel allocation for site equipment"
+              accent="amber"
+              iconBg="bg-amber-100"
+              enabled={sectionVisible("site_diesel")}
             />
           </div>
         </div>

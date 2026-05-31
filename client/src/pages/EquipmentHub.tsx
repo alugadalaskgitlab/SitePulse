@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, Settings,
+  Activity, AlertTriangle, Fuel, Zap, Settings, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -130,6 +130,15 @@ export default function EquipmentHub() {
               accent="amber"
               iconBg="bg-amber-100"
               enabled={sectionVisible("site_diesel")}
+            />
+            <HubActionTile
+              href="/plant/purchase-indents"
+              icon={ShoppingCart}
+              title="Purchase Indent"
+              description="Raise indents for spare parts, consumables & fleet requirements"
+              accent="blue"
+              iconBg="bg-blue-100"
+              enabled={sectionVisible("site_procurement")}
             />
             <HubActionTile
               href={`/admin/settings?returnTo=${HUB}`}

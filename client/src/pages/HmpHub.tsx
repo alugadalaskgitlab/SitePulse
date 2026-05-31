@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Flame, ClipboardList, Truck, BarChart3, Droplets, Gauge, FileSearch,
-  Package, ArrowRightLeft, Scale, Fuel, Settings, Wrench, TrendingUp,
-  FileText, Receipt, GitCompare, Layers,
+  ArrowRightLeft, Scale, Fuel, Settings, Wrench, TrendingUp,
+  FileText, Receipt, GitCompare, Layers, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -44,7 +44,7 @@ function KpiCard({ label, value, sub, color = "orange" }: {
   );
 }
 
-type HmpTab = "operations" | "materials" | "stock" | "reports";
+type HmpTab = "operations" | "stock" | "reports";
 
 export default function HmpHub() {
   const { sectionVisible, isAdmin } = useAuth();
@@ -53,16 +53,15 @@ export default function HmpHub() {
   const canShift    = sectionVisible("plant_shift_logs");
   const canHeating  = sectionVisible("plant_heating");
   const canProd     = sectionVisible("plant_production");
-  const canEquip    = sectionVisible("plant_equipment");
-  const canMats     = sectionVisible("plant_materials");
   const canStock    = sectionVisible("plant_stock");
   const canReports  = sectionVisible("plant_daily_reports");
   const canVariance = sectionVisible("plant_variance");
   const canAudit    = sectionVisible("plant_audit");
   const canBitumen  = sectionVisible("plant_bitumen");
   const canLdo      = sectionVisible("plant_ldo");
-  const canFinance  = sectionVisible("vendor_bills") || sectionVisible("site_procurement") || sectionVisible("site_diesel");
   const canDiesel   = sectionVisible("plant_diesel_proc");
+  const canProcure  = sectionVisible("site_procurement");
+  const canDieselReq = sectionVisible("site_diesel");
 
   const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -122,15 +121,14 @@ export default function HmpHub() {
 
   const tabs: { key: HmpTab; label: string }[] = [
     { key: "operations", label: "Operations" },
-    { key: "materials",  label: "Materials" },
-    { key: "stock",      label: "Stock & Finance" },
+    { key: "stock",      label: "Stock & Procurement" },
     { key: "reports",    label: "Reports" },
   ];
 
   return (
     <HubShell
       title="HMP Plant"
-      subtitle="Hot-mix plant — operations, materials, stock & reports"
+      subtitle="Hot-mix plant — operations, stock & reports"
       backHref="/"
       backLabel="Dashboard"
     >
@@ -267,74 +265,6 @@ export default function HmpHub() {
                 iconBg="bg-orange-100"
                 enabled={canProd}
               />
-              <HubActionTile
-                href="/plant/equipment-usage"
-                icon={Gauge}
-                title="Equipment Usage"
-                description="Daily meter readings, run-hours and diesel tracking"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canEquip}
-              />
-              <HubActionTile
-                href="/plant/generator-logs"
-                icon={Fuel}
-                title="Generator Logs"
-                description="Inline DG run logs linked to heating sessions"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canEquip}
-              />
-              <HubActionTile
-                href="/plant/maintenance"
-                icon={Wrench}
-                title="Maintenance Log"
-                description="Equipment servicing, repairs and breakdown records"
-                accent="slate"
-                iconBg="bg-slate-100"
-                enabled={canEquip}
-              />
-            </div>
-          )}
-
-          {activeTab === "materials" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <HubActionTile
-                href="/plant/material-receipts"
-                icon={Package}
-                title="Material Receipts"
-                description="Incoming aggregate, bitumen & admixture GRNs"
-                accent="emerald"
-                iconBg="bg-emerald-100"
-                enabled={canMats}
-              />
-              <HubActionTile
-                href="/plant/material-issues"
-                icon={ArrowRightLeft}
-                title="Material Issues"
-                description="Issue materials to production — deducts from stock"
-                accent="emerald"
-                iconBg="bg-emerald-100"
-                enabled={canMats}
-              />
-              <HubActionTile
-                href="/plant/material-returns"
-                icon={ArrowRightLeft}
-                title="Material Returns"
-                description="Return unused materials back to plant stock"
-                accent="emerald"
-                iconBg="bg-emerald-100"
-                enabled={canMats}
-              />
-              <HubActionTile
-                href="/plant/ldo-logs"
-                icon={Droplets}
-                title="LDO Meter Logs"
-                description="Light diesel oil meter reading entries"
-                accent="orange"
-                iconBg="bg-orange-100"
-                enabled={canStock}
-              />
             </div>
           )}
 
@@ -357,6 +287,15 @@ export default function HmpHub() {
                 accent="yellow"
                 iconBg="bg-yellow-100"
                 enabled={canBitumen}
+              />
+              <HubActionTile
+                href="/plant/ldo-logs"
+                icon={Droplets}
+                title="LDO Meter Logs"
+                description="Light diesel oil meter reading entries"
+                accent="orange"
+                iconBg="bg-orange-100"
+                enabled={canStock}
               />
               <HubActionTile
                 href="/plant/ldo-flow-meter"
@@ -386,13 +325,22 @@ export default function HmpHub() {
                 enabled={canStock}
               />
               <HubActionTile
-                href="/finance/hub"
-                icon={Receipt}
-                title="Procurement & Billing"
-                description="Purchase indents, diesel requirements & vendor bills"
+                href="/plant/purchase-indents"
+                icon={ShoppingCart}
+                title="Purchase Indent"
+                description="Raise and track purchase indents for HMP materials & spares"
                 accent="blue"
                 iconBg="bg-blue-100"
-                enabled={canFinance}
+                enabled={canProcure}
+              />
+              <HubActionTile
+                href="/plant/diesel-requirements"
+                icon={Fuel}
+                title="Daily Diesel Requirement"
+                description="Plan & approve diesel allocation for HMP plant operations"
+                accent="amber"
+                iconBg="bg-amber-100"
+                enabled={canDieselReq}
               />
             </div>
           )}
