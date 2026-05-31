@@ -150,12 +150,6 @@ export default function DieselRequirements() {
     queryFn: () => fetch(`/api/diesel-requirements${queryString}`).then(r => r.json()),
   });
 
-  const filteredRequirements = useMemo(() => {
-    if (!requirements) return [];
-    if (filterSite === "all") return requirements;
-    return requirements.filter(req => String((req as any).siteId ?? "") === filterSite);
-  }, [requirements, filterSite]);
-
   const { data: summary } = useQuery<{ total: number; pending: number; approved: number; rejected: number }>({
     queryKey: ["/api/diesel-requirements/summary"],
   });
