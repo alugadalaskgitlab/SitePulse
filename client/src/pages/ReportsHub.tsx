@@ -1,6 +1,6 @@
 import {
   BarChart3, Package, TrendingUp, FileText,
-  Fuel, ClipboardList, Layers,
+  Fuel, ClipboardList, Layers, Scale,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -81,12 +81,21 @@ export default function ReportsHub() {
             />
             <HubActionTile
               href={`/plant/variance-report?returnTo=${HUB}`}
-              icon={Layers}
+              icon={Scale}
               title="Stock Variance Report"
-              description="Physical stock audit comparison & variance report"
+              description="Theoretical vs actual material consumption variance"
               accent="violet"
               iconBg="bg-violet-100"
               enabled={sectionVisible("plant_variance")}
+            />
+            <HubActionTile
+              href={`/plant/audit-report?returnTo=${HUB}`}
+              icon={BarChart3}
+              title="Audit Report"
+              description="Stock audit trails and adjustment history"
+              accent="purple"
+              iconBg="bg-purple-100"
+              enabled={sectionVisible("plant_audit")}
             />
             <HubActionTile
               href={`/site/materials-received?returnTo=${HUB}`}

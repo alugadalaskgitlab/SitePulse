@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -24,7 +24,7 @@ function KpiCard({ label, value, sub, warn }: {
 }
 
 export default function StoresHub() {
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isAdmin } = useAuth();
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
 
@@ -149,6 +149,42 @@ export default function StoresHub() {
                 accent="emerald"
                 iconBg="bg-emerald-100"
                 enabled={canBulk}
+              />
+              <HubActionTile
+                href={`/plant/stock-transfer?returnTo=${HUB}`}
+                icon={ArrowLeftRight}
+                title="Inter-Party Transfer"
+                description="Return borrowed material between contractor parties"
+                accent="slate"
+                iconBg="bg-slate-100"
+                enabled={canBulk}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Admin Tools */}
+        {isAdmin && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Admin Tools
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href={`/plant/stock-reassign?returnTo=${HUB}`}
+                icon={Settings}
+                title="Stock Reassignment"
+                description="Reassign ledger entries between parties"
+                accent="slate"
+                iconBg="bg-slate-100"
+              />
+              <HubActionTile
+                href={`/plant/ledger-rebuild?returnTo=${HUB}`}
+                icon={Settings}
+                title="Dispatch Ledger Rebuild"
+                description="Rewrite component ledger from a chosen date cutoff"
+                accent="slate"
+                iconBg="bg-slate-100"
               />
             </div>
           </div>

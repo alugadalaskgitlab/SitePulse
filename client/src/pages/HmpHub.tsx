@@ -2,9 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Flame, ClipboardList, Truck, BarChart3, Droplets, Gauge, FileSearch,
-  ArrowRightLeft, Scale, Fuel, Settings, Wrench, TrendingUp,
-  FileText, Receipt, GitCompare, Layers, ShoppingCart,
+  Flame, ClipboardList, Truck, Droplets, Gauge, FileSearch,
+  Fuel, TrendingUp, FileText, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -152,8 +151,8 @@ export default function HmpHub() {
           <KpiCard label="Date" value={format(new Date(), "dd MMM")} sub={format(new Date(), "yyyy")} color="purple" />
         </div>
 
-        {/* 7-day dispatch trend */}
-        {canProd && (
+        {/* 7-day dispatch trend — only shown when data exists */}
+        {canProd && (trendLoading || hasAnyProd) && (
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="pb-2 pt-4 px-5">
               <CardTitle className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -271,15 +270,6 @@ export default function HmpHub() {
           {activeTab === "stock" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href="/plant/stock"
-                icon={Layers}
-                title="Plant Stock Ledger"
-                description="Current stock balances for all HMP materials"
-                accent="purple"
-                iconBg="bg-purple-100"
-                enabled={canStock}
-              />
-              <HubActionTile
                 href="/plant/bitumen-stock"
                 icon={Droplets}
                 title="Bitumen Stock"
@@ -289,19 +279,10 @@ export default function HmpHub() {
                 enabled={canBitumen}
               />
               <HubActionTile
-                href="/plant/ldo-logs"
-                icon={Droplets}
-                title="LDO Meter Logs"
-                description="Light diesel oil meter reading entries"
-                accent="orange"
-                iconBg="bg-orange-100"
-                enabled={canStock}
-              />
-              <HubActionTile
                 href="/plant/ldo-flow-meter"
                 icon={Gauge}
-                title="LDO Flow Meter"
-                description="Flow meter readings and LDO consumption tracking"
+                title="LDO Stock"
+                description="LDO stock levels, flow meter readings and consumption tracking"
                 accent="blue"
                 iconBg="bg-blue-100"
                 enabled={canLdo}
@@ -311,15 +292,6 @@ export default function HmpHub() {
                 icon={FileSearch}
                 title="LDO Book vs Physical"
                 description="Reconcile book stock against physical dip readings"
-                accent="slate"
-                iconBg="bg-slate-100"
-                enabled={canStock}
-              />
-              <HubActionTile
-                href="/plant/stock-transfer"
-                icon={GitCompare}
-                title="Inter-Party Transfer"
-                description="Return borrowed material between contractor parties"
                 accent="slate"
                 iconBg="bg-slate-100"
                 enabled={canStock}
@@ -366,24 +338,6 @@ export default function HmpHub() {
                 enabled={canHeating}
               />
               <HubActionTile
-                href="/plant/variance-report"
-                icon={Scale}
-                title="Variance Report"
-                description="Theoretical vs actual material consumption variance"
-                accent="purple"
-                iconBg="bg-purple-100"
-                enabled={canVariance}
-              />
-              <HubActionTile
-                href="/plant/audit-report"
-                icon={BarChart3}
-                title="Audit Report"
-                description="Stock audit trails and adjustment history"
-                accent="purple"
-                iconBg="bg-purple-100"
-                enabled={canAudit}
-              />
-              <HubActionTile
                 href="/plant/diesel-procurement"
                 icon={Fuel}
                 title="Diesel Procurement"
@@ -401,28 +355,6 @@ export default function HmpHub() {
                 iconBg="bg-slate-100"
                 enabled={canShift}
               />
-              {isAdmin && (
-                <HubActionTile
-                  href="/plant/stock-reassign"
-                  icon={Settings}
-                  title="Stock Reassignment"
-                  description="Reassign ledger entries between parties (admin)"
-                  accent="slate"
-                  iconBg="bg-slate-100"
-                  enabled={true}
-                />
-              )}
-              {isAdmin && (
-                <HubActionTile
-                  href="/plant/ledger-rebuild"
-                  icon={Settings}
-                  title="Dispatch Ledger Rebuild"
-                  description="Rewrite component ledger from a chosen date cutoff"
-                  accent="slate"
-                  iconBg="bg-slate-100"
-                  enabled={true}
-                />
-              )}
             </div>
           )}
         </div>

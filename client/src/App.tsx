@@ -32,7 +32,6 @@ import PlantMaterialReturns from "@/pages/PlantMaterialReturns";
 import PlantDispatches from "@/pages/PlantDispatches";
 import PlantEquipmentUsage from "@/pages/PlantEquipmentUsage";
 import PlantGeneratorLogs from "@/pages/PlantGeneratorLogs";
-import PlantLdoLogs from "@/pages/PlantLdoLogs";
 import PlantStock from "@/pages/PlantStock";
 import PlantVarianceReport from "@/pages/PlantVarianceReport";
 import PlantAuditReport from "@/pages/PlantAuditReport";
@@ -251,7 +250,6 @@ function AuthedShell() {
             {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gated(RmcCubeTests, "plant_production")} />}
             {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gated(RmcDailyReport, "plant_daily_reports")} />}
             {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gated(RmcDeliveryChallans, "plant_production")} />}
-            <Route path="/plant/ldo-logs" component={gated(PlantLdoLogs, "plant_stock")} />
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
             <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />
             <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_audit")} />

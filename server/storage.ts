@@ -373,9 +373,6 @@ export interface IStorage {
   getGeneratorLogs(filters?: { dateFrom?: string; dateTo?: string }): Promise<GeneratorLog[]>;
   createGeneratorLog(log: InsertGeneratorLog): Promise<GeneratorLog>;
   
-  getLdoLogs(filters?: { partyId?: number; partyIds?: number[]; plantName?: string; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]>;
-  createLdoLog(log: InsertLdoLog): Promise<LdoLog>;
-  updateLdoLog(id: number, updates: Partial<InsertLdoLog>): Promise<LdoLog | undefined>;
   getLdoDailySummary(date: string, plantName?: string): Promise<{
     openingStockL: number | null;
     ldoReceivedL: number;
@@ -3775,94 +3772,6 @@ export class DatabaseStorage implements IStorage {
       efficiency,
     }).returning();
     
-    return result;
-  }
-
-  // LDO Logs
-  async getLdoLogs(filters?: { partyId?: number; partyIds?: number[]; plantName?: string; dateFrom?: string; dateTo?: string }): Promise<LdoLog[]> {
-    // If plantName given, resolve to partyIds via truckDispatches
-    let resolvedPartyIds = filters?.partyIds;
-    if (filters?.plantName && !filters?.partyId) {
-      const rows = await db
-        .selectDistinct({ partyId: truckDispatches.partyId })
-        .from(truckDispatches)
-        .where(eq(truckDispatches.plantName, filters.plantName));
-      resolvedPartyIds = rows.map(r => r.partyId).filter((id): id is number => id !== null);
-    }
-
-    let conditions = [];
-    if (filters?.partyId) {
-      conditions.push(eq(ldoLogs.partyId, filters.partyId));
-    } else if (resolvedPartyIds !== undefined) {
-      if (resolvedPartyIds.length > 0) {
-        conditions.push(or(isNull(ldoLogs.partyId), inArray(ldoLogs.partyId, resolvedPartyIds)));
-      } else {
-        conditions.push(isNull(ldoLogs.partyId));
-      }
-    }
-    if (filters?.dateFrom) conditions.push(gte(ldoLogs.date, filters.dateFrom));
-    if (filters?.dateTo) conditions.push(lte(ldoLogs.date, filters.dateTo));
-    
-    return db.select().from(ldoLogs)
-      .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(ldoLogs.date));
-  }
-
-  async createLdoLog(log: InsertLdoLog): Promise<LdoLog> {
-    // Check for an existing entry on the same date before inserting
-    const [existing] = await db.select({ id: ldoLogs.id })
-      .from(ldoLogs)
-      .where(eq(ldoLogs.date, String(log.date)))
-      .limit(1);
-    if (existing) {
-      const err = Object.assign(
-        new Error(`An LDO log entry for ${log.date} already exists.`),
-        { code: "DUPLICATE_LDO_DATE" as const }
-      );
-      throw err;
-    }
-
-    // Calculate expected LDO based on tons produced
-    const tonsProduced = log.tonsProduced || 0;
-    const expectedLdo = tonsProduced * DEFAULT_LDO_NORM;
-    const ldoConsumed = log.ldoConsumed || 0;
-    const variance = expectedLdo - ldoConsumed;
-    const efficiency = tonsProduced > 0 ? ldoConsumed / tonsProduced : 0;
-    
-    const [result] = await db.insert(ldoLogs).values({
-      ...log,
-      expectedLdo,
-      variance,
-      efficiency,
-    }).returning();
-    
-    return result;
-  }
-
-  async updateLdoLog(id: number, updates: Partial<InsertLdoLog>): Promise<LdoLog | undefined> {
-    // Recompute derived fields from updated values
-    const tonsProduced = updates.tonsProduced !== undefined ? (updates.tonsProduced || 0) : undefined;
-    const ldoConsumed = updates.ldoConsumed !== undefined ? (updates.ldoConsumed || 0) : undefined;
-
-    let derivedFields: Partial<typeof ldoLogs.$inferInsert> = {};
-    if (tonsProduced !== undefined || ldoConsumed !== undefined) {
-      // Fetch current row to fill any missing value
-      const [current] = await db.select().from(ldoLogs).where(eq(ldoLogs.id, id)).limit(1);
-      if (!current) return undefined;
-      const resolvedTons = tonsProduced !== undefined ? tonsProduced : (current.tonsProduced || 0);
-      const resolvedConsumed = ldoConsumed !== undefined ? ldoConsumed : (current.ldoConsumed || 0);
-      const expectedLdo = resolvedTons * DEFAULT_LDO_NORM;
-      derivedFields = {
-        expectedLdo,
-        variance: expectedLdo - resolvedConsumed,
-        efficiency: resolvedTons > 0 ? resolvedConsumed / resolvedTons : 0,
-      };
-    }
-
-    const [result] = await db.update(ldoLogs)
-      .set({ ...updates, ...derivedFields })
-      .where(eq(ldoLogs.id, id))
-      .returning();
     return result;
   }
 
