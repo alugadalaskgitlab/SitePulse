@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   HardHat, FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
-  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight,
+  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -10,7 +10,7 @@ import { format } from "date-fns";
 
 
 export default function Home() {
-  const { user, sectionVisible } = useAuth();
+  const { user, sectionVisible, isAdmin } = useAuth();
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
@@ -47,6 +47,14 @@ export default function Home() {
         .then((r) => r.json()),
   });
 
+  const { data: unassigned } = useQuery<{
+    dieselRequirements: unknown[];
+    purchaseIndents: unknown[];
+  }>({
+    queryKey: ["/api/admin/site-backfill/unassigned"],
+    enabled: isAdmin,
+  });
+
   // ── Derived values ──
   const activeSites = sites.filter((s: any) => s.isActive !== 0);
   const dprSiteNames = new Set(todayDprs.map((d: any) => d.site));
@@ -63,6 +71,10 @@ export default function Home() {
   const todayDispatchMT = Array.isArray(dispatches)
     ? dispatches.reduce((sum: number, d: any) => sum + (Number(d.quantity) || 0), 0)
     : 0;
+
+  const unassignedDiesel = unassigned?.dieselRequirements?.length ?? 0;
+  const unassignedIndents = unassigned?.purchaseIndents?.length ?? 0;
+  const totalUnassigned = unassignedDiesel + unassignedIndents;
 
   // Recent DPRs as activity feed
   const recentActivity = allDprs.slice(0, 5).map((d: any) => ({
@@ -317,7 +329,35 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Tier 3: Internal Requisitions — Coming soon */}
+                {/* Tier 3: Site Backfill (admin only) */}
+                {isAdmin && totalUnassigned > 0 && (
+                  <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-backfill">
+                    <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-slate-800 leading-snug">Unassigned Sites</p>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-rose-50 text-rose-700 border-rose-200">
+                          {totalUnassigned} unassigned
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 leading-snug text-rose-500 font-medium">
+                        {unassignedDiesel > 0 && `${unassignedDiesel} diesel`}
+                        {unassignedDiesel > 0 && unassignedIndents > 0 && " · "}
+                        {unassignedIndents > 0 && `${unassignedIndents} indent`}
+                        {" "}need site assigned
+                      </p>
+                      <Link href="/admin/site-backfill">
+                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-backfill">
+                          Assign sites <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tier 4: Internal Requisitions — Coming soon */}
                 <div className="px-4 py-3.5 flex items-start gap-3 opacity-50" data-testid="pending-tier-irn">
                   <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
