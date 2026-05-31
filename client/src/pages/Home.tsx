@@ -74,25 +74,6 @@ export default function Home() {
     color: "text-teal-600",
   }));
 
-  // Pending actions combined
-  const pendingActions = [
-    ...pendingDiesel.slice(0, 3).map((d: any) => ({
-      label: "Daily Diesel Requirement",
-      sub: `${d.site || "Site"} · ${d.totalQuantity ? d.totalQuantity + " L" : ""} · ${d.requestedBy || ""}`.replace(/\s·\s$/, ""),
-      icon: Fuel,
-      color: "text-amber-600",
-      bg: "bg-amber-50",
-      href: "/plant/diesel-requirements",
-    })),
-    ...pendingIndents.slice(0, 3).map((p: any) => ({
-      label: `Purchase Indent #${p.indentNumber || p.id}`,
-      sub: `${p.purpose || p.category || ""} · ${p.site || ""}`.replace(/^\s·\s|\s·\s$/, "").trim(),
-      icon: ShoppingCart,
-      color: "text-rose-600",
-      bg: "bg-rose-50",
-      href: "/plant/purchase-indents",
-    })),
-  ].slice(0, 5);
 
   // Permission visibility
   const canSeeSite = sectionVisible("site_dprs") || sectionVisible("site_materials") || sectionVisible("site_procurement") || sectionVisible("site_diesel");
@@ -272,7 +253,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right 1/3: Pending Actions */}
+          {/* Right 1/3: Pending Actions — 3-tier */}
           <div>
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100">
@@ -284,31 +265,73 @@ export default function Home() {
                   <span className="text-xs bg-rose-100 text-rose-600 font-semibold px-1.5 py-0.5 rounded-full">{totalPending}</span>
                 )}
               </div>
-              {pendingActions.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <CheckCircle2 className="w-8 h-8 text-teal-400 mx-auto mb-2" />
-                  <p className="text-sm text-slate-400">All clear — nothing pending</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {pendingActions.map((p, i) => (
-                    <div key={i} className="px-4 py-3.5 flex items-start gap-3" data-testid={`pending-action-${i}`}>
-                      <div className={`w-7 h-7 rounded-lg ${p.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                        <p.icon className={`w-3.5 h-3.5 ${p.color}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 leading-snug truncate">{p.label}</p>
-                        {p.sub && <p className="text-[11px] text-slate-500 mt-0.5 leading-snug truncate">{p.sub}</p>}
-                        <Link href={p.href}>
-                          <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5">
-                            Review <ArrowUpRight className="w-3 h-3" />
-                          </a>
-                        </Link>
-                      </div>
+              <div className="divide-y divide-slate-50">
+
+                {/* Tier 1: Purchase Indents */}
+                <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-indents">
+                  <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ShoppingCart className="w-3.5 h-3.5 text-rose-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-800 leading-snug">Purchase Indents</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIndents.length > 0 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                        {pendingIndents.length > 0 ? `${pendingIndents.length} pending` : "0"}
+                      </span>
                     </div>
-                  ))}
+                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingIndents.length > 0 ? "text-rose-500 font-medium" : "text-slate-400"}`}>
+                      {pendingIndents.length > 0 ? `${pendingIndents.length} awaiting approval` : "All clear"}
+                    </p>
+                    {pendingIndents.length > 0 && (
+                      <Link href="/plant/purchase-indents?returnTo=/">
+                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-indents">
+                          Review <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              )}
+
+                {/* Tier 2: Diesel Requirements */}
+                <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-diesel">
+                  <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Fuel className="w-3.5 h-3.5 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-800 leading-snug">Diesel Requirements</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingDiesel.length > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                        {pendingDiesel.length > 0 ? `${pendingDiesel.length} pending` : "0"}
+                      </span>
+                    </div>
+                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingDiesel.length > 0 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                      {pendingDiesel.length > 0 ? `${pendingDiesel.length} awaiting approval` : "All clear"}
+                    </p>
+                    {pendingDiesel.length > 0 && (
+                      <Link href="/plant/diesel-requirements?returnTo=/">
+                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-diesel">
+                          Review <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tier 3: Internal Requisitions — Coming soon */}
+                <div className="px-4 py-3.5 flex items-start gap-3 opacity-50" data-testid="pending-tier-irn">
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-600 leading-snug">Internal Requisitions</p>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-100 text-slate-400 border-slate-200">—</span>
+                    </div>
+                    <p className="text-[11px] mt-0.5 leading-snug text-slate-400 italic">Coming soon</p>
+                  </div>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
