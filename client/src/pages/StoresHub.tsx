@@ -144,8 +144,8 @@ export default function StoresHub() {
               <HubActionTile
                 href={`/plant/stock?returnTo=${HUB}`}
                 icon={Layers}
-                title="Plant Stock Ledger"
-                description="View material-wise stock balances & transaction history"
+                title="HMP Material Stock"
+                description="View HMP plant material-wise stock balances & transaction history"
                 accent="emerald"
                 iconBg="bg-emerald-100"
                 enabled={canBulk}

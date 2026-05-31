@@ -4,7 +4,7 @@ import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
-  RefreshCw,
+  RefreshCw, Database,
 } from "lucide-react";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
@@ -68,6 +68,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const bottomNavItems: NavItem[] = [
     ...(canSeeEstimator ? [{ href: "/estimator-login", icon: Calculator, label: "Estimator" }] : []),
+    ...(isAdmin ? [{ href: "/masters/hub", icon: Database, label: "Masters", matchPrefix: "/masters" }] : []),
     ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
   ];
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, Settings, ShoppingCart,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -139,15 +139,6 @@ export default function EquipmentHub() {
               accent="blue"
               iconBg="bg-blue-100"
               enabled={sectionVisible("site_procurement")}
-            />
-            <HubActionTile
-              href={`/admin/settings?returnTo=${HUB}`}
-              icon={Settings}
-              title="Equipment Master"
-              description="Manage equipment list, categories & specifications"
-              accent="slate"
-              iconBg="bg-slate-100"
-              enabled={sectionVisible("admin_settings")}
             />
           </div>
         </div>

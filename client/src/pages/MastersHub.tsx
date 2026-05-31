@@ -1,5 +1,5 @@
 import {
-  Users, Database, RefreshCw, Shield, Settings, MapPin,
+  Users, RefreshCw, Shield, MapPin, Lock,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { HubShell } from "@/components/HubShell";
@@ -27,7 +27,7 @@ export default function MastersHub() {
 
   if (!isAdmin) {
     return (
-      <HubShell title="Masters & Config">
+      <HubShell title="Settings">
         <div className="p-6 flex items-center justify-center min-h-64">
           <div className="text-center">
             <Shield className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -41,8 +41,8 @@ export default function MastersHub() {
 
   return (
     <HubShell
-      title="Masters & Config"
-      subtitle="Reference data, user management & app administration"
+      title="Settings"
+      subtitle="User management, access control & app administration"
       backHref="/"
       backLabel="Dashboard"
     >
@@ -50,31 +50,7 @@ export default function MastersHub() {
 
         <div>
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Reference Data (Masters)
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <HubActionTile
-              href={`/plant/dashboard?tab=masters&returnTo=${HUB}`}
-              icon={Settings}
-              title="Master Data"
-              description="Manage parties, materials, equipment, mix templates, sites & personnel"
-              accent="blue"
-              iconBg="bg-blue-50"
-            />
-            <HubActionTile
-              href={`/stores/items?returnTo=${HUB}`}
-              icon={Database}
-              title="Store Item Catalogue"
-              description="Manage store items, spare parts, tools & consumables catalogue"
-              accent="amber"
-              iconBg="bg-amber-50"
-            />
-          </div>
-        </div>
-
-        <div>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            App Administration
+            Access & Users
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
@@ -93,6 +69,14 @@ export default function MastersHub() {
               accent="emerald"
               iconBg="bg-emerald-50"
             />
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+            Data & System
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
               href={`/plant/data-sync?returnTo=${HUB}`}
               icon={RefreshCw}
@@ -100,6 +84,14 @@ export default function MastersHub() {
               description="Export or import selected table data for backup & transfer"
               accent="amber"
               iconBg="bg-amber-50"
+            />
+            <HubActionTile
+              href={`/admin/settings?returnTo=${HUB}`}
+              icon={Lock}
+              title="System Settings"
+              description="Admin & manager PIN management, LDO tank defaults"
+              accent="slate"
+              iconBg="bg-slate-50"
             />
             <HubActionTile
               href="/admin/site-backfill"

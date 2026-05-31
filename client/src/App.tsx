@@ -92,6 +92,7 @@ import MastersHub from "@/pages/MastersHub";
 import SiteBackfill from "@/pages/SiteBackfill";
 import StoresHub from "@/pages/StoresHub";
 import FinanceHub from "@/pages/FinanceHub";
+import AdminMastersHub from "@/pages/AdminMastersHub";
 import NotFound from "@/pages/not-found";
 function Watermark() {
   return (
@@ -147,6 +148,11 @@ function Router() {
       <Route path="/admin/hub">
         <RequireAuth>
           <MastersHub />
+        </RequireAuth>
+      </Route>
+      <Route path="/masters/hub">
+        <RequireAuth>
+          <AdminMastersHub />
         </RequireAuth>
       </Route>
       <Route path="/stores/hub">
