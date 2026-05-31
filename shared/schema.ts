@@ -1344,6 +1344,7 @@ export const purchaseIndents = pgTable("purchase_indents", {
   notifyMessage: text("notify_message"),
   createdAt: timestamp("created_at").defaultNow(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  raisedFrom: text("raised_from"),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"),
@@ -1419,9 +1420,13 @@ export type PurchaseIndentWithItems = PurchaseIndent & {
 };
 
 export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.extend({
-  siteId: z.number().int({ message: "Site is required" }),
+  siteId: z.number().int().nullish(),
+  raisedFrom: z.string().nullish(),
   items: z.array(insertPurchaseIndentItemSchema.omit({ indentId: true })),
-});
+}).refine(
+  (d) => (d.siteId != null && d.siteId > 0) || (d.raisedFrom != null && d.raisedFrom.trim().length > 0),
+  { message: "Raised from / location is required", path: ["raisedFrom"] }
+);
 export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
 
 // ============================================
@@ -1448,6 +1453,7 @@ export const dieselRequirements = pgTable("diesel_requirements", {
   purchaseRemarks: text("purchase_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  raisedFrom: text("raised_from"),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"),
@@ -1489,9 +1495,13 @@ export type DieselRequirementWithItems = DieselRequirement & {
 };
 
 export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.extend({
-  siteId: z.number().int({ message: "Site is required" }),
+  siteId: z.number().int().nullish(),
+  raisedFrom: z.string().nullish(),
   items: z.array(insertDieselRequirementItemSchema.omit({ requirementId: true })),
-});
+}).refine(
+  (d) => (d.siteId != null && d.siteId > 0) || (d.raisedFrom != null && d.raisedFrom.trim().length > 0),
+  { message: "Raised from / location is required", path: ["raisedFrom"] }
+);
 export type CreateDieselRequirementRequest = z.infer<typeof createDieselRequirementRequestSchema>;
 
 // ============================================

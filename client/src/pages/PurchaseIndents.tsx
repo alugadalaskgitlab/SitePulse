@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
+import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
+import type { LocationValue } from "@/components/LocationPicker";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -359,12 +361,14 @@ export default function PurchaseIndents() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
+  const [filterLocation, setFilterLocation] = useState("all");
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formProposedBy, setFormProposedBy] = useState("");
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
+  const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(null);
   const [formItems, setFormItems] = useState<ItemRow[]>([
     { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null },
   ]);
@@ -673,6 +677,7 @@ export default function PurchaseIndents() {
     setFormRaisedBy("");
     setFormRemarks("");
     setFormSiteId(null);
+    setFormRaisedFrom(null);
     setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
@@ -692,8 +697,8 @@ export default function PurchaseIndents() {
   };
 
   const handleSubmitIndent = () => {
-    if (!formSiteId) {
-      toast({ title: "Please select a site", variant: "destructive" });
+    if (!formSiteId && !formRaisedFrom) {
+      toast({ title: "Please select a raised from / location", variant: "destructive" });
       return;
     }
     if (!formProposedBy.trim() || !formRaisedBy.trim()) {
@@ -713,7 +718,8 @@ export default function PurchaseIndents() {
       raisedBy: formRaisedBy.toUpperCase(),
       remarks: formRemarks.toUpperCase() || null,
       status: "pending",
-      siteId: formSiteId,
+      siteId: formSiteId ?? null,
+      raisedFrom: formRaisedFrom ?? null,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
         qty: item.qty,
@@ -784,6 +790,7 @@ export default function PurchaseIndents() {
       setFormRaisedBy(selectedIndent.raisedBy);
       setFormRemarks(selectedIndent.remarks || "");
       setFormSiteId((selectedIndent as any).siteId ?? null);
+      setFormRaisedFrom((selectedIndent as any).raisedFrom ?? null);
       setFormItems(selectedIndent.items.map(item => ({
         description: item.description,
         qty: item.qty,
@@ -852,9 +859,13 @@ export default function PurchaseIndents() {
         const hasPriority = indent.items.some(item => item.priority === filterPriority);
         if (!hasPriority) return false;
       }
+      if (filterLocation !== "all") {
+        const loc = locationLabel({ siteId: (indent as any).siteId ?? null, raisedFrom: (indent as any).raisedFrom ?? null }, sitesList);
+        if (loc !== filterLocation) return false;
+      }
       return true;
     });
-  }, [indents, filterDateFrom, filterDateTo, filterStatus, filterPriority]);
+  }, [indents, filterDateFrom, filterDateTo, filterStatus, filterPriority, filterLocation, sitesList]);
 
   const getIndentBorderColor = (status: string) => {
     switch (status) {
@@ -1046,7 +1057,7 @@ export default function PurchaseIndents() {
 
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
                   <Label className="text-xs uppercase">DATE FROM</Label>
                   <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
@@ -1081,6 +1092,23 @@ export default function PurchaseIndents() {
                       <SelectItem value="urgent">URGENT</SelectItem>
                       <SelectItem value="normal">NORMAL</SelectItem>
                       <SelectItem value="low">LOW</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase">LOCATION</Label>
+                  <Select value={filterLocation} onValueChange={setFilterLocation}>
+                    <SelectTrigger data-testid="filter-location">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL LOCATIONS</SelectItem>
+                      {(sitesList ?? []).map(s => (
+                        <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
+                      ))}
+                      {SECTION_OPTIONS.map(o => (
+                        <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1127,13 +1155,14 @@ export default function PurchaseIndents() {
                             {totalAmt > 0 && ` \u2022 \u20B9 ${totalAmt.toLocaleString("en-IN")} PURCHASED`}
                           </p>
                           <div className="flex flex-wrap gap-1 mt-2 items-center">
-                            {(indent as any).siteId && sitesList && (() => {
-                              const site = sitesList.find(s => s.id === (indent as any).siteId);
-                              return site ? (
+                            {(() => {
+                              const loc = locationLabel({ siteId: (indent as any).siteId ?? null, raisedFrom: (indent as any).raisedFrom ?? null }, sitesList);
+                              if (loc === "—") return null;
+                              return (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${indent.id}`}>
-                                  {site.name}
+                                  {loc}
                                 </Badge>
-                              ) : null;
+                              );
                             })()}
                             {priorities.map(p => (
                               <span key={p}>{getPriorityBadge(p)}</span>
@@ -1218,17 +1247,14 @@ export default function PurchaseIndents() {
                   <p className="text-xs text-muted-foreground mt-0.5">AUTO-GENERATED ON SAVE</p>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">SITE <span className="text-red-500">*</span></Label>
-                  <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
-                    <SelectTrigger data-testid="select-site">
-                      <SelectValue placeholder="Select site" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sitesList?.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs uppercase">RAISED FROM <span className="text-red-500">*</span></Label>
+                  <LocationPicker
+                    value={{ siteId: formSiteId, raisedFrom: formRaisedFrom }}
+                    onChange={(val) => { setFormSiteId(val.siteId); setFormRaisedFrom(val.raisedFrom); }}
+                    sitesList={sitesList}
+                    placeholder="Select location"
+                    data-testid="select-site"
+                  />
                 </div>
                 <div>
                   <Label className="text-xs uppercase">PROPOSED BY</Label>
@@ -1482,7 +1508,7 @@ export default function PurchaseIndents() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase">DATE</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-date">
@@ -1496,6 +1522,12 @@ export default function PurchaseIndents() {
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase">RAISED BY</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-raised-by">{selectedIndent.raisedBy}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">RAISED FROM</p>
+                      <p className="font-semibold uppercase" data-testid="text-detail-location">
+                        {locationLabel({ siteId: (selectedIndent as any).siteId ?? null, raisedFrom: (selectedIndent as any).raisedFrom ?? null }, sitesList)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase">TOTAL ITEMS</p>

@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import type { DieselRequirementWithItems, DieselRequirement, DieselRequirementItem, EquipmentMasterType } from "@shared/schema";
+import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
+import type { LocationValue } from "@/components/LocationPicker";
 
 type ViewMode = "list" | "form" | "detail" | "update" | "report";
 
@@ -96,11 +98,13 @@ export default function DieselRequirements() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterLocation, setFilterLocation] = useState("all");
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
+  const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(null);
   const [formItems, setFormItems] = useState<FormItem[]>([
     { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
@@ -266,6 +270,7 @@ export default function DieselRequirements() {
     setFormRaisedBy("");
     setFormRemarks("");
     setFormSiteId(null);
+    setFormRaisedFrom(null);
     setFormItems([{ equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false }]);
   };
 
@@ -327,8 +332,8 @@ export default function DieselRequirements() {
   );
 
   const handleSubmit = () => {
-    if (!formSiteId) {
-      toast({ title: "Please select a site", variant: "destructive" });
+    if (!formSiteId && !formRaisedFrom) {
+      toast({ title: "Please select a raised from / location", variant: "destructive" });
       return;
     }
     if (!formRaisedBy || formItems.every((i) => !i.equipmentName)) return;
@@ -349,7 +354,8 @@ export default function DieselRequirements() {
       totalPlanned: formTotal,
       status: "pending",
       remarks: formRemarks.toUpperCase() || null,
-      siteId: formSiteId,
+      siteId: formSiteId ?? null,
+      raisedFrom: formRaisedFrom ?? null,
       items,
     };
 
@@ -402,6 +408,7 @@ export default function DieselRequirements() {
     setFormRaisedBy(selectedRequirement.raisedBy);
     setFormRemarks(selectedRequirement.remarks || "");
     setFormSiteId((selectedRequirement as any).siteId ?? null);
+    setFormRaisedFrom((selectedRequirement as any).raisedFrom ?? null);
     setFormItems(selectedRequirement.items.map(item => ({
       equipmentId: item.equipmentId,
       equipmentName: item.equipmentName,
@@ -438,6 +445,15 @@ export default function DieselRequirements() {
       },
     });
   };
+
+  const filteredRequirements = useMemo(() => {
+    if (!requirements) return [];
+    return requirements.filter(req => {
+      if (filterLocation === "all") return true;
+      const loc = locationLabel({ siteId: (req as any).siteId ?? null, raisedFrom: (req as any).raisedFrom ?? null }, sitesList);
+      return loc === filterLocation;
+    });
+  }, [requirements, filterLocation, sitesList]);
 
   const approvalTotal = useMemo(
     () => approvalItems.reduce((sum, i) => sum + (i.approvedQty || 0), 0),
@@ -565,7 +581,7 @@ export default function DieselRequirements() {
 
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
                   <Label className="text-xs">DATE FROM</Label>
                   <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
@@ -589,6 +605,23 @@ export default function DieselRequirements() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div>
+                  <Label className="text-xs">LOCATION</Label>
+                  <Select value={filterLocation} onValueChange={setFilterLocation}>
+                    <SelectTrigger data-testid="filter-location">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL LOCATIONS</SelectItem>
+                      {(sitesList ?? []).map(s => (
+                        <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
+                      ))}
+                      {SECTION_OPTIONS.map(o => (
+                        <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -605,7 +638,7 @@ export default function DieselRequirements() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {requirements.map((req) => {
+              {filteredRequirements.map((req) => {
                 const borderColor =
                   req.status === "approved" ? "border-l-green-500" :
                     req.status === "purchased" ? "border-l-blue-500" :
@@ -626,13 +659,14 @@ export default function DieselRequirements() {
                             <p className="font-bold text-sm" data-testid={`text-date-${req.id}`}>
                               {formatDate(req.date)} {isToday && "(TODAY)"}
                             </p>
-                            {(req as any).siteId && sitesList && (() => {
-                              const site = sitesList.find(s => s.id === (req as any).siteId);
-                              return site ? (
+                            {(() => {
+                              const loc = locationLabel({ siteId: (req as any).siteId ?? null, raisedFrom: (req as any).raisedFrom ?? null }, sitesList);
+                              if (loc === "—") return null;
+                              return (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${req.id}`}>
-                                  {site.name}
+                                  {loc}
                                 </Badge>
-                              ) : null;
+                              );
                             })()}
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">
@@ -695,17 +729,14 @@ export default function DieselRequirements() {
                   <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
                 </div>
                 <div>
-                  <Label className="text-xs">SITE <span className="text-red-500">*</span></Label>
-                  <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
-                    <SelectTrigger data-testid="select-form-site">
-                      <SelectValue placeholder="Select site" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sitesList?.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs">RAISED FROM <span className="text-red-500">*</span></Label>
+                  <LocationPicker
+                    value={{ siteId: formSiteId, raisedFrom: formRaisedFrom }}
+                    onChange={(val) => { setFormSiteId(val.siteId); setFormRaisedFrom(val.raisedFrom); }}
+                    sitesList={sitesList}
+                    placeholder="Select location"
+                    data-testid="select-form-site"
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">REMARKS</Label>
@@ -887,7 +918,7 @@ export default function DieselRequirements() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase">DATE</p>
                       <p className="font-semibold mt-1" data-testid="text-detail-date">{formatDate(selectedRequirement.date)}</p>
@@ -895,6 +926,12 @@ export default function DieselRequirements() {
                     <div>
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
                       <p className="font-semibold mt-1" data-testid="text-detail-raised-by">{selectedRequirement.raisedBy}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">RAISED FROM</p>
+                      <p className="font-semibold mt-1" data-testid="text-detail-location">
+                        {locationLabel({ siteId: (selectedRequirement as any).siteId ?? null, raisedFrom: (selectedRequirement as any).raisedFrom ?? null }, sitesList)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase">EQUIPMENT</p>
