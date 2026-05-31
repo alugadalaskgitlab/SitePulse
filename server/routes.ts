@@ -4975,6 +4975,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-indent-items/recent-items", async (req, res) => {
+    try {
+      if (!assertView(req, res, "site_procurement")) return;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const ids = await storage.getRecentIndentItemIds(limit);
+      res.json(ids);
+    } catch (err) {
+      console.error("GET /api/purchase-indent-items/recent-items:", err);
+      res.status(500).json({ error: "Failed to fetch recent indent items" });
+    }
+  });
+
   app.patch("/api/purchase-indent-items/:id/purchase-update", async (req, res) => {
     try {
       if (!assertEdit(req, res, "site_procurement")) return;

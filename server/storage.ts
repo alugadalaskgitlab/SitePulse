@@ -927,6 +927,7 @@ export interface IStorage {
   updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
   setIndentNotifyMessage(id: number, message: string): Promise<void>;
   setItemReviewerNote(itemId: number, note: string): Promise<void>;
+  getRecentIndentItemIds(limit?: number): Promise<number[]>;
   deletePurchaseIndent(id: number): Promise<boolean>;
 
   // Daily Diesel Requirements
@@ -9188,6 +9189,32 @@ export class DatabaseStorage implements IStorage {
 
   async setItemReviewerNote(itemId: number, note: string): Promise<void> {
     await db.update(purchaseIndentItems).set({ reviewerNote: note }).where(eq(purchaseIndentItems.id, itemId));
+  }
+
+  async getRecentIndentItemIds(limit = 5): Promise<number[]> {
+    const rows = await db
+      .selectDistinctOn([purchaseIndentItems.materialId], {
+        materialId: purchaseIndentItems.materialId,
+        indentId: purchaseIndentItems.indentId,
+      })
+      .from(purchaseIndentItems)
+      .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+      .where(and(
+        ne(purchaseIndents.status, "rejected"),
+        isNotNull(purchaseIndentItems.materialId),
+      ))
+      .orderBy(purchaseIndentItems.materialId, desc(purchaseIndents.id));
+    const sorted = rows.sort((a, b) => b.indentId - a.indentId);
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const r of sorted) {
+      if (r.materialId !== null && r.materialId !== undefined && !seen.has(r.materialId)) {
+        seen.add(r.materialId);
+        result.push(r.materialId);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
   }
 
   async deletePurchaseIndent(id: number): Promise<boolean> {

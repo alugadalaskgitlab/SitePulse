@@ -83,12 +83,14 @@ function FreeTextCombobox({
 function MaterialCombobox({
   description,
   storeItems,
+  recentItemIds = [],
   onChange,
   onAddNew,
   "data-testid": testId,
 }: {
   description: string;
   storeItems: StoreItem[];
+  recentItemIds?: number[];
   onChange: (desc: string, uom: string, materialId?: number | null) => void;
   onAddNew?: (typedName: string) => void;
   "data-testid"?: string;
@@ -98,6 +100,12 @@ function MaterialCombobox({
   const filtered = description
     ? storeItems.filter(m => m.name.toLowerCase().includes(description.toLowerCase()))
     : storeItems;
+
+  const recentItems = !description
+    ? recentItemIds.map(id => storeItems.find(m => m.id === id)).filter((m): m is StoreItem => !!m)
+    : [];
+  const recentItemIdSet = new Set(recentItems.map(m => m.id));
+  const remainingItems = filtered.filter(m => !recentItemIdSet.has(m.id));
 
   const hasExactMatch = storeItems.some(m => m.name.toLowerCase() === description.toLowerCase());
   const showAddNew = !!onAddNew && !!description.trim() && !hasExactMatch;
@@ -128,7 +136,34 @@ function MaterialCombobox({
       />
       {showDropdown && (
         <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto text-sm">
-          {filtered.map(m => (
+          {recentItems.length > 0 && (
+            <>
+              <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                Recently Used
+              </div>
+              {recentItems.map(m => (
+                <div
+                  key={`recent-${m.id}`}
+                  className="px-3 py-2 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center justify-between gap-2"
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    onChange(m.name.toUpperCase(), m.uom.toUpperCase(), m.id);
+                    setOpen(false);
+                  }}
+                  data-testid={`option-recent-indent-item-${m.id}`}
+                >
+                  <span>{m.name.toUpperCase()}</span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
+                </div>
+              ))}
+              {remainingItems.length > 0 && (
+                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                  All Items
+                </div>
+              )}
+            </>
+          )}
+          {remainingItems.map(m => (
             <div
               key={m.id}
               className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2"
@@ -444,6 +479,10 @@ export default function PurchaseIndents() {
 
   const { data: rawMaterialsList } = useQuery<any[]>({
     queryKey: ["/api/plant-module/materials"],
+  });
+
+  const { data: recentIndentItemIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/purchase-indent-items/recent-items"],
   });
 
   const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
@@ -1314,6 +1353,7 @@ export default function PurchaseIndents() {
                         <MaterialCombobox
                           description={item.description}
                           storeItems={storeItemsList}
+                          recentItemIds={recentIndentItemIds}
                           onChange={(desc, uom, materialId) => {
                             const updated = [...formItems];
                             updated[index] = {
