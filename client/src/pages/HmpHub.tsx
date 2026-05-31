@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Flame, ClipboardList, Truck, Droplets, Gauge, FileSearch,
-  Fuel, TrendingUp, FileText, ShoppingCart,
+  Fuel, TrendingUp, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -15,6 +14,7 @@ import {
 } from "recharts";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
+const HUB = "/plant/hub";
 
 const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function formatDayLabel(dateStr: string) {
@@ -43,22 +43,23 @@ function KpiCard({ label, value, sub, color = "orange" }: {
   );
 }
 
-type HmpTab = "operations" | "stock" | "reports";
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+      {children}
+    </h2>
+  );
+}
 
 export default function HmpHub() {
-  const { sectionVisible, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<HmpTab>("operations");
+  const { sectionVisible } = useAuth();
 
   const canShift    = sectionVisible("plant_shift_logs");
   const canHeating  = sectionVisible("plant_heating");
   const canProd     = sectionVisible("plant_production");
   const canStock    = sectionVisible("plant_stock");
-  const canReports  = sectionVisible("plant_daily_reports");
-  const canVariance = sectionVisible("plant_variance");
-  const canAudit    = sectionVisible("plant_audit");
   const canBitumen  = sectionVisible("plant_bitumen");
   const canLdo      = sectionVisible("plant_ldo");
-  const canDiesel   = sectionVisible("plant_diesel_proc");
   const canProcure  = sectionVisible("site_procurement");
   const canDieselReq = sectionVisible("site_diesel");
 
@@ -118,16 +119,10 @@ export default function HmpHub() {
   const maxTonnes = Math.max(...dispatchTrend.map(d => d.tonnes), 0);
   const hasAnyProd = dispatchTrend.some(d => d.tonnes > 0);
 
-  const tabs: { key: HmpTab; label: string }[] = [
-    { key: "operations", label: "Operations" },
-    { key: "stock",      label: "Stock & Procurement" },
-    { key: "reports",    label: "Reports" },
-  ];
-
   return (
     <HubShell
-      title="HMP Plant"
-      subtitle="Hot-mix plant — operations, stock & reports"
+      title="HMP Operations"
+      subtitle="Hot-mix plant — shift logs, fuel tracking & procurement"
       backHref="/"
       backLabel="Dashboard"
     >
@@ -139,7 +134,7 @@ export default function HmpHub() {
           <KpiCard
             label="MT Dispatched"
             value={canProd ? (totalMT > 0 ? totalMT.toFixed(1) : "0") : undefined}
-            sub="today"
+            sub="metric tonnes"
             color="amber"
           />
           <KpiCard
@@ -166,10 +161,6 @@ export default function HmpHub() {
                   {Array.from({ length: 7 }).map((_, i) => (
                     <Skeleton key={i} className="flex-1 rounded-sm" style={{ height: `${30 + Math.random() * 60}%` }} />
                   ))}
-                </div>
-              ) : !hasAnyProd ? (
-                <div className="h-36 flex items-center justify-center text-sm text-slate-400">
-                  No production data in the last 7 days
                 </div>
               ) : (
                 <div className="h-36">
@@ -216,79 +207,65 @@ export default function HmpHub() {
           </Card>
         )}
 
-        {/* Tabs */}
+        {/* Operations & Actions */}
         <div>
-          <div className="flex gap-4 mb-6 border-b border-slate-200 overflow-x-auto">
-            {tabs.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`pb-3 text-sm font-semibold transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                  activeTab === tab.key
-                    ? "border-orange-500 text-orange-700"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
-                }`}
-                data-testid={`tab-hmp-${tab.key}`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <SectionHeading>Operations & Actions</SectionHeading>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <HubActionTile
+              href={`/plant/heating-sessions?returnTo=${HUB}`}
+              icon={Flame}
+              title="Bitumen Heating Sessions"
+              description="Log boiler runs & track hot-oil temperatures"
+              accent="orange"
+              iconBg="bg-orange-100"
+              enabled={canHeating}
+            />
+            <HubActionTile
+              href={`/plant/shift-log?returnTo=${HUB}`}
+              icon={ClipboardList}
+              title="Plant Shift Log"
+              description="Record shift details, personnel & production"
+              accent="amber"
+              iconBg="bg-amber-100"
+              enabled={canShift}
+            />
+            <HubActionTile
+              href={`/plant/dispatches?returnTo=${HUB}`}
+              icon={Truck}
+              title="Production & Dispatches"
+              description="Log truck loads with mix data & tonnage"
+              accent="orange"
+              iconBg="bg-orange-100"
+              enabled={canProd}
+            />
           </div>
+        </div>
 
-          {activeTab === "operations" && (
+        {/* Fuel & Bitumen Tracking */}
+        {(canBitumen || canLdo || canStock) && (
+          <div>
+            <SectionHeading>Fuel & Bitumen Tracking</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href="/plant/heating-sessions"
-                icon={Flame}
-                title="Heating Sessions"
-                description="Boiler / hot-oil heating session logs and DG runs"
-                accent="orange"
-                iconBg="bg-orange-100"
-                enabled={canHeating}
-              />
-              <HubActionTile
-                href="/plant/shift-log"
-                icon={ClipboardList}
-                title="Plant Shift Log"
-                description="Daily shift details — manpower, activities & production"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canShift}
-              />
-              <HubActionTile
-                href="/plant/dispatches"
-                icon={Truck}
-                title="Mix Dispatches"
-                description="Bituminous mix dispatch records and stock deduction"
-                accent="orange"
-                iconBg="bg-orange-100"
-                enabled={canProd}
-              />
-            </div>
-          )}
-
-          {activeTab === "stock" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <HubActionTile
-                href="/plant/bitumen-stock"
+                href={`/plant/bitumen-stock?returnTo=${HUB}`}
                 icon={Droplets}
-                title="Bitumen Stock"
-                description="Bitumen tank levels, receipts and consumption"
+                title="Bitumen Stock Tracker"
+                description="Dip readings, tank levels & bitumen stock balance"
                 accent="yellow"
                 iconBg="bg-yellow-100"
                 enabled={canBitumen}
               />
               <HubActionTile
-                href="/plant/ldo-flow-meter"
+                href={`/plant/ldo-flow-meter?returnTo=${HUB}`}
                 icon={Gauge}
-                title="LDO Stock"
-                description="LDO stock levels, flow meter readings and consumption tracking"
+                title="LDO Flow Meter"
+                description="LDO meter readings, dip logs & fuel consumption"
                 accent="blue"
                 iconBg="bg-blue-100"
                 enabled={canLdo}
               />
               <HubActionTile
-                href="/plant/ldo-reconciliation"
+                href={`/plant/ldo-reconciliation?returnTo=${HUB}`}
                 icon={FileSearch}
                 title="LDO Book vs Physical"
                 description="Reconcile book stock against physical dip readings"
@@ -296,8 +273,17 @@ export default function HmpHub() {
                 iconBg="bg-slate-100"
                 enabled={canStock}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Procurement */}
+        {(canProcure || canDieselReq) && (
+          <div>
+            <SectionHeading>Procurement</SectionHeading>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href="/plant/purchase-indents?returnTo=/plant/hub"
+                href={`/plant/purchase-indents?returnTo=${HUB}`}
                 icon={ShoppingCart}
                 title="Purchase Indent"
                 description="Raise and track purchase indents for HMP materials & spares"
@@ -306,7 +292,7 @@ export default function HmpHub() {
                 enabled={canProcure}
               />
               <HubActionTile
-                href="/plant/diesel-requirements?returnTo=/plant/hub"
+                href={`/plant/diesel-requirements?returnTo=${HUB}`}
                 icon={Fuel}
                 title="Daily Diesel Requirement"
                 description="Plan & approve diesel allocation for HMP plant operations"
@@ -315,49 +301,8 @@ export default function HmpHub() {
                 enabled={canDieselReq}
               />
             </div>
-          )}
-
-          {activeTab === "reports" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <HubActionTile
-                href="/plant/daily-reports"
-                icon={FileText}
-                title="Daily Plant Reports"
-                description="Production summaries with mix-wise breakdowns and PDF export"
-                accent="orange"
-                iconBg="bg-orange-100"
-                enabled={canReports}
-              />
-              <HubActionTile
-                href="/plant/heating-trends"
-                icon={TrendingUp}
-                title="Heating Trends"
-                description="Hot-oil supply vs return temperature trend charts"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canHeating}
-              />
-              <HubActionTile
-                href="/plant/diesel-procurement"
-                icon={Fuel}
-                title="Diesel Procurement"
-                description="Diesel purchase and consumption summary report"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canDiesel}
-              />
-              <HubActionTile
-                href="/plant/shift-log-manpower-review"
-                icon={ClipboardList}
-                title="Manpower Review"
-                description="Contractor-wise manpower review across shift logs"
-                accent="slate"
-                iconBg="bg-slate-100"
-                enabled={canShift}
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
     </HubShell>
