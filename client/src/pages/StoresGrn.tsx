@@ -189,6 +189,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     if (detailId) setSelectedId(detailId);
   }, [detailId]);
 
+  useEffect(() => {
+    setDraftFinaliseIndentRef("");
+    setDraftFinaliseComboSearch("");
+    setDraftFinaliseOverride(false);
+    setFinalisingDraft(false);
+  }, [selectedId]);
+
   const { data: items = [] } = useQuery<StoreItem[]>({ queryKey: ["/api/stores/items"] });
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/grns/recent-items"] });
