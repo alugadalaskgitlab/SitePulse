@@ -361,6 +361,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     }
   }, [itemApprovedIndents, showForm, editingDraftId]);
 
+  useEffect(() => {
+    if (!finalisingDraft) return;
+    if (draftFinaliseIndentRef) return;
+    if (draftItemApprovedIndents.length === 1) {
+      setDraftFinaliseIndentRef(draftItemApprovedIndents[0].indentNo);
+    }
+  }, [finalisingDraft, draftItemApprovedIndents]);
+
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
     onSuccess: () => {
