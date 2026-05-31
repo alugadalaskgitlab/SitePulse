@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
 import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
 import type { LocationValue } from "@/components/LocationPicker";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -346,6 +347,7 @@ function StatusSteps({ status }: { status: string }) {
 export default function PurchaseIndents() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
+  const { rmcEnabled } = useFeatureFlags();
   const canCreate = sectionCan("site_procurement", "create");
   const canEdit = sectionCan("site_procurement", "edit");
   const canViewStores = sectionCan("stores_inventory", "view");
@@ -1106,7 +1108,7 @@ export default function PurchaseIndents() {
                       {(sitesList ?? []).map(s => (
                         <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
                       ))}
-                      {SECTION_OPTIONS.map(o => (
+                      {SECTION_OPTIONS.filter(o => !o.rmcOnly || rmcEnabled).map(o => (
                         <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
                       ))}
                     </SelectContent>

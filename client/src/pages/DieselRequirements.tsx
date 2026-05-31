@@ -17,6 +17,7 @@ import { format } from "date-fns";
 import type { DieselRequirementWithItems, DieselRequirement, DieselRequirementItem, EquipmentMasterType } from "@shared/schema";
 import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
 import type { LocationValue } from "@/components/LocationPicker";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 type ViewMode = "list" | "form" | "detail" | "update" | "report";
 
@@ -90,6 +91,7 @@ function StatusSteps({ status }: { status: string }) {
 export default function DieselRequirements() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
+  const { rmcEnabled } = useFeatureFlags();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
   const [view, setView] = useState<ViewMode>("list");
@@ -616,7 +618,7 @@ export default function DieselRequirements() {
                       {(sitesList ?? []).map(s => (
                         <SelectItem key={`site-${s.id}`} value={s.name}>{s.name}</SelectItem>
                       ))}
-                      {SECTION_OPTIONS.map(o => (
+                      {SECTION_OPTIONS.filter(o => !o.rmcOnly || rmcEnabled).map(o => (
                         <SelectItem key={`sec-${o.value}`} value={o.value}>{o.label}</SelectItem>
                       ))}
                     </SelectContent>

@@ -8916,6 +8916,7 @@ export class DatabaseStorage implements IStorage {
         status: data.status || "pending",
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
+        raisedFrom: (data as any).raisedFrom ?? null,
       }).returning();
 
       let items: PurchaseIndentItem[] = [];
@@ -9136,6 +9137,7 @@ export class DatabaseStorage implements IStorage {
         raisedBy: data.raisedBy.toUpperCase(),
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
+        raisedFrom: (data as any).raisedFrom ?? null,
       };
 
       if (existing.status !== "pending") {
@@ -10115,6 +10117,7 @@ export class DatabaseStorage implements IStorage {
         status: data.status || "pending",
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
+        raisedFrom: (data as any).raisedFrom ?? null,
       }).returning();
 
       let items: DieselRequirementItem[] = [];
@@ -10223,6 +10226,7 @@ export class DatabaseStorage implements IStorage {
         totalPlanned: data.totalPlanned,
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
+        raisedFrom: (data as any).raisedFrom ?? null,
       };
 
       if (existing.status !== "pending") {
@@ -10653,7 +10657,9 @@ export class DatabaseStorage implements IStorage {
     async ensureSiteIdColumns(): Promise<void> {
       await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS site_id integer REFERENCES sites(id) ON DELETE SET NULL`));
       await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS site_id integer REFERENCES sites(id) ON DELETE SET NULL`));
-      console.log("ensureSiteIdColumns: site_id columns verified/added on diesel_requirements and purchase_indents");
+      await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS raised_from text`));
+      await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS raised_from text`));
+      console.log("ensureSiteIdColumns: site_id and raised_from columns verified/added on diesel_requirements and purchase_indents");
     }
 
   async backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }> {
