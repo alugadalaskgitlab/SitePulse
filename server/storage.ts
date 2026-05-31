@@ -765,6 +765,7 @@ export interface IStorage {
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
   getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean }): Promise<StoreGrnWithItems[]>;
+  getStaleGrns(thresholdHours?: number, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getRecentGrnSuppliers(limit?: number, permittedSiteIds?: number[]): Promise<string[]>;
@@ -17070,6 +17071,23 @@ export class DatabaseStorage implements IStorage {
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(storeGrns.date), desc(storeGrns.id));
     return Promise.all(grns.map(g => this.buildGrnWithItems(g)));
+  }
+
+  async getStaleGrns(thresholdHours = 48, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]> {
+    const cutoff = new Date(Date.now() - thresholdHours * 60 * 60 * 1000);
+    const conds: any[] = [
+      eq(storeGrns.status, "draft"),
+      or(isNull(storeGrns.indentRef), eq(storeGrns.indentRef, "")),
+      sql`${storeGrns.createdAt} < ${cutoff.toISOString()}`,
+    ];
+    if (permittedSiteIds !== undefined) {
+      if (permittedSiteIds.length === 0) return [];
+      conds.push(inArray(storeGrns.siteId, permittedSiteIds));
+    }
+    const rows = await db.select().from(storeGrns)
+      .where(and(...conds))
+      .orderBy(storeGrns.createdAt);
+    return Promise.all(rows.map(g => this.buildGrnWithItems(g)));
   }
 
   async getRecentGrnSuppliers(limit = 5, permittedSiteIds?: number[]): Promise<string[]> {

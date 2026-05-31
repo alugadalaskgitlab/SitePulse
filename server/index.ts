@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { initPush } from "./push";
+import { initPush, sendPushToAudience } from "./push";
 import { storage } from "./storage";
 import { ensureBootstrapAdmin, backfillSplitPermissions, migrateEmailPhoneSchema, backfillPlantSubPermissions } from "./auth";
 import { db } from "./db";
@@ -444,7 +444,40 @@ app.use((req, res, next) => {
     console.error("Startup: backfillMissingDispatchLdoRows failed:", e);
   }
 
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    // ── Stale draft GRN push alert ───────────────────────────────────────────
+  // Runs every hour; sends a single push to managers/admins listing draft
+  // GRNs that have had no Purchase Indent reference for > 48 hours.
+  // The threshold is read from STALE_GRN_THRESHOLD_HOURS (default 48).
+  const _rawStaleHours = parseInt(process.env.STALE_GRN_THRESHOLD_HOURS || "48", 10);
+  const STALE_GRN_THRESHOLD_HOURS = Number.isFinite(_rawStaleHours) && _rawStaleHours > 0 && _rawStaleHours <= 8760 ? _rawStaleHours : 48;
+  const STALE_GRN_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+  async function checkAndNotifyStaleGrns() {
+    try {
+      const stale = await storage.getStaleGrns(STALE_GRN_THRESHOLD_HOURS);
+      if (stale.length === 0) return;
+      const body = stale.length === 1
+        ? `Draft GRN ${stale[0].grnNumber} has been waiting for a PI for over ${STALE_GRN_THRESHOLD_HOURS}h`
+        : `${stale.length} draft GRNs have been waiting for a PI for over ${STALE_GRN_THRESHOLD_HOURS}h`;
+      await sendPushToAudience(
+        "⏳ Stale Draft GRN Alert",
+        body,
+        "/stores/grns",
+        "managers",
+      );
+      console.log(`[StaleGRN] Notified managers — ${stale.length} stale draft GRN(s)`);
+    } catch (e) {
+      console.error("[StaleGRN] Check failed:", e);
+    }
+  }
+
+  // Run once after startup (after a short delay so DB is warm), then hourly.
+  setTimeout(() => {
+    checkAndNotifyStaleGrns();
+    setInterval(checkAndNotifyStaleGrns, STALE_GRN_CHECK_INTERVAL_MS);
+  }, 30_000);
+
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 

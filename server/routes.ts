@@ -6924,6 +6924,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stores/grns/stale", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const rawHours = parseInt(req.query.thresholdHours as string, 10);
+      const thresholdHours = Number.isFinite(rawHours) && rawHours > 0 && rawHours <= 8760 ? rawHours : 48;
+      const permittedIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : null;
+      const grns = await storage.getStaleGrns(thresholdHours, permittedIds ?? undefined);
+      res.json(grns);
+    } catch (err) {
+      console.error("GET /api/stores/grns/stale:", err);
+      res.status(500).json({ error: "Failed to fetch stale GRNs" });
+    }
+  });
+
   app.get("/api/stores/grns/:id", async (req, res) => {
     try {
       if (!assertView(req, res, "stores_inventory")) return;

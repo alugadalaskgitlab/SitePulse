@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -277,6 +277,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     staleTime: 60_000,
   });
   const awaitingPiCount = awaitingPiGrns.length;
+
+  const STALE_GRN_THRESHOLD_HOURS = 48;
+  const { data: staleGrns = [] } = useQuery<GrnWithItems[]>({
+    queryKey: ["/api/stores/grns/stale"],
+    queryFn: async () => {
+      const res = await fetch(`/api/stores/grns/stale?thresholdHours=${STALE_GRN_THRESHOLD_HOURS}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin || isManager,
+    staleTime: 5 * 60_000,
+    refetchInterval: 30 * 60_000,
+  });
+  const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
 
   const { data: previewNum } = useQuery<{ number: string }>({
     queryKey: ["/api/stores/next-doc-number", "GRN", grnCategory],
@@ -573,6 +587,44 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             </Button>
           )}
         </div>
+
+        {/* Stale draft GRN alert for managers/admins */}
+        {(isAdmin || isManager) && !staleAlertDismissed && staleGrns.length > 0 && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-3" data-testid="alert-stale-grns">
+            <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {staleGrns.length === 1
+                  ? "1 draft GRN has been waiting for a PI for over 48 hours"
+                  : `${staleGrns.length} draft GRNs have been waiting for a PI for over 48 hours`}
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {staleGrns.map(g => (
+                  <button
+                    key={g.id}
+                    onClick={() => {
+                      setStaleAlertDismissed(false);
+                      setAwaitingPiFilter(false);
+                      setDraftOnly(false);
+                      setSelectedId(g.id);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
+                    data-testid={`button-stale-grn-${g.id}`}
+                  >
+                    {g.grnNumber}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setStaleAlertDismissed(true)}
+              className="text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200 flex-shrink-0"
+              data-testid="button-dismiss-stale-alert"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Detail panel */}
         {selectedGrn && (
