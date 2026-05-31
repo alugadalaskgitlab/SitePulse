@@ -52,6 +52,7 @@ export default function PlantEquipmentUsage() {
   const [billNumber, setBillNumber] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [siteName, setSiteName] = useState("");
+  const [workingPlant, setWorkingPlant] = useState("HMP PLANT");
   const [numberOfTrips, setNumberOfTrips] = useState("");
   const [tripDistance, setTripDistance] = useState("");
   const [tripBasedEntry, setTripBasedEntry] = useState(false);
@@ -90,6 +91,7 @@ export default function PlantEquipmentUsage() {
     billNumber: string;
     amountPaid: string;
     siteName: string;
+    workingPlant: string;
     numberOfTrips: string;
     tripDistance: string;
     tripBasedEntry: boolean;
@@ -104,8 +106,8 @@ export default function PlantEquipmentUsage() {
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
 
   const [draftRestored, setDraftRestored] = useState(false);
 
@@ -124,6 +126,7 @@ export default function PlantEquipmentUsage() {
     setBillNumber(data.billNumber ?? "");
     setAmountPaid(data.amountPaid ?? "");
     setSiteName(data.siteName || "");
+    setWorkingPlant(data.workingPlant || "HMP PLANT");
     setNumberOfTrips(data.numberOfTrips || "");
     setTripDistance(data.tripDistance || "");
     setTripBasedEntry(data.tripBasedEntry || false);
@@ -322,6 +325,7 @@ export default function PlantEquipmentUsage() {
     setBillNumber("");
     setAmountPaid("");
     setSiteName("");
+    setWorkingPlant("HMP PLANT");
     setNumberOfTrips("");
     setTripDistance("");
     setTripBasedEntry(false);
@@ -354,7 +358,17 @@ export default function PlantEquipmentUsage() {
     setFuelStation((entry as any).fuelStation ?? "");
     setBillNumber((entry as any).billNumber ?? "");
     setAmountPaid((entry as any).amountPaid ? String((entry as any).amountPaid) : "");
-    setSiteName((entry as any).siteName || "");
+    const rawSiteName = (entry as any).siteName || "";
+    if (rawSiteName === "HMP PLANT" || rawSiteName === "RMC PLANT") {
+      setWorkingPlant(rawSiteName);
+      setSiteName("");
+    } else if (rawSiteName) {
+      setWorkingPlant("OTHER");
+      setSiteName(rawSiteName);
+    } else {
+      setWorkingPlant("HMP PLANT");
+      setSiteName("");
+    }
     setNumberOfTrips((entry as any).numberOfTrips ? String((entry as any).numberOfTrips) : "");
     setTripDistance((entry as any).tripDistance ? String((entry as any).tripDistance) : "");
     setTripBasedEntry((entry as any).tripBasedEntry === true);
@@ -440,7 +454,7 @@ export default function PlantEquipmentUsage() {
         fuelStation: null,
         billNumber: null,
         amountPaid: null,
-        siteName: null,
+        siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: false,
         remarks: remarks.toUpperCase(),
@@ -483,7 +497,7 @@ export default function PlantEquipmentUsage() {
       fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
       billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
       amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
-      siteName: effectiveDieselSource === "direct_purchase" ? siteName.toUpperCase() : null,
+      siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
       dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
       dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
       remarks: remarks.toUpperCase(),
@@ -961,6 +975,29 @@ export default function PlantEquipmentUsage() {
               <div>
                 <Label>Date</Label>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-usage-date" />
+              </div>
+
+              <div>
+                <Label>Working Plant / Location</Label>
+                <Select value={workingPlant} onValueChange={setWorkingPlant}>
+                  <SelectTrigger data-testid="select-working-plant">
+                    <SelectValue placeholder="Select working location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HMP PLANT">HMP Plant</SelectItem>
+                    <SelectItem value="RMC PLANT">RMC Plant</SelectItem>
+                    <SelectItem value="OTHER">Other / Site Work</SelectItem>
+                  </SelectContent>
+                </Select>
+                {workingPlant === "OTHER" && (
+                  <Input
+                    className="mt-2"
+                    value={siteName}
+                    onChange={(e) => setSiteName(e.target.value.toUpperCase())}
+                    placeholder="Enter location or site name"
+                    data-testid="input-working-location-custom"
+                  />
+                )}
               </div>
 
               <div>
@@ -1706,6 +1743,13 @@ export default function PlantEquipmentUsage() {
                                 <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-sm">
                                   <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
                                   {equip && <span className="text-xs text-muted-foreground">{ownerLabel}</span>}
+                                  {(() => {
+                                    const loc = (entry as any).siteName;
+                                    if (!loc) return null;
+                                    if (loc === "HMP PLANT") return <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-700">HMP</Badge>;
+                                    if (loc === "RMC PLANT") return <Badge variant="outline" className="text-xs bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700">RMC</Badge>;
+                                    return <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300">{loc}</Badge>;
+                                  })()}
                                   {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
                                   {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
                                   {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
