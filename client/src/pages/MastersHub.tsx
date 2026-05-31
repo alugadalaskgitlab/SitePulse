@@ -1,6 +1,7 @@
 import {
   Users, Database, RefreshCw, Shield, Settings, MapPin,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
@@ -9,6 +10,20 @@ const HUB = "/admin/hub";
 
 export default function MastersHub() {
   const { isAdmin } = useAuth();
+
+  const { data: unassigned } = useQuery<{
+    dieselRequirements: unknown[];
+    purchaseIndents: unknown[];
+  }>({
+    queryKey: ["/api/admin/site-backfill/unassigned"],
+    enabled: isAdmin,
+  });
+
+  const dieselCount = unassigned?.dieselRequirements?.length ?? 0;
+  const indentCount = unassigned?.purchaseIndents?.length ?? 0;
+  const backfillBadge = (dieselCount > 0 || indentCount > 0)
+    ? `${dieselCount} diesel / ${indentCount} indent unassigned`
+    : undefined;
 
   if (!isAdmin) {
     return (
@@ -93,6 +108,7 @@ export default function MastersHub() {
               description="Assign sites to historical diesel requirements & purchase indents with no site set"
               accent="rose"
               iconBg="bg-rose-50"
+              badge={backfillBadge}
             />
           </div>
         </div>
