@@ -837,9 +837,9 @@ export default function PlantBitumenStock() {
           <CardContent className="text-center">
             <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
-            <p className="text-muted-foreground mb-4">Please access this page through the Stock Details tab in the Plant Module</p>
-            <Link href={appendOrigin("/plant/dashboard?tab=stock")}>
-              <Button data-testid="button-go-to-plant">Go to Plant Module</Button>
+            <p className="text-muted-foreground mb-4">Please access this page through the HMP Plant hub</p>
+            <Link href="/plant/hub">
+              <Button data-testid="button-go-to-plant">Go to HMP Plant</Button>
             </Link>
           </CardContent>
         </Card>

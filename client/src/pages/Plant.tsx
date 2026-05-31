@@ -77,7 +77,7 @@ export default function Plant() {
             </Button>
           )}
           <div>
-            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant Module</h1>
+            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground">Plant Dashboard</h1>
             <p className="text-muted-foreground mt-1">{VIEW_SUBTITLES[plantView]}</p>
           </div>
         </div>
@@ -1794,13 +1794,13 @@ function MastersTab() {
   const { sectionVisible, isAdmin } = useAuth();
   return (
     <div className="space-y-6">
-      {isAdmin && <PlantTypeConfigSection />}
-      {sectionVisible("master_parties") && <PartyMaster />}
-      {sectionVisible("master_parties") && <SitesMasterSection />}
-      {sectionVisible("master_materials") && <MaterialMaster />}
-      {sectionVisible("master_materials") && <MixTemplateMaster />}
-      {sectionVisible("master_equipment") && <EquipmentMasterSection />}
-      {sectionVisible("master_personnel") && <PersonnelMasterSection />}
+      {isAdmin && <div id="plant-config"><PlantTypeConfigSection /></div>}
+      {sectionVisible("master_parties") && <div id="party-master"><PartyMaster /></div>}
+      {sectionVisible("master_parties") && <div id="site-master"><SitesMasterSection /></div>}
+      {sectionVisible("master_materials") && <div id="material-master"><MaterialMaster /></div>}
+      {sectionVisible("master_materials") && <div id="mix-templates"><MixTemplateMaster /></div>}
+      {sectionVisible("master_equipment") && <div id="equipment-master"><EquipmentMasterSection /></div>}
+      {sectionVisible("master_personnel") && <div id="personnel-master"><PersonnelMasterSection /></div>}
     </div>
   );
 }

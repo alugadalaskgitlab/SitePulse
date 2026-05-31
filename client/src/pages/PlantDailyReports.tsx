@@ -454,7 +454,7 @@ export default function PlantDailyReports() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Historical Daily Plant Reports</h1>
+            <h1 className="text-2xl font-bold">HMP Daily Plant Reports</h1>
             <p className="text-sm text-muted-foreground">
               Every past date with any plant data — open the report or download its PDF.
             </p>

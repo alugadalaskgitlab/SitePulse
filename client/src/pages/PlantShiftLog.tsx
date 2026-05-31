@@ -1089,8 +1089,8 @@ export default function PlantShiftLog() {
               <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">Plant Logs</h1>
-              <p className="text-sm text-muted-foreground">Daily plant runs — pick a date to open or start a new log</p>
+              <h1 className="text-2xl font-bold">HMP Shift Logs</h1>
+              <p className="text-sm text-muted-foreground">Daily shift runs — pick a date to open or start a new log</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1257,7 +1257,7 @@ export default function PlantShiftLog() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={goBackToList} data-testid="button-back-to-list"><ChevronLeft className="w-5 h-5" /></Button>
           <div>
-            <h1 className="text-2xl font-bold">Plant Log</h1>
+            <h1 className="text-2xl font-bold">HMP Shift Log</h1>
             <p className="text-sm text-muted-foreground">Operator daily log – plant start/stop, idle events, manpower, fuel meters</p>
           </div>
         </div>

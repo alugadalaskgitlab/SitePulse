@@ -754,7 +754,7 @@ export default function PlantDispatches() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Plant Production and Dispatches Report</title>
+          <title>Mix Dispatches Report</title>
           <style>
             @page { size: A4 portrait; margin: 15mm; }
             * { box-sizing: border-box; }
@@ -855,8 +855,8 @@ export default function PlantDispatches() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Plant Production and Dispatches</h1>
-            <p className="text-muted-foreground">Record outgoing mix loads by party/job</p>
+            <h1 className="text-2xl font-bold">Mix Dispatches</h1>
+            <p className="text-muted-foreground">Record outgoing bituminous mix loads by party/job</p>
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
