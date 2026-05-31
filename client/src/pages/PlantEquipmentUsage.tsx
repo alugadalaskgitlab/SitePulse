@@ -182,12 +182,24 @@ export default function PlantEquipmentUsage() {
     return "";
   });
   const [filterEquipmentId, setFilterEquipmentId] = useState("all");
+  const [filterWorkingPlant, setFilterWorkingPlant] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("workingPlant")) return params.get("workingPlant")!;
+    try {
+      const stored = sessionStorage.getItem(FILTER_SESSION_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { dateFrom?: string; dateTo?: string; workingPlant?: string };
+        return parsed.workingPlant || "all";
+      }
+    } catch { /* ignore */ }
+    return "all";
+  });
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({ dateFrom: filterDateFrom, dateTo: filterDateTo }));
+      sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({ dateFrom: filterDateFrom, dateTo: filterDateTo, workingPlant: filterWorkingPlant }));
     } catch { /* ignore */ }
-  }, [filterDateFrom, filterDateTo]);
+  }, [filterDateFrom, filterDateTo, filterWorkingPlant]);
 
 
   const { data: usage, isLoading } = useQuery<EquipmentUsage[]>({
@@ -588,6 +600,12 @@ export default function PlantEquipmentUsage() {
     if (filterDateFrom && u.date < filterDateFrom) return false;
     if (filterDateTo && u.date > filterDateTo) return false;
     if (filterEquipmentId !== "all" && u.equipmentId !== parseInt(filterEquipmentId)) return false;
+    if (filterWorkingPlant !== "all") {
+      const loc = (u as any).siteName as string | null;
+      if (filterWorkingPlant === "HMP PLANT" && loc !== "HMP PLANT") return false;
+      if (filterWorkingPlant === "RMC PLANT" && loc !== "RMC PLANT") return false;
+      if (filterWorkingPlant === "other" && (loc === "HMP PLANT" || loc === "RMC PLANT")) return false;
+    }
     return true;
   }) || [];
 
@@ -1480,6 +1498,36 @@ export default function PlantEquipmentUsage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex-1 min-w-[220px]">
+              <Label className="text-sm text-muted-foreground">WORKING PLANT</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1" data-testid="filter-working-plant-chips">
+                {[
+                  { value: "all", label: "All" },
+                  { value: "HMP PLANT", label: "HMP Plant" },
+                  { value: "RMC PLANT", label: "RMC Plant" },
+                  { value: "other", label: "Other" },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    data-testid={`chip-working-plant-${value}`}
+                    onClick={() => setFilterWorkingPlant(value)}
+                    className={[
+                      "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      filterWorkingPlant === value
+                        ? value === "HMP PLANT"
+                          ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-600"
+                          : value === "RMC PLANT"
+                            ? "bg-teal-100 text-teal-700 border-teal-400 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-600"
+                            : "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -1487,6 +1535,7 @@ export default function PlantEquipmentUsage() {
                 setFilterDateFrom("");
                 setFilterDateTo("");
                 setFilterEquipmentId("all");
+                setFilterWorkingPlant("all");
               }}
               data-testid="button-clear-filters"
             >
