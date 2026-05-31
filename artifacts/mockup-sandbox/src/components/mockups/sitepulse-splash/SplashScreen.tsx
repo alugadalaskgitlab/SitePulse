@@ -123,7 +123,7 @@ export default function SplashScreen() {
               fontFamily: "system-ui, sans-serif",
             }}
           >
-            LIVE OPS — BEYOND THE LOGBOOK
+            LIVE OPS. NOT JUST LOGS.
           </div>
         </div>
 
