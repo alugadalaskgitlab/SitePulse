@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
+  HardHat, FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
   AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
