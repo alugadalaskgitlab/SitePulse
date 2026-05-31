@@ -11,7 +11,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
-  Truck, FileText, Package,
+  Truck, FileText,
   TestTube, FlaskConical, BarChart3, Layers, AlertTriangle, TrendingUp,
 } from "lucide-react";
 import { parseISO } from "date-fns";
@@ -74,7 +74,7 @@ export default function RmcHub() {
   const [activeTab, setActiveTab] = useState<"operations" | "reports">("operations");
 
   const canProduction = sectionVisible("plant_production");
-  const canMaterials = sectionVisible("plant_materials");
+
   const canReports = sectionVisible("plant_daily_reports");
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -329,15 +329,7 @@ export default function RmcHub() {
                 iconBg="bg-teal-100"
                 enabled={canProduction}
               />
-              <HubActionTile
-                href="/plant/rmc/raw-materials"
-                icon={Package}
-                title="Raw Material Receipts"
-                description="Track incoming cement, aggregates & admixtures"
-                accent="emerald"
-                iconBg="bg-emerald-100"
-                enabled={canMaterials}
-              />
+
               <HubActionTile
                 href="/plant/rmc/cube-tests"
                 icon={TestTube}
