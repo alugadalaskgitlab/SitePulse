@@ -6,6 +6,7 @@ import {
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 const HUB = "/reports/hub";
 
@@ -19,6 +20,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 export default function ReportsHub() {
   const { sectionVisible, isAdmin, isManager } = useAuth();
+  const { rmcEnabled } = useFeatureFlags();
 
   const canReports    = isAdmin || isManager || sectionVisible("reports");
   const canDailyRep   = sectionVisible("plant_daily_reports");
@@ -35,9 +37,9 @@ export default function ReportsHub() {
   const canDieselReq  = sectionVisible("site_diesel");
   const canBills      = sectionVisible("vendor_bills");
 
-  const hasSiteReports = canSiteMat || canSiteProcure || canReports;
-  const hasHmpReports  = canDailyRep || canHeating || canProd || canDieselProc || canShift;
-  const hasRmcReports  = canProd;
+  const hasSiteReports  = canDailyRep || canSiteMat || canSiteProcure || canReports;
+  const hasHmpReports   = canDailyRep || canHeating || canProd || canDieselProc || canShift;
+  const hasRmcReports   = rmcEnabled && canProd;
   const hasStockReports = canMaterials || canStock || canVariance || canAudit;
   const hasProcReports  = canSiteProcure || canDieselReq || canBills;
 
@@ -55,6 +57,15 @@ export default function ReportsHub() {
           <div>
             <SectionHeading>Site Reports</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href={`/plant/daily-report?returnTo=${HUB}`}
+                icon={BarChart3}
+                title="Daily DPR"
+                description="Complete production summary for any given day"
+                accent="orange"
+                iconBg="bg-orange-100"
+                enabled={canDailyRep}
+              />
               <HubActionTile
                 href={`/site/materials-received?returnTo=${HUB}`}
                 icon={Package}
@@ -101,15 +112,6 @@ export default function ReportsHub() {
                 enabled={canDailyRep}
               />
               <HubActionTile
-                href={`/plant/daily-report?returnTo=${HUB}`}
-                icon={FileText}
-                title="Daily Plant Report (Single Day)"
-                description="Complete production summary for any given day"
-                accent="amber"
-                iconBg="bg-amber-100"
-                enabled={canDailyRep}
-              />
-              <HubActionTile
                 href={`/plant/heating-trends?returnTo=${HUB}`}
                 icon={TrendingUp}
                 title="Heating Trends"
@@ -149,7 +151,7 @@ export default function ReportsHub() {
           </div>
         )}
 
-        {/* RMC Reports */}
+        {/* RMC Reports — only shown when rmcEnabled and user has plant_production access */}
         {hasRmcReports && (
           <div>
             <SectionHeading>RMC Reports</SectionHeading>
@@ -238,14 +240,14 @@ export default function ReportsHub() {
               <HubActionTile
                 href={`/plant/diesel-requirements?returnTo=${HUB}`}
                 icon={Fuel}
-                title="Diesel Requirements"
-                description="View and approve daily diesel requirements"
+                title="Daily Diesel Requirements"
+                description="View and approve daily diesel requirement requests"
                 accent="amber"
                 iconBg="bg-amber-100"
                 enabled={canDieselReq}
               />
               <HubActionTile
-                href={`/plant/vendor-bills?returnTo=${HUB}`}
+                href={`/finance/vendor-bills?returnTo=${HUB}`}
                 icon={Receipt}
                 title="Vendor Bills"
                 description="Equipment, material, transport & labour bills — review and approve"

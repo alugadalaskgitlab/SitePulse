@@ -276,6 +276,7 @@ function AuthedShell() {
             <Route path="/plant/purchase-indents" component={gated(PurchaseIndents, "site_procurement")} />
             <Route path="/plant/diesel-requirements" component={gated(DieselRequirements, "site_diesel")} />
             <Route path="/plant/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
+            <Route path="/finance/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
             <Route path="/plant/rate-cards" component={gated(RateCards, "admin_settings")} />
             <Route path="/plant/data-sync" component={gated(DataSync, "admin_settings")} />
             <Route path="/plant/:id" component={gated(PlantDetails, "admin_settings")} />
