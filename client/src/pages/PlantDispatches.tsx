@@ -206,6 +206,18 @@ export default function PlantDispatches() {
     }
   }, [mgmtReportPlantId, plantSettingsList]);
 
+  // Resolved label for the management-report banner when navigating without filterPlantName.
+  // Priority: active filterPlantName → mgmtReportPlant from URL → looked-up name → numeric ID fallback.
+  const resolvedMgmtPlantLabel = (() => {
+    if (filterPlantName !== "all") return filterPlantName;
+    if (mgmtReportPlant) return mgmtReportPlant;
+    if (mgmtReportPlantId) {
+      const found = plantSettingsList?.find((p) => p.id === mgmtReportPlantId);
+      return found ? found.plantName : String(mgmtReportPlantId);
+    }
+    return null;
+  })();
+
   const { data: bitumenTankBalances } = useQuery<{ tank1: number; tank2: number; total: number }>({
     queryKey: ["/api/plant-module/bitumen-tank-balances"],
     queryFn: async () => {
@@ -830,11 +842,9 @@ export default function PlantDispatches() {
           <BarChart2 className="w-4 h-4 flex-shrink-0 text-amber-500" />
           <span>
             From Management Report
-            {filterPlantName !== "all"
-              ? <> — Filtered to plant: <strong>{filterPlantName}</strong></>
-              : mgmtReportPlant
-                ? <> — Filtered to plant: <strong>{mgmtReportPlant}</strong></>
-                : null}
+            {resolvedMgmtPlantLabel
+              ? <> — Filtered to plant: <strong>{resolvedMgmtPlantLabel}</strong></>
+              : null}
           </span>
         </div>
       )}
