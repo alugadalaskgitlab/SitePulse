@@ -150,6 +150,12 @@ export default function DieselRequirements() {
     queryFn: () => fetch(`/api/diesel-requirements${queryString}`).then(r => r.json()),
   });
 
+  const filteredRequirements = useMemo(() => {
+    if (!requirements) return [];
+    if (filterSite === "all") return requirements;
+    return requirements.filter(req => String((req as any).siteId ?? "") === filterSite);
+  }, [requirements, filterSite]);
+
   const { data: summary } = useQuery<{ total: number; pending: number; approved: number; rejected: number }>({
     queryKey: ["/api/diesel-requirements/summary"],
   });
@@ -632,7 +638,7 @@ export default function DieselRequirements() {
             <div className="flex justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : !requirements?.length ? (
+          ) : !filteredRequirements.length ? (
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 No diesel requirements found. Raise a new requirement to get started.
