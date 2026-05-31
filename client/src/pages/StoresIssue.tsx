@@ -535,6 +535,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
               <div className="space-y-3">
                 {issues.map(issue => {
                   const issueSiteName = siteName(issue.siteId);
+                  const distinctCategories = [...new Set(issue.items.map(it => it.category).filter(Boolean))];
                   return (
                     <Card key={issue.id} className="cursor-pointer hover-elevate" onClick={() => openDetail(issue)} data-testid={`card-issue-${issue.id}`}>
                       <CardContent className="p-4">
@@ -551,6 +552,11 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                                   {issueSiteName}
                                 </span>
                               )}
+                              {distinctCategories.map(cat => (
+                                <span key={cat} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" data-testid={`badge-category-${issue.id}-${cat}`}>
+                                  {cat}
+                                </span>
+                              ))}
                             </div>
                             {/* For legacy issues (no siteId FK) that have free-text detail */}
                             {!issue.siteId && issue.issuedToDetail && (
