@@ -1419,6 +1419,7 @@ export type PurchaseIndentWithItems = PurchaseIndent & {
 };
 
 export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.extend({
+  siteId: z.number().int({ message: "Site is required" }),
   items: z.array(insertPurchaseIndentItemSchema.omit({ indentId: true })),
 });
 export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
@@ -1488,6 +1489,7 @@ export type DieselRequirementWithItems = DieselRequirement & {
 };
 
 export const createDieselRequirementRequestSchema = insertDieselRequirementSchema.extend({
+  siteId: z.number().int({ message: "Site is required" }),
   items: z.array(insertDieselRequirementItemSchema.omit({ requirementId: true })),
 });
 export type CreateDieselRequirementRequest = z.infer<typeof createDieselRequirementRequestSchema>;

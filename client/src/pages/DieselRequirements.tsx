@@ -327,6 +327,10 @@ export default function DieselRequirements() {
   );
 
   const handleSubmit = () => {
+    if (!formSiteId) {
+      toast({ title: "Please select a site", variant: "destructive" });
+      return;
+    }
     if (!formRaisedBy || formItems.every((i) => !i.equipmentName)) return;
     const items = formItems
       .filter((i) => i.equipmentName)
@@ -691,7 +695,7 @@ export default function DieselRequirements() {
                   <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
                 </div>
                 <div>
-                  <Label className="text-xs">SITE</Label>
+                  <Label className="text-xs">SITE <span className="text-red-500">*</span></Label>
                   <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
                     <SelectTrigger data-testid="select-form-site">
                       <SelectValue placeholder="Select site" />

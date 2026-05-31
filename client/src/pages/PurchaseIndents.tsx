@@ -692,6 +692,10 @@ export default function PurchaseIndents() {
   };
 
   const handleSubmitIndent = () => {
+    if (!formSiteId) {
+      toast({ title: "Please select a site", variant: "destructive" });
+      return;
+    }
     if (!formProposedBy.trim() || !formRaisedBy.trim()) {
       toast({ title: "Please fill in Proposed By and Raised By", variant: "destructive" });
       return;
@@ -1214,7 +1218,7 @@ export default function PurchaseIndents() {
                   <p className="text-xs text-muted-foreground mt-0.5">AUTO-GENERATED ON SAVE</p>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">SITE</Label>
+                  <Label className="text-xs uppercase">SITE <span className="text-red-500">*</span></Label>
                   <Select value={formSiteId !== null ? String(formSiteId) : ""} onValueChange={(v) => setFormSiteId(v ? Number(v) : null)}>
                     <SelectTrigger data-testid="select-site">
                       <SelectValue placeholder="Select site" />
