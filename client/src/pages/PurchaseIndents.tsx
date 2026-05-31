@@ -1159,7 +1159,6 @@ export default function PurchaseIndents() {
                           <div className="flex flex-wrap gap-1 mt-2 items-center">
                             {(() => {
                               const loc = locationLabel({ siteId: (indent as any).siteId ?? null, raisedFrom: (indent as any).raisedFrom ?? null }, sitesList);
-                              if (loc === "—") return null;
                               return (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${indent.id}`}>
                                   {loc}
