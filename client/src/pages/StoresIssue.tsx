@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
 const SECTIONS = [{ value: "plant", label: "Plant" }, { value: "site", label: "Site" }, { value: "other", label: "Other" }];
+const STORE_CATEGORIES = ["Spares", "Lubricants", "Consumables", "Electricals", "Tools", "HMA", "RMC", "Office", "General", "Others"];
 const PURPOSES = ["Breakdown Repair", "Scheduled Service", "Preventive Maintenance", "Site Work", "General Use", "Other"];
 
 type StoreItem = { id: number; name: string; category: string; uom: string };
@@ -41,6 +42,8 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const [dateTo, setDateTo] = useState("");
   const [sectionFilter, setSectionFilter] = useState("__all__");
   const [siteFilter, setSiteFilter] = useState("__all__");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [form, setForm] = useState({
@@ -77,13 +80,15 @@ export default function StoresIssue({ isNew, detailId }: Props) {
   const stockMap = stock.reduce<Record<number, number>>((acc, s) => { acc[s.itemId] = s.balance; return acc; }, {});
 
   const { data: issues = [], isLoading } = useQuery<IssueWithItems[]>({
-    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter, siteFilter],
+    queryKey: ["/api/stores/issues", dateFrom, dateTo, sectionFilter, siteFilter, categoryFilter, itemFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (sectionFilter !== "__all__") p.set("section", sectionFilter);
       if (siteFilter !== "__all__") p.set("siteId", siteFilter);
+      if (categoryFilter) p.set("category", categoryFilter);
+      if (itemFilter) p.set("item", itemFilter);
       const res = await fetch(`/api/stores/issues${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -177,7 +182,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
 
   const sectionLabel = (s: string) => SECTIONS.find(x => x.value === s)?.label ?? s;
   const siteName = (id: number | null) => id ? (sites.find(s => s.id === id)?.name ?? null) : null;
-  const hasFilters = !!(dateFrom || dateTo || sectionFilter !== "__all__" || siteFilter !== "__all__");
+  const hasFilters = !!(dateFrom || dateTo || sectionFilter !== "__all__" || siteFilter !== "__all__" || categoryFilter || itemFilter);
 
   return (
     <div className="min-h-screen bg-background">
@@ -508,8 +513,16 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   {sites.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>
+                <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-category-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Categories</SelectItem>
+                  {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input className="h-8 w-36 text-xs" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
               {hasFilters && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); }}>Clear</Button>
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); setCategoryFilter(""); setItemFilter(""); }}>Clear</Button>
               )}
             </div>
 

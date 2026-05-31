@@ -773,7 +773,7 @@ export interface IStorage {
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
   replaceStoreGrn(id: number, grnData: Partial<InsertStoreGrn>, items: Omit<InsertStoreGrnItem, 'grnId'>[]): Promise<StoreGrnWithItems | undefined>;
   deleteStoreGrn(id: number): Promise<boolean>;
-  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]>;
+  getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string }): Promise<StoreIssueWithItems[]>;
   getStoreIssue(id: number): Promise<StoreIssueWithItems | undefined>;
   getRecentIssueItemIds(limit?: number): Promise<number[]>;
   createStoreIssue(issue: Omit<InsertStoreIssue, 'issueNumber'>, items: Omit<InsertStoreIssueItem, 'issueId'>[]): Promise<StoreIssueWithItems>;
@@ -17232,7 +17232,7 @@ export class DatabaseStorage implements IStorage {
     return { ...issue, items: items as (StoreIssueItem & { itemName: string; category: string })[] };
   }
 
-  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[] }): Promise<StoreIssueWithItems[]> {
+  async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string }): Promise<StoreIssueWithItems[]> {
     if (filters?.permittedSiteIds !== undefined && filters.permittedSiteIds.length === 0) return [];
     const conds: any[] = [];
     if (filters?.dateFrom) conds.push(gte(storeIssues.date, filters.dateFrom));
@@ -17241,6 +17241,19 @@ export class DatabaseStorage implements IStorage {
     if (filters?.siteId) conds.push(eq(storeIssues.siteId, filters.siteId));
     if (filters?.permittedSiteIds && filters.permittedSiteIds.length > 0) {
       conds.push(inArray(storeIssues.siteId, filters.permittedSiteIds));
+    }
+    if (filters?.item || filters?.category) {
+      const itemConds: any[] = [eq(storeIssueItems.issueId, storeIssues.id)];
+      if (filters.item) itemConds.push(ilike(storeItems.name, `%${filters.item}%`));
+      if (filters.category) itemConds.push(eq(storeItems.category, filters.category));
+      conds.push(
+        exists(
+          db.select({ one: sql`1` })
+            .from(storeIssueItems)
+            .leftJoin(storeItems, eq(storeIssueItems.itemId, storeItems.id))
+            .where(and(...itemConds))
+        )
+      );
     }
     const issues = await db.select().from(storeIssues)
       .where(conds.length ? and(...conds) : undefined)

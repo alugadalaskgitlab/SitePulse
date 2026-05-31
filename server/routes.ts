@@ -7044,6 +7044,8 @@ export async function registerRoutes(
         dateTo: req.query.dateTo as string | undefined,
         section: req.query.section as string | undefined,
         siteId: req.query.siteId ? parseInt(req.query.siteId as string) : undefined,
+        item: req.query.item as string | undefined,
+        category: req.query.category as string | undefined,
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(issues);
