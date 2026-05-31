@@ -325,7 +325,7 @@ export default function HmpHub() {
                 enabled={canStock}
               />
               <HubActionTile
-                href="/plant/purchase-indents"
+                href="/plant/purchase-indents?returnTo=/plant/hub"
                 icon={ShoppingCart}
                 title="Purchase Indent"
                 description="Raise and track purchase indents for HMP materials & spares"
@@ -334,7 +334,7 @@ export default function HmpHub() {
                 enabled={canProcure}
               />
               <HubActionTile
-                href="/plant/diesel-requirements"
+                href="/plant/diesel-requirements?returnTo=/plant/hub"
                 icon={Fuel}
                 title="Daily Diesel Requirement"
                 description="Plan & approve diesel allocation for HMP plant operations"

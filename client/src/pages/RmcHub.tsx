@@ -350,7 +350,7 @@ export default function RmcHub() {
                 enabled={canProduction}
               />
               <HubActionTile
-                href="/plant/purchase-indents"
+                href="/plant/purchase-indents?returnTo=/rmc/hub"
                 icon={ShoppingCart}
                 title="Purchase Indent"
                 description="Raise and track purchase indents for RMC materials & consumables"
@@ -359,7 +359,7 @@ export default function RmcHub() {
                 enabled={canProcure}
               />
               <HubActionTile
-                href="/plant/diesel-requirements"
+                href="/plant/diesel-requirements?returnTo=/rmc/hub"
                 icon={Fuel}
                 title="Daily Diesel Requirement"
                 description="Plan & approve diesel allocation for RMC plant operations"

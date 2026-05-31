@@ -132,7 +132,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("site_diesel")}
             />
             <HubActionTile
-              href="/plant/purchase-indents"
+              href="/plant/purchase-indents?returnTo=/equipment/hub"
               icon={ShoppingCart}
               title="Purchase Indent"
               description="Raise indents for spare parts, consumables & fleet requirements"

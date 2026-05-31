@@ -137,7 +137,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_procurement")}
             />
             <HubActionTile
-              href="/plant/purchase-indents"
+              href="/plant/purchase-indents?returnTo=/site/hub"
               icon={ShoppingCart}
               title="Purchase Indent"
               description="Raise and track purchase indents for site materials & requirements"
@@ -146,7 +146,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_procurement")}
             />
             <HubActionTile
-              href="/plant/diesel-requirements"
+              href="/plant/diesel-requirements?returnTo=/site/hub"
               icon={Fuel}
               title="Daily Diesel Requirement"
               description="Plan & approve diesel allocation for site equipment"
