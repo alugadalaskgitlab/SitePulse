@@ -1,31 +1,16 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Factory, Wrench, Building2, BarChart2, HardHat,
-  Settings, ArrowRight, Package, Receipt,
   FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
   AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
-import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 
-const MODULES = [
-  { id: "site",      title: "Site Operations",       description: "Daily progress reports, material entries & site activities",       icon: HardHat,    href: "/site/hub",      lightBg: "bg-teal-50",    iconColor: "text-teal-600",    hoverBorder: "hover:border-teal-300",    isAdmin: false },
-  { id: "hmp",       title: "HMP Operations",         description: "Shift logs, heating sessions & production dispatches",             icon: Factory,    href: "/plant/hub",     lightBg: "bg-orange-50",  iconColor: "text-orange-600",  hoverBorder: "hover:border-orange-300",  isAdmin: false },
-  { id: "rmc",       title: "RMC Operations",         description: "Ready-mix batching, delivery challans & cube tests",               icon: Building2,  href: "/rmc/hub",       lightBg: "bg-emerald-50", iconColor: "text-emerald-600", hoverBorder: "hover:border-emerald-300", isAdmin: false },
-  { id: "equipment", title: "Equipment & Fleet",      description: "Usage logs, breakdowns & diesel tracking",                         icon: Wrench,     href: "/equipment/hub", lightBg: "bg-blue-50",    iconColor: "text-blue-600",    hoverBorder: "hover:border-blue-300",    isAdmin: false },
-  { id: "stores",    title: "Stores & Inventory",     description: "GRNs, issue vouchers, item master & stock tracking",               icon: Package,    href: "/stores/hub",    lightBg: "bg-amber-50",   iconColor: "text-amber-600",   hoverBorder: "hover:border-amber-300",   isAdmin: false },
-  { id: "finance",   title: "Procurement & Billing",  description: "Purchase indents, diesel requirements, vendor bills & rate cards", icon: Receipt,    href: "/finance/hub",   lightBg: "bg-rose-50",    iconColor: "text-rose-600",    hoverBorder: "hover:border-rose-300",    isAdmin: false },
-  { id: "reports",   title: "Reports & Analysis",     description: "Production reports, stock ledgers & management reports",           icon: BarChart2,  href: "/reports/hub",   lightBg: "bg-purple-50",  iconColor: "text-purple-600",  hoverBorder: "hover:border-purple-300",  isAdmin: false },
-  { id: "masters",   title: "Masters & Config",       description: "Reference data, user management & app administration",             icon: Settings,   href: "/admin/hub",     lightBg: "bg-slate-100",  iconColor: "text-slate-600",   hoverBorder: "hover:border-slate-300",   isAdmin: true  },
-];
 
 export default function Home() {
-  const { user, sectionVisible, isAdmin } = useAuth();
-  const { rmcEnabled } = useFeatureFlags();
+  const { user, sectionVisible } = useAuth();
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
@@ -63,7 +48,7 @@ export default function Home() {
   });
 
   // ── Derived values ──
-  const activeSites = sites.filter((s: any) => s.isActive !== false);
+  const activeSites = sites.filter((s: any) => s.isActive !== 0);
   const dprSiteNames = new Set(todayDprs.map((d: any) => d.site));
 
   const pendingDiesel = dieselReqs.filter(
@@ -110,29 +95,7 @@ export default function Home() {
   ].slice(0, 5);
 
   // Permission visibility
-  const canSeeHmp = sectionVisible("plant_shift_logs") || sectionVisible("plant_heating") || sectionVisible("plant_production");
-  const canSeeEquipment = sectionVisible("plant_equipment");
-  const canSeeRmc = rmcEnabled && sectionVisible("plant_production");
-  const canSeeReports = sectionVisible("plant_daily_reports") || sectionVisible("reports") || sectionVisible("admin_settings");
   const canSeeSite = sectionVisible("site_dprs") || sectionVisible("site_materials") || sectionVisible("site_procurement") || sectionVisible("site_diesel");
-  const canSeeStores = sectionVisible("stores_inventory");
-  const canSeeFinance = sectionVisible("site_procurement") || sectionVisible("site_diesel") || sectionVisible("vendor_bills") || sectionVisible("admin_settings");
-
-  function canSeeSection(id: string) {
-    switch (id) {
-      case "site":      return canSeeSite;
-      case "hmp":       return canSeeHmp;
-      case "rmc":       return canSeeRmc;
-      case "equipment": return canSeeEquipment;
-      case "stores":    return canSeeStores;
-      case "finance":   return canSeeFinance;
-      case "reports":   return canSeeReports;
-      case "masters":   return isAdmin;
-      default:          return false;
-    }
-  }
-
-  const visibleModules = MODULES.filter((m) => canSeeSection(m.id));
 
   return (
     <HubShell title="Home Dashboard">
@@ -348,44 +311,6 @@ export default function Home() {
               )}
             </div>
           </div>
-        </div>
-
-        {/* ── Module grid ── */}
-        <div>
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Quick Access</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="home-modules-grid">
-            {visibleModules.map((mod) => (
-              <Link key={mod.id} href={mod.href}>
-                <a
-                  className={`group block bg-white rounded-xl border border-slate-200 ${mod.hoverBorder} shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer`}
-                  data-testid={`card-${mod.id}`}
-                >
-                  <div className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${mod.lightBg} ${mod.iconColor} group-hover:scale-110 transition-transform duration-200`}>
-                        <mod.icon className="w-5 h-5" />
-                      </div>
-                      {mod.isAdmin && (
-                        <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-200 text-[10px]">Admin</Badge>
-                      )}
-                    </div>
-                    <h3 className="text-sm font-semibold text-slate-900">{mod.title}</h3>
-                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">{mod.description}</p>
-                  </div>
-                  <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-400 group-hover:text-slate-700 transition-colors">
-                    <span>Open</span>
-                    <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
-                  </div>
-                </a>
-              </Link>
-            ))}
-          </div>
-
-          {visibleModules.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
-              <p className="text-sm">No modules available. Contact an administrator.</p>
-            </div>
-          )}
         </div>
       </div>
     </HubShell>
