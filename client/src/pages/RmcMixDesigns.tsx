@@ -131,6 +131,13 @@ export default function RmcMixDesigns() {
     setForm(f => ({ ...f, componentProportions: { ...f.componentProportions, [key]: val } }));
   }
 
+  const formTotalWeight = (
+    (parseFloat(form.componentProportions.cement) || 0) +
+    (parseFloat(form.componentProportions.fineAgg) || 0) +
+    (parseFloat(form.componentProportions.coarseAgg10) || 0) +
+    (parseFloat(form.componentProportions.coarseAgg20) || 0)
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between gap-4">
@@ -201,17 +208,26 @@ export default function RmcMixDesigns() {
                       <span>{d.admixtureName}{d.admixtureDosage ? ` @ ${d.admixtureDosage}%` : ""}</span>
                     </div>
                   )}
-                  {(cp.cement || cp.fineAgg || cp.coarseAgg10 || cp.coarseAgg20) && (
-                    <div className="mt-2 pt-2 border-t text-xs">
-                      <p className="text-muted-foreground font-medium mb-1">Proportions (kg/m³)</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                        {cp.cement && <div>Cement: {cp.cement}</div>}
-                        {cp.fineAgg && <div>Fine Agg: {cp.fineAgg}</div>}
-                        {cp.coarseAgg10 && <div>CA 10mm: {cp.coarseAgg10}</div>}
-                        {cp.coarseAgg20 && <div>CA 20mm: {cp.coarseAgg20}</div>}
+                  {(cp.cement || cp.fineAgg || cp.coarseAgg10 || cp.coarseAgg20) && (() => {
+                    const total = (Number(cp.cement) || 0) + (Number(cp.fineAgg) || 0) + (Number(cp.coarseAgg10) || 0) + (Number(cp.coarseAgg20) || 0);
+                    return (
+                      <div className="mt-2 pt-2 border-t text-xs">
+                        <p className="text-muted-foreground font-medium mb-1">Proportions (kg/m³)</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                          {cp.cement && <div>Cement: {cp.cement}</div>}
+                          {cp.fineAgg && <div>Fine Agg: {cp.fineAgg}</div>}
+                          {cp.coarseAgg10 && <div>CA 10mm: {cp.coarseAgg10}</div>}
+                          {cp.coarseAgg20 && <div>CA 20mm: {cp.coarseAgg20}</div>}
+                        </div>
+                        {total > 0 && (
+                          <div className="flex justify-between mt-1.5 pt-1.5 border-t font-semibold" data-testid={`text-card-total-weight-${d.id}`}>
+                            <span className="text-muted-foreground">Total</span>
+                            <span>{total.toFixed(1)} kg/m³</span>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   {d.notes && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">{d.notes}</p>}
                   <div className="flex gap-2 pt-2">
                     {canEdit && (
@@ -304,6 +320,12 @@ export default function RmcMixDesigns() {
                   <Input type="number" step="0.1" value={form.componentProportions.coarseAgg20} onChange={e => setCP("coarseAgg20", e.target.value)} data-testid="input-cp-ca20" />
                 </div>
               </div>
+              {formTotalWeight > 0 && (
+                <div className="flex items-center justify-between mt-2 pt-2 border-t bg-muted/40 rounded px-2 py-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Total Weight</span>
+                  <span className="text-sm font-bold" data-testid="text-total-weight">{formTotalWeight.toFixed(1)} kg/m³</span>
+                </div>
+              )}
             </div>
             <div className="space-y-1">
               <Label>Notes</Label>
