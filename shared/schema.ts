@@ -403,6 +403,7 @@ export const equipmentUsage = pgTable("equipment_usage", {
   shiftTo: text("shift_to"), // Destination site/location for mobilization
   transportEquipmentId: integer("transport_equipment_id"), // FK to equipment_master for transport vehicle
   transportDistance: real("transport_distance"), // One-way distance in km for mobilization
+  hireAmount: real("hire_amount"), // Hire charge for this entry (hourly/daily/monthly hire entries)
   plantName: text("plant_name").notNull().default("Main Plant"),
   // Set when this row is auto-created by a heating session inline-DG entry,
   // so it can be updated/deleted in lockstep without duplicating data.

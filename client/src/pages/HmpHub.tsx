@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Flame, ClipboardList, Truck, Droplets, Gauge, FileSearch,
-  Fuel, TrendingUp, ShoppingCart,
+  Fuel, TrendingUp, ShoppingCart, HardHat,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -65,6 +65,8 @@ export default function HmpHub() {
 
   const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const canEquipment = sectionVisible("plant_equipment");
+
   const { data: shiftLogs = [] } = useQuery<any[]>({
     queryKey: ["/api/plant-module/shift-logs", TODAY],
     queryFn: async () => {
@@ -113,6 +115,41 @@ export default function HmpHub() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: equipmentUsageToday = [], isLoading: equipLoading } = useQuery<any[]>({
+    queryKey: ["/api/plant-module/equipment-usage", TODAY],
+    queryFn: async () => {
+      const res = await fetch(`/api/plant-module/equipment-usage?dateFrom=${TODAY}&dateTo=${TODAY}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: canEquipment,
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  type PlantBucket = { count: number; hireAmount: number; hoursRun: number; sites: Set<string> };
+  const equipByPlant = equipmentUsageToday.reduce<Record<string, PlantBucket>>((acc, entry) => {
+    const site: string = entry.siteName || "HMP PLANT";
+    const bucket: string =
+      site === "HMP PLANT" ? "HMP PLANT"
+      : site === "RMC PLANT" ? "RMC PLANT"
+      : "Other Sites";
+    if (!acc[bucket]) acc[bucket] = { count: 0, hireAmount: 0, hoursRun: 0, sites: new Set() };
+    acc[bucket].count += 1;
+    acc[bucket].hireAmount += parseFloat(entry.hireAmount ?? "0") || 0;
+    acc[bucket].hoursRun += parseFloat(entry.hoursOrKmRun ?? "0") || 0;
+    if (bucket === "Other Sites" && site) acc[bucket].sites.add(site);
+    return acc;
+  }, {});
+
+  const PLANT_ORDER = ["HMP PLANT", "RMC PLANT", "Other Sites"] as const;
+  const PLANT_COLORS: Record<string, { border: string; bg: string; label: string; dot: string }> = {
+    "HMP PLANT":   { border: "border-orange-200", bg: "bg-orange-50",  label: "text-orange-700", dot: "bg-orange-400" },
+    "RMC PLANT":   { border: "border-blue-200",   bg: "bg-blue-50",    label: "text-blue-700",   dot: "bg-blue-400"   },
+    "Other Sites": { border: "border-slate-200",  bg: "bg-slate-50",   label: "text-slate-700",  dot: "bg-slate-400"  },
+  };
+
   const totalMT = dispatches.reduce((s: number, d: any) => s + (parseFloat(d.weight ?? d.tonnage ?? d.quantity ?? "0") || 0), 0);
   const totalLdoL = shiftLogs.reduce((s: number, l: any) => s + (parseFloat(l.ldoConsumed ?? "0") || 0), 0);
 
@@ -145,6 +182,78 @@ export default function HmpHub() {
           />
           <KpiCard label="Date" value={format(new Date(), "dd MMM")} sub={format(new Date(), "yyyy")} color="purple" />
         </div>
+
+        {/* Equipment cost breakdown by plant */}
+        {canEquipment && (
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                <HardHat className="w-4 h-4 text-orange-500" />
+                Equipment Usage — Today by Location
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              {equipLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[0, 1, 2].map(i => (
+                    <Skeleton key={i} className="h-20 rounded-lg" />
+                  ))}
+                </div>
+              ) : equipmentUsageToday.length === 0 ? (
+                <p className="text-sm text-slate-400 py-2">No equipment entries logged today</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {PLANT_ORDER.map(plantKey => {
+                    const bucket = equipByPlant[plantKey];
+                    const c = PLANT_COLORS[plantKey];
+                    if (!bucket) {
+                      return (
+                        <div key={plantKey} className={`rounded-lg border p-3 ${c.border} ${c.bg} opacity-40`}>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                            <span className={`text-xs font-semibold ${c.label}`}>{plantKey}</span>
+                          </div>
+                          <p className="text-xs text-slate-400">No entries</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={plantKey} className={`rounded-lg border p-3 ${c.border} ${c.bg}`} data-testid={`equip-cost-${plantKey.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                          <span className={`text-xs font-semibold ${c.label}`}>{plantKey}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-slate-500">Entries</span>
+                            <span className={`text-sm font-bold ${c.label}`}>{bucket.count}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-slate-500">Hrs / KM</span>
+                            <span className="text-xs font-semibold text-slate-600">
+                              {bucket.hoursRun > 0 ? bucket.hoursRun.toFixed(1) : "—"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-slate-500">Hire Cost</span>
+                            <span className="text-xs font-semibold text-slate-600">
+                              {bucket.hireAmount > 0 ? `₹${bucket.hireAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—"}
+                            </span>
+                          </div>
+                          {plantKey === "Other Sites" && bucket.sites.size > 0 && (
+                            <p className="text-[10px] text-slate-400 pt-0.5 truncate" title={[...bucket.sites].join(", ")}>
+                              {[...bucket.sites].slice(0, 2).join(", ")}{bucket.sites.size > 2 ? ` +${bucket.sites.size - 2}` : ""}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* 7-day dispatch trend — only shown when data exists */}
         {canProd && (trendLoading || hasAnyProd) && (

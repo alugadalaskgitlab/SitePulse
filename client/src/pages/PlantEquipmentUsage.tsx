@@ -63,6 +63,7 @@ export default function PlantEquipmentUsage() {
   const [previousDieselBalance, setPreviousDieselBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [userModifiedOpening, setUserModifiedOpening] = useState(false);
+  const [hireAmount, setHireAmount] = useState("");
   const [shiftFrom, setShiftFrom] = useState("");
   const [shiftTo, setShiftTo] = useState("");
   const [transportEquipmentId, setTransportEquipmentId] = useState("");
@@ -99,6 +100,7 @@ export default function PlantEquipmentUsage() {
     dieselBalanceInTank: string;
     dieselBalanceConfirmed: boolean;
     remarks: string;
+    hireAmount: string;
     shiftFrom: string;
     shiftTo: string;
     transportEquipmentId: string;
@@ -106,8 +108,8 @@ export default function PlantEquipmentUsage() {
   }
 
   const formData = useMemo<EquipmentFormData>(() => ({
-    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance
-  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
+    date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance
+  }), [date, equipmentId, openingReading, closingReading, startTime, endTime, openingDiesel, dieselIssued, dieselIncluded, dieselSource, fuelStation, billNumber, amountPaid, siteName, workingPlant, numberOfTrips, tripDistance, tripBasedEntry, entryType, dieselBalanceInTank, dieselBalanceConfirmed, remarks, hireAmount, shiftFrom, shiftTo, transportEquipmentId, transportDistance]);
 
   const [draftRestored, setDraftRestored] = useState(false);
 
@@ -134,6 +136,7 @@ export default function PlantEquipmentUsage() {
     setDieselBalanceInTank(data.dieselBalanceInTank ?? "");
     setDieselBalanceConfirmed(data.dieselBalanceConfirmed || false);
     setRemarks(data.remarks);
+    setHireAmount(data.hireAmount ?? "");
     setShiftFrom(data.shiftFrom ?? "");
     setShiftTo(data.shiftTo ?? "");
     setTransportEquipmentId(data.transportEquipmentId ?? "");
@@ -345,6 +348,7 @@ export default function PlantEquipmentUsage() {
     setDieselBalanceInTank("");
     setDieselBalanceConfirmed(false);
     setRemarks("");
+    setHireAmount("");
     setEditingUsage(null);
     setPreviousDieselBalance(null);
     setIsLoadingBalance(false);
@@ -389,6 +393,7 @@ export default function PlantEquipmentUsage() {
     setDieselBalanceInTank((entry as any).dieselBalanceInTank != null ? String((entry as any).dieselBalanceInTank) : "");
     setDieselBalanceConfirmed((entry as any).dieselBalanceConfirmed === true);
     setRemarks(entry.remarks || "");
+    setHireAmount((entry as any).hireAmount != null ? String((entry as any).hireAmount) : "");
     setPreviousDieselBalance((entry as any).openingDiesel || 0);
     setUserModifiedOpening(true);
     setShiftFrom((entry as any).shiftFrom || "");
@@ -466,6 +471,7 @@ export default function PlantEquipmentUsage() {
         fuelStation: null,
         billNumber: null,
         amountPaid: null,
+        hireAmount: hireAmount ? parseFloat(hireAmount) : null,
         siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
         dieselBalanceInTank: null,
         dieselBalanceConfirmed: false,
@@ -509,6 +515,7 @@ export default function PlantEquipmentUsage() {
       fuelStation: effectiveDieselSource === "direct_purchase" ? fuelStation.toUpperCase() : null,
       billNumber: effectiveDieselSource === "direct_purchase" ? billNumber.toUpperCase() : null,
       amountPaid: effectiveDieselSource === "direct_purchase" && amountPaid ? parseFloat(amountPaid) : null,
+      hireAmount: ["hourly", "daily", "monthly", "trip_based"].includes(entryType) && hireAmount ? parseFloat(hireAmount) : null,
       siteName: workingPlant === "OTHER" ? (siteName.toUpperCase() || null) : workingPlant,
       dieselBalanceInTank: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? parseFloat(dieselBalanceInTank) : null,
       dieselBalanceConfirmed: effectiveDieselSource !== "contractor" && dieselBalanceInTank !== "" ? dieselBalanceConfirmed : false,
@@ -1421,6 +1428,26 @@ export default function PlantEquipmentUsage() {
               </>
               )}
 
+              {["hourly", "daily", "monthly", "trip_based"].includes(entryType) && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800 space-y-2">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Hire Charge</p>
+                  <div>
+                    <Label className="text-sm">Hire Amount (₹)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={hireAmount}
+                      onChange={(e) => setHireAmount(e.target.value)}
+                      placeholder="Total hire charge for this entry"
+                      data-testid="input-hire-amount"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {entryType === "hourly" ? "Hourly hire charge for the hours worked" : entryType === "daily" ? "Daily hire rate for this equipment" : entryType === "monthly" ? "Monthly hire charge (prorated if partial)" : "Hire charge for trips performed"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label>Remarks</Label>
                 <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value.toUpperCase())} placeholder="Optional notes" data-testid="input-usage-remarks" />
@@ -1870,6 +1897,12 @@ export default function PlantEquipmentUsage() {
                             </div>
                             {needsExpand && isExpanded && (
                               <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-1.5">
+                                {(entry as any).hireAmount != null && (
+                                  <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5">
+                                    <span className="text-amber-600 font-medium">Hire Charge</span>
+                                    <span><span className="text-muted-foreground">Amount: </span><span className="font-medium text-amber-700">₹{((entry as any).hireAmount as number).toFixed(0)}</span></span>
+                                  </div>
+                                )}
                                 {(entry as any).dieselSource === "direct_purchase" && (
                                   <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5">
                                     <span className="text-muted-foreground">Direct Purchase</span>
