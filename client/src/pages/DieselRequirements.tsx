@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,10 +97,21 @@ export default function DieselRequirements() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
+  const DR_FILTER_KEY = "diesel-requirements-filter";
+
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterLocation, setFilterLocation] = useState("all");
+  const [filterLocation, setFilterLocation] = useState<string>(() => {
+    try {
+      const stored = sessionStorage.getItem(DR_FILTER_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { location?: string };
+        return parsed.location || "all";
+      }
+    } catch { /* ignore */ }
+    return "all";
+  });
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formRaisedBy, setFormRaisedBy] = useState("");
@@ -110,6 +121,12 @@ export default function DieselRequirements() {
   const [formItems, setFormItems] = useState<FormItem[]>([
     { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DR_FILTER_KEY, JSON.stringify({ location: filterLocation }));
+    } catch { /* ignore */ }
+  }, [filterLocation]);
 
   const [editId, setEditId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

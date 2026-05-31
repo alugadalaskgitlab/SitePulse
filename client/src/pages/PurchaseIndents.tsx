@@ -394,11 +394,22 @@ export default function PurchaseIndents() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
 
+  const PI_FILTER_KEY = "purchase-indents-filter";
+
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
-  const [filterLocation, setFilterLocation] = useState("all");
+  const [filterLocation, setFilterLocation] = useState<string>(() => {
+    try {
+      const stored = sessionStorage.getItem(PI_FILTER_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { location?: string };
+        return parsed.location || "all";
+      }
+    } catch { /* ignore */ }
+    return "all";
+  });
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formProposedBy, setFormProposedBy] = useState("");
@@ -409,6 +420,12 @@ export default function PurchaseIndents() {
   const [formItems, setFormItems] = useState<ItemRow[]>([
     { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null },
   ]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PI_FILTER_KEY, JSON.stringify({ location: filterLocation }));
+    } catch { /* ignore */ }
+  }, [filterLocation]);
 
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
