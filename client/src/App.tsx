@@ -1,5 +1,7 @@
 import { Switch, Route } from "wouter";
+import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { SplashScreen } from "@/components/SplashScreen";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -91,8 +93,6 @@ import SiteBackfill from "@/pages/SiteBackfill";
 import StoresHub from "@/pages/StoresHub";
 import FinanceHub from "@/pages/FinanceHub";
 import NotFound from "@/pages/not-found";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
-
 function Watermark() {
   return (
     <div 
@@ -100,9 +100,9 @@ function Watermark() {
       aria-hidden="true"
     >
       <img 
-        src={companyLogo} 
+        src="/sitepulse-logo.png"
         alt="" 
-        className="w-64 h-64 md:w-80 md:h-80 object-contain opacity-[0.06]"
+        className="w-64 h-64 md:w-80 md:h-80 object-contain opacity-[0.04]"
       />
     </div>
   );
@@ -303,10 +303,18 @@ function AuthedShell() {
 }
 
 function App() {
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (sessionStorage.getItem("sp_splash_shown")) return false;
+    sessionStorage.setItem("sp_splash_shown", "1");
+    return true;
+  });
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Toaster />
+        {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
         <Router />
       </AuthProvider>
     </QueryClientProvider>

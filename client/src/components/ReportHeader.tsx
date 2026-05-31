@@ -1,6 +1,7 @@
 import { Calendar, MapPin, User, Clock } from "lucide-react";
 import { format } from "date-fns";
 import hlcLogo from "/hlc-logo.jpg";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 interface ReportHeaderProps {
   date: string;
@@ -12,6 +13,7 @@ interface ReportHeaderProps {
 }
 
 export function ReportHeader({ date, site, engineer, submittedAt, showLogo = true, workType }: ReportHeaderProps) {
+  const { companyName } = useFeatureFlags();
   return (
     <div className="bg-card border rounded-xl p-6 shadow-sm print:shadow-none print:border-gray-300">
       {showLogo && (
@@ -38,7 +40,7 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground print:text-gray-600">High Lane Constructions Pvt Ltd</p>
+            <p className="text-sm text-muted-foreground print:text-gray-600">{companyName}</p>
           </div>
         </div>
       )}

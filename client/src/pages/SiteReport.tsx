@@ -264,6 +264,7 @@ export default function SiteReport() {
             (dpr as any).structureItems?.length === 0 ? (
               <p className="text-muted-foreground italic">No structure items recorded.</p>
             ) : (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -292,10 +293,12 @@ export default function SiteReport() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )
           ) : dpr.progress.length === 0 ? (
             <p className="text-muted-foreground italic">No activities recorded.</p>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -356,6 +359,7 @@ export default function SiteReport() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -578,6 +582,7 @@ export default function SiteReport() {
             <CardTitle>Site Purchases</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -591,6 +596,7 @@ export default function SiteReport() {
               </TableHeader>
               <TableBody>
                 {dpr.sitePurchases.map((item: any, i: number) => (
+
                   <TableRow key={i} data-testid={`row-site-purchase-${i}`}>
                     <TableCell className="font-medium">{item.itemDescription}</TableCell>
                     <TableCell>{item.vendor || '-'}</TableCell>
@@ -602,6 +608,7 @@ export default function SiteReport() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}

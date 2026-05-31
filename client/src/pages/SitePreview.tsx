@@ -279,6 +279,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             <CardTitle>Labour Strength</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -297,6 +298,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -308,6 +310,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
             <CardTitle>Materials Log</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -340,6 +343,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                 ))}
               </TableBody>
             </Table>
+            </div>
 
             {/* Materials Summary */}
             {data.materialsAbstract.length > 0 && (

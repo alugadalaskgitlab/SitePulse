@@ -79,8 +79,13 @@ export async function registerRoutes(
   // ============================================
   // FEATURE CONFIG — returns runtime feature flags to the frontend
   // ============================================
-  app.get("/api/config", (_req, res) => {
-    res.json({ rmcEnabled: RMC_ENABLED });
+  app.get("/api/config", async (_req, res) => {
+    try {
+      const companyName = await storage.getSetting("company_name") ?? "High Lane Constructions Pvt Ltd";
+      res.json({ rmcEnabled: RMC_ENABLED, companyName });
+    } catch {
+      res.json({ rmcEnabled: RMC_ENABLED, companyName: "High Lane Constructions Pvt Ltd" });
+    }
   });
 
   // ============================================

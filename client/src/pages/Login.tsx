@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, ShieldCheck } from "lucide-react";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 type LoginResult =
   | { status: "ok" }
@@ -162,22 +162,21 @@ export default function Login() {
     doLogin();
   }
 
+  const { companyName } = useFeatureFlags();
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-background">
       <Card className="w-full max-w-md" data-testid="card-login">
-        <CardHeader className="space-y-3">
-          <div className="flex items-center gap-3 justify-center">
-            <img
-              src={companyLogo}
-              alt="HLC"
-              className="h-12 w-12 rounded object-cover"
-            />
-            <div>
-              <CardTitle className="text-lg leading-tight">
-                High Lane Constructions
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">SiteLog Sign-in</p>
+        <CardHeader className="space-y-2 pb-4">
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <img src="/sitepulse-logo.png" alt="SitePulse" className="h-14 w-14 object-contain mb-1" />
+            <div className="flex items-baseline gap-0">
+              <span className="text-2xl font-black tracking-tight text-foreground">Site</span>
+              <span className="text-2xl font-black tracking-tight text-orange-500">Pulse</span>
             </div>
+            <p className="text-[10px] font-medium tracking-widest text-muted-foreground uppercase">Live Ops. Not Just Logs.</p>
+            <div className="w-px h-4 bg-border" />
+            <CardTitle className="text-sm font-semibold text-foreground leading-tight">{companyName}</CardTitle>
           </div>
         </CardHeader>
         <CardContent>

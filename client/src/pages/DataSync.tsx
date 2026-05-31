@@ -110,7 +110,7 @@ export default function DataSync() {
       try {
         const parsed = JSON.parse(ev.target?.result as string);
         if (!parsed._version || !parsed._exportedAt) {
-          toast({ title: "Invalid export file", description: "File must be a SiteLog export", variant: "destructive" });
+          toast({ title: "Invalid export file", description: "File must be a SitePulse export", variant: "destructive" });
           return;
         }
         setImportData(parsed);
@@ -259,7 +259,7 @@ export default function DataSync() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">Click to upload a SiteLog export file (.json)</p>
+                  <p className="text-muted-foreground">Click to upload a SitePulse export file (.json)</p>
                 )}
                 <input
                   ref={fileInputRef}

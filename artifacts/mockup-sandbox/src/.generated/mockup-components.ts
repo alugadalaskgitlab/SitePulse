@@ -21,6 +21,6 @@ export const modules: ModuleMap = {
   "./components/mockups/rmc-dispatch/RmcDispatch.tsx": () => import("../components/mockups/rmc-dispatch/RmcDispatch.tsx"),
   "./components/mockups/rmc-mix-designs/RmcMixDesigns.tsx": () => import("../components/mockups/rmc-mix-designs/RmcMixDesigns.tsx"),
   "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
-  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx"),
-  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx")
+  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
+  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
 };

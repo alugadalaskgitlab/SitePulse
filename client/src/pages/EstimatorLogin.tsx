@@ -6,11 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calculator, Lock, Home } from "lucide-react";
 import { signOutEstimator } from "@/lib/estimatorAuth";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export default function EstimatorLogin() {
   const [, setLocation] = useLocation();
   const [pin, setPin] = useState("");
+  const { companyName } = useFeatureFlags();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -49,8 +50,8 @@ export default function EstimatorLogin() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center mb-8">
-        <img src={companyLogo} alt="HLC" className="h-16 w-16 rounded-lg object-cover mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-foreground">High Lane Constructions Pvt Ltd</h1>
+        <img src="/sitepulse-logo.png" alt="SitePulse" className="h-16 w-16 object-contain mx-auto mb-4" />
+        <h1 className="text-2xl font-bold text-foreground">{companyName}</h1>
         <p className="text-muted-foreground text-sm mt-1">Estimate Manager</p>
       </div>
 

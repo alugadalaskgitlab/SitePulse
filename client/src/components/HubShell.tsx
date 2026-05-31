@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  TrendingUp, Settings, LayoutDashboard, LogOut,
+  Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
   RefreshCw,
@@ -30,7 +30,7 @@ interface NavItem {
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
   const { user, isAdmin, isManager, logout } = useAuth();
-  const { rmcEnabled } = useFeatureFlags();
+  const { rmcEnabled, companyName } = useFeatureFlags();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -80,15 +80,16 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const SidebarContent = () => (
     <>
       {/* Logo */}
-      <div className="h-16 flex items-center px-5 border-b border-slate-800 flex-shrink-0">
+      <div className="h-16 flex items-center px-4 border-b border-slate-800 flex-shrink-0">
         <Link href="/">
-          <a className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center shadow group-hover:bg-orange-400 transition-colors">
-              <TrendingUp className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <span className="text-white font-bold text-base tracking-tight">SiteLog</span>
-              <p className="text-[10px] text-slate-500 leading-none mt-0.5">High Lane Constructions</p>
+          <a className="flex items-center gap-2.5 group min-w-0">
+            <img src="/sitepulse-logo.png" alt="SitePulse" className="w-8 h-8 object-contain rounded flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-0 leading-none">
+                <span className="font-black text-sm tracking-tight text-white">Site</span>
+                <span className="font-black text-sm tracking-tight text-orange-400">Pulse</span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-none mt-0.5 truncate max-w-[150px]">{companyName}</p>
             </div>
           </a>
         </Link>
