@@ -6887,6 +6887,7 @@ export async function registerRoutes(
         status: req.query.status as string | undefined,
         item: req.query.item as string | undefined,
         category: req.query.category as string | undefined,
+        awaitingPi: req.query.awaitingPi === "true",
         ...(permittedIds !== null ? { permittedSiteIds: permittedIds } : {}),
       });
       res.json(grns);

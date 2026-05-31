@@ -99,6 +99,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [draftOnly, setDraftOnly] = useState(false);
+  const [awaitingPiFilter, setAwaitingPiFilter] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(detailId ?? null);
 
   const [editingAcceptance, setEditingAcceptance] = useState(false);
@@ -244,7 +245,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const noPiForItem = !!firstItemName && itemApprovedIndents.length === 0;
 
   const { data: grns = [], isLoading } = useQuery<GrnWithItems[]>({
-    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly],
+    queryKey: ["/api/stores/grns", dateFrom, dateTo, indentFilter, supplierFilter, siteFilter, statusFilter, categoryFilter, itemFilter, draftOnly, awaitingPiFilter],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
@@ -255,12 +256,27 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (statusFilter) p.set("acceptanceStatus", statusFilter);
       if (categoryFilter) p.set("category", categoryFilter);
       if (itemFilter) p.set("item", itemFilter);
-      if (draftOnly) p.set("status", "draft");
+      if (awaitingPiFilter) {
+        p.set("awaitingPi", "true");
+      } else if (draftOnly) {
+        p.set("status", "draft");
+      }
       const res = await fetch(`/api/stores/grns${p.toString() ? "?" + p : ""}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
   });
+
+  const { data: awaitingPiGrns = [] } = useQuery<GrnWithItems[]>({
+    queryKey: ["/api/stores/grns/awaiting-pi-count"],
+    queryFn: async () => {
+      const res = await fetch("/api/stores/grns?awaitingPi=true");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const awaitingPiCount = awaitingPiGrns.length;
 
   const { data: previewNum } = useQuery<{ number: string }>({
     queryKey: ["/api/stores/next-doc-number", "GRN", grnCategory],
@@ -1454,11 +1470,26 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   variant={draftOnly ? "default" : "outline"}
                   size="sm"
                   className={`text-xs h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
-                  onClick={() => setDraftOnly(v => !v)}
+                  onClick={() => { setDraftOnly(v => !v); setAwaitingPiFilter(false); }}
                   data-testid="button-drafts-only"
                 >
                   <Clock className="w-3 h-3" />
                   {draftOnly ? "Drafts only ×" : "Drafts only"}
+                </Button>
+                <Button
+                  variant={awaitingPiFilter ? "default" : "outline"}
+                  size="sm"
+                  className={`text-xs h-8 gap-1.5 ${awaitingPiFilter ? "bg-orange-600 hover:bg-orange-700 text-white border-0" : "text-orange-700 border-orange-300 hover:bg-orange-50 dark:text-orange-300 dark:border-orange-700"}`}
+                  onClick={() => { setAwaitingPiFilter(v => !v); setDraftOnly(false); }}
+                  data-testid="button-awaiting-pi-filter"
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  {awaitingPiFilter ? "Awaiting PI ×" : "Awaiting PI"}
+                  {!awaitingPiFilter && awaitingPiCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-600 text-white text-[10px] font-bold leading-none" data-testid="badge-awaiting-pi-count">
+                      {awaitingPiCount}
+                    </span>
+                  )}
                 </Button>
                 <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
                   <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-status-filter">
@@ -1504,8 +1535,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Label className="text-xs text-muted-foreground">Item</Label>
                 <Input className="h-8 w-36 text-xs" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
               </div>
-              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); }}>Clear</Button>
+              {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly || awaitingPiFilter) && (
+                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); setAwaitingPiFilter(false); }}>Clear</Button>
               )}
             </div>
 
