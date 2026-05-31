@@ -1196,9 +1196,9 @@ export default function SiteDashboard() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold truncate">{dpr.site}</h3>
                                 {(dpr as any).workType === "structure" ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
                                 ) : (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
                                 )}
                                 {pendingClosingCount > 0 && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
