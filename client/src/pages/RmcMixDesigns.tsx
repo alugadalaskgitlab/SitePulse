@@ -211,7 +211,7 @@ export default function RmcMixDesigns() {
                   {(cp.cement || cp.fineAgg || cp.coarseAgg10 || cp.coarseAgg20) && (() => {
                     const total = (Number(cp.cement) || 0) + (Number(cp.fineAgg) || 0) + (Number(cp.coarseAgg10) || 0) + (Number(cp.coarseAgg20) || 0);
                     return (
-                      <div className="mt-2 pt-2 border-t text-xs">
+                      <div className="mt-2 pt-2 border-t text-xs space-y-1">
                         <p className="text-muted-foreground font-medium mb-1">Proportions (kg/m³)</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                           {cp.cement && <div>Cement: {cp.cement}</div>}
@@ -220,9 +220,12 @@ export default function RmcMixDesigns() {
                           {cp.coarseAgg20 && <div>CA 20mm: {cp.coarseAgg20}</div>}
                         </div>
                         {total > 0 && (
-                          <div className="flex justify-between mt-1.5 pt-1.5 border-t font-semibold" data-testid={`text-card-total-weight-${d.id}`}>
-                            <span className="text-muted-foreground">Total</span>
-                            <span>{total.toFixed(1)} kg/m³</span>
+                          <div
+                            className="flex items-center justify-between mt-2 px-2 py-1.5 rounded bg-primary/10 border border-primary/20 font-semibold text-sm"
+                            data-testid={`text-card-total-weight-${d.id}`}
+                          >
+                            <span className="text-primary">Total Mix Weight</span>
+                            <span className="text-primary">{total.toFixed(1)} kg/m³</span>
                           </div>
                         )}
                       </div>
@@ -321,9 +324,12 @@ export default function RmcMixDesigns() {
                 </div>
               </div>
               {formTotalWeight > 0 && (
-                <div className="flex items-center justify-between mt-2 pt-2 border-t bg-muted/40 rounded px-2 py-1.5">
-                  <span className="text-xs font-semibold text-muted-foreground">Total Weight</span>
-                  <span className="text-sm font-bold" data-testid="text-total-weight">{formTotalWeight.toFixed(1)} kg/m³</span>
+                <div
+                  className="flex items-center justify-between mt-2 px-3 py-2 rounded bg-primary/10 border border-primary/20"
+                  data-testid="text-total-weight"
+                >
+                  <span className="text-sm font-semibold text-primary">Total Mix Weight</span>
+                  <span className="text-base font-bold text-primary">{formTotalWeight.toFixed(1)} kg/m³</span>
                 </div>
               )}
             </div>
