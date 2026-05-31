@@ -1551,6 +1551,27 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             {" — "}
                             {grn.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
                           </div>
+                          {(itemFilter || categoryFilter) && (() => {
+                            const matched = grn.items.filter(it => {
+                              const nameMatch = itemFilter ? it.itemName.toLowerCase().includes(itemFilter.toLowerCase()) : true;
+                              const catMatch = categoryFilter ? it.category.toLowerCase() === categoryFilter.toLowerCase() : true;
+                              return nameMatch && catMatch;
+                            });
+                            if (matched.length === 0) return null;
+                            return (
+                              <div className="flex flex-wrap gap-1 mt-1.5" data-testid={`matched-items-${grn.id}`}>
+                                {matched.map(it => (
+                                  <span
+                                    key={it.itemId}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
+                                    data-testid={`matched-item-pill-${grn.id}-${it.itemId}`}
+                                  >
+                                    {it.itemName}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDetail(grn)} data-testid={`button-view-grn-${grn.id}`}>
