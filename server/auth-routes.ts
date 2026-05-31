@@ -101,6 +101,8 @@ const patchUserSchema = z.object({
   isAdmin: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
+  canManagePermissions: z.boolean().optional(),
+  permissionManagerScope: z.enum(["full", "partial"]).optional(),
 });
 
 const passwordResetSchema = z.object({
@@ -116,6 +118,7 @@ const permissionMatrixSchema = z.record(
     delete: z.boolean().optional(),
     view_reports: z.boolean().optional(),
     export: z.boolean().optional(),
+    approve: z.boolean().optional(),
   }),
 );
 
@@ -350,6 +353,10 @@ export function registerAuthRoutes(app: Express) {
     (req: Request, res: Response, next: NextFunction) => {
       if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
       if (req.authUser.isAdmin) return next();
+      // Full permission managers get the same access as admins for user mgmt.
+      if (req.authUser.canManagePermissions && req.authUser.permissionManagerScope === "full") return next();
+      // Partial permission managers can view and edit (but not create users).
+      if (req.authUser.canManagePermissions && (action === "view" || action === "edit")) return next();
       const m = req.authPermissions;
       if (m && m["user_management"] && m["user_management"][action]) return next();
       return res.status(403).json({ error: "forbidden", section: "user_management", action });
@@ -496,18 +503,32 @@ export function registerAuthRoutes(app: Express) {
       const id = Number(req.params.id);
       const u = await getUserById(id);
       if (!u) return res.status(404).json({ error: "not_found" });
+
+      // Permission managers cannot modify admin users.
+      const actor = req.authUser!;
+      if (!actor.isAdmin && u.isAdmin) {
+        return res.status(403).json({ error: "forbidden", message: "Cannot modify permissions for an admin user." });
+      }
+
       const parsed = permissionMatrixSchema.parse(req.body);
       // Coerce into a full matrix (only known sections) with defaults.
       const matrix: PermissionMatrix = emptyMatrix();
+      // For partial permission managers: cap each grant to what they themselves have.
+      const actorMatrix = !actor.isAdmin && actor.canManagePermissions && actor.permissionManagerScope === "partial"
+        ? req.authPermissions
+        : null;
+
       for (const k of SECTION_KEYS) {
         const val = parsed[k];
+        const actorRow = actorMatrix ? actorMatrix[k] : null;
         matrix[k] = {
-          view: !!val?.view,
-          create: !!val?.create,
-          edit: !!val?.edit,
-          delete: !!val?.delete,
-          view_reports: !!val?.view_reports,
-          export: !!val?.export,
+          view: !!val?.view && (actorRow ? !!actorRow.view : true),
+          create: !!val?.create && (actorRow ? !!actorRow.create : true),
+          edit: !!val?.edit && (actorRow ? !!actorRow.edit : true),
+          delete: !!val?.delete && (actorRow ? !!actorRow.delete : true),
+          view_reports: !!val?.view_reports && (actorRow ? !!actorRow.view_reports : true),
+          export: !!val?.export && (actorRow ? !!actorRow.export : true),
+          approve: !!val?.approve && (actorRow ? !!actorRow.approve : true),
         };
       }
       await setUserPermissions(id, matrix);
@@ -680,6 +701,20 @@ export function assertView(req: Request, res: Response, section: SectionKey): bo
   const m = req.authPermissions;
   if (!m || !m[section] || !m[section].view) {
     res.status(403).json({ error: "forbidden", section, action: "view" });
+    return false;
+  }
+  return true;
+}
+
+export function assertApprove(req: Request, res: Response, section: SectionKey): boolean {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const m = req.authPermissions;
+  if (!m || !m[section] || !m[section].approve) {
+    res.status(403).json({ error: "forbidden", section, action: "approve" });
     return false;
   }
   return true;

@@ -152,6 +152,7 @@ export async function loadUserPermissionsMatrix(userId: number): Promise<Permiss
         delete: r.canDelete,
         view_reports: r.canViewReports,
         export: r.canExport,
+        approve: r.canApprove,
       };
     }
   }
@@ -162,7 +163,7 @@ export async function setUserPermissions(userId: number, matrix: PermissionMatri
   await db.transaction(async (tx) => {
     await tx.delete(userPermissions).where(eq(userPermissions.userId, userId));
     const rows = SECTION_KEYS.map((k) => {
-      const p = matrix[k] || { view: false, create: false, edit: false, delete: false, view_reports: false, export: false };
+      const p = matrix[k] || { view: false, create: false, edit: false, delete: false, view_reports: false, export: false, approve: false };
       return {
         userId,
         sectionKey: k,
@@ -172,6 +173,7 @@ export async function setUserPermissions(userId: number, matrix: PermissionMatri
         canDelete: !!p.delete,
         canViewReports: !!p.view_reports,
         canExport: !!p.export,
+        canApprove: !!p.approve,
       };
     });
     if (rows.length) await tx.insert(userPermissions).values(rows);
@@ -271,6 +273,8 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   isAdmin: boolean;
   notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
+  canManagePermissions: boolean;
+  permissionManagerScope: string;
 }>): Promise<User | undefined> {
   const update: Record<string, unknown> = {};
   if (patch.fullName !== undefined) update.fullName = patch.fullName.trim();
@@ -280,6 +284,8 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   if (patch.isAdmin !== undefined) update.isAdmin = patch.isAdmin;
   if (patch.notificationsEnabled !== undefined) update.notificationsEnabled = patch.notificationsEnabled;
   if (patch.sessionPolicy !== undefined) update.sessionPolicy = patch.sessionPolicy;
+  if (patch.canManagePermissions !== undefined) update.canManagePermissions = patch.canManagePermissions;
+  if (patch.permissionManagerScope !== undefined) update.permissionManagerScope = patch.permissionManagerScope;
   if (Object.keys(update).length === 0) return getUserById(userId);
   const [row] = await db.update(users).set(update).where(eq(users.id, userId)).returning();
   return row;

@@ -1700,6 +1700,12 @@ export const users = pgTable("users", {
   // Allows unlocking previously-saved records on sections where the user
   // also has edit permission. Audited via record_unlock_log.
   canUnlockRecords: boolean("can_unlock_records").notNull().default(false),
+  // Permission manager: when true this user can edit other users' permissions
+  // without being a full admin. Scope controls which users they can manage:
+  // "full" = any user, "partial" = only non-admin users (and caps grants to
+  // their own permission set so they can't grant more than they have).
+  canManagePermissions: boolean("can_manage_permissions").notNull().default(false),
+  permissionManagerScope: text("permission_manager_scope").default("partial"),
   // Admin-controlled flag: when true this user's subscribed devices receive
   // push (and later SMS) notifications. Default off so new users are not
   // disturbed until the admin opts them in.
@@ -1721,6 +1727,7 @@ export const userPermissions = pgTable("user_permissions", {
   canDelete: boolean("can_delete").notNull().default(false),
   canViewReports: boolean("can_view_reports").notNull().default(false),
   canExport: boolean("can_export").notNull().default(false),
+  canApprove: boolean("can_approve").notNull().default(false),
 }, (t) => ({
   userSectionUq: uniqueIndex("user_permissions_user_section_uq").on(t.userId, t.sectionKey),
 }));

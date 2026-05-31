@@ -25,6 +25,8 @@ export type AuthUser = {
   isAdmin: boolean;
   isActive: boolean;
   sessionPolicy: "strict" | "sticky";
+  canManagePermissions: boolean;
+  permissionManagerScope: "full" | "partial" | null;
 };
 
 type MeResponse = { user: AuthUser; permissions: PermissionMatrix };
@@ -37,9 +39,14 @@ type AuthContextType = {
   isAdmin: boolean;
   // true when a non-admin user is authenticated (all non-admin session users are managers)
   isManager: boolean;
+  // true if this user can manage permissions (admin or permission manager flag)
+  canManagePermissions: boolean;
+  // "full" | "partial" — only meaningful when canManagePermissions is true
+  permissionManagerScope: "full" | "partial" | null;
   // Permission helpers — admin always returns true.
   sectionCan: (section: SectionKey, action: Action) => boolean;
   sectionVisible: (section: SectionKey) => boolean;
+  canApprove: (section: SectionKey) => boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -126,8 +133,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!u) return false;
       if (u.isAdmin) return true;
       const row = perms[section];
-      return !!row && (row.view || row.create || row.edit || row.delete || row.view_reports || row.export);
+      return !!row && (row.view || row.create || row.edit || row.delete || row.view_reports || row.export || row.approve);
     };
+
+    const canApprove = (section: SectionKey): boolean => {
+      if (!u) return false;
+      if (u.isAdmin) return true;
+      const row = perms[section];
+      return !!row && !!row.approve;
+    };
+
+    const canManagePermissions = !!u?.isAdmin || !!u?.canManagePermissions;
+    const permissionManagerScope = u?.isAdmin
+      ? "full"
+      : (u?.permissionManagerScope as "full" | "partial" | null) ?? null;
 
     return {
       user: u,
@@ -136,8 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!u,
       isAdmin: !!u?.isAdmin,
       isManager: !!u && !u.isAdmin,
+      canManagePermissions,
+      permissionManagerScope,
       sectionCan,
       sectionVisible,
+      canApprove,
       refresh: async () => {
         await meQuery.refetch();
       },
@@ -166,4 +188,3 @@ export function useAuth(): AuthContextType {
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
-

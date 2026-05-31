@@ -27,6 +27,7 @@ import {
   assertView,
   assertAuthed,
   assertCreate,
+  assertApprove,
   currentUserName,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
@@ -4827,7 +4828,13 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { pin, approvedItems, remarks } = req.body;
 
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
+      // Self-approval prevention: the approver must differ from the raiser.
+      const existingIndent = await storage.getPurchaseIndent(id);
+      if (!existingIndent) return res.status(404).json({ message: "Purchase indent not found" });
+      if (existingIndent.authorUserId && existingIndent.authorUserId === req.authUser?.id) {
+        return res.status(403).json({ message: "You cannot approve a record you raised." });
+      }
       const approvedBy = currentUserName(req);
 
       const approvedItemsSchema = z.array(z.object({
@@ -4856,7 +4863,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { reason } = req.body;
 
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertApprove(req, res, "purchase_indents_approve")) return;
       const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
@@ -5171,7 +5178,12 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { approvedItems } = req.body;
 
-      if (!assertEdit(req, res, "site_diesel")) return;
+      if (!assertApprove(req, res, "diesel_req_approve")) return;
+      // Self-approval prevention.
+      const existingDr = await storage.getDieselRequirement(id);
+      if (existingDr && existingDr.authorUserId && existingDr.authorUserId === req.authUser?.id) {
+        return res.status(403).json({ message: "You cannot approve a record you raised." });
+      }
       const approvedBy = currentUserName(req);
 
       const approvedItemsSchema = z.array(z.object({
@@ -5200,7 +5212,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const { reason } = req.body;
 
-      if (!assertEdit(req, res, "site_diesel")) return;
+      if (!assertApprove(req, res, "diesel_req_approve")) return;
       const rejectedBy = currentUserName(req);
 
       if (!reason || typeof reason !== "string") {
@@ -5783,9 +5795,21 @@ export async function registerRoutes(
       const { status } = statusSchema.parse(req.body);
 
       if (status === "approved") {
-        if (!assertAdmin(req, res)) return;
-      } else if (status === "verified" || status === "paid") {
-        if (!assertEdit(req, res, "vendor_bills")) return;
+        if (!assertApprove(req, res, "vendor_bills_approve")) return;
+        // Self-approval prevention for vendor bills.
+        const vbForApproval = await storage.getVendorBill(id);
+        if (vbForApproval && vbForApproval.authorUserId && vbForApproval.authorUserId === req.authUser?.id) {
+          return res.status(403).json({ message: "You cannot approve a bill you created." });
+        }
+      } else if (status === "verified") {
+        if (!assertApprove(req, res, "vendor_bills_verify")) return;
+        // Self-approval prevention for verification too.
+        const vbForVerify = await storage.getVendorBill(id);
+        if (vbForVerify && vbForVerify.authorUserId && vbForVerify.authorUserId === req.authUser?.id) {
+          return res.status(403).json({ message: "You cannot verify a bill you created." });
+        }
+      } else if (status === "paid") {
+        if (!assertApprove(req, res, "vendor_bills_approve")) return;
       } else {
         if (!assertEdit(req, res, "vendor_bills")) return;
       }

@@ -261,7 +261,7 @@ function AuthedShell() {
             <Route path="/plant/stock-reassign" component={gated(PlantStockReassign, "plant_stock")} />
             <Route path="/plant/stock-transfer" component={gated(PlantStockTransfer, "plant_stock")} />
             <Route path="/plant/ledger-rebuild" component={gated(PlantLedgerRebuild, "plant_stock")} />
-            <Route path="/plant/shift-log-manpower-review" component={gated(PlantShiftLogManpowerReview, "plant_shift_logs")} />
+            <Route path="/plant/shift-log-manpower-review" component={gatedEither(PlantShiftLogManpowerReview, "plant_manpower_review", "plant_shift_logs")} />
             <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
             <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />
             <Route path="/plant/daily-reports" component={gated(PlantDailyReports, "plant_daily_reports")} />
@@ -269,15 +269,15 @@ function AuthedShell() {
             <Route path="/plant/daily-report/:date" component={gated(PlantDailyReport, "plant_daily_reports")} />
             <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />
             <Route path="/plant/heating-sessions/:date" component={gated(PlantHeatingSessions, "plant_heating")} />
-            <Route path="/plant/heating-trends" component={gated(PlantHeatingTrends, "plant_heating")} />
+            <Route path="/plant/heating-trends" component={gatedEither(PlantHeatingTrends, "plant_heating_trends", "plant_heating")} />
             <Route path="/plant/heating-mismatch/:date" component={gated(PlantHeatingMismatch, "plant_heating")} />
             <Route path="/plant/ldo-mismatch/:date" component={gated(PlantLdoMismatch, "plant_heating")} />
-            <Route path="/plant/ldo-reconciliation" component={gated(PlantLdoReconciliation, "plant_stock")} />
-            <Route path="/plant/purchase-indents" component={gated(PurchaseIndents, "site_procurement")} />
-            <Route path="/plant/diesel-requirements" component={gated(DieselRequirements, "site_diesel")} />
-            <Route path="/plant/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
-            <Route path="/finance/vendor-bills" component={gated(VendorBills, "vendor_bills")} />
-            <Route path="/plant/rate-cards" component={gated(RateCards, "admin_settings")} />
+            <Route path="/plant/ldo-reconciliation" component={gatedEither(PlantLdoReconciliation, "plant_ldo_reconciliation", "plant_stock")} />
+            <Route path="/plant/purchase-indents" component={gatedEither(PurchaseIndents, "purchase_indents_view", "site_procurement")} />
+            <Route path="/plant/diesel-requirements" component={gatedEither(DieselRequirements, "diesel_req_view", "site_diesel")} />
+            <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
+            <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
+            <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
             <Route path="/plant/data-sync" component={gated(DataSync, "admin_settings")} />
             <Route path="/plant/:id" component={gated(PlantDetails, "admin_settings")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
