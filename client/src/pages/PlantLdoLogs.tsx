@@ -7,6 +7,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
@@ -182,10 +183,9 @@ export default function PlantLdoLogs() {
     tank2: computeTankStock(flowReadings, 2),
   };
 
-  // Fetch plant settings to resolve plantId → plantName when navigated from Management Report
+  // Always fetch plant settings to power the plant selector dropdown
   const { data: plantSettingsList } = useQuery<PlantSettings[]>({
     queryKey: ["/api/plant-module/plant-settings"],
-    enabled: !!mgmtReportContext?.plantId,
   });
 
   // Resolve the plant name from plantId (authoritative) falling back to URL-passed plantName
@@ -198,13 +198,22 @@ export default function PlantLdoLogs() {
     return mgmtReportContext.plantName ?? null;
   }, [mgmtReportContext, plantSettingsList]);
 
+  // User-controlled plant filter — pre-set from URL when navigated from Management Report
+  const [selectedPlantName, setSelectedPlantName] = useState<string | null>(null);
+  useEffect(() => {
+    if (resolvedPlantName !== null) setSelectedPlantName(resolvedPlantName);
+  }, [resolvedPlantName]);
+
+  // Show the plant selector only when there are multiple plants configured
+  const showPlantSelector = (plantSettingsList?.length ?? 0) >= 2;
+
   // When coming from Management Report with a plantId, wait until resolvedPlantName is known
   // before fetching so we can pass plantName to the server for plant-scoped filtering.
   const { data: logs, isLoading } = useQuery<LdoLog[]>({
-    queryKey: ["/api/plant-module/ldo-logs", resolvedPlantName ?? null],
+    queryKey: ["/api/plant-module/ldo-logs", selectedPlantName ?? null],
     queryFn: async () => {
       const qs = new URLSearchParams();
-      if (resolvedPlantName) qs.set("plantName", resolvedPlantName);
+      if (selectedPlantName) qs.set("plantName", selectedPlantName);
       const res = await fetch(`/api/plant-module/ldo-logs${qs.toString() ? `?${qs}` : ""}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch LDO logs");
       return res.json();
@@ -777,8 +786,27 @@ export default function PlantLdoLogs() {
 
         {/* ── Tab A: Actual Dip-Based Consumption ── */}
         <TabsContent value="actual" className="space-y-4 mt-4">
-          {/* Date range filter */}
+          {/* Date range + plant filter */}
           <div className="flex flex-wrap items-end gap-3 p-4 rounded-lg bg-muted/50">
+            {showPlantSelector && (
+              <div>
+                <Label className="text-xs text-muted-foreground">PLANT</Label>
+                <Select
+                  value={selectedPlantName ?? "__all__"}
+                  onValueChange={(v) => setSelectedPlantName(v === "__all__" ? null : v)}
+                >
+                  <SelectTrigger className="w-44" data-testid="select-ldo-plant">
+                    <SelectValue placeholder="All plants" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All plants</SelectItem>
+                    {plantSettingsList?.map((p) => (
+                      <SelectItem key={p.id} value={p.plantName}>{p.plantName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label className="text-xs text-muted-foreground">DATE FROM</Label>
               <Input
