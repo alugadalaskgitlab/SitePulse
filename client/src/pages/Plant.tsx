@@ -1896,6 +1896,26 @@ function SitesMasterSection() {
     },
   });
 
+  const toggleSiteActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: number }) => {
+      const response = await apiRequest("PATCH", `/api/sites/${id}`, { isActive });
+      if (!response.ok) throw new Error("Failed to update site status");
+      return response.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
+      toast({
+        title: vars.isActive === 1 ? "Site Activated" : "Site Closed",
+        description: vars.isActive === 1
+          ? "Site is now active and will appear in the dashboard."
+          : "Site marked as closed. It will be hidden from daily tracking.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not update site status.", variant: "destructive" });
+    },
+  });
+
   const handleAddSite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSiteName.trim()) return;
@@ -1968,7 +1988,7 @@ function SitesMasterSection() {
         ) : (
           <div className="space-y-2">
             {sitesList.map((site) => (
-              <div key={site.id} className="flex items-center gap-2 p-2 rounded border" data-testid={`site-row-${site.id}`}>
+              <div key={site.id} className={`flex items-center gap-2 p-2 rounded border transition-opacity ${site.isActive === 0 ? "opacity-50 bg-slate-50 dark:bg-slate-900/30" : ""}`} data-testid={`site-row-${site.id}`}>
                 {editingSiteId === site.id ? (
                   <>
                     <Input
@@ -2022,7 +2042,26 @@ function SitesMasterSection() {
                       {site.partyId && (
                         <Badge variant="outline" className="text-xs">{getPartyName(site.partyId) || "Unknown"}</Badge>
                       )}
+                      {site.isActive === 0 && (
+                        <Badge variant="outline" className="text-xs border-slate-400 text-slate-500" data-testid={`badge-closed-${site.id}`}>Closed</Badge>
+                      )}
                     </div>
+                    {canEdit && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title={site.isActive === 0 ? "Reactivate site" : "Mark as closed"}
+                        onClick={() => {
+                          const closing = site.isActive !== 0;
+                          if (closing && !confirm(`Mark "${site.name}" as closed? It will be hidden from the daily dashboard and dropdowns.`)) return;
+                          toggleSiteActiveMutation.mutate({ id: site.id, isActive: site.isActive === 0 ? 1 : 0 });
+                        }}
+                        disabled={toggleSiteActiveMutation.isPending}
+                        data-testid={`button-toggle-site-${site.id}`}
+                      >
+                        <Power className={`w-3.5 h-3.5 ${site.isActive === 0 ? "text-slate-400" : "text-green-600"}`} />
+                      </Button>
+                    )}
                     {canEdit && (
                       <Button
                         size="icon"
