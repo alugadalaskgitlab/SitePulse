@@ -409,6 +409,15 @@ export default function HmpHub() {
                 iconBg="bg-amber-100"
                 enabled={canDieselReq}
               />
+              <HubActionTile
+                href={`/irn/new?from=hmp&returnTo=${HUB}`}
+                icon={ClipboardList}
+                title="Raise Requisition (IRN)"
+                description="Request materials from stores for HMP plant operations"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                enabled={canProcure}
+              />
             </div>
           </div>
         )}

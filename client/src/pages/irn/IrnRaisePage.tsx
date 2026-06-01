@@ -1,21 +1,42 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ClipboardList, ChevronLeft, Plus, Trash2, AlertTriangle, Info, Package, Search, Check } from "lucide-react";
+import {
+  ClipboardList, ChevronLeft, Plus, Trash2, AlertTriangle,
+  Info, Package, Search, Check, MapPin,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { InternalRequisitionWithItems } from "@shared/schema";
+
+// ── ?from= param → Raised From label map ────────────────────────────────────
+
+const FROM_MAP: Record<string, string> = {
+  site: "Site Operations",
+  hmp: "HMP Plant",
+  equipment: "Equipment & Fleet",
+  rmc: "RMC Operations",
+};
+
+function parseQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    fromParam: params.get("from") ?? "",
+    returnTo: params.get("returnTo") ?? "",
+  };
+}
 
 // ── Material combobox with localStorage memory ──────────────────────────────
 
@@ -131,6 +152,7 @@ const itemSchema = z.object({
 
 const formSchema = z.object({
   raisedFrom: z.string().min(1, "Section is required"),
+  siteId: z.number().int().nullish(),
   remarks: z.string().optional(),
   items: z.array(itemSchema).min(1),
 });
@@ -147,10 +169,28 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
+  const { fromParam, returnTo } = parseQueryParams();
+  const prefillLabel = FROM_MAP[fromParam] ?? "";
+  const isLocked = !!prefillLabel;
+  const showSiteField = fromParam === "site" || fromParam === "equipment";
+  const backHref = returnTo || "/finance/hub";
+
+  const { data: sites = [] } = useQuery<{ id: number; name: string; isActive?: boolean }[]>({
+    queryKey: ["/api/sites"],
+    queryFn: async () => {
+      const res = await fetch("/api/sites");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showSiteField,
+  });
+  const activeSites = sites.filter((s) => s.isActive !== false);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      raisedFrom: "Site Operations",
+      raisedFrom: prefillLabel || "Site Operations",
+      siteId: null,
       remarks: "",
       items: [{ material: "", qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" }],
     },
@@ -166,6 +206,7 @@ export default function IrnRaisePage() {
       const body = {
         date: today,
         raisedFrom: data.raisedFrom,
+        siteId: data.siteId ?? null,
         raisedBy: user?.fullName ?? user?.email ?? "Unknown",
         raisedByUserId: user?.id,
         remarks: data.remarks,
@@ -187,12 +228,24 @@ export default function IrnRaisePage() {
     },
   });
 
+  const sectionColor: Record<string, string> = {
+    "Site Operations": "bg-amber-100 text-amber-800 border-amber-200",
+    "HMP Plant": "bg-orange-100 text-orange-800 border-orange-200",
+    "Equipment & Fleet": "bg-blue-100 text-blue-800 border-blue-200",
+    "RMC Operations": "bg-teal-100 text-teal-800 border-teal-200",
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b px-6 py-4">
         <div className="flex items-center gap-3 mb-0.5">
-          <button onClick={() => navigate("/irn")} className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm">
-            <ChevronLeft className="h-4 w-4" /> Requisitions
+          <button
+            onClick={() => navigate(backHref)}
+            className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm"
+            data-testid="btn-back-irn"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {returnTo ? "Back" : "Procurement & Billing"}
           </button>
           <span className="text-gray-300">/</span>
           <div className="flex items-center gap-2">
@@ -201,6 +254,14 @@ export default function IrnRaisePage() {
             </div>
             <span className="font-semibold text-gray-900">Raise Internal Requisition</span>
           </div>
+          {isLocked && (
+            <Badge
+              variant="outline"
+              className={`text-xs font-medium ml-1 ${sectionColor[prefillLabel] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}
+            >
+              {prefillLabel}
+            </Badge>
+          )}
         </div>
         <p className="text-xs text-gray-500 ml-[88px]">Materials will be checked against store stock before procurement</p>
       </div>
@@ -214,32 +275,100 @@ export default function IrnRaisePage() {
             </h2>
             <Separator />
             <div className="grid grid-cols-2 gap-4">
+
+              {/* Raised From — locked badge or select */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Raised From <span className="text-red-500">*</span></Label>
-                <Select value={form.watch("raisedFrom")} onValueChange={(v) => form.setValue("raisedFrom", v)}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Site Operations">Site Operations</SelectItem>
-                    <SelectItem value="HMP Plant">HMP Plant</SelectItem>
-                    <SelectItem value="Equipment & Fleet">Equipment & Fleet</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.raisedFrom && (
-                  <p className="text-xs text-red-500">{form.formState.errors.raisedFrom.message}</p>
+                <Label className="text-xs font-medium">
+                  Raised From <span className="text-red-500">*</span>
+                </Label>
+                {isLocked ? (
+                  <div
+                    className={`h-9 flex items-center gap-2 px-3 rounded-md border text-sm font-medium ${sectionColor[prefillLabel] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+                    data-testid="display-raised-from"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5 opacity-60" />
+                    {prefillLabel}
+                  </div>
+                ) : (
+                  <>
+                    <Select
+                      value={form.watch("raisedFrom")}
+                      onValueChange={(v) => form.setValue("raisedFrom", v)}
+                      data-testid="select-raised-from"
+                    >
+                      <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Site Operations">Site Operations</SelectItem>
+                        <SelectItem value="HMP Plant">HMP Plant</SelectItem>
+                        <SelectItem value="Equipment & Fleet">Equipment & Fleet</SelectItem>
+                        <SelectItem value="RMC Operations">RMC Operations</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {form.formState.errors.raisedFrom && (
+                      <p className="text-xs text-red-500">{form.formState.errors.raisedFrom.message}</p>
+                    )}
+                  </>
                 )}
               </div>
+
+              {/* Raised By */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Raised By</Label>
-                <Input value={user?.fullName ?? user?.email ?? ""} readOnly className="h-9 text-sm bg-gray-50 text-gray-500" />
+                <Input
+                  value={user?.fullName ?? user?.email ?? ""}
+                  readOnly
+                  className="h-9 text-sm bg-gray-50 text-gray-500"
+                  data-testid="input-raised-by"
+                />
               </div>
+
+              {/* Date */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Date</Label>
-                <Input value={format(new Date(), "dd MMM yyyy")} readOnly className="h-9 text-sm bg-gray-50 text-gray-500" />
+                <Input
+                  value={format(new Date(), "dd MMM yyyy")}
+                  readOnly
+                  className="h-9 text-sm bg-gray-50 text-gray-500"
+                  data-testid="input-irn-date"
+                />
               </div>
+
+              {/* Site / Job — shown only for Site Operations + Equipment & Fleet */}
+              {showSiteField && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-gray-400" />
+                    Site / Job
+                  </Label>
+                  <Select
+                    value={form.watch("siteId") != null ? String(form.watch("siteId")) : ""}
+                    onValueChange={(v) => form.setValue("siteId", v ? Number(v) : null)}
+                    data-testid="select-site-id"
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select site (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {activeSites.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">General Remarks (optional)</Label>
-              <Textarea {...form.register("remarks")} placeholder="Special instructions for the storekeeper…" className="text-sm resize-none h-16" />
+              <Textarea
+                {...form.register("remarks")}
+                placeholder="Special instructions for the storekeeper…"
+                className="text-sm resize-none h-16"
+                data-testid="textarea-irn-remarks"
+              />
             </div>
           </div>
 
@@ -249,7 +378,9 @@ export default function IrnRaisePage() {
               <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <Package className="h-4 w-4 text-gray-400" />
                 Material Items
-                <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fields.length}</span>
+                <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-1.5 py-0.5 rounded">
+                  {fields.length}
+                </span>
               </h2>
               <Button
                 type="button"
@@ -257,6 +388,7 @@ export default function IrnRaisePage() {
                 variant="outline"
                 onClick={() => append({ material: "", qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" })}
                 className="h-7 text-xs gap-1"
+                data-testid="btn-add-item"
               >
                 <Plus className="h-3.5 w-3.5" /> Add Item
               </Button>
@@ -272,11 +404,16 @@ export default function IrnRaisePage() {
 
             <div className="space-y-4">
               {fields.map((field, idx) => (
-                <div key={field.id} className="border rounded-md p-3 space-y-3 bg-gray-50/60">
+                <div key={field.id} className="border rounded-md p-3 space-y-3 bg-gray-50/60" data-testid={`item-row-${idx}`}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-gray-500">Item {idx + 1}</span>
                     {fields.length > 1 && (
-                      <button type="button" onClick={() => remove(idx)} className="text-gray-300 hover:text-red-400 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => remove(idx)}
+                        className="text-gray-300 hover:text-red-400 transition-colors"
+                        data-testid={`btn-remove-item-${idx}`}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
@@ -301,6 +438,7 @@ export default function IrnRaisePage() {
                         min={today}
                         {...form.register(`items.${idx}.needByDate`)}
                         className="h-9 text-sm bg-white"
+                        data-testid={`input-need-by-${idx}`}
                       />
                       {form.formState.errors.items?.[idx]?.needByDate && (
                         <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.needByDate?.message}</p>
@@ -318,11 +456,15 @@ export default function IrnRaisePage() {
                         {...form.register(`items.${idx}.qty`)}
                         placeholder="0.00"
                         className="h-9 text-sm bg-white"
+                        data-testid={`input-qty-${idx}`}
                       />
                     </div>
                     <div className="col-span-3 space-y-1">
                       <Label className="text-xs">UOM</Label>
-                      <Select value={form.watch(`items.${idx}.uom`)} onValueChange={(v) => form.setValue(`items.${idx}.uom`, v)}>
+                      <Select
+                        value={form.watch(`items.${idx}.uom`)}
+                        onValueChange={(v) => form.setValue(`items.${idx}.uom`, v)}
+                      >
                         <SelectTrigger className="h-9 text-sm bg-white"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {UOM_OPTIONS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
@@ -331,8 +473,14 @@ export default function IrnRaisePage() {
                     </div>
                     <div className="col-span-6 space-y-1">
                       <Label className="text-xs">Urgency</Label>
-                      <Select value={form.watch(`items.${idx}.urgency`)} onValueChange={(v) => form.setValue(`items.${idx}.urgency`, v as any)}>
-                        <SelectTrigger className={`h-9 text-sm bg-white ${form.watch(`items.${idx}.urgency`) === "urgent" ? "border-red-300 text-red-700" : form.watch(`items.${idx}.urgency`) === "high" ? "border-orange-300 text-orange-700" : ""}`}>
+                      <Select
+                        value={form.watch(`items.${idx}.urgency`)}
+                        onValueChange={(v) => form.setValue(`items.${idx}.urgency`, v as any)}
+                      >
+                        <SelectTrigger className={`h-9 text-sm bg-white ${
+                          form.watch(`items.${idx}.urgency`) === "urgent" ? "border-red-300 text-red-700" :
+                          form.watch(`items.${idx}.urgency`) === "high" ? "border-orange-300 text-orange-700" : ""
+                        }`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -351,6 +499,7 @@ export default function IrnRaisePage() {
                       {...form.register(`items.${idx}.purpose`)}
                       placeholder="Where / why this material is needed…"
                       className="h-9 text-sm bg-white"
+                      data-testid={`input-purpose-${idx}`}
                     />
                     {form.formState.errors.items?.[idx]?.purpose && (
                       <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.purpose?.message}</p>
@@ -364,16 +513,28 @@ export default function IrnRaisePage() {
           {/* Flow hint */}
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>After submission, the <strong>Storekeeper</strong> will verify stock for each item and either issue from store or add to the Procurement Queue.</span>
+            <span>
+              After submission, the <strong>Storekeeper</strong> will verify stock for each item
+              and either issue from store or add to the Procurement Queue.
+            </span>
           </div>
 
           {/* Actions */}
           <div className="flex items-center justify-between pb-4">
-            <Button type="button" variant="outline" onClick={() => navigate("/irn")} className="text-sm h-9">Cancel</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(backHref)}
+              className="text-sm h-9"
+              data-testid="btn-cancel-irn"
+            >
+              Cancel
+            </Button>
             <Button
               type="submit"
               disabled={mutation.isPending}
               className="bg-amber-600 hover:bg-amber-700 text-white text-sm h-9 px-6"
+              data-testid="btn-submit-irn"
             >
               {mutation.isPending ? "Submitting…" : "Submit to Stores"}
             </Button>

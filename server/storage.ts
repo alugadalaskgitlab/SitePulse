@@ -18315,6 +18315,7 @@ export class DatabaseStorage implements IStorage {
           raisedBy: data.raisedBy.toUpperCase(),
           raisedByUserId: data.raisedByUserId ?? null,
           raisedFrom: data.raisedFrom,
+          siteId: data.siteId ?? null,
           status: "pending_stores",
           remarks: data.remarks?.toUpperCase() ?? null,
         })

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -139,6 +139,15 @@ export default function EquipmentHub() {
               accent="blue"
               iconBg="bg-blue-100"
               enabled={sectionVisible("site_procurement")}
+            />
+            <HubActionTile
+              href="/irn/new?from=equipment&returnTo=/equipment/hub"
+              icon={ClipboardList}
+              title="Raise Requisition (IRN)"
+              description="Request materials from stores for fleet & equipment needs"
+              accent="indigo"
+              iconBg="bg-indigo-100"
+              enabled={sectionVisible("irn_raise")}
             />
           </div>
         </div>

@@ -1455,7 +1455,8 @@ export const internalRequisitions = pgTable("internal_requisitions", {
   date: date("date").notNull(),
   raisedBy: text("raised_by").notNull(),
   raisedByUserId: integer("raised_by_user_id"),
-  raisedFrom: text("raised_from").notNull(), // Site | HMP Plant | Equipment
+  raisedFrom: text("raised_from").notNull(), // Site Operations | HMP Plant | Equipment & Fleet | RMC Operations
+  siteId: integer("site_id"),               // relevant for Site Operations + Equipment & Fleet
   status: text("status").default("pending_stores").notNull(), // pending_stores | stores_verified | closed
   remarks: text("remarks"),
   storesRemarks: text("stores_remarks"),
@@ -1502,6 +1503,7 @@ export type InternalRequisitionWithItems = InternalRequisition & { items: Intern
 export const createIrnRequestSchema = z.object({
   date: z.string(),
   raisedFrom: z.string().min(1, "Section is required"),
+  siteId: z.number().int().nullish(),
   raisedBy: z.string().min(1),
   raisedByUserId: z.number().int().optional(),
   remarks: z.string().optional(),

@@ -154,6 +154,15 @@ export default function SiteHub() {
               iconBg="bg-amber-100"
               enabled={sectionVisible("site_diesel")}
             />
+            <HubActionTile
+              href="/irn/new?from=site&returnTo=/site/hub"
+              icon={ClipboardList}
+              title="Raise Requisition (IRN)"
+              description="Request materials from stores for site operations"
+              accent="indigo"
+              iconBg="bg-indigo-100"
+              enabled={sectionVisible("irn_raise")}
+            />
           </div>
         </div>
       </div>

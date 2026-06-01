@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  ShoppingCart, Fuel, Receipt, CreditCard,
+  ShoppingCart, Fuel, Receipt, CreditCard, ClipboardList,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -37,8 +37,19 @@ export default function FinanceHub() {
     enabled: sectionVisible("site_procurement"),
   });
 
+  const { data: irns = [] } = useQuery<any[]>({
+    queryKey: ["/api/irn"],
+    queryFn: async () => {
+      const res = await fetch("/api/irn");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: sectionVisible("irn_view") || sectionVisible("irn_raise"),
+  });
+
   const pendingIndents = indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length;
   const approvedIndents = indents.filter((i: any) => i.status === "approved").length;
+  const pendingIrns = irns.filter((r: any) => r.status === "pending_stores").length;
 
   return (
     <HubShell
@@ -63,15 +74,15 @@ export default function FinanceHub() {
             sub="ready to purchase"
           />
           <KpiCard
+            label="Pending IRNs"
+            value={(sectionVisible("irn_view") || sectionVisible("irn_raise")) ? pendingIrns : undefined}
+            sub="stores to review"
+            warn={pendingIrns > 0}
+          />
+          <KpiCard
             label="Date"
             value={format(new Date(), "dd MMM")}
             sub={format(new Date(), "yyyy")}
-          />
-          <KpiCard
-            label="Status"
-            value={pendingIndents === 0 ? "Clear" : "Pending"}
-            sub={pendingIndents === 0 ? "No pending approvals" : `${pendingIndents} to review`}
-            warn={pendingIndents > 0}
           />
         </div>
 
@@ -102,6 +113,36 @@ export default function FinanceHub() {
             />
           </div>
         </div>
+
+        {/* Internal Requisitions */}
+        {(sectionVisible("irn_view") || sectionVisible("irn_raise")) && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Internal Requisitions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href={`/irn/new?returnTo=${HUB}`}
+                icon={ClipboardList}
+                title="Raise Requisition"
+                description="Request materials from stores across site, HMP, equipment or RMC"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                enabled={sectionVisible("irn_raise")}
+              />
+              <HubActionTile
+                href={`/irn?returnTo=${HUB}`}
+                icon={ClipboardList}
+                title="All Requisitions"
+                description="View, track & process all internal requisition notes"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                badge={pendingIrns > 0 ? `${pendingIrns} pending` : undefined}
+                enabled={sectionVisible("irn_view")}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Billing */}
         <div>

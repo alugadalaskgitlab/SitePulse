@@ -13,7 +13,7 @@ import {
 import {
   Truck, FileText,
   TestTube, FlaskConical, BarChart3, Layers, AlertTriangle, TrendingUp,
-  Fuel, ShoppingCart,
+  Fuel, ShoppingCart, ClipboardList,
 } from "lucide-react";
 import { parseISO } from "date-fns";
 
@@ -366,6 +366,15 @@ export default function RmcHub() {
                 accent="amber"
                 iconBg="bg-amber-100"
                 enabled={canDieselReq}
+              />
+              <HubActionTile
+                href="/irn/new?from=rmc&returnTo=/rmc/hub"
+                icon={ClipboardList}
+                title="Raise Requisition (IRN)"
+                description="Request materials from stores for RMC plant operations"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                enabled={canProcure}
               />
             </div>
           )}
