@@ -99,19 +99,18 @@ export default function DieselRequirements() {
 
   const DR_FILTER_KEY = "diesel-requirements-filter";
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterLocation, setFilterLocation] = useState<string>(() => {
+  const _drStoredFilters = (() => {
     try {
       const stored = sessionStorage.getItem(DR_FILTER_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as { location?: string };
-        return parsed.location || "all";
-      }
+      if (stored) return JSON.parse(stored) as { location?: string; dateFrom?: string; dateTo?: string; status?: string };
     } catch { /* ignore */ }
-    return "all";
-  });
+    return {};
+  })();
+
+  const [filterDateFrom, setFilterDateFrom] = useState(_drStoredFilters.dateFrom ?? "");
+  const [filterDateTo, setFilterDateTo] = useState(_drStoredFilters.dateTo ?? "");
+  const [filterStatus, setFilterStatus] = useState(_drStoredFilters.status ?? "all");
+  const [filterLocation, setFilterLocation] = useState<string>(_drStoredFilters.location ?? "all");
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formRaisedBy, setFormRaisedBy] = useState("");
@@ -124,9 +123,9 @@ export default function DieselRequirements() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(DR_FILTER_KEY, JSON.stringify({ location: filterLocation }));
+      sessionStorage.setItem(DR_FILTER_KEY, JSON.stringify({ location: filterLocation, dateFrom: filterDateFrom, dateTo: filterDateTo, status: filterStatus }));
     } catch { /* ignore */ }
-  }, [filterLocation]);
+  }, [filterLocation, filterDateFrom, filterDateTo, filterStatus]);
 
   const [editId, setEditId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

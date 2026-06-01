@@ -435,20 +435,19 @@ export default function PurchaseIndents() {
 
   const PI_FILTER_KEY = "purchase-indents-filter";
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterPriority, setFilterPriority] = useState("all");
-  const [filterLocation, setFilterLocation] = useState<string>(() => {
+  const _piStoredFilters = (() => {
     try {
       const stored = sessionStorage.getItem(PI_FILTER_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as { location?: string };
-        return parsed.location || "all";
-      }
+      if (stored) return JSON.parse(stored) as { location?: string; dateFrom?: string; dateTo?: string; status?: string; priority?: string };
     } catch { /* ignore */ }
-    return "all";
-  });
+    return {};
+  })();
+
+  const [filterDateFrom, setFilterDateFrom] = useState(_piStoredFilters.dateFrom ?? "");
+  const [filterDateTo, setFilterDateTo] = useState(_piStoredFilters.dateTo ?? "");
+  const [filterStatus, setFilterStatus] = useState(_piStoredFilters.status ?? "all");
+  const [filterPriority, setFilterPriority] = useState(_piStoredFilters.priority ?? "all");
+  const [filterLocation, setFilterLocation] = useState<string>(_piStoredFilters.location ?? "all");
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formProposedBy, setFormProposedBy] = useState("");
@@ -462,9 +461,9 @@ export default function PurchaseIndents() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(PI_FILTER_KEY, JSON.stringify({ location: filterLocation }));
+      sessionStorage.setItem(PI_FILTER_KEY, JSON.stringify({ location: filterLocation, dateFrom: filterDateFrom, dateTo: filterDateTo, status: filterStatus, priority: filterPriority }));
     } catch { /* ignore */ }
-  }, [filterLocation]);
+  }, [filterLocation, filterDateFrom, filterDateTo, filterStatus, filterPriority]);
 
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
