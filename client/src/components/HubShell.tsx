@@ -4,7 +4,7 @@ import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
-  RefreshCw, Database,
+  RefreshCw, Database, ClipboardList,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
@@ -73,6 +73,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     { href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant" },
     ...(rmcEnabled ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc" }] : []),
     { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment" },
+    { href: "/irn", icon: ClipboardList, label: "Requisitions (IRN)", matchPrefix: "/irn" },
     { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores" },
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
     { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },

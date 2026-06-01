@@ -1446,6 +1446,91 @@ export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.exte
 export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
 
 // ============================================
+// INTERNAL REQUISITION NOTES (IRN)
+// ============================================
+
+export const internalRequisitions = pgTable("internal_requisitions", {
+  id: serial("id").primaryKey(),
+  irnNo: text("irn_no").notNull().unique(),
+  date: date("date").notNull(),
+  raisedBy: text("raised_by").notNull(),
+  raisedByUserId: integer("raised_by_user_id"),
+  raisedFrom: text("raised_from").notNull(), // Site | HMP Plant | Equipment
+  status: text("status").default("pending_stores").notNull(), // pending_stores | stores_verified | closed
+  remarks: text("remarks"),
+  storesRemarks: text("stores_remarks"),
+  storesVerifiedBy: text("stores_verified_by"),
+  storesVerifiedAt: timestamp("stores_verified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const internalRequisitionItems = pgTable("internal_requisition_items", {
+  id: serial("id").primaryKey(),
+  irnId: integer("irn_id").notNull().references(() => internalRequisitions.id, { onDelete: "cascade" }),
+  material: text("material").notNull(),
+  qty: real("qty").notNull(),
+  uom: text("uom").notNull().default("MT"),
+  urgency: text("urgency").notNull().default("normal"), // normal | high | urgent
+  purpose: text("purpose").notNull(),
+  needByDate: date("need_by_date"),
+  stockAvailable: real("stock_available"),
+  issueQty: real("issue_qty"),
+  procureQty: real("procure_qty"),
+  itemStatus: text("item_status").notNull().default("pending"), // pending | issued | queued_procurement | partially_issued
+  storesAction: text("stores_action"), // issue | procure | split
+  storesNotes: text("stores_notes"),
+});
+
+export const internalRequisitionsRelations = relations(internalRequisitions, ({ many }) => ({
+  items: many(internalRequisitionItems),
+}));
+
+export const internalRequisitionItemsRelations = relations(internalRequisitionItems, ({ one }) => ({
+  irn: one(internalRequisitions, { fields: [internalRequisitionItems.irnId], references: [internalRequisitions.id] }),
+}));
+
+export const insertInternalRequisitionSchema = createInsertSchema(internalRequisitions).omit({ id: true, createdAt: true });
+export const insertInternalRequisitionItemSchema = createInsertSchema(internalRequisitionItems).omit({ id: true });
+
+export type InternalRequisition = typeof internalRequisitions.$inferSelect;
+export type InternalRequisitionItem = typeof internalRequisitionItems.$inferSelect;
+export type InsertInternalRequisition = z.infer<typeof insertInternalRequisitionSchema>;
+export type InsertInternalRequisitionItem = z.infer<typeof insertInternalRequisitionItemSchema>;
+
+export type InternalRequisitionWithItems = InternalRequisition & { items: InternalRequisitionItem[] };
+
+export const createIrnRequestSchema = z.object({
+  date: z.string(),
+  raisedFrom: z.string().min(1, "Section is required"),
+  raisedBy: z.string().min(1),
+  raisedByUserId: z.number().int().optional(),
+  remarks: z.string().optional(),
+  items: z.array(z.object({
+    material: z.string().min(1, "Material is required"),
+    qty: z.number().positive("Qty must be > 0"),
+    uom: z.string().min(1),
+    urgency: z.enum(["normal", "high", "urgent"]).default("normal"),
+    purpose: z.string().min(1, "Purpose is required"),
+    needByDate: z.string().optional(),
+  })).min(1, "At least one item is required"),
+});
+export type CreateIrnRequest = z.infer<typeof createIrnRequestSchema>;
+
+export const storesVerifyIrnSchema = z.object({
+  storesRemarks: z.string().optional(),
+  verifiedBy: z.string(),
+  items: z.array(z.object({
+    itemId: z.number().int(),
+    storesAction: z.enum(["issue", "procure", "split"]),
+    stockAvailable: z.number().min(0),
+    issueQty: z.number().min(0),
+    procureQty: z.number().min(0),
+    storesNotes: z.string().optional(),
+  })),
+});
+export type StoresVerifyIrnRequest = z.infer<typeof storesVerifyIrnSchema>;
+
+// ============================================
 // DAILY DIESEL REQUIREMENTS
 // ============================================
 

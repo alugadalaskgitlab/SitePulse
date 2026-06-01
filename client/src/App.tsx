@@ -69,6 +69,9 @@ import ScenarioComparison from "@/pages/ScenarioComparison";
 import ConcreteEstimates from "@/pages/ConcreteEstimates";
 import ConcreteCalculator from "@/pages/ConcreteCalculator";
 import ConcreteCalculatorV2 from "@/pages/ConcreteCalculatorV2";
+import IrnListPage from "@/pages/irn/IrnListPage";
+import IrnRaisePage from "@/pages/irn/IrnRaisePage";
+import IrnDetailPage from "@/pages/irn/IrnDetailPage";
 import StoresHome from "@/pages/StoresHome";
 import StoresItems from "@/pages/StoresItems";
 import StoresGrn from "@/pages/StoresGrn";
@@ -280,6 +283,9 @@ function AuthedShell() {
             <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
             <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />
             <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "admin_settings")} />
+            <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise")} />
+            <Route path="/irn/new" component={gated(IrnRaisePage, "irn_raise")} />
+            <Route path="/irn/:id" component={gatedEither((p: any) => <IrnDetailPage id={parseInt(p.id)} />, "irn_view", "irn_raise")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />

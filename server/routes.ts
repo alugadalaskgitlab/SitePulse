@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -4964,6 +4964,65 @@ export async function registerRoutes(
       if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
       console.error("Error bypassing stores:", err);
       res.status(500).json({ message: "Failed to request stores bypass" });
+    }
+  });
+
+  // ── Internal Requisition Notes (IRN) ────────────────────────────────────────
+
+  app.get("/api/irn", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const { status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+      const irns = await storage.getInternalRequisitions({ status, dateFrom, dateTo });
+      res.json(irns);
+    } catch (err) {
+      console.error("Error fetching IRNs:", err);
+      res.status(500).json({ message: "Failed to fetch IRNs" });
+    }
+  });
+
+  app.get("/api/irn/:id", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const irn = await storage.getInternalRequisition(id);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      res.json(irn);
+    } catch (err) {
+      console.error("Error fetching IRN:", err);
+      res.status(500).json({ message: "Failed to fetch IRN" });
+    }
+  });
+
+  app.post("/api/irn", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "irn_raise")) return;
+      const parsed = createIrnRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+      const irn = await storage.createInternalRequisition(parsed.data);
+      sendPushToAll("New IRN Raised", `${irn.irnNo} raised by ${irn.raisedBy}`, "/irn").catch(() => {});
+      res.status(201).json(irn);
+    } catch (err) {
+      console.error("Error creating IRN:", err);
+      res.status(500).json({ message: "Failed to create IRN" });
+    }
+  });
+
+  app.patch("/api/irn/:id/stores-verify", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const parsed = storesVerifyIrnSchema.safeParse({ ...req.body, verifiedBy: currentUserName(req) });
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+      const irn = await storage.storesVerifyIrn(id, parsed.data);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      sendPushToAll("IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});
+      res.json(irn);
+    } catch (err) {
+      console.error("Error verifying IRN:", err);
+      res.status(500).json({ message: "Failed to verify IRN" });
     }
   });
 

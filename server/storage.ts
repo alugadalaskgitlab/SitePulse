@@ -216,6 +216,11 @@ import {
   type InsertRmcCubeTest,
   type RmcRawMaterialReceipt,
   type InsertRmcRawMaterialReceipt,
+  internalRequisitions,
+  internalRequisitionItems,
+  type InternalRequisitionWithItems,
+  type CreateIrnRequest,
+  type StoresVerifyIrnRequest,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -930,6 +935,12 @@ export interface IStorage {
   verifyIndentStores(id: number, items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[], verifiedBy: string): Promise<PurchaseIndentWithItems | undefined>;
   bypassIndentStores(id: number, reason: string, bypassedBy: string): Promise<PurchaseIndentWithItems | undefined>;
   procureItem(itemId: number, data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }, actionBy: string): Promise<PurchaseIndentItem | undefined>;
+
+  // Internal Requisition Notes (IRN)
+  getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
+  getInternalRequisition(id: number): Promise<InternalRequisitionWithItems | undefined>;
+  createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems>;
+  storesVerifyIrn(id: number, data: StoresVerifyIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -18225,6 +18236,156 @@ export class DatabaseStorage implements IStorage {
         ? Math.round((balanceKg / factor) * 100) / 100
         : Math.round((totalReceived - totalConsumed) * 100) / 100;
       return { materialName: matName, category: rcv.category, totalReceived, totalConsumed, balance, uom: rcv.uom, balanceKg };
+    });
+  }
+
+  // ── Internal Requisition Notes (IRN) ────────────────────────────────────────
+
+  private async generateIrnNo(
+    tx: any,
+    raisedFrom: string,
+    raisedBy: string,
+    firstMaterial: string,
+  ): Promise<string> {
+    const year = new Date().getFullYear();
+    const [result] = await tx
+      .select({ count: sql<number>`count(*)` })
+      .from(internalRequisitions)
+      .where(sql`EXTRACT(YEAR FROM ${internalRequisitions.createdAt}) = ${year}`);
+    const seq = (Number(result?.count) || 0) + 1;
+
+    const fromCode = raisedFrom.toLowerCase().includes("hmp")
+      ? "HMP"
+      : raisedFrom.toLowerCase().includes("equip")
+      ? "EQP"
+      : "SITE";
+
+    const initials = raisedBy
+      .split(/\s+/)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .filter(Boolean)
+      .slice(0, 3)
+      .join("");
+
+    const mat3 = firstMaterial.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() || "MAT";
+
+    return `HLC/IRN/${year}/${fromCode}-${initials}-${mat3}/${String(seq).padStart(4, "0")}`;
+  }
+
+  async getInternalRequisitions(
+    filters?: { status?: string; dateFrom?: string; dateTo?: string },
+  ): Promise<InternalRequisitionWithItems[]> {
+    const conditions: any[] = [];
+    if (filters?.status && filters.status !== "all") {
+      conditions.push(sql`${internalRequisitions.status} = ${filters.status}`);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`${internalRequisitions.date} >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`${internalRequisitions.date} <= ${filters.dateTo}`);
+    }
+
+    const rows = await db.query.internalRequisitions.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      with: { items: true },
+      orderBy: [desc(internalRequisitions.createdAt)],
+    });
+    return rows as InternalRequisitionWithItems[];
+  }
+
+  async getInternalRequisition(id: number): Promise<InternalRequisitionWithItems | undefined> {
+    const row = await db.query.internalRequisitions.findFirst({
+      where: eq(internalRequisitions.id, id),
+      with: { items: true },
+    });
+    return row as InternalRequisitionWithItems | undefined;
+  }
+
+  async createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems> {
+    return await db.transaction(async (tx) => {
+      const firstMaterial = data.items[0]?.material ?? "MISC";
+      const irnNo = await this.generateIrnNo(tx, data.raisedFrom, data.raisedBy, firstMaterial);
+
+      const [irn] = await tx
+        .insert(internalRequisitions)
+        .values({
+          irnNo,
+          date: data.date,
+          raisedBy: data.raisedBy.toUpperCase(),
+          raisedByUserId: data.raisedByUserId ?? null,
+          raisedFrom: data.raisedFrom,
+          status: "pending_stores",
+          remarks: data.remarks?.toUpperCase() ?? null,
+        })
+        .returning();
+
+      const items = await tx
+        .insert(internalRequisitionItems)
+        .values(
+          data.items.map((item) => ({
+            irnId: irn.id,
+            material: item.material.toUpperCase(),
+            qty: item.qty,
+            uom: item.uom.toUpperCase(),
+            urgency: item.urgency ?? "normal",
+            purpose: item.purpose.toUpperCase(),
+            needByDate: item.needByDate ?? null,
+            itemStatus: "pending",
+          })),
+        )
+        .returning();
+
+      return { ...irn, items };
+    });
+  }
+
+  async storesVerifyIrn(
+    id: number,
+    data: StoresVerifyIrnRequest,
+  ): Promise<InternalRequisitionWithItems | undefined> {
+    const existing = await this.getInternalRequisition(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      for (const vi of data.items) {
+        const itemStatus =
+          vi.storesAction === "issue"
+            ? "issued"
+            : vi.storesAction === "procure"
+            ? "queued_procurement"
+            : "partially_issued";
+
+        await tx
+          .update(internalRequisitionItems)
+          .set({
+            storesAction: vi.storesAction,
+            stockAvailable: vi.stockAvailable,
+            issueQty: vi.issueQty,
+            procureQty: vi.procureQty,
+            storesNotes: vi.storesNotes ?? null,
+            itemStatus,
+          })
+          .where(eq(internalRequisitionItems.id, vi.itemId));
+      }
+
+      const [updated] = await tx
+        .update(internalRequisitions)
+        .set({
+          status: "stores_verified",
+          storesRemarks: data.storesRemarks?.toUpperCase() ?? null,
+          storesVerifiedBy: data.verifiedBy.toUpperCase(),
+          storesVerifiedAt: new Date(),
+        })
+        .where(eq(internalRequisitions.id, id))
+        .returning();
+
+      const items = await tx
+        .select()
+        .from(internalRequisitionItems)
+        .where(eq(internalRequisitionItems.irnId, id));
+
+      return { ...updated, items };
     });
   }
 }
