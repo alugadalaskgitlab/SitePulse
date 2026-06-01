@@ -76,6 +76,10 @@ export function ManagerApprovalView() {
             <h3 className="font-semibold text-green-900 text-sm">1. Hydraulic Jack 10T</h3>
             <span className="text-green-800 font-medium text-sm">2 NOS</span>
           </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <PackageCheck className="w-3.5 h-3.5 text-green-600" />
+            <span className="text-green-700 font-medium bg-green-100 px-2 py-0.5 rounded-full">Stores: 2 NOS available</span>
+          </div>
           <div className="flex items-center gap-2 text-xs text-green-700 bg-green-100/50 py-1.5 px-2 rounded-md">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <span className="font-medium">Approved as requested</span>
@@ -88,6 +92,10 @@ export function ManagerApprovalView() {
           <div className="flex justify-between items-start">
             <h3 className="font-semibold text-red-900 text-sm line-through decoration-red-300">2. Compactor Belt</h3>
             <span className="text-red-800 font-medium text-sm">1 NOS</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <AlertTriangle className="w-3.5 h-3.5 text-gray-500" />
+            <span className="text-gray-600 font-medium bg-gray-100 px-2 py-0.5 rounded-full">Stores: No stock</span>
           </div>
           <div className="flex items-start gap-2 text-xs text-red-700 bg-red-100/50 py-1.5 px-2 rounded-md">
             <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -107,6 +115,10 @@ export function ManagerApprovalView() {
               <span className="text-amber-800 font-bold text-sm">2 NOS</span>
               <span className="text-amber-600/80 text-[10px] line-through">req: 5 NOS</span>
             </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+            <span className="text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded-full">Stores: 2 of 5 — short supply</span>
           </div>
           <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-100/50 py-1.5 px-2 rounded-md">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -228,6 +240,11 @@ export function ManagerApprovalView() {
                 </span>
                 {item4State === 'modified' && <span className="text-amber-600/80 text-[10px] line-through">req: 15 MT</span>}
               </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <PackageCheck className="w-3.5 h-3.5 text-green-600" />
+              <span className="text-green-700 font-medium bg-green-100 px-2 py-0.5 rounded-full">Stores: 8.5 MT available</span>
             </div>
             
             <div className={`flex items-start gap-2 text-xs py-1.5 px-2 rounded-md ${
