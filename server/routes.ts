@@ -4722,6 +4722,14 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // INTERNAL REQUISITIONS (stub — wired for dashboard; full feature TBD)
+  // ============================================
+
+  app.get("/api/internal-requisitions", async (req, res) => {
+    res.json([]);
+  });
+
+  // ============================================
   // PURCHASE INDENTS
   // ============================================
 

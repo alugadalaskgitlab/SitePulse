@@ -55,6 +55,13 @@ export default function Home() {
     enabled: isAdmin,
   });
 
+  const { data: internalRequisitions = [] } = useQuery<any[]>({
+    queryKey: ["/api/internal-requisitions", { status: "pending" }],
+    queryFn: () =>
+      fetch("/api/internal-requisitions?status=pending")
+        .then((r) => r.json()),
+  });
+
   // ── Derived values ──
   const activeSites = sites.filter((s: any) => s.isActive !== 0);
   const dprSiteNames = new Set(todayDprs.map((d: any) => d.site));
@@ -65,7 +72,8 @@ export default function Home() {
   const pendingIndents = purchaseIndents.filter(
     (p: any) => p.status === "pending" || p.status === "submitted" || p.status === "stores_check"
   );
-  const totalPending = pendingDiesel.length + pendingIndents.length;
+  const pendingIRN = Array.isArray(internalRequisitions) ? internalRequisitions.length : 0;
+  const totalPending = pendingDiesel.length + pendingIndents.length + pendingIRN;
 
   const todayDispatchCount = Array.isArray(dispatches) ? dispatches.length : 0;
   const todayDispatchMT = Array.isArray(dispatches)
@@ -357,17 +365,28 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Tier 4: Internal Requisitions — Coming soon */}
-                <div className="px-4 py-3.5 flex items-start gap-3 opacity-50" data-testid="pending-tier-irn">
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                {/* Tier 4: Internal Requisitions */}
+                <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-irn">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-600" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-slate-600 leading-snug">Internal Requisitions</p>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-100 text-slate-400 border-slate-200">—</span>
+                      <p className="text-sm font-medium text-slate-800 leading-snug">Internal Requisitions</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIRN > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                        {pendingIRN > 0 ? `${pendingIRN} pending` : "0"}
+                      </span>
                     </div>
-                    <p className="text-[11px] mt-0.5 leading-snug text-slate-400 italic">Coming soon</p>
+                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingIRN > 0 ? "text-indigo-600 font-medium" : "text-slate-400"}`}>
+                      {pendingIRN > 0 ? `${pendingIRN} awaiting approval` : "All clear"}
+                    </p>
+                    {pendingIRN > 0 && (
+                      <Link href="/internal-requisitions?returnTo=/">
+                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
+                          Review <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      </Link>
+                    )}
                   </div>
                 </div>
 
