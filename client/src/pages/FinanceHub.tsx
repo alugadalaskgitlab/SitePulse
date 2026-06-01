@@ -37,7 +37,7 @@ export default function FinanceHub() {
     enabled: sectionVisible("site_procurement"),
   });
 
-  const pendingIndents = indents.filter((i: any) => i.status === "pending").length;
+  const pendingIndents = indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length;
   const approvedIndents = indents.filter((i: any) => i.status === "approved").length;
 
   return (

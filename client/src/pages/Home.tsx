@@ -63,7 +63,7 @@ export default function Home() {
     (d: any) => d.status === "pending" || d.status === "submitted"
   );
   const pendingIndents = purchaseIndents.filter(
-    (p: any) => p.status === "pending" || p.status === "submitted"
+    (p: any) => p.status === "pending" || p.status === "submitted" || p.status === "stores_check"
   );
   const totalPending = pendingDiesel.length + pendingIndents.length;
 

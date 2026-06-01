@@ -8821,19 +8821,37 @@ export class DatabaseStorage implements IStorage {
     });
     if (!indent) return undefined;
 
-    // Enrich items with live stores stock balance (match by name, fallback fuzzy)
-    const stockBalances = await this.getStoreItemsWithBalance();
+    // Enrich items with live stock balance:
+    // 1st try: stores GRN items matched by description name
+    // 2nd try: plant production stockBalances matched by materialId
+    const storeGrnBalances = await this.getStoreItemsWithBalance();
+    const plantBalanceRows = await db.select().from(stockBalances);
+    const plantBalanceByMaterialId = new Map<number, number>();
+    for (const row of plantBalanceRows) {
+      plantBalanceByMaterialId.set(row.materialId, (plantBalanceByMaterialId.get(row.materialId) ?? 0) + row.balance);
+    }
+
     const enrichedItems = (indent as any).items.map((item: any) => {
       const descLower = (item.description as string).toLowerCase().trim();
-      const match = stockBalances.find(si => {
+
+      // 1st: stores GRN name match (exact, substring, or reverse substring)
+      const storesMatch = storeGrnBalances.find(si => {
         const nameLower = si.name.toLowerCase().trim();
         return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
       });
-      return {
-        ...item,
-        liveStockQty: match != null ? match.balance : null,
-        liveStoreItemName: match ? match.name : null,
-      };
+      if (storesMatch != null) {
+        return { ...item, liveStockQty: storesMatch.balance, liveStoreItemName: storesMatch.name };
+      }
+
+      // 2nd: plant stock balance by materialId (summed across all parties)
+      if (item.materialId != null) {
+        const plantQty = plantBalanceByMaterialId.get(item.materialId);
+        if (plantQty !== undefined) {
+          return { ...item, liveStockQty: Math.max(0, plantQty), liveStoreItemName: null };
+        }
+      }
+
+      return { ...item, liveStockQty: null, liveStoreItemName: null };
     });
 
     return { ...indent, items: enrichedItems } as PurchaseIndentWithItems | undefined;

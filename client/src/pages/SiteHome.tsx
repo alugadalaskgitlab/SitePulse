@@ -231,8 +231,8 @@ export default function SiteHome() {
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
                     <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full">
-                      {indents.filter((i: any) => i.status === "pending").length > 0
-                        ? `${indents.filter((i: any) => i.status === "pending").length} pending`
+                      {indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length > 0
+                        ? `${indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length} pending`
                         : "Open"}
                     </span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-violet-500 transition-colors" />
