@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardList, ChevronLeft, PackageCheck, ShoppingCart, CheckCircle2, AlertCircle, Package, User, Calendar, FileText } from "lucide-react";
+import { ClipboardList, ChevronLeft, PackageCheck, ShoppingCart, CheckCircle2, AlertCircle, User, Calendar, FileText, ListTodo } from "lucide-react";
 
 type ItemAction = "issue" | "procure" | "split";
 
@@ -79,8 +79,8 @@ export function IrnStores() {
             )}
             {procureCount > 0 && (
               <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded p-2.5 text-sm text-purple-700">
-                <ShoppingCart className="h-4 w-4 shrink-0" />
-                <span><strong>{procureCount} item{procureCount > 1 ? "s" : ""}</strong> routed to procurement — PI HLC/PI/2026/0072 raised</span>
+                <ListTodo className="h-4 w-4 shrink-0" />
+                <span><strong>{procureCount} item{procureCount > 1 ? "s" : ""}</strong> added to Procurement Queue — a procurement officer will batch these into a PI or DR</span>
               </div>
             )}
           </div>
@@ -142,7 +142,7 @@ export function IrnStores() {
         {/* Instruction banner */}
         <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
           <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>For each item: check physical stock, then choose <strong>Issue from Store</strong>, <strong>Route to Purchase</strong>, or <strong>Split</strong> (partial issue + balance to purchase).</span>
+          <span>For each item: check physical stock, then choose an action. <strong>Issue from Store</strong> generates an Issue Voucher immediately. <strong>Route to Procurement Queue</strong> adds the item to a queue — a procurement officer will batch it into a PI or DR (no PI is raised automatically). <strong>Split</strong> issues available stock now and queues the shortfall for procurement.</span>
         </div>
 
         {/* Items */}
@@ -189,8 +189,8 @@ export function IrnStores() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="issue" className="text-xs text-green-700">✅ Issue from Store</SelectItem>
-                      <SelectItem value="procure" className="text-xs text-purple-700">🛒 Route to Purchase</SelectItem>
-                      <SelectItem value="split" className="text-xs text-blue-700">⚖️ Split (partial)</SelectItem>
+                      <SelectItem value="procure" className="text-xs text-purple-700">📋 Add to Procurement Queue</SelectItem>
+                      <SelectItem value="split" className="text-xs text-blue-700">⚖️ Split — issue now + queue balance</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -240,7 +240,7 @@ export function IrnStores() {
                 )}
                 {item.procureQty > 0 && (
                   <span className="inline-flex items-center gap-1 text-xs bg-purple-50 border border-purple-200 text-purple-700 px-2 py-0.5 rounded-full">
-                    <ShoppingCart className="h-3 w-3" /> {item.procureQty} {item.uom} → PI / DR
+                    <ListTodo className="h-3 w-3" /> {item.procureQty} {item.uom} → Procurement Queue
                   </span>
                 )}
               </div>
@@ -267,8 +267,8 @@ export function IrnStores() {
               <span>{issueCount} item{issueCount !== 1 ? "s" : ""} to issue from store</span>
             </div>
             <div className="flex items-center gap-2 text-purple-700">
-              <ShoppingCart className="h-4 w-4" />
-              <span>{procureCount} item{procureCount !== 1 ? "s" : ""} to route to procurement</span>
+              <ListTodo className="h-4 w-4" />
+              <span>{procureCount} item{procureCount !== 1 ? "s" : ""} to add to Procurement Queue</span>
             </div>
           </div>
           <div className="flex gap-3 justify-end">
