@@ -8819,7 +8819,24 @@ export class DatabaseStorage implements IStorage {
       where: eq(purchaseIndents.id, id),
       with: { items: { with: { history: { orderBy: desc(purchaseIndentItemHistory.actionAt) } } } },
     });
-    return indent as PurchaseIndentWithItems | undefined;
+    if (!indent) return undefined;
+
+    // Enrich items with live stores stock balance (match by name, fallback fuzzy)
+    const stockBalances = await this.getStoreItemsWithBalance();
+    const enrichedItems = (indent as any).items.map((item: any) => {
+      const descLower = (item.description as string).toLowerCase().trim();
+      const match = stockBalances.find(si => {
+        const nameLower = si.name.toLowerCase().trim();
+        return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
+      });
+      return {
+        ...item,
+        liveStockQty: match != null ? match.balance : null,
+        liveStoreItemName: match ? match.name : null,
+      };
+    });
+
+    return { ...indent, items: enrichedItems } as PurchaseIndentWithItems | undefined;
   }
 
   private async generateIndentNo(tx: any): Promise<string> {

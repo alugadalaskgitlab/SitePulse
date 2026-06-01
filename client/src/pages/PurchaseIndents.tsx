@@ -2073,12 +2073,18 @@ export default function PurchaseIndents() {
                     const allItems = selectedIndent.items;
                     const actionedCount = allItems.filter(item => { const st = itemApprovalStates[item.id]; return st && ['approved','modified','rejected'].includes(st.action); }).length;
                     const totalEst = allItems.reduce((sum, item) => sum + ((item as any).estAmount ?? (item.estRate && item.qty ? item.estRate * item.qty : 0) ?? 0), 0);
-                    const hasAvail = allItems.some(item => { const st = itemApprovalStates[item.id]; return (!st || st.action === 'pending') && (item as any).stockStatus === 'in_stock'; });
+                    const getEffectiveStockStatus = (item: any) => {
+                      if (item.stockStatus) return item.stockStatus as string;
+                      const live = item.liveStockQty as number | null;
+                      if (live == null) return null;
+                      return live >= item.qty ? 'in_stock' : live > 0 ? 'short' : 'out_of_stock';
+                    };
+                    const hasAvail = allItems.some(item => { const st = itemApprovalStates[item.id]; return (!st || st.action === 'pending') && getEffectiveStockStatus(item) === 'in_stock'; });
                     const approveAll = () => {
                       const updates: Record<number, ItemApprovalState> = {};
                       allItems.forEach(item => {
                         const st = itemApprovalStates[item.id];
-                        if ((!st || st.action === 'pending') && (item as any).stockStatus === 'in_stock')
+                        if ((!st || st.action === 'pending') && getEffectiveStockStatus(item) === 'in_stock')
                           updates[item.id] = { action: 'approved', approvedQty: item.qty, modQty: item.qty.toString(), rejectReason: '' };
                       });
                       setItemApprovalStates(prev => ({ ...prev, ...updates }));
@@ -2123,18 +2129,22 @@ export default function PurchaseIndents() {
                     const isActioned = (['approved','modified','rejected'] as const).includes(st.action as any);
                     const stockStatus = (item as any).stockStatus as string | null;
                     const stockAvailableQty = (item as any).stockAvailableQty as number | null;
+                    const liveStockQty = (item as any).liveStockQty as number | null;
+                    const effStockStatus = stockStatus ?? (liveStockQty != null ? (liveStockQty >= item.qty ? 'in_stock' : liveStockQty > 0 ? 'short' : 'out_of_stock') : null);
+                    const effStockQty = stockAvailableQty ?? liveStockQty;
+                    const isLive = !stockStatus && liveStockQty != null;
                     const updateState = (updates: Partial<ItemApprovalState>) =>
                       setItemApprovalStates(prev => ({ ...prev, [item.id]: { ...st, ...updates } }));
                     const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
-                    const stockBadge = stockStatus ? (
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                        stockStatus === 'in_stock' ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/40' :
-                        stockStatus === 'short' ? 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40' :
+                    const stockBadge = effStockStatus ? (
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${isLive ? 'opacity-75' : ''} ${
+                        effStockStatus === 'in_stock' ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/40' :
+                        effStockStatus === 'short' ? 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40' :
                         'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-800'
                       }`}>
-                        {stockStatus === 'in_stock' ? <PackageCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                        {stockStatus === 'in_stock' ? `Stores: ${stockAvailableQty != null ? stockAvailableQty : item.qty} ${item.uom} avail.` :
-                         stockStatus === 'short' ? `Stores: ${stockAvailableQty ?? 0} / ${item.qty} — short` : 'Stores: No stock'}
+                        {effStockStatus === 'in_stock' ? <PackageCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                        {effStockStatus === 'in_stock' ? `${isLive ? 'Live' : 'Stores'}: ${effStockQty != null ? effStockQty : item.qty} ${item.uom} avail.` :
+                         effStockStatus === 'short' ? `${isLive ? 'Live' : 'Stores'}: ${effStockQty ?? 0} / ${item.qty} — short` : `${isLive ? 'Live' : 'Stores'}: No stock`}
                         {(item as any).storesItemNote ? ` · ${(item as any).storesItemNote}` : ''}
                       </span>
                     ) : null;
@@ -2464,14 +2474,17 @@ export default function PurchaseIndents() {
                       const computedAmount = procData.rate && approvedQty
                         ? Math.round(parseFloat(procData.rate) * approvedQty) : null;
                       const stockStatus = (item as any).stockStatus as string | null;
-                      const stockBadge = stockStatus ? (
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                          stockStatus === "in_stock" ? "text-[#0F5F64] bg-[#0F5F64]/10 border border-[#0F5F64]/20" :
-                          stockStatus === "short" ? "text-amber-700 bg-amber-100 border border-amber-200 dark:text-amber-300 dark:bg-amber-900/30" :
+                      const liveStockQtyP = (item as any).liveStockQty as number | null;
+                      const effStockStatusP = stockStatus ?? (liveStockQtyP != null ? (liveStockQtyP >= approvedQty ? 'in_stock' : liveStockQtyP > 0 ? 'short' : 'out_of_stock') : null);
+                      const isLiveP = !stockStatus && liveStockQtyP != null;
+                      const stockBadge = effStockStatusP ? (
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${isLiveP ? 'opacity-75' : ''} ${
+                          effStockStatusP === "in_stock" ? "text-[#0F5F64] bg-[#0F5F64]/10 border border-[#0F5F64]/20" :
+                          effStockStatusP === "short" ? "text-amber-700 bg-amber-100 border border-amber-200 dark:text-amber-300 dark:bg-amber-900/30" :
                           "text-gray-500 bg-gray-100 border border-gray-200 dark:text-gray-400 dark:bg-gray-800"
                         }`}>
                           <CheckCircle2 className="w-3 h-3" />
-                          {stockStatus === "in_stock" ? "Stores ✓" : stockStatus === "short" ? "Stores ⚠️ Short" : "Stores ✗"}
+                          {effStockStatusP === "in_stock" ? `${isLiveP ? 'Live' : 'Stores'} ✓${isLiveP ? ` ${liveStockQtyP} ${item.uom}` : ''}` : effStockStatusP === "short" ? `${isLiveP ? `Live: ${liveStockQtyP} ${item.uom}` : 'Stores'} ⚠️` : `${isLiveP ? 'Live' : 'Stores'} ✗`}
                           {(item as any).storesItemNote ? ` · ${(item as any).storesItemNote}` : ""}
                         </span>
                       ) : null;
