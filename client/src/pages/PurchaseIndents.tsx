@@ -556,38 +556,32 @@ export default function PurchaseIndents() {
   });
 
   useEffect(() => {
-    if (view !== "stores" || !selectedIndent || !storeStockBalance) return;
+    if (view !== "stores" || !selectedIndent) return;
     setStoreItemVerifications(prev => {
       const updated = { ...prev };
       selectedIndent.items.forEach(item => {
         const existing = prev[item.id] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false };
         if (existing.stockStatus) return;
-        const descLower = item.description.toLowerCase().trim();
-        const match = storeStockBalance.find(si => {
-          const nameLower = si.name.toLowerCase().trim();
-          return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
-        });
-        if (match) {
-          const balance = match.balance;
-          const requested = item.qty;
-          let stockStatus = "";
-          let stockAvailableQty = "";
-          if (balance >= requested) {
-            stockStatus = "in_stock";
-            stockAvailableQty = balance.toString();
-          } else if (balance > 0) {
-            stockStatus = "short";
-            stockAvailableQty = balance.toFixed(2);
-          } else {
-            stockStatus = "out_of_stock";
-            stockAvailableQty = "0";
-          }
-          updated[item.id] = { ...existing, stockStatus, stockAvailableQty };
+        const balance = (item as any).liveStockQty as number | null;
+        if (balance == null) return;
+        const requested = item.qty;
+        let stockStatus = "";
+        let stockAvailableQty = "";
+        if (balance >= requested) {
+          stockStatus = "in_stock";
+          stockAvailableQty = balance.toString();
+        } else if (balance > 0) {
+          stockStatus = "short";
+          stockAvailableQty = balance.toFixed(2);
+        } else {
+          stockStatus = "out_of_stock";
+          stockAvailableQty = "0";
         }
+        updated[item.id] = { ...existing, stockStatus, stockAvailableQty };
       });
       return updated;
     });
-  }, [view, selectedIndent?.id, storeStockBalance]);
+  }, [view, selectedIndent?.id]);
 
   const storeItemsList: StoreItem[] = (rawMaterialsList || [])
     .filter((m: any) => m.isActive !== 0)
@@ -1853,6 +1847,17 @@ export default function PurchaseIndents() {
                             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                               <span className="font-semibold text-foreground">{item.qty} {item.uom}</span>
                               {item.estRate && <span>Est. ₹{item.estRate}/{item.uom}</span>}
+                              {(() => {
+                                const live = (item as any).liveStockQty as number | null;
+                                if (live == null) return null;
+                                const colour = live >= item.qty ? "text-emerald-600 dark:text-emerald-400" : live > 0 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
+                                return (
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${colour}`}>
+                                    <PackageCheck className="w-3.5 h-3.5" />
+                                    Stock: {live} {item.uom}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             {item.purpose && <p className="text-xs text-muted-foreground mt-0.5 italic">FOR: {item.purpose}</p>}
                           </div>
