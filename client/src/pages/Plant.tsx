@@ -30,14 +30,13 @@ export default function Plant() {
   const params = new URLSearchParams(searchString || window.location.search);
   const tabParam = params.get("tab");
 
-  const initialView = ((): "home" | "hmp" | "fleet" | "reports" | "masters" => {
+  const initialView = ((): "home" | "hmp" | "fleet" | "reports" => {
     if (tabParam === "operations") return "hmp";
     if (tabParam === "stock" || tabParam === "reports") return "reports";
-    if (tabParam === "masters") return "masters";
     return "home";
   })();
 
-  const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports" | "masters">(initialView);
+  const [plantView, setPlantView] = useState<"home" | "hmp" | "fleet" | "reports">(initialView);
   const { isAdmin, isManager } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
 
@@ -58,7 +57,6 @@ export default function Plant() {
     hmp: "Heating sessions, shift logs & production dispatches",
     fleet: "Equipment usage, maintenance & fleet management",
     reports: "Production reports, stock ledgers & finance",
-    masters: "Parties, materials, equipment & personnel",
   };
 
   return (
@@ -130,9 +128,6 @@ export default function Plant() {
       {plantView === "reports" && (
         <ReportsAnalysisView plantType={currentPlantType} rmcEnabled={rmcEnabled} />
       )}
-      {plantView === "masters" && (
-        <MastersTab />
-      )}
     </div>
   );
 }
@@ -146,7 +141,7 @@ function PlantHomeCards({
   plantType: string;
   plantName?: string;
   rmcEnabled: boolean;
-  onNavigate: (view: "hmp" | "fleet" | "reports" | "masters") => void;
+  onNavigate: (view: "hmp" | "fleet" | "reports") => void;
 }) {
   const { sectionVisible, isAdmin, isManager } = useAuth();
   const { appendPlantContext } = useOrigin();
@@ -264,7 +259,7 @@ function PlantHomeCards({
         )}
 
         {mastersVisible && (
-          <button className="text-left w-full" onClick={() => onNavigate("masters")} data-testid="tile-masters-config">
+          <Link href="/masters/hub" className="text-left w-full block" data-testid="tile-masters-config">
             <Card className="hover-elevate cursor-pointer h-full">
               <CardContent className="p-6 flex items-center gap-4">
                 <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center shrink-0">
@@ -277,7 +272,7 @@ function PlantHomeCards({
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </CardContent>
             </Card>
-          </button>
+          </Link>
         )}
       </div>
     </div>
