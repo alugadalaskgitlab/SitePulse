@@ -1,12 +1,11 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ClipboardList, Plus, Trash2, AlertTriangle, Info, ChevronLeft, Package } from "lucide-react";
+import { ClipboardList, Plus, Trash2, AlertTriangle, Info, ChevronLeft, Package, Search, Check } from "lucide-react";
 
 type Item = {
   id: number;
@@ -15,9 +14,10 @@ type Item = {
   uom: string;
   purpose: string;
   urgency: string;
+  needByDate: string;
 };
 
-const MATERIALS = [
+const SEED_MATERIALS = [
   "Bitumen (VG-30)",
   "Aggregate 20mm",
   "Aggregate 10mm",
@@ -33,22 +33,136 @@ const MATERIALS = [
   "MS Pipe 50mm",
   "Bitumen Emulsion",
   "Anti-stripping Agent",
-  "Other (specify)",
 ];
+
+const STORAGE_KEY = "irn_material_history";
+
+function loadMaterials(): string[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const custom: string[] = stored ? JSON.parse(stored) : [];
+    const merged = [...SEED_MATERIALS];
+    custom.forEach((m) => { if (!merged.includes(m)) merged.push(m); });
+    return merged;
+  } catch {
+    return SEED_MATERIALS;
+  }
+}
+
+function saveMaterial(name: string) {
+  if (!name.trim()) return;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const custom: string[] = stored ? JSON.parse(stored) : [];
+    if (!custom.includes(name) && !SEED_MATERIALS.includes(name)) {
+      custom.unshift(name);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(custom.slice(0, 50)));
+    }
+  } catch {}
+}
 
 const UOM_OPTIONS = ["MT", "KL", "Nos", "KG", "Ltrs", "Bags", "Rmt", "Sqm", "Sets"];
 
 const nextId = (() => { let n = 1; return () => n++; })();
 
+function MaterialCombobox({
+  value,
+  onChange,
+  materials,
+  onBlur,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  materials: string[];
+  onBlur?: (v: string) => void;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  const filtered = query.trim()
+    ? materials.filter((m) => m.toLowerCase().includes(query.toLowerCase()))
+    : materials;
+
+  const showCreate = query.trim() && !materials.some((m) => m.toLowerCase() === query.toLowerCase());
+
+  function select(m: string) {
+    onChange(m);
+    setQuery(m);
+    setOpen(false);
+    onBlur?.(m);
+  }
+
+  function handleInputBlur(e: React.FocusEvent) {
+    if (listRef.current?.contains(e.relatedTarget as Node)) return;
+    setOpen(false);
+    if (query.trim() && query !== value) {
+      onChange(query.trim());
+      onBlur?.(query.trim());
+    }
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={handleInputBlur}
+          placeholder="Search or type material…"
+          className="h-8 w-full rounded-md border border-input bg-white pl-6 pr-2 text-xs outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 placeholder:text-gray-400"
+          autoComplete="off"
+        />
+      </div>
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg max-h-48 overflow-auto text-xs"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {showCreate && (
+            <div
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 text-amber-700 font-medium border-b flex items-center gap-1.5"
+              onClick={() => select(query.trim())}
+            >
+              <Plus className="h-3 w-3" /> Add "{query.trim()}"
+            </div>
+          )}
+          {filtered.length === 0 && !showCreate && (
+            <div className="px-3 py-2 text-gray-400 italic">No matches</div>
+          )}
+          {filtered.map((m) => (
+            <div
+              key={m}
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 flex items-center justify-between"
+              onClick={() => select(m)}
+            >
+              <span>{m}</span>
+              {m === value && <Check className="h-3 w-3 text-amber-600" />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function IrnRaise() {
   const [section, setSection] = useState("Site");
   const [remarks, setRemarks] = useState("");
+  const [materials, setMaterials] = useState<string[]>(loadMaterials);
   const [items, setItems] = useState<Item[]>([
-    { id: nextId(), material: "", qty: "", uom: "MT", purpose: "", urgency: "normal" },
+    { id: nextId(), material: "", qty: "", uom: "MT", purpose: "", urgency: "normal", needByDate: "" },
   ]);
 
   function addItem() {
-    setItems((prev) => [...prev, { id: nextId(), material: "", qty: "", uom: "MT", purpose: "", urgency: "normal" }]);
+    setItems((prev) => [...prev, { id: nextId(), material: "", qty: "", uom: "MT", purpose: "", urgency: "normal", needByDate: "" }]);
   }
 
   function removeItem(id: number) {
@@ -57,6 +171,14 @@ export function IrnRaise() {
 
   function updateItem(id: number, field: keyof Item, value: string) {
     setItems((prev) => prev.map((i) => i.id === id ? { ...i, [field]: value } : i));
+  }
+
+  function handleMaterialBlur(id: number, value: string) {
+    if (value && !materials.includes(value)) {
+      saveMaterial(value);
+      setMaterials(loadMaterials());
+    }
+    updateItem(id, "material", value);
   }
 
   const hasUrgent = items.some((i) => i.urgency === "urgent");
@@ -81,7 +203,7 @@ export function IrnRaise() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-5 space-y-5">
-        {/* Raised-from section */}
+        {/* Requisition Details */}
         <div className="bg-white border rounded-lg p-4 space-y-4">
           <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
             <Info className="h-4 w-4 text-gray-400" />
@@ -150,23 +272,39 @@ export function IrnRaise() {
                     </button>
                   )}
                 </div>
+
+                {/* Row 1: Material (wide) + Need By Date */}
                 <div className="grid grid-cols-12 gap-2">
-                  <div className="col-span-5 space-y-1">
+                  <div className="col-span-7 space-y-1">
                     <Label className="text-xs">Material <span className="text-red-500">*</span></Label>
-                    <Select value={item.material} onValueChange={(v) => updateItem(item.id, "material", v)}>
-                      <SelectTrigger className="h-8 text-xs bg-white">
-                        <SelectValue placeholder="Select material…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MATERIALS.map((m) => <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <MaterialCombobox
+                      value={item.material}
+                      onChange={(v) => updateItem(item.id, "material", v)}
+                      onBlur={(v) => handleMaterialBlur(item.id, v)}
+                      materials={materials}
+                    />
                   </div>
-                  <div className="col-span-2 space-y-1">
+                  <div className="col-span-5 space-y-1">
+                    <Label className="text-xs">
+                      Need By Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      type="date"
+                      value={item.needByDate}
+                      onChange={(e) => updateItem(item.id, "needByDate", e.target.value)}
+                      className="h-8 text-xs bg-white"
+                      min="2026-06-01"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Qty, UOM, Urgency */}
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-3 space-y-1">
                     <Label className="text-xs">Qty <span className="text-red-500">*</span></Label>
                     <Input value={item.qty} onChange={(e) => updateItem(item.id, "qty", e.target.value)} placeholder="0.00" className="h-8 text-xs bg-white" />
                   </div>
-                  <div className="col-span-2 space-y-1">
+                  <div className="col-span-3 space-y-1">
                     <Label className="text-xs">UOM</Label>
                     <Select value={item.uom} onValueChange={(v) => updateItem(item.id, "uom", v)}>
                       <SelectTrigger className="h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
@@ -175,7 +313,7 @@ export function IrnRaise() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-3 space-y-1">
+                  <div className="col-span-6 space-y-1">
                     <Label className="text-xs">Urgency</Label>
                     <Select value={item.urgency} onValueChange={(v) => updateItem(item.id, "urgency", v)}>
                       <SelectTrigger className={`h-8 text-xs bg-white ${item.urgency === "urgent" ? "border-red-300 text-red-700" : item.urgency === "high" ? "border-orange-300 text-orange-700" : ""}`}>
@@ -189,6 +327,8 @@ export function IrnRaise() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Row 3: Purpose */}
                 <div className="space-y-1">
                   <Label className="text-xs">Purpose / Usage <span className="text-red-500">*</span></Label>
                   <Input value={item.purpose} onChange={(e) => updateItem(item.id, "purpose", e.target.value)} placeholder="Where / why this material is needed…" className="h-8 text-xs bg-white" />
