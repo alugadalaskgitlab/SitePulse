@@ -5038,8 +5038,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "IRN must be stores-verified before approval" });
       }
       // self-approval prevention
-      const sess = (req as any).session;
-      const currentUserId = sess?.userId ?? null;
+      const currentUserId = req.authUser?.id ?? null;
       if (currentUserId && existing.raisedByUserId && currentUserId === existing.raisedByUserId) {
         return res.status(403).json({ message: "You cannot approve your own requisition" });
       }
