@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
@@ -178,6 +178,10 @@ export default function DieselRequirements() {
 
   const { data: equipment } = useQuery<EquipmentMasterType[]>({
     queryKey: ["/api/plant-module/equipment"],
+  });
+
+  const { data: recentEquipmentIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/diesel-requirements/recent-items"],
   });
 
   const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
@@ -801,11 +805,35 @@ export default function DieselRequirements() {
                             <SelectValue placeholder="Select equipment" />
                           </SelectTrigger>
                           <SelectContent>
-                            {equipment?.filter(e => e.isActive === 1).map((eq) => (
-                              <SelectItem key={eq.id} value={String(eq.id)}>
-                                {eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} | {(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}
-                              </SelectItem>
-                            ))}
+                            {(() => {
+                              const activeEquipment = equipment?.filter(e => e.isActive === 1) ?? [];
+                              const recentSet = new Set(recentEquipmentIds);
+                              const recentItems = recentEquipmentIds
+                                .map(id => activeEquipment.find(e => e.id === id))
+                                .filter((e): e is EquipmentMasterType => !!e);
+                              const remainingItems = activeEquipment.filter(e => !recentSet.has(e.id));
+                              const renderItem = (eq: EquipmentMasterType) => (
+                                <SelectItem key={eq.id} value={String(eq.id)} data-testid={`option-equipment-${eq.id}`}>
+                                  {eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} | {(eq as any).ownership === "hired" ? `HIRED: ${(eq as any).vendorName || "—"}` : "HLC OWN"}
+                                </SelectItem>
+                              );
+                              return (
+                                <>
+                                  {recentItems.length > 0 && (
+                                    <SelectGroup>
+                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Recently Used</SelectLabel>
+                                      {recentItems.map(renderItem)}
+                                    </SelectGroup>
+                                  )}
+                                  <SelectGroup>
+                                    {recentItems.length > 0 && (
+                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">All Equipment</SelectLabel>
+                                    )}
+                                    {remainingItems.map(renderItem)}
+                                  </SelectGroup>
+                                </>
+                              );
+                            })()}
                           </SelectContent>
                         </Select>
                         {item.equipmentId && (

@@ -5143,6 +5143,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/diesel-requirements/recent-items", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      const ids = await storage.getRecentDieselItemIds(limit);
+      res.json(ids);
+    } catch (err) {
+      console.error("GET /api/diesel-requirements/recent-items:", err);
+      res.status(500).json({ error: "Failed to fetch recent diesel items" });
+    }
+  });
+
   app.get("/api/diesel-requirements/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);

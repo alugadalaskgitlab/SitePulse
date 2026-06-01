@@ -937,6 +937,7 @@ export interface IStorage {
   getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]>;
   updateDieselRequirement(id: number, data: CreateDieselRequirementRequest): Promise<DieselRequirementWithItems | undefined>;
   deleteDieselRequirement(id: number): Promise<boolean>;
+  getRecentDieselItemIds(limit?: number): Promise<number[]>;
 
   // Vendor Bills
   getVendorBills(filters?: { dateFrom?: string; dateTo?: string; vendor?: string; status?: string }): Promise<VendorBillWithItems[]>;
@@ -10216,6 +10217,32 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(dieselRequirements).where(eq(dieselRequirements.id, id));
     });
     return true;
+  }
+
+  async getRecentDieselItemIds(limit = 5): Promise<number[]> {
+    const rows = await db
+      .selectDistinctOn([dieselRequirementItems.equipmentId], {
+        equipmentId: dieselRequirementItems.equipmentId,
+        requirementId: dieselRequirementItems.requirementId,
+      })
+      .from(dieselRequirementItems)
+      .innerJoin(dieselRequirements, eq(dieselRequirementItems.requirementId, dieselRequirements.id))
+      .where(and(
+        ne(dieselRequirements.status, "rejected"),
+        isNotNull(dieselRequirementItems.equipmentId),
+      ))
+      .orderBy(dieselRequirementItems.equipmentId, desc(dieselRequirements.id));
+    const sorted = rows.sort((a, b) => b.requirementId - a.requirementId);
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const r of sorted) {
+      if (r.equipmentId !== null && r.equipmentId !== undefined && !seen.has(r.equipmentId)) {
+        seen.add(r.equipmentId);
+        result.push(r.equipmentId);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
   }
 
   async getDieselComparisonReport(dateFrom: string, dateTo: string): Promise<{ date: string; totalPlanned: number; totalApproved: number; totalPurchased: number; totalActualIssued: number }[]> {
