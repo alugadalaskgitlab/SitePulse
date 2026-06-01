@@ -289,7 +289,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_materials")) return;
       const input = insertSiteMaterialTripSchema.parse(req.body);
       const trip = await storage.createSiteMaterialTrip(input);
-      sendPushToAll("Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
+      sendPushToSection("site_materials", "Site Material Trip Added", `${input.material || 'Material'} - ${input.site || ''}`, "/site-reports").catch(() => {});
       res.status(201).json(trip);
     } catch (err) {
       console.error("Error creating site material trip:", err);
@@ -304,7 +304,7 @@ export async function registerRoutes(
       const id = Number(req.params.id);
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
       const trip = await storage.updateSiteMaterialTrip(id, input);
-      sendPushToAll("Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
+      sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
       res.json(trip);
     } catch (err) {
       console.error("Error updating site material trip:", err);
@@ -493,7 +493,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Site purchase not found" });
       }
-      sendPushToAll("Site Purchase Updated", `Purchase #${id} updated by admin`, "/site-reports").catch(() => {});
+      sendPushToSection("site_materials", "Site Purchase Updated", `Purchase #${id} updated by admin`, "/site-reports").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err?.name === "ZodError") {
@@ -676,7 +676,7 @@ export async function registerRoutes(
       const input = api.dprs.create.input.parse(req.body);
       const dpr = await storage.createDpr(input, input.clientTimestamp);
       await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
-      sendPushToAll("New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
+      sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
       res.status(201).json(dpr);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -872,7 +872,7 @@ export async function registerRoutes(
         message: `DPR for ${input.data.site} (${input.data.date}) was edited by ${actor}`,
         isRead: 0,
       });
-      sendPushToAll("DPR Updated", `${actor} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
+      sendPushToSection("site_dprs", "DPR Updated", `${actor} edited DPR for ${input.data.site} (${input.data.date})`, "/site-reports").catch(() => {});
 
       res.status(201).json(newVersion);
     } catch (err) {
@@ -925,7 +925,7 @@ export async function registerRoutes(
         message: `DPR cloned for ${cloned.site} (${cloned.date}) by ${actor}`,
         isRead: 0,
       });
-      sendPushToAll("DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
+      sendPushToSection("site_dprs", "DPR Cloned", `${cloned.site} - ${cloned.date}`, "/site-reports").catch(() => {});
 
       res.status(201).json(cloned);
     } catch (err) {
@@ -950,7 +950,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "DPR not found" });
       }
       await storage.createNotification({ type: "warning", title: "DPR Deleted", message: `DPR for ${dprToDelete?.site || 'unknown'} (${dprToDelete?.date || ''}) was deleted by admin`, isRead: 0 });
-      sendPushToAll("DPR Deleted", `${dprToDelete?.site || 'unknown'} - ${dprToDelete?.date || ''}`, "/site-reports").catch(() => {});
+      sendPushToSection("site_dprs", "DPR Deleted", `${dprToDelete?.site || 'unknown'} - ${dprToDelete?.date || ''}`, "/site-reports").catch(() => {});
       res.status(204).send();
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -990,7 +990,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "admin_settings")) return;
       const input = createPlantReportRequestSchema.parse(req.body);
       const report = await storage.createPlantReport(input);
-      sendPushToAll("Plant Report Created", `Plant report for ${input.date}`, "/plant").catch(() => {});
+      sendPushToSection("plant_daily_reports", "Plant Report Created", `Plant report for ${input.date}`, "/plant").catch(() => {});
       res.status(201).json(report);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1019,7 +1019,7 @@ export async function registerRoutes(
       if (!cloned) {
         return res.status(404).json({ message: "Original plant report not found" });
       }
-      sendPushToAll("Plant Report Cloned", `Plant report cloned by ${currentUserName(req)}`, "/plant").catch(() => {});
+      sendPushToSection("plant_daily_reports", "Plant Report Cloned", `Plant report cloned by ${currentUserName(req)}`, "/plant").catch(() => {});
       res.status(201).json(cloned);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1041,7 +1041,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Plant report not found" });
       }
-      sendPushToAll("Plant Report Updated", `Plant report ${id} updated`, "/plant").catch(() => {});
+      sendPushToSection("plant_daily_reports", "Plant Report Updated", `Plant report ${id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1062,7 +1062,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Plant report not found" });
       }
-      sendPushToAll("Plant Report Deleted", `Plant report ${id} deleted`, "/plant").catch(() => {});
+      sendPushToSection("plant_daily_reports", "Plant Report Deleted", `Plant report ${id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1427,7 +1427,7 @@ export async function registerRoutes(
       const input = insertMaterialReceiptSchema.partial().parse(body);
       const updated = await storage.updateMaterialReceipt(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
-      sendPushToAll("Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
@@ -1441,7 +1441,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialReceipt(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Receipt not found" });
-      sendPushToAll("Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material receipt" });
@@ -1487,7 +1487,7 @@ export async function registerRoutes(
         message: `Material issued: ${issue.quantity} ${issue.uom} to ${issue.issuedTo} on ${issue.date}`,
         isRead: 0,
       });
-      sendPushToAll("Material Issued", `${issue.quantity} ${issue.uom} to ${issue.issuedTo}`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Issued", `${issue.quantity} ${issue.uom} to ${issue.issuedTo}`, "/plant").catch(() => {});
       
       res.status(201).json(issue);
     } catch (err) {
@@ -1504,7 +1504,7 @@ export async function registerRoutes(
       const input = insertMaterialIssueSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialIssue(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Issue not found" });
-      sendPushToAll("Material Issue Updated", `Issue #${req.params.id} updated`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Issue Updated", `Issue #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1519,7 +1519,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialIssue(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Issue not found" });
-      sendPushToAll("Material Issue Deleted", `Issue #${req.params.id} deleted`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Issue Deleted", `Issue #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material issue" });
@@ -1563,7 +1563,7 @@ export async function registerRoutes(
         message: `Material returned: ${result.quantity} ${result.uom} from issue #${result.originalIssueId} on ${result.date}`,
         isRead: 0,
       });
-      sendPushToAll("Material Returned", `${result.quantity} ${result.uom} returned on ${result.date}`, "/plant/material-returns").catch(() => {});
+      sendPushToSection("plant_materials", "Material Returned", `${result.quantity} ${result.uom} returned on ${result.date}`, "/plant/material-returns").catch(() => {});
 
       res.status(201).json(result);
     } catch (err: any) {
@@ -1586,7 +1586,7 @@ export async function registerRoutes(
       const input = insertMaterialReturnSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialReturn(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Return not found" });
-      sendPushToAll("Material Return Updated", `Return #${req.params.id} updated`, "/plant/material-returns").catch(() => {});
+      sendPushToSection("plant_materials", "Material Return Updated", `Return #${req.params.id} updated`, "/plant/material-returns").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -1607,7 +1607,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialReturn(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Return not found" });
-      sendPushToAll("Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
+      sendPushToSection("plant_materials", "Material Return Deleted", `Return #${req.params.id} deleted`, "/plant/material-returns").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material return" });
@@ -1646,7 +1646,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_stock")) return;
       const input = insertMaterialOpeningStockSchema.parse(req.body);
       const stock = await storage.createMaterialOpeningStock(input);
-      sendPushToAll("Opening Stock Set", `Opening stock entry created`, "/plant").catch(() => {});
+      sendPushToSection("plant_stock", "Opening Stock Set", `Opening stock entry created`, "/plant").catch(() => {});
       res.status(201).json(stock);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1662,7 +1662,7 @@ export async function registerRoutes(
       const input = insertMaterialOpeningStockSchema.partial().parse(req.body);
       const updated = await storage.updateMaterialOpeningStock(Number(req.params.id), input);
       if (!updated) return res.status(404).json({ message: "Opening stock not found" });
-      sendPushToAll("Opening Stock Updated", `Opening stock #${req.params.id} updated`, "/plant").catch(() => {});
+      sendPushToSection("plant_stock", "Opening Stock Updated", `Opening stock #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1677,7 +1677,7 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const deleted = await storage.deleteMaterialOpeningStock(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Opening stock not found" });
-      sendPushToAll("Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
+      sendPushToSection("plant_stock", "Opening Stock Deleted", `Opening stock #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete opening stock" });
@@ -1710,7 +1710,7 @@ export async function registerRoutes(
         message: `Truck dispatch: ${dispatch.loadWeight} MT dispatched on ${dispatch.date}`,
         isRead: 0,
       });
-      sendPushToAll("Dispatch Recorded", `${dispatch.loadWeight} MT dispatched on ${dispatch.date}`, "/plant").catch(() => {});
+      sendPushToSection("plant_production", "Dispatch Recorded", `${dispatch.loadWeight} MT dispatched on ${dispatch.date}`, "/plant").catch(() => {});
 
       res.status(201).json(result);
     } catch (err) {
@@ -1840,7 +1840,7 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Dispatch not found" });
       }
-      sendPushToAll("Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
+      sendPushToSection("plant_production", "Dispatch Updated", `Dispatch #${id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err) {
       console.error("Update dispatch error:", err);
@@ -1856,7 +1856,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Dispatch not found" });
       }
-      sendPushToAll("Dispatch Deleted", `Dispatch #${id} deleted`, "/plant").catch(() => {});
+      sendPushToSection("plant_production", "Dispatch Deleted", `Dispatch #${id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       console.error("Delete dispatch error:", err);
@@ -1955,7 +1955,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_equipment")) return;
       const usage = await storage.createEquipmentUsage(req.body);
       const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId}`;
-      sendPushToAll("Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
+      sendPushToSection("plant_equipment", "Equipment Entry", `${eqName} - Opening: ${req.body.openingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.status(201).json(usage);
     } catch (err) {
       res.status(500).json({ message: "Failed to create equipment usage" });
@@ -1971,7 +1971,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Equipment usage not found" });
       }
       const eqName = req.body.equipmentName || `Equipment #${req.body.equipmentId || id}`;
-      sendPushToAll("Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
+      sendPushToSection("plant_equipment", "Equipment Updated", `${eqName} - Closing: ${req.body.closingReading ?? 'N/A'}`, "/plant/equipment-usage").catch(() => {});
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update equipment usage" });
@@ -1986,7 +1986,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Equipment usage not found" });
       }
-      sendPushToAll("Equipment Entry Deleted", `Equipment usage #${id} deleted`, "/plant/equipment-usage").catch(() => {});
+      sendPushToSection("plant_equipment", "Equipment Entry Deleted", `Equipment usage #${id} deleted`, "/plant/equipment-usage").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete equipment usage" });
@@ -2042,7 +2042,7 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "plant_equipment")) return;
       const log = await storage.createGeneratorLog(req.body);
-      sendPushToAll("Generator Log Added", `Generator log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
+      sendPushToSection("plant_generator_logs", "Generator Log Added", `Generator log for ${req.body.date || 'today'}`, "/plant").catch(() => {});
       res.status(201).json(log);
     } catch (err) {
       res.status(500).json({ message: "Failed to create generator log" });
@@ -2925,7 +2925,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_bitumen")) return;
       const parsed = insertBitumenDipReadingSchema.parse(req.body);
       const reading = await storage.createBitumenDipReading(parsed);
-      sendPushToAll("Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
+      sendPushToSection("plant_bitumen", "Bitumen Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/bitumen-stock").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       if (err?.code === "DUPLICATE_BITUMEN_DIP" || err?.constraint === "bitumen_dip_readings_date_tank_type_plant_uq") {
@@ -2941,7 +2941,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const result = await storage.updateBitumenDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("Bitumen Dip Updated", `Tank ${req.body.tankNumber || ''} reading updated`, "/plant/bitumen-stock").catch(() => {});
+      sendPushToSection("plant_bitumen", "Bitumen Dip Updated", `Tank ${req.body.tankNumber || ''} reading updated`, "/plant/bitumen-stock").catch(() => {});
       res.json(result);
     } catch (err: any) {
       if (err?.code === "DUPLICATE_BITUMEN_DIP" || err?.constraint === "bitumen_dip_readings_date_tank_type_plant_uq" || err?.message?.includes("bitumen_dip_readings_date_tank_type_plant_uq")) {
@@ -2957,7 +2957,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteBitumenDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("Bitumen Dip Deleted", `Bitumen dip reading #${id} deleted`, "/plant/bitumen-stock").catch(() => {});
+      sendPushToSection("plant_bitumen", "Bitumen Dip Deleted", `Bitumen dip reading #${id} deleted`, "/plant/bitumen-stock").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete bitumen dip reading" });
@@ -2997,7 +2997,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_ldo")) return;
       const parsed: LdoFlowReadingCreate = ldoFlowReadingCreateSchema.parse(req.body);
       const reading = await storage.createLdoFlowReading(parsed);
-      sendPushToAll("LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Flow Reading", `Meter: ${parsed.meterReading || 'N/A'}`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create LDO flow reading" });
@@ -3018,7 +3018,7 @@ export async function registerRoutes(
       const parsed: LdoFlowReadingPatch = ldoFlowReadingPatchSchema.parse(req.body);
       const result = await storage.updateLdoFlowReading(id, parsed);
       if (!result) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("LDO Flow Updated", `LDO flow reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Flow Updated", `LDO flow reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update LDO flow reading" });
@@ -3031,7 +3031,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoFlowReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("LDO Flow Deleted", `LDO flow reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Flow Deleted", `LDO flow reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO flow reading" });
@@ -3169,7 +3169,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "plant_ldo")) return;
       const parsed = insertLdoDipReadingSchema.parse(req.body);
       const reading = await storage.createLdoDipReading(parsed);
-      sendPushToAll("LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Dip Reading", `Tank ${parsed.tankNumber} - ${parsed.depthCm}cm`, "/plant/ldo-flow-meter").catch(() => {});
       res.status(201).json(reading);
     } catch (err: any) {
       if (err?.code === "DUPLICATE_LDO_DIP" || err?.constraint === "ldo_dip_readings_date_tank_type_plant_uq") {
@@ -3185,7 +3185,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const result = await storage.updateLdoDipReading(id, req.body);
       if (!result) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("LDO Dip Updated", `LDO dip reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Dip Updated", `LDO dip reading #${id} updated`, "/plant/ldo-flow-meter").catch(() => {});
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update LDO dip reading" });
@@ -3198,7 +3198,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteLdoDipReading(id);
       if (!deleted) return res.status(404).json({ message: "Reading not found" });
-      sendPushToAll("LDO Dip Deleted", `LDO dip reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
+      sendPushToSection("plant_ldo", "LDO Dip Deleted", `LDO dip reading #${id} deleted`, "/plant/ldo-flow-meter").catch(() => {});
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete LDO dip reading" });
@@ -3502,7 +3502,7 @@ export async function registerRoutes(
       const authorizedRole: "admin" | "manager" | null = "manager";
       try {
         const saved = await storage.upsertPlantShiftLog(parsed, editedBy, authorizedRole);
-        sendPushToAll("Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
+        sendPushToSection("plant_shift_logs", "Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
         if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
@@ -4967,7 +4967,7 @@ export async function registerRoutes(
       const bypassedBy = currentUserName(req);
       const indent = await storage.bypassIndentStores(id, reason.trim(), bypassedBy);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
-      sendPushToAll("Bypass Requested", `${indent.indentNo} — stores bypass requested by ${bypassedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Bypass Requested", `${indent.indentNo} — stores bypass requested by ${bypassedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
@@ -5085,7 +5085,7 @@ export async function registerRoutes(
       const actionBy = currentUserName(req);
       const item = await storage.procureItem(itemId, data, actionBy);
       if (!item) return res.status(404).json({ message: "Purchase indent item not found" });
-      sendPushToAll("Procurement Update", `"${item.description}" marked ${data.action.toUpperCase()}${data.vendor ? ` — ${data.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Procurement Update", `"${item.description}" marked ${data.action.toUpperCase()}${data.vendor ? ` — ${data.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
       res.json(item);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -5119,7 +5119,7 @@ export async function registerRoutes(
       if (combinedNote) {
         await storage.setIndentNotifyMessage(id, combinedNote);
       }
-      sendPushToAll("PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "PI Review Requested", body, "/plant/purchase-indents").catch(() => {});
       await storage.createNotification({
         type: "info",
         title: "PI Review Requested",
@@ -5168,7 +5168,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Purchase indent item not found" });
       }
       if (purchaseData.purchaseStatus) {
-        sendPushToAll("Purchase Update", `Item "${item.description}" - ${purchaseData.purchaseStatus.toUpperCase()}${purchaseData.vendor ? ` from ${purchaseData.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
+        sendPushToSection("purchase_indents_view", "Purchase Update", `Item "${item.description}" - ${purchaseData.purchaseStatus.toUpperCase()}${purchaseData.vendor ? ` from ${purchaseData.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
       }
       res.json(item);
     } catch (err) {
@@ -5195,7 +5195,7 @@ export async function registerRoutes(
       if (!item) {
         return res.status(404).json({ message: "Purchase indent item not found" });
       }
-      sendPushToAll("Item Cancelled", `"${item.description}" cancelled by ${cancelledBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Item Cancelled", `"${item.description}" cancelled by ${cancelledBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(item);
     } catch (err: any) {
       if (err?.message?.startsWith("Cannot cancel")) {
@@ -5234,7 +5234,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
-      sendPushToAll("Indent Force Closed", `${indent.indentNo} force closed by ADMIN`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Indent Force Closed", `${indent.indentNo} force closed by ADMIN`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err: any) {
       if (err?.message?.startsWith("Cannot force close")) {
@@ -7339,11 +7339,7 @@ export async function registerRoutes(
             const wasOk = preBalance > (item.minStockQty ?? 0);
             const nowLow = item.balance <= (item.minStockQty ?? 0);
             if (wasOk && nowLow) {
-              sendPushToAll(
-                "⚠ Low Stock Alert",
-                `${item.itemName} is low — ${item.balance.toFixed(1)} ${item.uom ?? ''} remaining (min ${item.minStockQty})`,
-                "/stores/hub"
-              ).catch(() => {});
+              sendPushToSection("stores_inventory", "⚠ Low Stock Alert", `${item.itemName} is low — ${item.balance.toFixed(1)} ${item.uom ?? ''} remaining (min ${item.minStockQty})`, "/stores/hub").catch(() => {});
             }
           }
         } catch {
