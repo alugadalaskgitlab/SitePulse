@@ -4795,6 +4795,7 @@ export async function registerRoutes(
         purchaseStatus: req.query.purchaseStatus as string | undefined,
         purpose: req.query.purpose as string | undefined,
         vendor: req.query.vendor as string | undefined,
+        paymentMode: req.query.paymentMode as string | undefined,
       };
       const report = await storage.getProcurementReport(filters);
       res.json(report);

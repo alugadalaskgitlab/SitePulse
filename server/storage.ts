@@ -926,7 +926,7 @@ export interface IStorage {
   cancelPurchaseItem(itemId: number, cancelledBy: string, reason: string): Promise<PurchaseIndentItem | undefined>;
   forceCloseIndent(indentId: number, closedBy: string, reason: string): Promise<PurchaseIndentWithItems | undefined>;
   getItemHistory(itemId: number): Promise<PurchaseIndentItemHistoryEntry[]>;
-  getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
+  getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string; paymentMode?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }>;
   updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined>;
   setIndentNotifyMessage(id: number, message: string): Promise<void>;
   setItemReviewerNote(itemId: number, note: string): Promise<void>;
@@ -9399,12 +9399,13 @@ export class DatabaseStorage implements IStorage {
     return history;
   }
 
-  async getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }> {
+  async getProcurementReport(filters?: { dateFrom?: string; dateTo?: string; purchaseStatus?: string; purpose?: string; vendor?: string; paymentMode?: string }): Promise<{ items: any[]; summary: { totalItems: number; purchased: number; partial: number; cancelled: number; notPurchased: number; pending: number; totalSpend: number; fulfillmentRate: number } }> {
     let conditions: any[] = [];
     if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
     if (filters?.purpose) conditions.push(eq(purchaseIndentItems.purpose, filters.purpose.toUpperCase()));
     if (filters?.vendor) conditions.push(ilike(purchaseIndentItems.vendor, `%${filters.vendor}%`));
+    if (filters?.paymentMode) conditions.push(eq(purchaseIndentItems.paymentMode, filters.paymentMode));
 
     const rows = await db.select({
       itemId: purchaseIndentItems.id,
@@ -9427,6 +9428,8 @@ export class DatabaseStorage implements IStorage {
       purchaseRemarks: purchaseIndentItems.purchaseRemarks,
       cancelledBy: purchaseIndentItems.cancelledBy,
       cancelledAt: purchaseIndentItems.cancelledAt,
+      expectedDelivery: purchaseIndentItems.expectedDelivery,
+      paymentMode: purchaseIndentItems.paymentMode,
     })
     .from(purchaseIndentItems)
     .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))

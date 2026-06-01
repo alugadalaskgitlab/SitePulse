@@ -530,6 +530,7 @@ export default function PurchaseIndents() {
   const [reportFilterStatus, setReportFilterStatus] = useState("all");
   const [reportFilterPurpose, setReportFilterPurpose] = useState("all");
   const [reportFilterVendor, setReportFilterVendor] = useState("");
+  const [reportFilterPaymentMode, setReportFilterPaymentMode] = useState("all");
 
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
@@ -863,8 +864,9 @@ export default function PurchaseIndents() {
     if (reportFilterStatus !== "all") params.set("purchaseStatus", reportFilterStatus);
     if (reportFilterPurpose !== "all") params.set("purpose", reportFilterPurpose);
     if (reportFilterVendor.trim()) params.set("vendor", reportFilterVendor.trim());
+    if (reportFilterPaymentMode !== "all") params.set("paymentMode", reportFilterPaymentMode);
     return params.toString();
-  }, [reportFilterDateFrom, reportFilterDateTo, reportFilterStatus, reportFilterPurpose, reportFilterVendor]);
+  }, [reportFilterDateFrom, reportFilterDateTo, reportFilterStatus, reportFilterPurpose, reportFilterVendor, reportFilterPaymentMode]);
 
   const { data: reportData, isLoading: isLoadingReport } = useQuery<{
     items: Array<{
@@ -884,6 +886,8 @@ export default function PurchaseIndents() {
       uom: string;
       cancelledBy: string | null;
       cancelledAt: string | null;
+      expectedDelivery: string | null;
+      paymentMode: string | null;
     }>;
     summary: {
       totalItems: number;
@@ -2482,6 +2486,27 @@ export default function PurchaseIndents() {
                             ) : null;
                           })()}
                         </div>
+                        {((item as any).expectedDelivery || (item as any).paymentMode) && (
+                          <div className="mt-2 flex flex-wrap gap-2 items-center">
+                            {(item as any).expectedDelivery && (
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400" data-testid={`text-detail-exp-delivery-${item.id}`}>
+                                <Calendar className="w-3 h-3" />
+                                EXP: {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
+                              </span>
+                            )}
+                            {(item as any).paymentMode && (
+                              <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                (item as any).paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                                (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                (item as any).paymentMode === "cheque" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                              }`} data-testid={`badge-detail-payment-${item.id}`}>
+                                {((item as any).paymentMode as string).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="mt-2">
                           <Button
                             variant="ghost"
@@ -2721,6 +2746,27 @@ export default function PurchaseIndents() {
                                 <p className="text-xs text-emerald-600 dark:text-emerald-400">
                                   {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
                                 </p>
+                                {((item as any).expectedDelivery || (item as any).paymentMode) && (
+                                  <div className="flex flex-wrap gap-2 items-center mt-1">
+                                    {(item as any).expectedDelivery && (
+                                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400" data-testid={`text-purchased-exp-delivery-${item.id}`}>
+                                        <Calendar className="w-3 h-3" />
+                                        EXP: {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd-MMM-yy").toUpperCase()}
+                                      </span>
+                                    )}
+                                    {(item as any).paymentMode && (
+                                      <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                        (item as any).paymentMode === "cash" ? "bg-green-200 text-green-800 dark:bg-green-900/60 dark:text-green-300" :
+                                        (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                                        (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                        (item as any).paymentMode === "cheque" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                        "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                      }`} data-testid={`badge-purchased-payment-${item.id}`}>
+                                        {((item as any).paymentMode as string).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             {(item as any).reviewerNote && (
@@ -2775,6 +2821,20 @@ export default function PurchaseIndents() {
                                     <span className="font-semibold flex items-center gap-1">
                                       <Calendar className="w-3.5 h-3.5 text-gray-400" />
                                       {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd MMM yyyy")}
+                                    </span>
+                                  </div>
+                                )}
+                                {(item as any).paymentMode && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-500">Payment</span>
+                                    <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                      (item as any).paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                      (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                                      (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                      (item as any).paymentMode === "cheque" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                      "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                    }`} data-testid={`badge-ordered-payment-${item.id}`}>
+                                      {((item as any).paymentMode as string).toUpperCase()}
                                     </span>
                                   </div>
                                 )}
@@ -2980,6 +3040,22 @@ export default function PurchaseIndents() {
                     data-testid="report-filter-vendor"
                   />
                 </div>
+                <div>
+                  <Label className="text-xs uppercase">PAYMENT MODE</Label>
+                  <Select value={reportFilterPaymentMode} onValueChange={setReportFilterPaymentMode}>
+                    <SelectTrigger data-testid="report-filter-payment-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">ALL MODES</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="credit">Credit</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -3043,6 +3119,8 @@ export default function PurchaseIndents() {
                             <th className="text-center p-3 font-semibold uppercase">STATUS</th>
                             <th className="text-left p-3 font-semibold uppercase">VENDOR</th>
                             <th className="text-right p-3 font-semibold uppercase">AMOUNT</th>
+                            <th className="text-left p-3 font-semibold uppercase">EXP. DELIVERY</th>
+                            <th className="text-left p-3 font-semibold uppercase">PAYMENT MODE</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -3068,6 +3146,22 @@ export default function PurchaseIndents() {
                               <td className="p-3 text-center">{getItemStatusBadge(item.purchaseStatus)}</td>
                               <td className="p-3">{item.vendor || "-"}</td>
                               <td className="p-3 text-right">{item.amount != null ? `${"\u20B9"}${item.amount.toLocaleString("en-IN")}` : "-"}</td>
+                              <td className="p-3 whitespace-nowrap" data-testid={`report-delivery-${item.itemId}`}>
+                                {item.expectedDelivery ? format(new Date(item.expectedDelivery + "T00:00:00"), "dd-MMM-yy").toUpperCase() : "-"}
+                              </td>
+                              <td className="p-3" data-testid={`report-payment-${item.itemId}`}>
+                                {item.paymentMode ? (
+                                  <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                    item.paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                    item.paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                                    item.paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                    item.paymentMode === "cheque" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                    "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                  }`}>
+                                    {item.paymentMode.toUpperCase()}
+                                  </span>
+                                ) : "-"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
