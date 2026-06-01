@@ -8966,8 +8966,8 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
-    // State guard: only valid while indent is in stores_check phase
-    if (existing.status !== "stores_check") {
+    // State guard: only valid while indent is awaiting stores action
+    if (existing.status !== "stores_check" && existing.status !== "pending") {
       throw new Error(`Cannot verify stores for an indent in '${existing.status}' status.`);
     }
 
@@ -9012,8 +9012,8 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
-    // State guard: only valid while indent is in stores_check phase
-    if (existing.status !== "stores_check") {
+    // State guard: only valid while indent is awaiting stores action
+    if (existing.status !== "stores_check" && existing.status !== "pending") {
       throw new Error(`Cannot request stores bypass for an indent in '${existing.status}' status.`);
     }
 
