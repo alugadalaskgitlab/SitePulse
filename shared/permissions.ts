@@ -232,7 +232,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   app_management: "App Management (legacy)",
 };
 
-export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export", "approve"] as const;
+export const ACTIONS = ["view", "create", "edit", "delete", "view_reports", "export", "approve", "notify"] as const;
 export type Action = (typeof ACTIONS)[number];
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -243,6 +243,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   view_reports: "Reports",
   export: "Export",
   approve: "Approve",
+  notify: "Notify",
 };
 
 export type SectionPermission = {
@@ -253,6 +254,7 @@ export type SectionPermission = {
   view_reports: boolean;
   export: boolean;
   approve: boolean;
+  notify: boolean;
 };
 
 export type PermissionMatrix = Record<SectionKey, SectionPermission>;
@@ -265,8 +267,11 @@ export const EMPTY_PERMISSION: SectionPermission = {
   view_reports: false,
   export: false,
   approve: false,
+  notify: false,
 };
 
+// Notify is intentionally false in FULL_PERMISSION — push alerts must be
+// explicitly opted-in per section, even when "Grant all" is clicked.
 export const FULL_PERMISSION: SectionPermission = {
   view: true,
   create: true,
@@ -275,6 +280,7 @@ export const FULL_PERMISSION: SectionPermission = {
   view_reports: true,
   export: true,
   approve: true,
+  notify: false,
 };
 
 export function emptyMatrix(): PermissionMatrix {

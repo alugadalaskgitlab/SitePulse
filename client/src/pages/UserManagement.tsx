@@ -55,6 +55,7 @@ import {
   ArrowLeft,
   MapPin,
   ShieldHalf,
+  Bell,
 } from "lucide-react";
 
 type SafeUser = {
@@ -613,6 +614,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
         view_reports: value && canGrantAction(section, "view_reports"),
         export: value && canGrantAction(section, "export"),
         approve: value && canGrantAction(section, "approve"),
+        notify: prev[section].notify, // "All" never toggles Notify — must be opted-in explicitly
       },
     }));
   }
@@ -629,6 +631,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           view_reports: value && canGrantAction(s, "view_reports"),
           export: value && canGrantAction(s, "export"),
           approve: value && canGrantAction(s, "approve"),
+          notify: prev[s].notify, // preserve — "Grant all" for group never toggles Notify
         };
       }
       return next;
@@ -639,6 +642,8 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
 
   // Skip the legacy group unless admin is viewing.
   const visibleGroups = PERMISSION_GROUPS.filter((g) => g.id !== "legacy" || currentIsAdmin);
+  // Notify is excluded from the "All" checkbox — it must be opted-in per section.
+  const NON_NOTIFY_ACTIONS = ACTIONS.filter((a) => a !== "notify");
 
   function PermMatrix({ sections }: { sections: SectionKey[] }) {
     return (
@@ -648,8 +653,12 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
             <tr>
               <th className="text-left px-3 py-2 min-w-[180px] font-medium">Section</th>
               {ACTIONS.map((a) => (
-                <th key={a} className="px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]">
-                  {ACTION_LABELS[a]}
+                <th
+                  key={a}
+                  className={`px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]${a === "notify" ? " border-l border-border" : ""}`}
+                  title={a === "notify" ? "Push notification — user receives an alert when this section fires an event" : undefined}
+                >
+                  {a === "notify" ? <Bell className="h-3.5 w-3.5 mx-auto" /> : ACTION_LABELS[a]}
                 </th>
               ))}
               <th className="px-2 py-2 text-center font-medium min-w-[44px]">All</th>
@@ -658,7 +667,8 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           <tbody>
             {sections.map((s) => {
               const row = matrix[s];
-              const allGrantable = ACTIONS.filter((a) => canGrantAction(s, a));
+              // "All" checkbox only covers non-notify actions — Notify must be opted-in explicitly.
+              const allGrantable = NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a));
               const allChecked = allGrantable.length > 0 && allGrantable.every((a) => row[a]);
               return (
                 <tr key={s} className="border-t hover:bg-muted/30" data-testid={`row-perm-${s}`}>
@@ -666,7 +676,10 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                   {ACTIONS.map((a) => {
                     const grantable = canGrantAction(s, a);
                     return (
-                      <td key={a} className="text-center px-2 py-1.5">
+                      <td
+                        key={a}
+                        className={`text-center px-2 py-1.5${a === "notify" ? " border-l border-border" : ""}`}
+                      >
                         <Checkbox
                           checked={!!row[a]}
                           disabled={!grantable}
@@ -747,7 +760,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           <Accordion type="multiple" defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}>
             {visibleGroups.map((group) => {
               const allGrantableInGroup = group.sections.flatMap((s) =>
-                ACTIONS.filter((a) => canGrantAction(s, a)).map((a) => ({ s, a }))
+                NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a)).map((a) => ({ s, a }))
               );
               const allChecked = allGrantableInGroup.length > 0 && allGrantableInGroup.every(({ s, a }) => matrix[s][a]);
               return (

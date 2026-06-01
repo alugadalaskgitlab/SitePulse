@@ -119,6 +119,7 @@ const permissionMatrixSchema = z.record(
     view_reports: z.boolean().optional(),
     export: z.boolean().optional(),
     approve: z.boolean().optional(),
+    notify: z.boolean().optional(),
   }),
 );
 
@@ -529,6 +530,7 @@ export function registerAuthRoutes(app: Express) {
           view_reports: !!val?.view_reports && (actorRow ? !!actorRow.view_reports : true),
           export: !!val?.export && (actorRow ? !!actorRow.export : true),
           approve: !!val?.approve && (actorRow ? !!actorRow.approve : true),
+          notify: !!val?.notify && (actorRow ? !!actorRow.notify : true),
         };
       }
       await setUserPermissions(id, matrix);

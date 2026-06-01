@@ -222,6 +222,7 @@ import {
   type CreateIrnRequest,
   type StoresVerifyIrnRequest,
   type ApproveIrnRequest,
+  userPermissions,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -869,6 +870,7 @@ export interface IStorage {
   createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscriptionByEndpoint(endpoint: string): Promise<void>;
   deletePushSubscriptionsByUserId(userId: number): Promise<void>;
+  getUsersToNotify(sectionKey: string): Promise<number[]>;
   
   // User Site Access (Permission System v2)
   getUserPermittedSiteIds(userId: number): Promise<number[] | null>;
@@ -6557,6 +6559,14 @@ export class DatabaseStorage implements IStorage {
 
   async deletePushSubscriptionsByUserId(userId: number): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  }
+
+  async getUsersToNotify(sectionKey: string): Promise<number[]> {
+    const rows = await db
+      .select({ userId: userPermissions.userId })
+      .from(userPermissions)
+      .where(and(eq(userPermissions.sectionKey, sectionKey), eq(userPermissions.canNotify, true)));
+    return rows.map((r) => r.userId);
   }
 
   // Returns subscriptions that should actually receive a push:

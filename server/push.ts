@@ -106,3 +106,57 @@ export async function sendPushToAudience(
     console.error("[Push] Error sending notifications:", err);
   }
 }
+
+// Section-targeted push. Only delivers to users who have `notify=true`
+// for the given sectionKey in their permission matrix AND have
+// notificationsEnabled=true on their user account.
+// If no users have opted in for the section, the push is dropped silently.
+export async function sendPushToSection(
+  sectionKey: string,
+  title: string,
+  body: string,
+  url?: string,
+) {
+  if (!pushInitialized) return;
+
+  try {
+    const notifyUserIds = await storage.getUsersToNotify(sectionKey);
+    if (notifyUserIds.length === 0) return;
+    const notifySet = new Set(notifyUserIds);
+
+    // getActivePushSubscriptions already filters by notificationsEnabled.
+    const allActive = await storage.getActivePushSubscriptions();
+    const subscriptions = allActive.filter(
+      (s) => s.userId != null && notifySet.has(s.userId as number),
+    );
+    if (subscriptions.length === 0) return;
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      url: url || "/",
+      icon: "/icon-192x192.png",
+      tag: `hlc-${Date.now()}`,
+    });
+
+    await Promise.allSettled(
+      subscriptions.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload,
+          );
+        } catch (err: any) {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            console.log(`[Push] Removing stale subscription: ${sub.endpoint.slice(0, 60)}...`);
+            await storage.deletePushSubscriptionByEndpoint(sub.endpoint);
+          } else {
+            console.error(`[Push] Section ${sectionKey}: failed to send to ${sub.endpoint.slice(0, 60)}:`, err.message);
+          }
+        }
+      }),
+    );
+  } catch (err) {
+    console.error("[Push] Error sending section notifications:", err);
+  }
+}

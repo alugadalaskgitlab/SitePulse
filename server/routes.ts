@@ -16,7 +16,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { sendPushToAll, sendPushToAudience, sendTestPush } from "./push";
+import { sendPushToAll, sendPushToAudience, sendPushToSection, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath } from "./auth";
@@ -1407,7 +1407,7 @@ export async function registerRoutes(
         message: `New material receipt: ${receipt.quantity} ${receipt.uom} received on ${receipt.date}`,
         isRead: 0,
       });
-      sendPushToAll("Material Receipt", `${receipt.quantity} ${receipt.uom} received on ${receipt.date}`, "/plant").catch(() => {});
+      sendPushToSection("plant_materials", "Material Receipt", `${receipt.quantity} ${receipt.uom} received on ${receipt.date}`, "/plant").catch(() => {});
       
       res.status(201).json(receipt);
     } catch (err: any) {
@@ -4832,7 +4832,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_procurement")) return;
       const input = createPurchaseIndentRequestSchema.parse(req.body);
       const indent = await storage.createPurchaseIndent(input);
-      sendPushToAll("New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_approve", "New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
       res.status(201).json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4946,7 +4946,7 @@ export async function registerRoutes(
       const indent = await storage.verifyIndentStores(id, items, verifiedBy);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
 
-      sendPushToAudience("Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents", "managers").catch(() => {});
+      sendPushToSection("purchase_indents_approve", "Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -5010,7 +5010,7 @@ export async function registerRoutes(
       const parsed = createIrnRequestSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
       const irn = await storage.createInternalRequisition(parsed.data);
-      sendPushToAll("New IRN Raised", `${irn.irnNo} raised by ${irn.raisedBy}`, "/irn").catch(() => {});
+      sendPushToSection("irn_approve", "New IRN Raised", `${irn.irnNo} raised by ${irn.raisedBy}`, "/irn").catch(() => {});
       res.status(201).json(irn);
     } catch (err) {
       console.error("Error creating IRN:", err);
@@ -5027,7 +5027,7 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
       const irn = await storage.storesVerifyIrn(id, parsed.data);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
-      sendPushToAll("IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});
+      sendPushToSection("irn_approve", "IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});
       res.json(irn);
     } catch (err) {
       console.error("Error verifying IRN:", err);
@@ -5055,9 +5055,9 @@ export async function registerRoutes(
       const irn = await storage.approveIrn(id, parsed.data);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
       if (parsed.data.action === "approve") {
-        sendPushToAll("IRN Approved", `${irn.irnNo} approved by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+        sendPushToSection("irn_raise", "IRN Approved", `${irn.irnNo} approved by ${parsed.data.actionBy}`, "/irn").catch(() => {});
       } else {
-        sendPushToAll("IRN Rejected", `${irn.irnNo} rejected by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+        sendPushToSection("irn_raise", "IRN Rejected", `${irn.irnNo} rejected by ${parsed.data.actionBy}`, "/irn").catch(() => {});
       }
       res.json(irn);
     } catch (err) {
