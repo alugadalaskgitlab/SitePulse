@@ -57,9 +57,9 @@ function initVerifications(items: InternalRequisitionItem[]): ItemVerification[]
 
 export default function IrnDetailPage({ id }: { id: number }) {
   const [, navigate] = useLocation();
-  const { canUser } = useAuth();
+  const { sectionCan } = useAuth();
   const { toast } = useToast();
-  const canVerify = canUser("stores_inventory", "create");
+  const canVerify = sectionCan("stores_inventory", "create");
 
   const { data: irn, isLoading } = useQuery<InternalRequisitionWithItems>({
     queryKey: ["/api/irn", id],
@@ -137,7 +137,7 @@ export default function IrnDetailPage({ id }: { id: number }) {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500 font-medium">IRN not found</p>
-          <Button variant="link" onClick={() => navigate("/irn")}>← Back to list</Button>
+          <Button variant="outline" onClick={() => navigate("/irn")} className="mt-2">← Back to list</Button>
         </div>
       </div>
     );

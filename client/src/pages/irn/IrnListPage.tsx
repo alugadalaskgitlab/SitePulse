@@ -35,8 +35,8 @@ function UrgencyDot({ items }: { items: InternalRequisitionWithItems["items"] })
 export default function IrnListPage() {
   const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState("all");
-  const { canUser } = useAuth();
-  const canRaise = canUser("irn_raise", "create");
+  const { sectionCan } = useAuth();
+  const canRaise = sectionCan("irn_raise", "create");
 
   const { data: irns, isLoading } = useQuery<InternalRequisitionWithItems[]>({
     queryKey: ["/api/irn", statusFilter],

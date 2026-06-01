@@ -56,9 +56,9 @@ export default function Home() {
   });
 
   const { data: internalRequisitions = [] } = useQuery<any[]>({
-    queryKey: ["/api/internal-requisitions", { status: "pending" }],
+    queryKey: ["/api/irn", { status: "pending_stores" }],
     queryFn: () =>
-      fetch("/api/internal-requisitions?status=pending")
+      fetch("/api/irn?status=pending_stores", { credentials: "include" })
         .then((r) => r.json()),
   });
 
@@ -381,7 +381,7 @@ export default function Home() {
                       {pendingIRN > 0 ? `${pendingIRN} awaiting approval` : "All clear"}
                     </p>
                     {pendingIRN > 0 && (
-                      <Link href="/internal-requisitions?returnTo=/">
+                      <Link href="/irn">
                         <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </a>
