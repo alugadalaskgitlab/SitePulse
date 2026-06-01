@@ -16,7 +16,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { sendPushToAll, sendPushToAudience, sendPushToSection, sendTestPush } from "./push";
+import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath } from "./auth";
@@ -4891,7 +4891,13 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
+      const wasBypassed = !!bypassReason?.trim();
       sendPushToSection("purchase_indents_view", "Indent Approved", `${indent.indentNo} approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
+      const raiserTitle = wasBypassed ? "Your Indent Was Approved (Bypassed)" : "Your Indent Was Approved";
+      const raiserBody = wasBypassed
+        ? `${indent.indentNo} was approved by ${approvedBy} (stores verification bypassed)`
+        : `${indent.indentNo} has been approved by ${approvedBy}`;
+      sendPushToRaiser(indent.authorUserId, indent.raisedBy, raiserTitle, raiserBody, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4919,6 +4925,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Purchase indent not found" });
       }
       sendPushToSection("purchase_indents_view", "Indent Rejected", `${indent.indentNo} rejected by ${rejectedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToRaiser(indent.authorUserId, indent.raisedBy, "Your Indent Was Rejected", `${indent.indentNo} has been rejected by ${rejectedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       console.error("Error rejecting purchase indent:", err);

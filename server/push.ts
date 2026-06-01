@@ -44,6 +44,87 @@ export async function sendPushToAll(title: string, body: string, url?: string) {
   return sendPushToAudience(title, body, url, "all");
 }
 
+// Resolve a user's id from their display name (raisedBy text).
+// Returns the id when exactly one active user matches (case-insensitive).
+// Returns null and logs a warning on ambiguous or no-match so callers
+// can no-op safely rather than sending to the wrong person.
+async function resolveUserIdByName(name: string): Promise<number | null> {
+  const directory = await storage.getUsersDirectory();
+  const normalised = name.trim().toLowerCase();
+  const matches = directory.filter((u) => u.fullName.trim().toLowerCase() === normalised);
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length === 0) {
+    console.log(`[Push] resolveUserIdByName: no active user found for name "${name}" — skipping targeted push`);
+  } else {
+    console.log(`[Push] resolveUserIdByName: ${matches.length} users share name "${name}" — ambiguous, skipping targeted push`);
+  }
+  return null;
+}
+
+// Send a targeted push to the person who raised a record.
+// Prefers authorUserId (FK, always accurate). Falls back to resolving by
+// raisedBy name when authorUserId is absent (legacy records). No-ops when
+// the raiser cannot be uniquely identified or has push disabled.
+export async function sendPushToRaiser(
+  authorUserId: number | null | undefined,
+  raisedBy: string,
+  title: string,
+  body: string,
+  url?: string
+) {
+  if (!pushInitialized) return;
+
+  let userId = authorUserId ?? null;
+  if (!userId) {
+    userId = await resolveUserIdByName(raisedBy);
+  }
+  if (!userId) return;
+
+  return sendPushToUser(userId, title, body, url);
+}
+
+// Send a push notification to a specific user by their userId.
+// Respects the user's notificationsEnabled setting via getActivePushSubscriptions
+// (which already filters out disabled users). No-ops if the user has no active
+// subscriptions or has push disabled.
+export async function sendPushToUser(userId: number, title: string, body: string, url?: string) {
+  if (!pushInitialized) return;
+
+  try {
+    const subscriptions = await storage.getActivePushSubscriptions();
+    const userSubs = subscriptions.filter((s) => s.userId === userId);
+    if (userSubs.length === 0) return;
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      url: url || "/",
+      icon: "/icon-192x192.png",
+      tag: `hlc-${Date.now()}`,
+    });
+
+    await Promise.allSettled(
+      userSubs.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload
+          );
+        } catch (err: any) {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            console.log(`[Push] Removing stale subscription: ${sub.endpoint.slice(0, 60)}...`);
+            await storage.deletePushSubscriptionByEndpoint(sub.endpoint);
+          } else {
+            console.error(`[Push] Failed to send to user ${userId} at ${sub.endpoint.slice(0, 60)}:`, err.message);
+          }
+        }
+      })
+    );
+  } catch (err) {
+    console.error("[Push] Error sending user notification:", err);
+  }
+}
+
 // Targeted push. The `audience` filter relies on the server-assigned
 // `role` column on push_subscriptions (derived from the authenticated
 // session at subscribe time, not client input), so it cannot be spoofed.
