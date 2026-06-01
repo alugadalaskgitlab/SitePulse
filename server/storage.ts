@@ -221,6 +221,7 @@ import {
   type InternalRequisitionWithItems,
   type CreateIrnRequest,
   type StoresVerifyIrnRequest,
+  type ApproveIrnRequest,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -941,6 +942,7 @@ export interface IStorage {
   getInternalRequisition(id: number): Promise<InternalRequisitionWithItems | undefined>;
   createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems>;
   storesVerifyIrn(id: number, data: StoresVerifyIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
+  approveIrn(id: number, data: ApproveIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -18391,6 +18393,43 @@ export class DatabaseStorage implements IStorage {
 
       return { ...updated, items };
     });
+  }
+
+  async approveIrn(
+    id: number,
+    data: ApproveIrnRequest,
+  ): Promise<InternalRequisitionWithItems | undefined> {
+    const existing = await this.getInternalRequisition(id);
+    if (!existing) return undefined;
+
+    const now = new Date();
+    const updateFields =
+      data.action === "approve"
+        ? {
+            status: "approved" as const,
+            approvedBy: data.actionBy.toUpperCase(),
+            approvedAt: now,
+            approvalRemarks: data.remarks?.toUpperCase() ?? null,
+          }
+        : {
+            status: "rejected" as const,
+            rejectedBy: data.actionBy.toUpperCase(),
+            rejectedAt: now,
+            rejectionReason: data.remarks?.toUpperCase() ?? null,
+          };
+
+    const [updated] = await db
+      .update(internalRequisitions)
+      .set(updateFields)
+      .where(eq(internalRequisitions.id, id))
+      .returning();
+
+    const items = await db
+      .select()
+      .from(internalRequisitionItems)
+      .where(eq(internalRequisitionItems.irnId, id));
+
+    return { ...updated, items };
   }
 }
 

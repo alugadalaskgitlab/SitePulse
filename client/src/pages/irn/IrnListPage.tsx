@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
-import { ClipboardList, Plus, ChevronRight, AlertTriangle, Clock, CheckCircle2, Archive } from "lucide-react";
+import {
+  ClipboardList, Plus, ChevronRight, AlertTriangle, Clock,
+  CheckCircle2, Archive, ShieldCheck, XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +15,9 @@ import type { InternalRequisitionWithItems } from "@shared/schema";
 const STATUS_TABS = [
   { key: "all", label: "All" },
   { key: "pending_stores", label: "Pending Stores" },
-  { key: "stores_verified", label: "Stores Verified" },
+  { key: "stores_verified", label: "Awaiting Approval" },
+  { key: "approved", label: "Approved" },
+  { key: "rejected", label: "Rejected" },
   { key: "closed", label: "Closed" },
 ];
 
@@ -20,7 +25,11 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "pending_stores")
     return <Badge className="bg-amber-50 text-amber-700 border border-amber-200 font-medium text-xs gap-1"><Clock className="h-3 w-3" />Pending Stores</Badge>;
   if (status === "stores_verified")
-    return <Badge className="bg-green-50 text-green-700 border border-green-200 font-medium text-xs gap-1"><CheckCircle2 className="h-3 w-3" />Stores Verified</Badge>;
+    return <Badge className="bg-blue-50 text-blue-700 border border-blue-200 font-medium text-xs gap-1"><Clock className="h-3 w-3" />Awaiting Approval</Badge>;
+  if (status === "approved")
+    return <Badge className="bg-green-50 text-green-700 border border-green-200 font-medium text-xs gap-1"><ShieldCheck className="h-3 w-3" />Approved</Badge>;
+  if (status === "rejected")
+    return <Badge className="bg-red-50 text-red-700 border border-red-200 font-medium text-xs gap-1"><XCircle className="h-3 w-3" />Rejected</Badge>;
   return <Badge className="bg-gray-100 text-gray-600 border border-gray-200 font-medium text-xs gap-1"><Archive className="h-3 w-3" />Closed</Badge>;
 }
 
@@ -73,12 +82,12 @@ export default function IrnListPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-5">
         {/* Status tabs */}
-        <div className="flex gap-1 bg-white border rounded-lg p-1 mb-5 w-fit">
+        <div className="flex gap-1 bg-white border rounded-lg p-1 mb-5 flex-wrap">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setStatusFilter(tab.key)}
-              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 statusFilter === tab.key
                   ? "bg-amber-600 text-white shadow-sm"
                   : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
@@ -113,6 +122,7 @@ export default function IrnListPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Urgency</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Action By</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -130,6 +140,15 @@ export default function IrnListPage() {
                     <td className="px-4 py-3 text-gray-600">{irn.items.length} item{irn.items.length !== 1 ? "s" : ""}</td>
                     <td className="px-4 py-3"><UrgencyDot items={irn.items} /></td>
                     <td className="px-4 py-3"><StatusBadge status={irn.status} /></td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {irn.status === "approved" && irn.approvedBy
+                        ? <span className="text-green-700">{irn.approvedBy}{irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM")}` : ""}</span>
+                        : irn.status === "rejected" && irn.rejectedBy
+                        ? <span className="text-red-600">{irn.rejectedBy}{irn.rejectedAt ? ` · ${format(new Date(irn.rejectedAt), "dd MMM")}` : ""}</span>
+                        : irn.status === "stores_verified" && irn.storesVerifiedBy
+                        ? <span className="text-blue-600">{irn.storesVerifiedBy}</span>
+                        : "—"}
+                    </td>
                     <td className="px-4 py-3 text-right"><ChevronRight className="h-4 w-4 text-gray-300" /></td>
                   </tr>
                 ))}

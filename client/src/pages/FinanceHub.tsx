@@ -49,7 +49,7 @@ export default function FinanceHub() {
 
   const pendingIndents = indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length;
   const approvedIndents = indents.filter((i: any) => i.status === "approved").length;
-  const pendingIrns = irns.filter((r: any) => r.status === "pending_stores").length;
+  const pendingIrns = irns.filter((r: any) => r.status === "pending_stores" || r.status === "stores_verified").length;
 
   return (
     <HubShell

@@ -1457,11 +1457,17 @@ export const internalRequisitions = pgTable("internal_requisitions", {
   raisedByUserId: integer("raised_by_user_id"),
   raisedFrom: text("raised_from").notNull(), // Site Operations | HMP Plant | Equipment & Fleet | RMC Operations
   siteId: integer("site_id"),               // relevant for Site Operations + Equipment & Fleet
-  status: text("status").default("pending_stores").notNull(), // pending_stores | stores_verified | closed
+  status: text("status").default("pending_stores").notNull(), // pending_stores | stores_verified | approved | rejected | closed
   remarks: text("remarks"),
   storesRemarks: text("stores_remarks"),
   storesVerifiedBy: text("stores_verified_by"),
   storesVerifiedAt: timestamp("stores_verified_at"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  approvalRemarks: text("approval_remarks"),
+  rejectedBy: text("rejected_by"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1531,6 +1537,13 @@ export const storesVerifyIrnSchema = z.object({
   })),
 });
 export type StoresVerifyIrnRequest = z.infer<typeof storesVerifyIrnSchema>;
+
+export const approveIrnSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  remarks: z.string().optional(),
+  actionBy: z.string(),
+});
+export type ApproveIrnRequest = z.infer<typeof approveIrnSchema>;
 
 // ============================================
 // DAILY DIESEL REQUIREMENTS

@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -5024,6 +5024,38 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error verifying IRN:", err);
       res.status(500).json({ message: "Failed to verify IRN" });
+    }
+  });
+
+  app.patch("/api/irn/:id/approve", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "irn_approve")) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const existing = await storage.getInternalRequisition(id);
+      if (!existing) return res.status(404).json({ message: "IRN not found" });
+      if (existing.status !== "stores_verified") {
+        return res.status(400).json({ message: "IRN must be stores-verified before approval" });
+      }
+      // self-approval prevention
+      const sess = (req as any).session;
+      const currentUserId = sess?.userId ?? null;
+      if (currentUserId && existing.raisedByUserId && currentUserId === existing.raisedByUserId) {
+        return res.status(403).json({ message: "You cannot approve your own requisition" });
+      }
+      const parsed = approveIrnSchema.safeParse({ ...req.body, actionBy: currentUserName(req) });
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+      const irn = await storage.approveIrn(id, parsed.data);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      if (parsed.data.action === "approve") {
+        sendPushToAll("IRN Approved", `${irn.irnNo} approved by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+      } else {
+        sendPushToAll("IRN Rejected", `${irn.irnNo} rejected by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+      }
+      res.json(irn);
+    } catch (err) {
+      console.error("Error approving IRN:", err);
+      res.status(500).json({ message: "Failed to process IRN approval" });
     }
   });
 
