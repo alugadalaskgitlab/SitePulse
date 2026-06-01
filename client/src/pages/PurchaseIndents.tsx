@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,13 @@ import type { LocationValue } from "@/components/LocationPicker";
 import { useFeatureFlags } from "@/lib/featureFlags";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
+
+type ItemApprovalState = {
+  action: 'pending' | 'modifying' | 'rejecting' | 'approved' | 'modified' | 'rejected';
+  approvedQty: number;
+  modQty: string;
+  rejectReason: string;
+};
 
 function FreeTextCombobox({
   value,
@@ -478,6 +485,7 @@ export default function PurchaseIndents() {
   const [storesBypassNote, setStoresBypassNote] = useState("");
   const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
   const [procureItemData, setProcureItemData] = useState<Record<number, { vendor?: string; rate?: string; qtyPurchased?: string; expectedDelivery?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }>>({});
+  const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
@@ -541,6 +549,46 @@ export default function PurchaseIndents() {
   const { data: sitesList } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["/api/sites"],
   });
+
+  const { data: storeStockBalance } = useQuery<Array<{ id: number; name: string; uom: string; category: string; balance: number }>>({
+    queryKey: ["/api/stores/stock-balance"],
+    enabled: canCreateStores,
+  });
+
+  useEffect(() => {
+    if (view !== "stores" || !selectedIndent || !storeStockBalance) return;
+    setStoreItemVerifications(prev => {
+      const updated = { ...prev };
+      selectedIndent.items.forEach(item => {
+        const existing = prev[item.id] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false };
+        if (existing.stockStatus) return;
+        const descLower = item.description.toLowerCase().trim();
+        const match = storeStockBalance.find(si => {
+          const nameLower = si.name.toLowerCase().trim();
+          return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
+        });
+        if (match) {
+          const balance = match.balance;
+          const requested = item.qty;
+          let stockStatus = "";
+          let stockAvailableQty = "";
+          if (balance >= requested) {
+            stockStatus = "in_stock";
+            stockAvailableQty = balance.toString();
+          } else if (balance > 0) {
+            stockStatus = "short";
+            stockAvailableQty = balance.toFixed(2);
+          } else {
+            stockStatus = "out_of_stock";
+            stockAvailableQty = "0";
+          }
+          updated[item.id] = { ...existing, stockStatus, stockAvailableQty };
+        }
+      });
+      return updated;
+    });
+  }, [view, selectedIndent?.id, storeStockBalance]);
+
   const storeItemsList: StoreItem[] = (rawMaterialsList || [])
     .filter((m: any) => m.isActive !== 0)
     .map((m: any) => ({ id: m.id, name: m.name, uom: m.defaultUom || "NOS", category: m.category || "General" }));
@@ -881,6 +929,14 @@ export default function PurchaseIndents() {
     const ss = (indent as any).storesStatus as string | null;
     const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
 
+    const initApprovalStates = (items: PurchaseIndentWithItems["items"]) => {
+      const states: Record<number, ItemApprovalState> = {};
+      items.forEach(item => {
+        states[item.id] = { action: 'pending', approvedQty: item.approvedQty ?? item.qty, modQty: (item.approvedQty ?? item.qty).toString(), rejectReason: '' };
+      });
+      setItemApprovalStates(states);
+    };
+
     if (indent.status === "pending" || (indent.status === "stores_check" && storesNotVerified)) {
       // Approvers go directly to approval/bypass view; stores users go to verification view
       if (isApprover) {
@@ -892,6 +948,7 @@ export default function PurchaseIndents() {
         });
         setApprovedQtys(qtys);
         setReviewerNotes(notes);
+        initApprovalStates(indent.items);
         setApprovalRemarks("");
         setBypassReason("");
         setView("detail");
@@ -921,6 +978,7 @@ export default function PurchaseIndents() {
       });
       setApprovedQtys(qtys);
       setReviewerNotes(notes);
+      initApprovalStates(indent.items);
       setApprovalRemarks("");
       setBypassReason("");
       setView("detail");
@@ -952,6 +1010,21 @@ export default function PurchaseIndents() {
     }
     rejectMutation.mutate({
       reason: rejectionReason.toUpperCase(),
+    });
+  };
+
+  const handleFinaliseApproval = () => {
+    if (!selectedIndent) return;
+    const approvedItems = selectedIndent.items.map(item => {
+      const st = itemApprovalStates[item.id];
+      if (!st || st.action === 'pending') return { itemId: item.id, approvedQty: item.qty };
+      if (st.action === 'rejected') return { itemId: item.id, approvedQty: 0, note: st.rejectReason };
+      return { itemId: item.id, approvedQty: st.approvedQty };
+    });
+    approveMutation.mutate({
+      approvedItems,
+      remarks: approvalRemarks.toUpperCase() || null,
+      bypassReason: bypassReason.trim() || undefined,
     });
   };
 
@@ -1974,194 +2047,198 @@ export default function PurchaseIndents() {
               </Card>
 
               {(selectedIndent.status === "stores_check" || selectedIndent.status === "pending") ? (
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between gap-2">
-                    <CardTitle className="text-base uppercase">ITEMS - REVIEW & APPROVE QUANTITIES</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-muted-foreground hidden sm:block">ADMIN CAN REDUCE QTY PER ITEM IF NEEDED</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                        onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)}
-                        disabled={notifyMutation.isPending}
-                        data-testid="button-notify-stakeholders"
-                      >
-                        {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <span className="mr-1">🔔</span>}
-                        NOTIFY
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(selectedIndent as any).notifyMessage && (
-                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md flex items-start gap-2">
-                        <span className="text-base leading-none mt-0.5">🔔</span>
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                          <strong className="uppercase">Reviewer Note:</strong> {(selectedIndent as any).notifyMessage}
-                        </p>
-                      </div>
-                    )}
-                    {selectedIndent.items.map((item, index) => {
-                      const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
-                      return (
-                      <Card key={item.id} className="p-4" data-testid={`card-approval-item-${item.id}`}>
-                        <div className="flex justify-between items-start gap-2 flex-wrap">
-                          <div>
-                            <p className="font-bold uppercase">{index + 1}. {item.description}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
+                <>
+                  {/* Summary bar */}
+                  {(() => {
+                    const allItems = selectedIndent.items;
+                    const actionedCount = allItems.filter(item => { const st = itemApprovalStates[item.id]; return st && ['approved','modified','rejected'].includes(st.action); }).length;
+                    const totalEst = allItems.reduce((sum, item) => sum + ((item as any).estAmount ?? (item.estRate && item.qty ? item.estRate * item.qty : 0) ?? 0), 0);
+                    const hasAvail = allItems.some(item => { const st = itemApprovalStates[item.id]; return (!st || st.action === 'pending') && (item as any).stockStatus === 'in_stock'; });
+                    const approveAll = () => {
+                      const updates: Record<number, ItemApprovalState> = {};
+                      allItems.forEach(item => {
+                        const st = itemApprovalStates[item.id];
+                        if ((!st || st.action === 'pending') && (item as any).stockStatus === 'in_stock')
+                          updates[item.id] = { action: 'approved', approvedQty: item.qty, modQty: item.qty.toString(), rejectReason: '' };
+                      });
+                      setItemApprovalStates(prev => ({ ...prev, ...updates }));
+                    };
+                    return (
+                      <Card className="shadow-none">
+                        <CardContent className="py-3 px-4">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex gap-5 items-center">
+                              <div>
+                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Actioned</p>
+                                <p className="font-bold text-gray-900 dark:text-gray-100">{actionedCount} / {allItems.length}</p>
+                              </div>
+                              {totalEst > 0 && (<>
+                                <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+                                <div>
+                                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Est. Total</p>
+                                  <p className="font-bold text-gray-900 dark:text-gray-100">₹{Math.round(totalEst).toLocaleString("en-IN")}</p>
+                                </div>
+                              </>)}
+                            </div>
+                            <div className="flex gap-2">
+                              {hasAvail && (
+                                <Button size="sm" variant="outline" className="text-xs text-[#0F5F64] border-[#0F5F64]/30 bg-[#0F5F64]/5 hover:bg-[#0F5F64]/15 dark:text-teal-300" onClick={approveAll} data-testid="button-approve-all-available">
+                                  Approve All Available
+                                </Button>
+                              )}
+                              <Button variant="outline" size="sm" className="text-blue-600 border-blue-300 hover:bg-blue-50 text-xs" onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)} disabled={notifyMutation.isPending} data-testid="button-notify-stakeholders">
+                                {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔔</span>}
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 flex-wrap justify-end">
-                            {(item.estRate || estAmt) && (
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
-                                ≈ ₹{estAmt?.toLocaleString("en-IN") ?? "—"}
-                                {item.estRate && <span className="text-muted-foreground ml-1">@ ₹{item.estRate}/unit</span>}
-                              </span>
-                            )}
-                            {getPriorityBadge(item.priority)}
-                            {(item as any).requiredBy && (
-                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-detail-req-by-${item.id}`}>
-                                REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {(item as any).stockStatus && (
-                          <div className={`mt-2 flex items-center gap-2 flex-wrap text-xs px-2 py-1.5 rounded-md border ${(item as any).stockStatus === "in_stock" ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300" : (item as any).stockStatus === "short" ? "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"}`}>
-                            <PackageCheck className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="font-semibold">STORES:</span>
-                            <span>{(item as any).stockStatus === "in_stock" ? "In Stock" : (item as any).stockStatus === "short" ? `Short — ${(item as any).stockAvailableQty ?? 0} ${item.uom} available` : "Out of Stock"}</span>
-                            {(item as any).storesItemNote && <span className="text-muted-foreground italic">· {(item as any).storesItemNote}</span>}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-4 mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-md flex-wrap">
-                          <div className="text-sm">
-                            <span className="text-muted-foreground">INTENDED:</span>{" "}
-                            <strong>{item.qty} {item.uom}</strong>
-                          </div>
-                          <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="text-emerald-600 font-semibold">APPROVE QTY:</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={item.qty}
-                              value={approvedQtys[item.id] ?? item.qty}
-                              onChange={(e) => setApprovedQtys(prev => ({
-                                ...prev,
-                                [item.id]: parseFloat(e.target.value) || 0,
-                              }))}
-                              className="w-20 text-center font-bold text-emerald-600 border-emerald-300 bg-white dark:bg-emerald-900/40"
-                              data-testid={`input-approve-qty-${item.id}`}
-                            />
-                            <span className="text-xs text-muted-foreground">{item.uom}</span>
-                            {(approvedQtys[item.id] ?? item.qty) < item.qty && (
-                              <span className="text-xs text-amber-600 font-semibold">(REDUCED FROM {item.qty})</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">🔔 Note:</span>
-                          <Input
-                            value={reviewerNotes[item.id] ?? ""}
-                            onChange={(e) => setReviewerNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
-                            onBlur={(e) => {
-                              const upper = e.target.value.toUpperCase();
-                              setReviewerNotes(prev => ({ ...prev, [item.id]: upper }));
-                              const note = upper.trim();
-                              reviewerNoteMutation.mutate({ itemId: item.id, note });
-                            }}
-                            placeholder="Query or note for this item (optional)..."
-                            className="h-7 text-xs border-blue-200 focus:border-blue-400 uppercase"
-                            data-testid={`input-reviewer-note-${item.id}`}
-                          />
-                        </div>
+                        </CardContent>
                       </Card>
-                      );
-                    })}
-                    {(() => {
-                      const totalEst = selectedIndent.items.reduce((sum, item) => {
-                        const ea = (item as any).estAmount ?? (item.estRate && item.qty ? item.estRate * item.qty : null);
-                        return sum + (ea || 0);
-                      }, 0);
-                      return totalEst > 0 ? (
-                        <div className="flex justify-end items-center gap-2 pt-1 border-t">
-                          <span className="text-xs text-muted-foreground uppercase">Total Est. Value:</span>
-                          <span className="font-bold text-amber-700 dark:text-amber-400">₹{Math.round(totalEst).toLocaleString("en-IN")}</span>
-                        </div>
-                      ) : null;
-                    })()}
+                    );
+                  })()}
 
-                    <div className="pt-2">
-                      <Label className="text-xs uppercase">APPROVAL REMARKS (OPTIONAL)</Label>
-                      <Textarea
-                        value={approvalRemarks}
-                        onChange={(e) => setApprovalRemarks(e.target.value)}
-                        onBlur={(e) => setApprovalRemarks(e.target.value.toUpperCase())}
-                        placeholder="REASON FOR PARTIAL APPROVAL OR ANY NOTES..."
-                        className="uppercase"
-                        data-testid="input-approval-remarks"
-                      />
-                    </div>
+                  {/* Per-item approval cards */}
+                  <div className="space-y-3">
+                  {selectedIndent.items.map((item, index) => {
+                    const st: ItemApprovalState = itemApprovalStates[item.id] || { action: 'pending', approvedQty: item.qty, modQty: item.qty.toString(), rejectReason: '' };
+                    const isActioned = (['approved','modified','rejected'] as const).includes(st.action as any);
+                    const stockStatus = (item as any).stockStatus as string | null;
+                    const stockAvailableQty = (item as any).stockAvailableQty as number | null;
+                    const updateState = (updates: Partial<ItemApprovalState>) =>
+                      setItemApprovalStates(prev => ({ ...prev, [item.id]: { ...st, ...updates } }));
+                    const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
+                    const stockBadge = stockStatus ? (
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                        stockStatus === 'in_stock' ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/40' :
+                        stockStatus === 'short' ? 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40' :
+                        'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-800'
+                      }`}>
+                        {stockStatus === 'in_stock' ? <PackageCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                        {stockStatus === 'in_stock' ? `Stores: ${stockAvailableQty != null ? stockAvailableQty : item.qty} ${item.uom} avail.` :
+                         stockStatus === 'short' ? `Stores: ${stockAvailableQty ?? 0} / ${item.qty} — short` : 'Stores: No stock'}
+                        {(item as any).storesItemNote ? ` · ${(item as any).storesItemNote}` : ''}
+                      </span>
+                    ) : null;
 
-                    {(() => {
-                      const ss = (selectedIndent as any).storesStatus as string | null;
-                      const storesNotDone = !ss || (ss !== "verified" && ss !== "bypass_requested");
-                      if (!storesNotDone) return null;
+                    if (isActioned) {
                       return (
-                        <div className="pt-2 rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
-                          <Label className="text-xs uppercase text-orange-800 dark:text-orange-300 font-semibold">
-                            ⚡ STORES CHECK PENDING — Bypass Reason (required to approve without stores verification)
-                          </Label>
-                          <Textarea
-                            value={bypassReason}
-                            onChange={(e) => setBypassReason(e.target.value)}
-                            onBlur={(e) => setBypassReason(e.target.value.toUpperCase())}
-                            placeholder="STATE REASON FOR BYPASSING STORES VERIFICATION..."
-                            className="uppercase text-sm"
-                            data-testid="input-bypass-reason-approval"
-                          />
+                        <div key={item.id} className={`border rounded-lg p-3 space-y-2 ${
+                          st.action === 'approved' ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800' :
+                          st.action === 'rejected' ? 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800' :
+                          'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
+                        }`} data-testid={`card-approval-item-${item.id}`}>
+                          <div className="flex justify-between items-start">
+                            <h3 className={`font-semibold text-sm ${st.action==='rejected'?'line-through text-red-800 dark:text-red-300':st.action==='approved'?'text-emerald-900 dark:text-emerald-300':'text-amber-900 dark:text-amber-300'}`}>{index+1}. {item.description}</h3>
+                            <div className="shrink-0 text-right">
+                              <span className={`font-bold text-sm ${st.action==='rejected'?'text-red-700':st.action==='approved'?'text-emerald-700':'text-amber-700'}`}>{st.action==='modified'?st.approvedQty:item.qty} {item.uom}</span>
+                              {st.action==='modified' && <p className="text-[10px] text-amber-600/80 line-through">req: {item.qty}</p>}
+                            </div>
+                          </div>
+                          {stockBadge}
+                          <div className={`flex items-start gap-2 text-xs py-1.5 px-2 rounded-md ${st.action==='approved'?'text-emerald-700 bg-emerald-100/50':st.action==='rejected'?'text-red-700 bg-red-100/50':'text-amber-800 bg-amber-100/50'}`}>
+                            {st.action==='approved' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
+                            {st.action==='rejected' && <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />}
+                            {st.action==='modified' && <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />}
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium">{st.action==='approved'?'Approved as requested':st.action==='rejected'?'Rejected':`Partial: ${st.approvedQty} of ${item.qty}`}</span>
+                              {st.action==='rejected' && st.rejectReason && <p className="opacity-80 truncate">"{st.rejectReason}"</p>}
+                            </div>
+                            <button className="text-[10px] underline opacity-60 hover:opacity-100 shrink-0" onClick={() => updateState({ action: 'pending' })}>Undo</button>
+                          </div>
                         </div>
                       );
-                    })()}
+                    }
 
-                    <div className="pt-2">
-                      <Label className="text-xs uppercase">REJECTION REASON (IF REJECTING)</Label>
-                      <Textarea
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        onBlur={(e) => setRejectionReason(e.target.value.toUpperCase())}
-                        placeholder="REASON FOR REJECTION..."
-                        className="uppercase"
-                        data-testid="input-rejection-reason"
-                      />
-                    </div>
-                  </CardContent>
-                  <div className="flex justify-between items-center p-4 border-t flex-wrap gap-2">
-                    {canEdit && (
-                      <Button
-                        variant="outline"
-                        className="text-red-600 border-red-300"
-                        onClick={handleReject}
-                        disabled={rejectMutation.isPending}
-                        data-testid="button-reject"
-                      >
-                        {rejectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <X className="w-4 h-4 mr-1" />}
-                        REJECT
-                      </Button>
-                    )}
-                    {canEdit && (
-                      <Button
-                        className="bg-emerald-600 text-white"
-                        onClick={handleApprove}
-                        disabled={approveMutation.isPending}
-                        data-testid="button-approve"
-                      >
-                        {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Check className="w-4 h-4 mr-1" />}
-                        APPROVE INDENT
-                      </Button>
-                    )}
+                    return (
+                      <div key={item.id} className="bg-white dark:bg-card border-2 border-[#0F5F64]/20 shadow-sm rounded-xl overflow-hidden" data-testid={`card-approval-item-${item.id}`}>
+                        <div className="p-4 space-y-2">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-900 dark:text-gray-100">{index+1}. {item.description}</p>
+                              <p className="text-xs text-muted-foreground">FOR: {item.purpose}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-bold bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-sm">{item.qty} {item.uom}</span>
+                              {estAmt && <p className="text-xs text-muted-foreground mt-0.5">Est ₹{estAmt.toLocaleString("en-IN")}</p>}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {getPriorityBadge(item.priority)}
+                            {(item as any).requiredBy && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">REQ. BY: {format(new Date((item as any).requiredBy+"T00:00:00"),"dd-MMM-yyyy").toUpperCase()}</span>}
+                            {stockBadge}
+                          </div>
+                          {st.action === 'pending' && (
+                            <div className="grid grid-cols-3 gap-2 mt-1">
+                              <button onClick={() => updateState({ action:'approved', approvedQty:item.qty })} className="flex flex-col items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 py-2.5 rounded-lg transition-colors" data-testid={`button-approve-item-${item.id}`}>
+                                <Check className="w-5 h-5" /><span className="text-xs font-semibold">Approve</span>
+                              </button>
+                              <button onClick={() => updateState({ action:'modifying', modQty:item.qty.toString() })} className="flex flex-col items-center gap-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 py-2.5 rounded-lg transition-colors" data-testid={`button-modify-item-${item.id}`}>
+                                <Edit2 className="w-4 h-4" /><span className="text-xs font-semibold">Modify Qty</span>
+                              </button>
+                              <button onClick={() => updateState({ action:'rejecting', rejectReason:'' })} className="flex flex-col items-center gap-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 py-2.5 rounded-lg transition-colors" data-testid={`button-reject-item-${item.id}`}>
+                                <X className="w-5 h-5" /><span className="text-xs font-semibold">Reject</span>
+                              </button>
+                            </div>
+                          )}
+                          {st.action === 'modifying' && (
+                            <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+                              <label className="block text-xs font-medium text-amber-900 dark:text-amber-300 mb-1.5">Approved Qty ({item.uom})</label>
+                              <div className="flex gap-2">
+                                <Input type="number" min={0} max={item.qty} value={st.modQty} onChange={(e) => updateState({ modQty:e.target.value })} className="flex-1 border-amber-300" data-testid={`input-modify-qty-${item.id}`} />
+                                <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => { const q=parseFloat(st.modQty); if(!isNaN(q)&&q>=0) updateState({action:'modified',approvedQty:q}); }} data-testid={`button-save-modify-${item.id}`}>Save</Button>
+                              </div>
+                              <div className="flex justify-end mt-1.5"><button className="text-xs text-amber-700 dark:text-amber-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button></div>
+                            </div>
+                          )}
+                          {st.action === 'rejecting' && (
+                            <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                              <label className="block text-xs font-medium text-red-900 dark:text-red-300 mb-1.5">Reason for Rejection</label>
+                              <Textarea value={st.rejectReason} onChange={(e) => updateState({rejectReason:e.target.value})} placeholder="e.g. Budget exceeded, not required now..." className="bg-white dark:bg-card border-red-300 dark:border-red-800 resize-none min-h-[60px] text-sm" rows={2} data-testid={`input-reject-reason-${item.id}`} />
+                              <div className="flex justify-between items-center mt-2">
+                                <button className="text-xs text-red-700 dark:text-red-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button>
+                                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" disabled={!st.rejectReason.trim()} onClick={() => updateState({action:'rejected'})} data-testid={`button-confirm-reject-${item.id}`}>Confirm Reject</Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                   </div>
-                </Card>
+
+                  {/* Overall remarks */}
+                  <Card className="shadow-sm">
+                    <CardContent className="p-4 space-y-3">
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"><FileText className="w-4 h-4 text-gray-500" />Overall Manager Remarks</label>
+                        <Textarea value={approvalRemarks} onChange={(e)=>setApprovalRemarks(e.target.value)} onBlur={(e)=>setApprovalRemarks(e.target.value.toUpperCase())} placeholder="Add any final comments for stores or procurement..." className="uppercase min-h-[70px]" data-testid="input-approval-remarks" />
+                      </div>
+                      {(() => {
+                        const ss = (selectedIndent as any).storesStatus as string | null;
+                        if (ss === "verified" || ss === "bypass_requested") return null;
+                        return (
+                          <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
+                            <Label className="text-xs uppercase text-orange-800 dark:text-orange-300 font-semibold">⚡ STORES CHECK PENDING — Bypass Reason</Label>
+                            <Textarea value={bypassReason} onChange={(e)=>setBypassReason(e.target.value)} onBlur={(e)=>setBypassReason(e.target.value.toUpperCase())} placeholder="STATE REASON FOR BYPASSING STORES VERIFICATION..." className="uppercase text-sm" data-testid="input-bypass-reason-approval" />
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+
+                  {/* Sticky bottom Finalise button */}
+                  {(() => {
+                    const allActioned = selectedIndent.items.every(item => { const st = itemApprovalStates[item.id]; return st && (['approved','modified','rejected'] as const).includes(st.action as any); });
+                    return (
+                      <div className="sticky bottom-0 bg-white dark:bg-card border-t border-gray-200 dark:border-gray-800 p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] rounded-b-lg">
+                        <Button disabled={!allActioned || approveMutation.isPending} onClick={handleFinaliseApproval} className={`w-full py-5 text-base font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${allActioned?'bg-[#F97316] hover:bg-[#EA580C] text-white shadow-lg shadow-orange-500/20':'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'}`} data-testid="button-finalise-approval">
+                          {approveMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : allActioned ? <CheckCircle2 className="w-5 h-5" /> : null}
+                          Finalise Approval
+                        </Button>
+                        {!allActioned && <p className="text-center text-xs text-muted-foreground mt-2">Action all {selectedIndent.items.length} items to enable</p>}
+                      </div>
+                    );
+                  })()}
+                </>
               ) : (
                 <Card>
                   <CardHeader>
@@ -2266,350 +2343,357 @@ export default function PurchaseIndents() {
             </div>
           ) : selectedIndent ? (
             <>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-                  <CardTitle className="text-base uppercase" data-testid="text-purchase-indent-no">{selectedIndent.indentNo}</CardTitle>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {selectedIndent.status !== "completed" && canEdit && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-blue-600 border-blue-300"
-                        onClick={handleEditIndent}
-                        data-testid="button-edit-indent-purchase"
-                      >
-                        <Pencil className="w-3 h-3 mr-1" /> EDIT
-                      </Button>
-                    )}
-                    {canDelete && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 border-red-300"
-                        onClick={() => setShowDeleteConfirm(true)}
-                        data-testid="button-delete-indent-purchase"
-                      >
-                        <Trash2 className="w-3 h-3 mr-1" /> DELETE
-                      </Button>
-                    )}
-                    {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+              {/* Teal procurement header */}
+              <div className="rounded-xl overflow-hidden border border-[#0F5F64]/20 shadow-sm">
+                <div className="bg-[#0F5F64] text-white p-5">
+                  <div className="flex items-center gap-2 mb-1 text-[11px] uppercase tracking-wider opacity-70">
+                    <ChevronLeft className="w-3.5 h-3.5" /> Purchase Indent · Procurement
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex justify-between items-start gap-3 mb-3">
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">DATE</p>
-                      <p className="font-semibold uppercase">{format(new Date(selectedIndent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}</p>
+                      <h2 className="text-xl font-bold" data-testid="text-purchase-indent-no">{selectedIndent.indentNo}</h2>
+                      <p className="text-sm text-teal-200 mt-0.5">
+                        {selectedIndent.raisedBy} · {format(new Date(selectedIndent.date + "T00:00:00"), "dd MMM yyyy")}
+                      </p>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">PROPOSED BY</p>
-                      <p className="font-semibold uppercase">{selectedIndent.proposedBy}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">RAISED BY</p>
-                      <p className="font-semibold uppercase">{selectedIndent.raisedBy}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">APPROVED BY</p>
-                      <p className="font-semibold uppercase">{selectedIndent.approvedBy || "-"} {selectedIndent.approvedAt ? `\u2022 ${selectedIndent.approvedAt}` : ""}</p>
+                    <div className="flex flex-col gap-1 items-end shrink-0">
+                      {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+                      <div className="flex gap-1">
+                        {selectedIndent.status !== "completed" && canEdit && (
+                          <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
+                        )}
+                        {canDelete && (
+                          <button onClick={() => setShowDeleteConfirm(true)} className="text-[11px] text-red-300 underline hover:text-red-200" data-testid="button-delete-indent-purchase">Delete</button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
-                    <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} />
-                  </div>
-                </CardContent>
-              </Card>
+                  {selectedIndent.approvedBy && (
+                    <div className="bg-white/10 border border-white/15 rounded-lg px-3 py-2.5 flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                      <p className="text-sm"><strong>Approved</strong>{" "}
+                        <span className="text-teal-200">· {selectedIndent.approvedBy}{selectedIndent.approvedAt ? ` · ${selectedIndent.approvedAt}` : ""}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
 
+                {/* Sticky summary bar */}
+                {(() => {
+                  const toProcure = selectedIndent.items.filter(i => {
+                    const approvedQty = i.approvedQty ?? i.qty;
+                    const ps = (i.purchaseStatus || "").toLowerCase();
+                    return approvedQty > 0 && ps !== "purchased" && ps !== "partial";
+                  });
+                  const rejectedCount = selectedIndent.items.filter(i => (i.approvedQty ?? i.qty) === 0).length;
+                  const totalEst = selectedIndent.items.reduce((s, i) => s + ((i as any).estAmount ?? (i.estRate && i.qty ? i.estRate * i.qty : 0) ?? 0), 0);
+                  const totalPurchased = getTotalAmount(selectedIndent.items);
+                  return (
+                    <div className="bg-white dark:bg-card border-b border-gray-200 dark:border-gray-700 px-4 py-2.5 flex gap-4 items-center flex-wrap">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-[#0F5F64]">
+                        <ShoppingCart className="w-4 h-4" /> {toProcure.length} to procure
+                      </div>
+                      {rejectedCount > 0 && (
+                        <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                          <Ban className="w-3.5 h-3.5" /> {rejectedCount} rejected
+                        </div>
+                      )}
+                      <div className="ml-auto flex items-center gap-3 text-sm">
+                        {totalEst > 0 && <span className="text-gray-600 dark:text-gray-400">Est: <strong className="text-gray-800 dark:text-gray-200">₹{Math.round(totalEst).toLocaleString("en-IN")}</strong></span>}
+                        {totalPurchased > 0 && <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Purchased: ₹{totalPurchased.toLocaleString("en-IN")}</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Force close */}
               {selectedIndent.status === "approved" && hasUnfulfilledItems(selectedIndent.items) && (
                 <div className="flex justify-end">
-                  <Button
-                    className="bg-amber-600 text-white"
-                    onClick={() => setShowForceCloseConfirm(true)}
-                    data-testid="button-force-close"
-                  >
+                  <Button className="bg-amber-600 text-white" onClick={() => setShowForceCloseConfirm(true)} data-testid="button-force-close">
                     <Lock className="w-4 h-4 mr-1" /> FORCE CLOSE INDENT
                   </Button>
                 </div>
               )}
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-base uppercase">ITEMS - PURCHASE STATUS</CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedIndent.items.filter(i => i.purchaseStatus).length} OF {selectedIndent.items.length} ITEMS UPDATED
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {selectedIndent.items.map((item, index) => {
-                    const itemStatus = (item.purchaseStatus || "").toLowerCase();
-                    const isPending = !item.purchaseStatus;
-                    const isCancelled = itemStatus === "cancelled";
-                    const canCancel = canCancelItem(item.purchaseStatus);
-                    const borderColor = itemStatus === "purchased" ? "border-l-emerald-500" :
-                      itemStatus === "partial" ? "border-l-amber-500" :
-                      itemStatus === "not_purchased" ? "border-l-red-500" :
-                      itemStatus === "cancelled" ? "border-l-gray-400" :
-                      "border-l-muted";
-                    const update = purchaseUpdates[item.id];
+              {/* Item cards — sorted: pending → ordered → received → rejected */}
+              <div className="space-y-3">
+                {(() => {
+                  const rankItem = (i: typeof selectedIndent.items[0]) => {
+                    if ((i.approvedQty ?? i.qty) === 0) return 4;
+                    const ps = (i.purchaseStatus || "").toLowerCase();
+                    if (ps === "purchased" || ps === "partial") return 3;
+                    if (ps === "ordered") return 2;
+                    return 1;
+                  };
+                  return [...selectedIndent.items]
+                    .sort((a, b) => rankItem(a) - rankItem(b))
+                    .map((item) => {
+                      const realIndex = selectedIndent.items.indexOf(item);
+                      const ps = (item.purchaseStatus || "").toLowerCase();
+                      const approvedQty = item.approvedQty ?? item.qty;
+                      const isRejected = approvedQty === 0;
+                      const isPurchased = ps === "purchased" || ps === "partial";
+                      const isOrdered = ps === "ordered";
+                      const isCancelled = ps === "cancelled";
+                      const isPending = !isRejected && !isPurchased && !isOrdered && !isCancelled;
+                      const canCancel = canCancelItem(item.purchaseStatus);
+                      const procData = procureItemData[item.id] || {};
+                      const setProcData = (updates: Partial<typeof procData>) =>
+                        setProcureItemData(prev => ({ ...prev, [item.id]: { ...procData, ...updates } }));
+                      const computedAmount = procData.rate && approvedQty
+                        ? Math.round(parseFloat(procData.rate) * approvedQty) : null;
+                      const stockStatus = (item as any).stockStatus as string | null;
+                      const stockBadge = stockStatus ? (
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                          stockStatus === "in_stock" ? "text-[#0F5F64] bg-[#0F5F64]/10 border border-[#0F5F64]/20" :
+                          stockStatus === "short" ? "text-amber-700 bg-amber-100 border border-amber-200 dark:text-amber-300 dark:bg-amber-900/30" :
+                          "text-gray-500 bg-gray-100 border border-gray-200 dark:text-gray-400 dark:bg-gray-800"
+                        }`}>
+                          <CheckCircle2 className="w-3 h-3" />
+                          {stockStatus === "in_stock" ? "Stores ✓" : stockStatus === "short" ? "Stores ⚠️ Short" : "Stores ✗"}
+                          {(item as any).storesItemNote ? ` · ${(item as any).storesItemNote}` : ""}
+                        </span>
+                      ) : null;
 
-                    return (
-                      <Card key={item.id} className={`p-4 border-l-4 ${borderColor}`} data-testid={`card-purchase-item-${item.id}`}>
-                        <div className="flex justify-between items-start gap-2 flex-wrap">
-                          <div>
-                            <p className="font-bold uppercase">{index + 1}. {item.description}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
+                      if (isRejected) {
+                        return (
+                          <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
+                                <p className="text-xs text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
+                              </div>
+                            </div>
+                            {stockBadge && <div className="mt-2">{stockBadge}</div>}
+                            <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
+                              <Ban className="w-4 h-4 text-gray-400 shrink-0" />
+                              <span>Manager Rejected — No procurement needed</span>
+                            </div>
                           </div>
-                          <div className="flex gap-1 flex-wrap items-center justify-end">
+                        );
+                      }
+
+                      if (isCancelled) {
+                        return (
+                          <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
+                            <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
+                            <p className="text-xs text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
+                              {item.purchaseRemarks ? ` · ${item.purchaseRemarks}` : ""}</p>
+                          </div>
+                        );
+                      }
+
+                      if (isPurchased) {
+                        return (
+                          <div key={item.id} className="border border-emerald-200 dark:border-emerald-800 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 p-4" data-testid={`card-procure-item-${item.id}`}>
+                            <div className="flex justify-between items-start mb-1.5">
+                              <div>
+                                <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{realIndex + 1}. {item.description}</h3>
+                                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
+                              </div>
+                            </div>
+                            {stockBadge && <div className="mb-2">{stockBadge}</div>}
+                            <div className="bg-emerald-100/60 dark:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2.5 flex items-center gap-2.5">
+                              <PackageCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <div>
+                                <p className="font-semibold text-emerald-800 dark:text-emerald-300 text-sm">
+                                  Received{item.billNo ? ` · Bill: ${item.billNo}` : ""}
+                                </p>
+                                <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                  {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            {(item as any).reviewerNote && (
+                              <div className="mt-2 flex items-start gap-1.5 text-xs text-blue-700 dark:text-blue-300 italic">
+                                <span>🔔</span><span>{(item as any).reviewerNote}</span>
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                                <Clock className="w-3 h-3 mr-1" />
+                                {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                                HISTORY
+                              </Button>
+                              {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (isOrdered) {
+                        return (
+                          <div key={item.id} className="border border-blue-200 dark:border-blue-800 rounded-xl bg-blue-50 dark:bg-blue-950/30 p-4" data-testid={`card-procure-item-${item.id}`}>
+                            <div className="flex justify-between items-start mb-1.5">
+                              <div>
+                                <h3 className="font-semibold text-blue-900 dark:text-blue-300">{realIndex + 1}. {item.description}</h3>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
+                              </div>
+                            </div>
+                            {stockBadge && <div className="mb-2">{stockBadge}</div>}
+                            <div className="bg-blue-100 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 border-b border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60">
+                                <ClipboardList className="w-4 h-4 text-blue-600" />
+                                <span className="font-semibold text-blue-800 dark:text-blue-200 text-sm">Order Placed</span>
+                              </div>
+                              <div className="px-3 py-2.5 space-y-1.5 text-sm">
+                                {item.vendor && (
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Vendor</span>
+                                    <span className="font-semibold">{item.vendor}</span>
+                                  </div>
+                                )}
+                                {item.rate != null && (
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Rate</span>
+                                    <span className="font-semibold">₹{item.rate}/{item.uom}</span>
+                                  </div>
+                                )}
+                                {(item as any).expectedDelivery && (
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-500">Expected</span>
+                                    <span className="font-semibold flex items-center gap-1">
+                                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                      {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd MMM yyyy")}
+                                    </span>
+                                  </div>
+                                )}
+                                <Button
+                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-2"
+                                  size="sm"
+                                  onClick={() => procureMutation.mutate({ itemId: item.id, data: { action: "received" } })}
+                                  disabled={procureMutation.isPending}
+                                  data-testid={`button-mark-received-${item.id}`}
+                                >
+                                  {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+                                  Mark Received → Create GRN
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="mt-2">
+                              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                                <Clock className="w-3 h-3 mr-1" />
+                                {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                                HISTORY
+                              </Button>
+                              {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      /* Pending → action form */
+                      return (
+                        <div key={item.id} className="border-2 border-[#0F5F64]/25 dark:border-[#0F5F64]/40 rounded-xl bg-white dark:bg-card shadow-sm p-4" data-testid={`card-procure-item-${item.id}`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-gray-900 dark:text-gray-100">{realIndex + 1}. {item.description}</h3>
+                              <p className="text-xs text-gray-500 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
+                            </div>
+                            <span className="shrink-0 inline-flex items-center text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">
+                              Pending Order
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mb-3">
                             {getPriorityBadge(item.priority)}
-                            {getItemStatusBadge(item.purchaseStatus)}
                             {(item as any).requiredBy && (
-                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-purchase-req-by-${item.id}`}>
+                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                                 REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                               </span>
                             )}
+                            {stockBadge}
                           </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-sm mt-2 flex-wrap">
-                          <span>INTENDED: <strong>{item.qty} {item.uom}</strong></span>
-                          <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                          <span>APPROVED: <strong className="text-emerald-600">{item.approvedQty ?? item.qty} {item.uom}</strong></span>
-                          {item.approvedQty != null && item.approvedQty < item.qty && (
-                            <span className="text-xs text-amber-600">(REDUCED)</span>
-                          )}
-                          {item.qtyPurchased != null && (
-                            <>
-                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                              <span>BOUGHT: <strong className={itemStatus === "purchased" ? "text-emerald-600" : "text-amber-600"}>{item.qtyPurchased} {item.uom}</strong></span>
-                            </>
-                          )}
-                          {itemStatus === "not_purchased" && (
-                            <>
-                              <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-red-600 font-semibold">NOT PURCHASED</span>
-                            </>
-                          )}
-                        </div>
-
-                        {item.purchaseStatus && itemStatus !== "not_purchased" && (item.vendor || item.billNo || item.rate || item.amount) && (
-                          <div className={`mt-2 p-3 rounded-md ${
-                            itemStatus === "purchased" ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-amber-50 dark:bg-amber-900/20"
-                          }`}>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                              {item.vendor && <div><span className="text-muted-foreground">VENDOR:</span> <strong>{item.vendor}</strong></div>}
-                              {item.billNo && <div><span className="text-muted-foreground">BILL NO:</span> <strong>{item.billNo}</strong></div>}
-                              {item.rate != null && <div><span className="text-muted-foreground">RATE:</span> <strong>{"\u20B9"} {item.rate}</strong></div>}
-                              {item.amount != null && <div><span className="text-muted-foreground">AMOUNT:</span> <strong>{"\u20B9"} {item.amount.toLocaleString("en-IN")}</strong></div>}
+                          {(item as any).reviewerNote && (
+                            <div className="flex items-start gap-1.5 text-xs text-blue-700 dark:text-blue-300 italic mb-3">
+                              <span>🔔</span><span>{(item as any).reviewerNote}</span>
                             </div>
-                            {item.purchaseRemarks && (
-                              <p className="text-xs mt-2 text-amber-700 dark:text-amber-300">
-                                <strong>REMARKS:</strong> {item.purchaseRemarks}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {itemStatus === "not_purchased" && item.purchaseRemarks && (
-                          <div className="mt-2 p-3 rounded-md bg-red-50 dark:bg-red-900/20">
-                            <p className="text-xs text-red-700 dark:text-red-300">
-                              <strong>REASON:</strong> {item.purchaseRemarks}
-                            </p>
-                          </div>
-                        )}
-
-                        {isCancelled && (
-                          <div className="mt-2 p-3 rounded-md bg-gray-100 dark:bg-gray-800">
-                            <p className="text-xs text-gray-600 dark:text-gray-400">
-                              <strong>CANCELLED</strong>
-                              {item.cancelledBy && <> BY {item.cancelledBy}</>}
-                              {item.cancelledAt && <> ON {item.cancelledAt}</>}
-                            </p>
-                            {item.purchaseRemarks && (
-                              <p className="text-xs text-gray-500 mt-1">REASON: {item.purchaseRemarks}</p>
-                            )}
-                          </div>
-                        )}
-                        {(item as any).reviewerNote && (
-                          <div className="mt-2 flex items-start gap-1.5">
-                            <span className="text-xs">🔔</span>
-                            <p className="text-xs text-blue-700 dark:text-blue-300 italic">{(item as any).reviewerNote}</p>
-                          </div>
-                        )}
-
-                        {canCancel && (
-                          <div className="mt-2 flex justify-end">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 border-red-300"
-                              onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }}
-                              data-testid={`button-cancel-item-${item.id}`}
-                            >
-                              <Ban className="w-3 h-3 mr-1" /> CANCEL ITEM
-                            </Button>
-                          </div>
-                        )}
-
-                        <div className="mt-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs text-muted-foreground"
-                            onClick={() => toggleHistoryItem(item.id)}
-                            data-testid={`button-toggle-history-${item.id}`}
-                          >
-                            <Clock className="w-3 h-3 mr-1" />
-                            {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
-                            HISTORY
-                          </Button>
-                          {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
-                        </div>
-
-                        {isPending && (
-                          <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
-                            <p className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-3">UPDATE PURCHASE STATUS</p>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                          )}
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Vendor / Supplier</label>
+                              <Input
+                                value={procData.vendor || ""}
+                                onChange={e => setProcData({ vendor: e.target.value })}
+                                onBlur={e => setProcData({ vendor: e.target.value.toUpperCase() })}
+                                placeholder="Type vendor name..."
+                                className="uppercase"
+                                data-testid={`input-procure-vendor-${item.id}`}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <Label className="text-xs">PURCHASE STATUS</Label>
-                                <Select
-                                  value={update?.purchaseStatus || ""}
-                                  onValueChange={(v) => updatePurchaseField(item.id, "purchaseStatus", v)}
-                                >
-                                  <SelectTrigger data-testid={`select-purchase-status-${item.id}`}>
-                                    <SelectValue placeholder="SELECT..." />
-                                  </SelectTrigger>
+                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Rate (₹/{item.uom})</label>
+                                <Input type="number" value={procData.rate || ""} onChange={e => setProcData({ rate: e.target.value })} placeholder="0.00" data-testid={`input-procure-rate-${item.id}`} />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Total Amount</label>
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 h-10 flex items-center">
+                                  {computedAmount ? `₹${computedAmount.toLocaleString("en-IN")}` : "—"}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Expected Delivery</label>
+                                <Input type="date" value={procData.expectedDelivery || ""} onChange={e => setProcData({ expectedDelivery: e.target.value })} data-testid={`input-procure-delivery-${item.id}`} />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Payment Mode</label>
+                                <Select value={procData.paymentMode || "credit"} onValueChange={v => setProcData({ paymentMode: v })}>
+                                  <SelectTrigger data-testid={`select-procure-payment-${item.id}`}><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="purchased">PURCHASED</SelectItem>
-                                    <SelectItem value="partial">PARTIALLY PURCHASED</SelectItem>
-                                    <SelectItem value="not_purchased">NOT PURCHASED</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label className="text-xs">QTY PURCHASED</Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={item.approvedQty ?? item.qty}
-                                  value={update?.qtyPurchased || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "qtyPurchased", e.target.value)}
-                                  placeholder="0"
-                                  data-testid={`input-qty-purchased-${item.id}`}
-                                />
-                                <p className="text-xs text-muted-foreground mt-0.5">MAX APPROVED: {item.approvedQty ?? item.qty} {item.uom}</p>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                              <div>
-                                <Label className="text-xs">VENDOR / SUPPLIER</Label>
-                                <Input
-                                  value={update?.vendor || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "vendor", e.target.value)}
-                                  onBlur={(e) => updatePurchaseField(item.id, "vendor", e.target.value.toUpperCase())}
-                                  placeholder="VENDOR NAME"
-                                  className="uppercase"
-                                  data-testid={`input-vendor-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">BILL NO.</Label>
-                                <Input
-                                  value={update?.billNo || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "billNo", e.target.value)}
-                                  onBlur={(e) => updatePurchaseField(item.id, "billNo", e.target.value.toUpperCase())}
-                                  placeholder="BILL NUMBER"
-                                  className="uppercase"
-                                  data-testid={`input-bill-no-${item.id}`}
-                                />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                              <div>
-                                <Label className="text-xs">RATE ({"\u20B9"})</Label>
-                                <Input
-                                  type="number"
-                                  value={update?.rate || ""}
-                                  onChange={(e) => updatePurchaseField(item.id, "rate", e.target.value)}
-                                  placeholder="0.00"
-                                  data-testid={`input-rate-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">AMOUNT ({"\u20B9"})</Label>
-                                <Input
-                                  type="number"
-                                  value={update?.amount || ""}
-                                  disabled
-                                  className="bg-muted"
-                                  data-testid={`input-amount-${item.id}`}
-                                />
-                                <p className="text-xs text-muted-foreground mt-0.5">AUTO-CALCULATED: QTY x RATE</p>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                              <div>
-                                <Label className="text-xs">EXPECTED DELIVERY DATE</Label>
-                                <Input
-                                  type="date"
-                                  value={procurementExtras[item.id]?.expectedDelivery || (item as any).expectedDelivery || ""}
-                                  onChange={(e) => updateProcurementExtra(item.id, "expectedDelivery", e.target.value)}
-                                  data-testid={`input-expected-delivery-${item.id}`}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">PAYMENT MODE</Label>
-                                <Select
-                                  value={procurementExtras[item.id]?.paymentMode || (item as any).paymentMode || "credit"}
-                                  onValueChange={(v) => updateProcurementExtra(item.id, "paymentMode", v)}
-                                >
-                                  <SelectTrigger data-testid={`select-payment-mode-${item.id}`}>
-                                    <SelectValue placeholder="SELECT..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="cash">CASH</SelectItem>
-                                    <SelectItem value="credit">CREDIT</SelectItem>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="credit">Credit</SelectItem>
                                     <SelectItem value="upi">UPI</SelectItem>
-                                    <SelectItem value="cheque">CHEQUE</SelectItem>
+                                    <SelectItem value="cheque">Cheque</SelectItem>
                                     <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                             </div>
-                            <div className="mb-3">
-                              <Label className="text-xs">REMARKS / REASON</Label>
-                              <Textarea
-                                value={update?.purchaseRemarks || ""}
-                                onChange={(e) => updatePurchaseField(item.id, "purchaseRemarks", e.target.value)}
-                                onBlur={(e) => updatePurchaseField(item.id, "purchaseRemarks", e.target.value.toUpperCase())}
-                                placeholder="REASON IF NOT PURCHASED OR PARTIAL, OR ANY NOTES..."
-                                className="uppercase"
-                                data-testid={`input-purchase-remarks-${item.id}`}
-                              />
-                            </div>
-                            <div className="flex justify-end">
+                            <div className="grid grid-cols-2 gap-2 pt-1">
                               <Button
-                                size="sm"
-                                onClick={() => handleSavePurchaseUpdate(item.id)}
-                                disabled={purchaseUpdateMutation.isPending}
-                                data-testid={`button-save-purchase-${item.id}`}
+                                variant="outline"
+                                className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300 font-semibold"
+                                onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "ordered" } })}
+                                disabled={procureMutation.isPending}
+                                data-testid={`button-mark-ordered-${item.id}`}
                               >
-                                {purchaseUpdateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                                SAVE UPDATE
+                                {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <ClipboardList className="w-3.5 h-3.5 mr-1.5" />}
+                                Mark Ordered
+                              </Button>
+                              <Button
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "received" } })}
+                                disabled={procureMutation.isPending}
+                                data-testid={`button-received-grn-${item.id}`}
+                              >
+                                {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+                                Received → GRN
                               </Button>
                             </div>
+                            {canCancel && (
+                              <div className="flex justify-end pt-1">
+                                <Button variant="outline" size="sm" className="text-red-600 border-red-300 text-xs" onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }} data-testid={`button-cancel-item-${item.id}`}>
+                                  <Ban className="w-3 h-3 mr-1" /> Cancel Item
+                                </Button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </CardContent>
-                <div className="flex justify-between items-center p-4 border-t flex-wrap gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    TOTAL PURCHASED: <strong className="text-foreground text-base">{"\u20B9"} {getTotalAmount(selectedIndent.items).toLocaleString("en-IN")}</strong>
-                  </div>
-                </div>
-              </Card>
+                          <div className="mt-3">
+                            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                              <Clock className="w-3 h-3 mr-1" />
+                              {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                              HISTORY
+                            </Button>
+                            {expandedHistoryItems.has(item.id) && <ItemHistoryTimeline itemId={item.id} />}
+                          </div>
+                        </div>
+                      );
+                    });
+                })()}
+              </div>
             </>
           ) : (
             <Card>

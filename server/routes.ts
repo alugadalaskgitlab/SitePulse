@@ -6921,6 +6921,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stores/stock-balance", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const items = await storage.getStoreItemsWithBalance();
+      res.json(items);
+    } catch (err) {
+      console.error("GET /api/stores/stock-balance:", err);
+      res.status(500).json({ error: "Failed to fetch stock balance" });
+    }
+  });
+
   app.post("/api/stores/items", async (req, res) => {
     try {
       if (!assertCreate(req, res, "stores_inventory")) return;

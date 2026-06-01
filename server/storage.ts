@@ -758,6 +758,7 @@ export interface IStorage {
 
   // Stores & Inventory Module
   getStoreItems(includeInactive?: boolean): Promise<StoreItem[]>;
+  getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>>;
   createStoreItem(data: InsertStoreItem): Promise<StoreItem>;
   updateStoreItem(id: number, data: Partial<InsertStoreItem>): Promise<StoreItem | undefined>;
   toggleStoreItemActive(id: number): Promise<StoreItem | undefined>;
@@ -17097,6 +17098,33 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(storeItems)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(storeItems.category), asc(storeItems.name));
+  }
+
+  async getStoreItemsWithBalance(): Promise<Array<StoreItem & { balance: number }>> {
+    const items = await db.select().from(storeItems)
+      .where(eq(storeItems.isActive, 1))
+      .orderBy(asc(storeItems.category), asc(storeItems.name));
+
+    const grnTotals = await db.select({
+      itemId: storeGrnItems.itemId,
+      total: sql<number>`COALESCE(SUM(${storeGrnItems.qty}), 0)`,
+    }).from(storeGrnItems).groupBy(storeGrnItems.itemId);
+
+    const issueTotals = await db.select({
+      itemId: storeIssueItems.itemId,
+      total: sql<number>`COALESCE(SUM(${storeIssueItems.qty}), 0)`,
+    }).from(storeIssueItems).groupBy(storeIssueItems.itemId);
+
+    const grnMap: Record<number, number> = {};
+    grnTotals.forEach(g => { grnMap[g.itemId] = Number(g.total); });
+
+    const issueMap: Record<number, number> = {};
+    issueTotals.forEach(i => { issueMap[i.itemId] = Number(i.total); });
+
+    return items.map(item => ({
+      ...item,
+      balance: Math.max(0, (grnMap[item.id] || 0) - (issueMap[item.id] || 0)),
+    }));
   }
 
   async createStoreItem(data: InsertStoreItem): Promise<StoreItem> {
