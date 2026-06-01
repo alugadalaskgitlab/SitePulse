@@ -141,6 +141,17 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
   return null;
 }
 
+function formatTimeDuration(start: string, end: string): string | null {
+  if (!start || !end) return null;
+  try {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff <= 0) return null;
+    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+  } catch { return null; }
+}
+
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -780,6 +791,8 @@ export default function SiteEntry() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -794,6 +807,8 @@ export default function SiteEntry() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1077,7 +1092,7 @@ export default function SiteEntry() {
                     </p>
                     <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                       <div>
                         <Label className="text-xs">Start Time</Label>
                         <Input
@@ -1103,6 +1118,12 @@ export default function SiteEntry() {
                           }}
                           data-testid={`input-equipment-end-${idx}`}
                         />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Duration</Label>
+                        <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded border border-amber-200 dark:border-amber-700 font-semibold text-amber-700 dark:text-amber-400 text-sm" data-testid={`display-time-duration-${idx}`}>
+                          {formatTimeDuration(entry.startTime, entry.endTime) ?? "-"}
+                        </div>
                       </div>
                       <div>
                         <Label className="text-xs">Opening Hour Meter</Label>

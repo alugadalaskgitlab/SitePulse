@@ -100,9 +100,9 @@ function parseChainageToMeters(chainage: string): number | null {
     const m = parseInt(match[2], 10);
     return km * 1000 + m;
   }
-  // Try parsing as plain number
+  // Decimal kilometres (e.g. "2.100" = 2.1 km = 2100 m)
   const num = parseFloat(chainage);
-  return isNaN(num) ? null : num;
+  return isNaN(num) ? null : num * 1000;
 }
 
 // Calculate length from chainage difference
@@ -113,6 +113,17 @@ function calculateLengthFromChainage(from: string, to: string): number | null {
     return Math.abs(toMeters - fromMeters);
   }
   return null;
+}
+
+function formatTimeDuration(start: string, end: string): string | null {
+  if (!start || !end) return null;
+  try {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff <= 0) return null;
+    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+  } catch { return null; }
 }
 
 interface StructureItem {
@@ -959,6 +970,8 @@ export default function SiteEdit() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -973,6 +986,8 @@ export default function SiteEdit() {
                       onChange={(e) => {
                         const updated = [...progress];
                         updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1045,6 +1060,21 @@ export default function SiteEdit() {
                         {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Qty</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder={calculateQuantity(entry)?.toFixed(3) || "Auto"}
+                      value={entry.quantity ?? ""}
+                      onChange={(e) => {
+                        const updated = [...progress];
+                        updated[idx].quantity = e.target.value ? parseFloat(e.target.value) : null;
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-qty-${idx}`}
+                    />
                   </div>
                 </div>
               )}
@@ -1252,7 +1282,7 @@ export default function SiteEdit() {
                   <p className="text-xs font-semibold text-muted-foreground border-b pb-1">
                     {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
                     <div>
                       <Label className="text-xs">Start</Label>
                       <Input
@@ -1278,6 +1308,12 @@ export default function SiteEdit() {
                         }}
                         data-testid={`input-equipment-end-${idx}`}
                       />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Duration</Label>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded border border-amber-200 dark:border-amber-700 font-semibold text-amber-700 dark:text-amber-400 text-sm" data-testid={`display-time-duration-${idx}`}>
+                        {formatTimeDuration(entry.startTime, entry.endTime) ?? "-"}
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs">Opening Reading</Label>
