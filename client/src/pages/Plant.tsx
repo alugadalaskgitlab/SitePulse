@@ -1805,7 +1805,7 @@ function MastersTab() {
   );
 }
 
-function SitesMasterSection() {
+export function SitesMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_parties", "edit");
@@ -2102,7 +2102,7 @@ function SitesMasterSection() {
   );
 }
 
-function PartyMaster() {
+export function PartyMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_parties", "edit");
@@ -2299,7 +2299,7 @@ function PartyMaster() {
   );
 }
 
-function MaterialMaster() {
+export function MaterialMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
@@ -2787,7 +2787,7 @@ type MixTemplateComponent = {
   wastageFactor?: number | null;
 };
 
-function MixTemplateMaster() {
+export function MixTemplateMaster() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_materials", "edit");
@@ -3525,7 +3525,7 @@ function MixTemplateMaster() {
   );
 }
 
-function EquipmentMasterSection() {
+export function EquipmentMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_equipment", "edit");
@@ -3924,7 +3924,7 @@ function EquipmentMasterSection() {
   );
 }
 
-function PersonnelMasterSection() {
+export function PersonnelMasterSection() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
   const canEdit = sectionCan("master_personnel", "edit");

@@ -6,7 +6,6 @@ import { HubActionTile } from "@/components/HubActionTile";
 import { useAuth } from "@/lib/auth-context";
 
 const HUB = "/masters/hub";
-const MASTERS = `/plant/dashboard?tab=masters&returnTo=${HUB}`;
 
 export default function AdminMastersHub() {
   const { sectionVisible } = useAuth();
@@ -26,7 +25,7 @@ export default function AdminMastersHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`${MASTERS}#party-master`}
+              href="/masters/section/parties"
               icon={HardHat}
               title="Parties / Jobs"
               description="Manage contractor parties, job names & associated accounts"
@@ -35,7 +34,7 @@ export default function AdminMastersHub() {
               enabled={sectionVisible("master_parties")}
             />
             <HubActionTile
-              href={`${MASTERS}#site-master`}
+              href="/masters/section/sites"
               icon={MapPin}
               title="Site Master"
               description="Add and manage site locations linked to parties"
@@ -52,7 +51,7 @@ export default function AdminMastersHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`${MASTERS}#material-master`}
+              href="/masters/section/materials"
               icon={Layers}
               title="Material Master"
               description="Define aggregate materials, bitumen, LDO & other inputs"
@@ -61,7 +60,7 @@ export default function AdminMastersHub() {
               enabled={sectionVisible("master_materials")}
             />
             <HubActionTile
-              href={`${MASTERS}#mix-templates`}
+              href="/masters/section/mix-templates"
               icon={FlaskConical}
               title="Mix Templates"
               description="Configure bituminous mix designs with component proportions"
@@ -78,7 +77,7 @@ export default function AdminMastersHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`${MASTERS}#equipment-master`}
+              href="/masters/section/equipment"
               icon={Wrench}
               title="Equipment Master"
               description="Register equipment, assign categories & manage fleet details"
@@ -87,7 +86,7 @@ export default function AdminMastersHub() {
               enabled={sectionVisible("master_equipment")}
             />
             <HubActionTile
-              href={`${MASTERS}#personnel-master`}
+              href="/masters/section/personnel"
               icon={UserCheck}
               title="Personnel / Operators"
               description="Manage operator names, designations & shift assignments"

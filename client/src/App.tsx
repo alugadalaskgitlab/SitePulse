@@ -95,6 +95,7 @@ import SiteBackfill from "@/pages/SiteBackfill";
 import StoresHub from "@/pages/StoresHub";
 import FinanceHub from "@/pages/FinanceHub";
 import AdminMastersHub from "@/pages/AdminMastersHub";
+import PlantMasters from "@/pages/PlantMasters";
 import NotFound from "@/pages/not-found";
 function Watermark() {
   return (
@@ -306,6 +307,7 @@ function AuthedShell() {
             <Route path="/admin/mix-comparison" component={gatedEither(MixComparativeReport, "mix_calculator", "reports")} />
             <Route path="/admin/scenario-comparison" component={gatedEither(ScenarioComparison, "mix_calculator", "reports")} />
             <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
+            <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
             <Route component={NotFound} />
           </Switch>
         </div>
