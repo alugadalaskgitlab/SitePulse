@@ -207,8 +207,14 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /* ── Date input — ensure calendar picker button is always visible ── */
+input[type="date"],
+input[type="datetime-local"] {
+  -webkit-appearance: auto;
+  appearance: auto;
+}
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  display: block;
   cursor: pointer;
   opacity: 0.65;
   padding: 0 2px;
