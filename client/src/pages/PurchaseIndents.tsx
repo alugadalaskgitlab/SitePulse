@@ -1662,7 +1662,9 @@ export default function PurchaseIndents() {
                             updated[index] = {
                               ...updated[index],
                               description: desc,
-                              ...(uom ? { uom } : {}),
+                              // Only apply uom from catalogue if it's a meaningful unit (not the "NOS" fallback
+                              // used when a material has no defaultUom set — that would override the user's choice)
+                              ...(uom && uom !== "NOS" ? { uom } : {}),
                               materialId: materialId ?? (desc !== item.description ? null : updated[index].materialId),
                             };
                             setFormItems(updated);

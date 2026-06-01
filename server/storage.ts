@@ -8821,15 +8821,19 @@ export class DatabaseStorage implements IStorage {
     });
     if (!indent) return undefined;
 
-    // Enrich items with live stock balance:
-    // 1st try: stores GRN items matched by description name
-    // 2nd try: plant production stockBalances matched by materialId
+    // Enrich items with live stock balance (3-pass lookup):
+    // 1st: stores GRN items matched by description name
+    // 2nd: plant stockBalances matched by materialId (when item was picked from catalogue)
+    // 3rd: plant material name match (when item was typed manually, materialId is null)
     const storeGrnBalances = await this.getStoreItemsWithBalance();
     const plantBalanceRows = await db.select().from(stockBalances);
     const plantBalanceByMaterialId = new Map<number, number>();
     for (const row of plantBalanceRows) {
       plantBalanceByMaterialId.set(row.materialId, (plantBalanceByMaterialId.get(row.materialId) ?? 0) + row.balance);
     }
+    // Load plant material names for 3rd-pass name fallback
+    const allPlantMaterials = await db.select({ id: plantMaterials.id, name: plantMaterials.name })
+      .from(plantMaterials).where(eq(plantMaterials.isActive, 1));
 
     const enrichedItems = (indent as any).items.map((item: any) => {
       const descLower = (item.description as string).toLowerCase().trim();
@@ -8846,6 +8850,18 @@ export class DatabaseStorage implements IStorage {
       // 2nd: plant stock balance by materialId (summed across all parties)
       if (item.materialId != null) {
         const plantQty = plantBalanceByMaterialId.get(item.materialId);
+        if (plantQty !== undefined) {
+          return { ...item, liveStockQty: Math.max(0, plantQty), liveStoreItemName: null };
+        }
+      }
+
+      // 3rd: plant material name match fallback (typed manually — no materialId set)
+      const matMatch = allPlantMaterials.find(m => {
+        const nameLower = m.name.toLowerCase().trim();
+        return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
+      });
+      if (matMatch != null) {
+        const plantQty = plantBalanceByMaterialId.get(matMatch.id);
         if (plantQty !== undefined) {
           return { ...item, liveStockQty: Math.max(0, plantQty), liveStoreItemName: null };
         }
