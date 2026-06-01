@@ -480,6 +480,7 @@ export default function PurchaseIndents() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showForceCloseConfirm, setShowForceCloseConfirm] = useState(false);
   const [forceCloseReason, setForceCloseReason] = useState("");
+  const [grnPanelOpen, setGrnPanelOpen] = useState(true);
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
 
   const [showGrnDialog, setShowGrnDialog] = useState(false);
@@ -609,6 +610,15 @@ export default function PurchaseIndents() {
   const { data: indentGrnCounts } = useQuery<Record<string, number>>({
     queryKey: ["/api/stores/indent-grn-counts"],
     enabled: canViewStores,
+  });
+
+  const indentRefForGrns = (view === "purchase" || view === "procurement") ? selectedIndent?.indentNo : undefined;
+  const { data: linkedGrns = [] } = useQuery<{ id: number; grnNumber: string; date: string; supplier: string; acceptanceStatus: string; itemCount: number }[]>({
+    queryKey: ["/api/stores/grns", "linked", indentRefForGrns ?? ""],
+    queryFn: () => fetch(`/api/stores/grns?indentRef=${encodeURIComponent(indentRefForGrns!)}`, { credentials: "include" })
+      .then(r => r.json())
+      .then((grns: any[]) => grns.map(g => ({ id: g.id, grnNumber: g.grnNumber, date: g.date, supplier: g.supplier, acceptanceStatus: g.acceptanceStatus, itemCount: (g.items ?? []).length }))),
+    enabled: canViewStores && !!indentRefForGrns,
   });
 
   const createMutation = useMutation({
@@ -2674,6 +2684,53 @@ export default function PurchaseIndents() {
                   <Button className="bg-amber-600 text-white" onClick={() => setShowForceCloseConfirm(true)} data-testid="button-force-close">
                     <Lock className="w-4 h-4 mr-1" /> FORCE CLOSE INDENT
                   </Button>
+                </div>
+              )}
+
+              {/* Linked GRNs Panel */}
+              {canViewStores && linkedGrns.length > 0 && (
+                <div className="border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden" data-testid="panel-linked-grns">
+                  <button
+                    className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors text-left"
+                    onClick={() => setGrnPanelOpen(o => !o)}
+                    data-testid="button-toggle-grn-panel"
+                  >
+                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
+                      <Package className="w-4 h-4" />
+                      <span className="text-sm font-semibold">GRNs Raised Against This Indent</span>
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">{linkedGrns.length}</span>
+                    </div>
+                    {grnPanelOpen ? <ChevronUp className="w-4 h-4 text-emerald-600" /> : <ChevronDown className="w-4 h-4 text-emerald-600" />}
+                  </button>
+                  {grnPanelOpen && (
+                    <div className="divide-y divide-emerald-100 dark:divide-emerald-900">
+                      {linkedGrns.map(grn => (
+                        <Link key={grn.id} href={`/stores/grns/${grn.id}`}>
+                          <div
+                            className="flex items-center justify-between px-4 py-3 bg-white dark:bg-card hover:bg-emerald-50 dark:hover:bg-emerald-900/10 cursor-pointer transition-colors"
+                            data-testid={`row-linked-grn-${grn.id}`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400 shrink-0">{grn.grnNumber}</span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400 shrink-0">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{grn.supplier}</span>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 ml-2">
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{grn.itemCount} item{grn.itemCount !== 1 ? "s" : ""}</span>
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                grn.acceptanceStatus === "accepted" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                                grn.acceptanceStatus === "partial" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                              }`} data-testid={`badge-grn-acceptance-${grn.id}`}>
+                                {grn.acceptanceStatus.charAt(0).toUpperCase() + grn.acceptanceStatus.slice(1)}
+                              </span>
+                              <ArrowRight className="w-3.5 h-3.5 text-gray-400" />
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
