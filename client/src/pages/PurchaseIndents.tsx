@@ -1895,7 +1895,7 @@ export default function PurchaseIndents() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
                               <span className="font-semibold uppercase text-sm">{item.description}</span>
-                              {(item as any).spec && <span className="text-xs text-slate-600 dark:text-slate-300 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
+                              {(item as any).spec && <span className="text-sm text-slate-800 dark:text-slate-100 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
                               {getPriorityBadge(item.priority)}
                               {!isVerified && <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
                               {isVerified && (
@@ -1919,7 +1919,7 @@ export default function PurchaseIndents() {
                                 );
                               })()}
                             </div>
-                            {item.purpose && <p className="text-xs text-muted-foreground mt-0.5 italic">FOR: {item.purpose}</p>}
+                            {item.purpose && <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">FOR: {item.purpose}</p>}
                           </div>
                           {isVerified && (
                             <div className="flex-shrink-0">
@@ -2224,7 +2224,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start">
                             <div>
                               <h3 className={`font-semibold text-sm ${st.action==='rejected'?'line-through text-red-800 dark:text-red-300':st.action==='approved'?'text-emerald-900 dark:text-emerald-300':'text-amber-900 dark:text-amber-300'}`}>{index+1}. {item.description}</h3>
-                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic mt-0.5">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic mt-0.5">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                             </div>
                             <div className="shrink-0 text-right">
                               <span className={`font-bold text-sm ${st.action==='rejected'?'text-red-700':st.action==='approved'?'text-emerald-700':'text-amber-700'}`}>{st.action==='modified'?st.approvedQty:item.qty} {item.uom}</span>
@@ -2252,8 +2252,8 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-bold text-gray-900 dark:text-gray-100">{index+1}. {item.description}</p>
-                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                              <p className="text-xs text-muted-foreground">FOR: {item.purpose}</p>
+                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              <p className="text-sm text-gray-700 dark:text-gray-300">FOR: {item.purpose}</p>
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-bold bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-sm">{item.qty} {item.uom}</span>
@@ -2564,7 +2564,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start">
                               <div>
                                 <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-xs text-slate-500 dark:text-slate-400 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
                               </div>
                             </div>
@@ -2581,7 +2581,7 @@ export default function PurchaseIndents() {
                         return (
                           <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
                             <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
-                            {(item as any).spec && <p className="text-xs text-slate-500 dark:text-slate-400 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                            {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                             <p className="text-xs text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
                               {item.purchaseRemarks ? ` · ${item.purchaseRemarks}` : ""}</p>
                           </div>
@@ -2594,7 +2594,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
                               </div>
                             </div>
@@ -2633,7 +2633,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className="font-semibold text-blue-900 dark:text-blue-300">{realIndex + 1}. {item.description}</h3>
-                                {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                                {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
                               </div>
                             </div>
@@ -2695,8 +2695,8 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex-1 min-w-0">
                               <h3 className="font-bold text-gray-900 dark:text-gray-100">{realIndex + 1}. {item.description}</h3>
-                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                              <p className="text-xs text-gray-500 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
+                              {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                             </div>
                             <span className="shrink-0 inline-flex items-center text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">
                               Pending Order
