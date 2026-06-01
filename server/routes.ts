@@ -4722,11 +4722,19 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // INTERNAL REQUISITIONS (stub — wired for dashboard; full feature TBD)
+  // INTERNAL REQUISITIONS (legacy alias — real routes live at /api/irn)
   // ============================================
 
   app.get("/api/internal-requisitions", async (req, res) => {
-    res.json([]);
+    try {
+      if (!assertAuthed(req, res)) return;
+      const { status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+      const irns = await storage.getInternalRequisitions({ status, dateFrom, dateTo });
+      res.json(irns);
+    } catch (err) {
+      console.error("Error fetching IRNs:", err);
+      res.status(500).json({ message: "Failed to fetch IRNs" });
+    }
   });
 
   // ============================================
