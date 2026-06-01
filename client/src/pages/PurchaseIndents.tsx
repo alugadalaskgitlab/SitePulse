@@ -3300,6 +3300,18 @@ export default function PurchaseIndents() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
+            {/* Duplicate GRN warning */}
+            {selectedIndent && indentGrnCounts && indentGrnCounts[selectedIndent.indentNo] > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-600 px-3 py-2.5 text-sm text-yellow-800 dark:text-yellow-300" data-testid="banner-duplicate-grn-warning">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-yellow-500" />
+                <span>
+                  <strong>{indentGrnCounts[selectedIndent.indentNo]} GRN{indentGrnCounts[selectedIndent.indentNo] > 1 ? "s" : ""} already exist{indentGrnCounts[selectedIndent.indentNo] === 1 ? "s" : ""} for this indent</strong> — you are creating an additional receipt.{" "}
+                  <Link href={`/stores/grns?indentRef=${encodeURIComponent(selectedIndent.indentNo)}`} className="underline font-semibold hover:text-yellow-900 dark:hover:text-yellow-100">
+                    View existing GRNs ↗
+                  </Link>
+                </span>
+              </div>
+            )}
             {/* Header fields */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
