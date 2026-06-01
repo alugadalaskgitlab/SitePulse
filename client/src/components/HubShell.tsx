@@ -6,6 +6,7 @@ import {
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
   RefreshCw, Database,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -45,6 +46,17 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       setTimeout(() => setIsRefreshing(false), 600);
     });
   }
+
+  const { data: unassignedData } = useQuery<{
+    dieselRequirements: unknown[];
+    purchaseIndents: unknown[];
+  }>({
+    queryKey: ["/api/admin/site-backfill/unassigned"],
+    enabled: isAdmin,
+  });
+  const unassignedCount = isAdmin
+    ? (unassignedData?.dieselRequirements?.length ?? 0) + (unassignedData?.purchaseIndents?.length ?? 0)
+    : 0;
 
   const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
   const initials = user?.fullName
@@ -127,6 +139,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
             <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
             {bottomNavItems.map((item) => {
               const active = isNavActive(item);
+              const showBadge = item.href === "/masters/hub" && unassignedCount > 0;
               return (
                 <Link key={item.href} href={item.href}>
                   <a
@@ -138,7 +151,15 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                     }`}
                   >
                     <item.icon className="w-4 h-4 flex-shrink-0" />
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {showBadge && (
+                      <span
+                        data-testid="badge-masters-unassigned"
+                        className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
+                      >
+                        {unassignedCount}
+                      </span>
+                    )}
                   </a>
                 </Link>
               );
