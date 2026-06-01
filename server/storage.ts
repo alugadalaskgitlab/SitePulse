@@ -9029,22 +9029,39 @@ export class DatabaseStorage implements IStorage {
     actionBy: string
   ): Promise<PurchaseIndentItem | undefined> {
     const action = data.action.toLowerCase();
+
+    // Fetch existing item so "received" can patch-merge without losing "ordered" data
+    const [existingItem] = await db.select().from(purchaseIndentItems)
+      .where(eq(purchaseIndentItems.id, itemId)).limit(1);
+    if (!existingItem) return undefined;
+
     const purchaseStatus = action === "received" ? "PURCHASED" : "ORDERED";
+
+    // For "received": preserve fields captured during "ordered" when caller omits them
+    const effectiveVendor   = data.vendor         != null ? data.vendor.toUpperCase()         : (action === "received" ? existingItem.vendor         : null);
+    const effectiveRate     = data.rate            != null ? data.rate                         : (action === "received" ? existingItem.rate             : null);
+    const effectiveDelivery = data.expectedDelivery != null ? data.expectedDelivery            : (action === "received" ? (existingItem as any).expectedDelivery : null);
+    const effectivePayment  = data.paymentMode     != null ? data.paymentMode                 : (action === "received" ? (existingItem as any).paymentMode      : null);
+    const effectiveBillNo   = data.billNo          != null ? data.billNo.toUpperCase()         : (action === "received" ? existingItem.billNo           : null);
+    const effectiveRemarks  = data.purchaseRemarks != null ? data.purchaseRemarks.toUpperCase(): (action === "received" ? existingItem.purchaseRemarks   : null);
+
     const updates: any = {
       purchaseStatus,
-      vendor: data.vendor?.toUpperCase() || null,
-      rate: data.rate ?? null,
-      billNo: data.billNo?.toUpperCase() || null,
-      purchaseRemarks: data.purchaseRemarks?.toUpperCase() || null,
-      paymentMode: data.paymentMode || null,
-      expectedDelivery: data.expectedDelivery || null,
+      vendor:          effectiveVendor   || null,
+      rate:            effectiveRate     ?? null,
+      billNo:          effectiveBillNo   || null,
+      purchaseRemarks: effectiveRemarks  || null,
+      paymentMode:     effectivePayment  || null,
+      expectedDelivery: effectiveDelivery || null,
     };
     if (action === "ordered") {
       updates.orderPlacedAt = data.orderPlacedAt || format(new Date(), "yyyy-MM-dd");
     }
     if (action === "received") {
-      updates.qtyPurchased = data.qtyPurchased ?? null;
-      updates.amount = data.rate != null && data.qtyPurchased != null ? data.rate * data.qtyPurchased : null;
+      // Default qty to approved qty → requested qty when not explicitly supplied
+      const effectiveQty = data.qtyPurchased ?? existingItem.approvedQty ?? existingItem.qty;
+      updates.qtyPurchased = effectiveQty;
+      updates.amount = effectiveRate != null && effectiveQty != null ? effectiveRate * effectiveQty : null;
     }
 
     const [updated] = await db.update(purchaseIndentItems)
