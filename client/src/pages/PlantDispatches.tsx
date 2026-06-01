@@ -77,23 +77,31 @@ export default function PlantDispatches() {
       filterPlantName: sp.get("filterPlantName") ?? "all",
     };
   })();
+  // Date filters are session-only — not persisted to localStorage.
+  // Persisting absolute date ranges causes historical data to disappear on the
+  // next visit if the saved range no longer covers any records (e.g. a "today"
+  // range saved via a management-report deep-link on June 1 would hide all
+  // Feb-March records on every subsequent plain visit).
+  const [filterDateFrom, setFilterDateFrom] = useState<string>(
+    urlDispatchFilterDefaults.filterDateFrom ?? ""
+  );
+  const [filterDateTo, setFilterDateTo] = useState<string>(
+    urlDispatchFilterDefaults.filterDateTo ?? ""
+  );
+
+  // v2: removed filterDateFrom/filterDateTo from persisted state (see above)
   const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
-    "plant-dispatches:last-filters:v1",
+    "plant-dispatches:last-filters:v2",
     {
-      filterDateFrom: "",
-      filterDateTo: "",
-      filterPartyId: "all",
-      filterMixType: "all",
-      filterVehicle: "all",
-      filterOwner: "all",
-      filterPlantName: "all",
-      ...urlDispatchFilterDefaults,
+      filterPartyId: urlDispatchFilterDefaults.filterPartyId ?? "all",
+      filterMixType: urlDispatchFilterDefaults.filterMixType ?? "all",
+      filterVehicle: urlDispatchFilterDefaults.filterVehicle ?? "all",
+      filterOwner: urlDispatchFilterDefaults.filterOwner ?? "all",
+      filterPlantName: urlDispatchFilterDefaults.filterPlantName ?? "all",
     },
     { shouldHydrate: !urlHasDispatchFilterParams },
   );
-  const { filterDateFrom, filterDateTo, filterPartyId, filterMixType, filterVehicle, filterOwner, filterPlantName } = persistedFilters;
-  const setFilterDateFrom = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateFrom: v }));
-  const setFilterDateTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDateTo: v }));
+  const { filterPartyId, filterMixType, filterVehicle, filterOwner, filterPlantName } = persistedFilters;
   const setFilterPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, filterPartyId: v }));
   const setFilterMixType = (v: string) => setPersistedFilters((f) => ({ ...f, filterMixType: v }));
   const setFilterVehicle = (v: string) => setPersistedFilters((f) => ({ ...f, filterVehicle: v }));
@@ -1296,7 +1304,7 @@ export default function PlantDispatches() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={resetPersistedFilters}
+                onClick={() => { resetPersistedFilters(); setFilterDateFrom(""); setFilterDateTo(""); }}
                 data-testid="button-reset-filters"
                 aria-label="Reset filters to defaults"
               >
