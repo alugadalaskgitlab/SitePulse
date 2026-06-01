@@ -255,13 +255,22 @@ export default function VendorBills() {
 
   const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const mgmtReportSite = _vbSp?.get("from") === "management-report" ? (_vbSp?.get("site") || null) : null;
-  const [filterDateFrom, setFilterDateFrom] = useState(_vbSp?.get("dateFrom") ?? "");
-  const [filterDateTo, setFilterDateTo] = useState(_vbSp?.get("dateTo") ?? "");
-  const [filterVendor, setFilterVendor] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [filterParty, setFilterParty] = useState("all");
-  const [filterSite, setFilterSite] = useState(_vbSp?.get("site") ?? "");
+
+  const VENDOR_BILLS_FILTER_KEY = "vendor-bills-filter";
+  const _vbStoredFilters = (() => {
+    try {
+      const stored = sessionStorage.getItem(VENDOR_BILLS_FILTER_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  })();
+
+  const [filterDateFrom, setFilterDateFrom] = useState(_vbSp?.get("dateFrom") ?? _vbStoredFilters.dateFrom ?? "");
+  const [filterDateTo, setFilterDateTo] = useState(_vbSp?.get("dateTo") ?? _vbStoredFilters.dateTo ?? "");
+  const [filterVendor, setFilterVendor] = useState(_vbStoredFilters.vendor ?? "all");
+  const [filterStatus, setFilterStatus] = useState(_vbStoredFilters.status ?? "all");
+  const [filterCategory, setFilterCategory] = useState(_vbStoredFilters.category ?? "all");
+  const [filterParty, setFilterParty] = useState(_vbStoredFilters.party ?? "all");
+  const [filterSite, setFilterSite] = useState(_vbSp?.get("site") ?? _vbStoredFilters.site ?? "");
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
@@ -280,6 +289,18 @@ export default function VendorBills() {
   const [gstRateLabour, setGstRateLabour] = useState<number>(0);
   const [tdsRate, setTdsRate] = useState<number>(0);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
+
+  useEffect(() => {
+    sessionStorage.setItem(VENDOR_BILLS_FILTER_KEY, JSON.stringify({
+      dateFrom: filterDateFrom,
+      dateTo: filterDateTo,
+      vendor: filterVendor,
+      status: filterStatus,
+      category: filterCategory,
+      party: filterParty,
+      site: filterSite,
+    }));
+  }, [filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
   useEffect(() => {
     setLabourFilter("all");
