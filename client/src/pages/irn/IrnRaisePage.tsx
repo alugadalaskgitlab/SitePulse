@@ -341,15 +341,15 @@ export default function IrnRaisePage() {
                     Site / Job
                   </Label>
                   <Select
-                    value={form.watch("siteId") != null ? String(form.watch("siteId")) : ""}
-                    onValueChange={(v) => form.setValue("siteId", v ? Number(v) : null)}
+                    value={form.watch("siteId") != null ? String(form.watch("siteId")) : "__none__"}
+                    onValueChange={(v) => form.setValue("siteId", v === "__none__" ? null : Number(v))}
                     data-testid="select-site-id"
                   >
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Select site (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">— None —</SelectItem>
+                      <SelectItem value="__none__">— None —</SelectItem>
                       {activeSites.map((s) => (
                         <SelectItem key={s.id} value={String(s.id)}>
                           {s.name}
