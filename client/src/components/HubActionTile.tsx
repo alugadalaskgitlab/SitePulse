@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 
 export type TileAccent =
   | "orange" | "amber" | "yellow" | "emerald" | "green" | "teal"
-  | "blue" | "violet" | "purple" | "rose" | "red" | "slate";
+  | "blue" | "indigo" | "violet" | "purple" | "rose" | "red" | "slate";
 
 const ACCENT: Record<TileAccent, { border: string; icon: string; titleHover: string; badge: string }> = {
   orange: { border: "hover:border-orange-300", icon: "text-orange-600", titleHover: "group-hover:text-orange-600", badge: "bg-orange-50 text-orange-700" },
@@ -13,6 +13,7 @@ const ACCENT: Record<TileAccent, { border: string; icon: string; titleHover: str
   green:  { border: "hover:border-green-300",  icon: "text-green-600",  titleHover: "group-hover:text-green-600",  badge: "bg-green-50 text-green-700"  },
   teal:   { border: "hover:border-teal-300",   icon: "text-teal-600",   titleHover: "group-hover:text-teal-600",   badge: "bg-teal-50 text-teal-700"   },
   blue:   { border: "hover:border-blue-300",   icon: "text-blue-600",   titleHover: "group-hover:text-blue-600",   badge: "bg-blue-50 text-blue-700"   },
+  indigo: { border: "hover:border-indigo-300", icon: "text-indigo-600", titleHover: "group-hover:text-indigo-600", badge: "bg-indigo-50 text-indigo-700"},
   violet: { border: "hover:border-violet-300", icon: "text-violet-600", titleHover: "group-hover:text-violet-600", badge: "bg-violet-50 text-violet-700"},
   purple: { border: "hover:border-purple-300", icon: "text-purple-600", titleHover: "group-hover:text-purple-600", badge: "bg-purple-50 text-purple-700"},
   rose:   { border: "hover:border-rose-300",   icon: "text-rose-600",   titleHover: "group-hover:text-rose-600",   badge: "bg-rose-50 text-rose-700"   },
