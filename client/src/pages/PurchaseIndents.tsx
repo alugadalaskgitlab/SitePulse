@@ -1493,6 +1493,37 @@ export default function PurchaseIndents() {
                               REASON: {indent.rejectionReason}
                             </p>
                           )}
+
+                          {/* Items list */}
+                          {indent.items.length > 0 && (
+                            <div className="mt-2.5 flex flex-wrap gap-1.5">
+                              {indent.items.slice(0, 5).map(item => (
+                                <span key={item.id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  {item.description} — {item.qty} {item.uom}
+                                </span>
+                              ))}
+                              {indent.items.length > 5 && (
+                                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-700">
+                                  +{indent.items.length - 5} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Audit trail timestamps */}
+                          {(() => {
+                            const raised = indent.createdAt ? format(new Date(indent.createdAt as any), "dd-MMM-yy HH:mm") : null;
+                            const verified = (indent as any).storesVerifiedAt ? format(new Date((indent as any).storesVerifiedAt), "dd-MMM-yy HH:mm") : null;
+                            const approved = (indent as any).approvedAt ? format(new Date((indent as any).approvedAt), "dd-MMM-yy HH:mm") : null;
+                            if (!raised && !verified && !approved) return null;
+                            return (
+                              <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
+                                {raised && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Raised {raised}</span>}
+                                {verified && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Verified {verified}</span></>}
+                                {approved && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full inline-block ${indent.status === "rejected" ? "bg-red-400" : "bg-emerald-400"}`} />{indent.status === "rejected" ? "Rejected" : "Approved"} {approved}</span></>}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                           <div className="text-right">
