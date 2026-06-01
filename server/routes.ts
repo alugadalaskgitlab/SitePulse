@@ -4745,7 +4745,7 @@ export async function registerRoutes(
     try {
       const q = ((req.query.q as string) || (req.query.name as string) || "").toLowerCase().trim();
       const indents = await storage.getPurchaseIndents();
-      const activeStatuses = ["approved", "pending"];
+      const activeStatuses = ["approved", "pending", "stores_check"];
       const filtered = q
         ? indents.filter(i =>
             activeStatuses.includes(i.status) &&
@@ -4764,8 +4764,10 @@ export async function registerRoutes(
       const all = await storage.getPurchaseIndents();
       const summary = {
         total: all.length,
-        pending: all.filter(i => i.status === "pending").length,
-        storesCheck: all.filter(i => i.status === "stores_check").length,
+        // pendingStores = legacy "pending" + stores_check with no/null storesStatus
+        pending: all.filter(i => i.status === "pending" || (i.status === "stores_check" && !(i as any).storesStatus)).length,
+        // storesCheck (AWAITING APPROVAL) = stores_check with storesStatus "verified" or "bypass_requested"
+        storesCheck: all.filter(i => i.status === "stores_check" && ((i as any).storesStatus === "verified" || (i as any).storesStatus === "bypass_requested")).length,
         approved: all.filter(i => i.status === "approved").length,
         rejected: all.filter(i => i.status === "rejected").length,
         completed: all.filter(i => i.status === "completed").length,
@@ -4827,7 +4829,7 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/approve", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, approvedItems, remarks } = req.body;
+      const { pin, approvedItems, remarks, bypassReason } = req.body;
 
       if (!assertApprove(req, res, "purchase_indents_approve")) return;
       // Self-approval prevention: the approver must differ from the raiser.
@@ -4836,6 +4838,23 @@ export async function registerRoutes(
       if (existingIndent.authorUserId && existingIndent.authorUserId === req.authUser?.id) {
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
+
+      // If stores check not yet done, only allow approval if indent has urgent items,
+      // out-of-stock/short items, or stores flagged bypass_requested.
+      const storesStatus = (existingIndent as any).storesStatus;
+      if (storesStatus !== "verified") {
+        const hasUrgent = existingIndent.items.some(i => i.priority === "urgent");
+        const hasStockIssue = existingIndent.items.some(i => {
+          const ss = (i as any).stockStatus;
+          return ss === "out_of_stock" || ss === "short";
+        });
+        if (!hasUrgent && !hasStockIssue && storesStatus !== "bypass_requested") {
+          if (!bypassReason?.trim()) {
+            return res.status(400).json({ message: "Stores verification is required before approval, or provide a bypass reason." });
+          }
+        }
+      }
+
       const approvedBy = currentUserName(req);
 
       const approvedItemsSchema = z.array(z.object({
@@ -4844,7 +4863,7 @@ export async function registerRoutes(
       }));
       const validatedItems = approvedItemsSchema.parse(approvedItems);
 
-      const indent = await storage.approvePurchaseIndent(id, validatedItems, approvedBy, remarks);
+      const indent = await storage.approvePurchaseIndent(id, validatedItems, approvedBy, remarks, bypassReason?.trim() || undefined);
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
@@ -4886,7 +4905,7 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/stores-verify", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertEdit(req, res, "site_procurement")) return;
+      if (!assertCreate(req, res, "stores_inventory")) return;
 
       const verifySchema = z.object({
         items: z.array(z.object({
@@ -4909,6 +4928,53 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       console.error("Error verifying stores:", err);
       res.status(500).json({ message: "Failed to submit stores verification" });
+    }
+  });
+
+  app.patch("/api/purchase-indents/:id/stores-bypass", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const { reason } = req.body;
+      if (!reason?.trim()) {
+        return res.status(400).json({ message: "Bypass reason is required" });
+      }
+      const bypassedBy = currentUserName(req);
+      const indent = await storage.bypassIndentStores(id, reason.trim(), bypassedBy);
+      if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
+      sendPushToAll("Bypass Requested", `${indent.indentNo} — stores bypass requested by ${bypassedBy}`, "/plant/purchase-indents").catch(() => {});
+      res.json(indent);
+    } catch (err) {
+      console.error("Error bypassing stores:", err);
+      res.status(500).json({ message: "Failed to request stores bypass" });
+    }
+  });
+
+  app.patch("/api/purchase-indent-items/:id/procure", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_procurement")) return;
+      const itemId = Number(req.params.id);
+      const procureSchema = z.object({
+        action: z.enum(["ordered", "received"]),
+        vendor: z.string().optional(),
+        rate: z.number().optional(),
+        qtyPurchased: z.number().optional(),
+        expectedDelivery: z.string().optional(),
+        orderPlacedAt: z.string().optional(),
+        paymentMode: z.string().optional(),
+        billNo: z.string().optional(),
+        purchaseRemarks: z.string().optional(),
+      });
+      const data = procureSchema.parse(req.body);
+      const actionBy = currentUserName(req);
+      const item = await storage.procureItem(itemId, data, actionBy);
+      if (!item) return res.status(404).json({ message: "Purchase indent item not found" });
+      sendPushToAll("Procurement Update", `"${item.description}" marked ${data.action.toUpperCase()}${data.vendor ? ` — ${data.vendor.toUpperCase()}` : ""}`, "/plant/purchase-indents").catch(() => {});
+      res.json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Error procuring item:", err);
+      res.status(500).json({ message: "Failed to update procurement status" });
     }
   });
 

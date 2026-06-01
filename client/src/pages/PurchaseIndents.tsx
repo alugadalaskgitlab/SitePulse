@@ -197,7 +197,7 @@ function MaterialCombobox({
   );
 }
 
-type ViewMode = "list" | "form" | "detail" | "purchase" | "report" | "stores";
+type ViewMode = "list" | "form" | "detail" | "purchase" | "procurement" | "report" | "stores";
 
 interface StoreItemVerification {
   stockStatus: string;
@@ -241,12 +241,18 @@ interface PurchaseUpdateData {
   purchaseRemarks: string;
 }
 
-function getStatusBadge(status: string) {
+function getStatusBadge(status: string, storesStatus?: string | null) {
   switch (status) {
     case "pending":
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING STORES</Badge>;
     case "stores_check":
-      return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-stores-check">AWAITING APPROVAL</Badge>;
+      if (storesStatus === "verified") {
+        return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-stores-check">AWAITING APPROVAL</Badge>;
+      }
+      if (storesStatus === "bypass_requested") {
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" data-testid="badge-status-bypass-requested">BYPASS REQUESTED</Badge>;
+      }
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-stores-check-pending">PENDING STORES</Badge>;
     case "approved":
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid="badge-status-approved">APPROVED</Badge>;
     case "completed":
@@ -348,7 +354,7 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
   );
 }
 
-function StatusSteps({ status }: { status: string }) {
+function StatusSteps({ status, storesStatus }: { status: string; storesStatus?: string | null }) {
   const steps = [
     { key: "raised", label: "RAISED" },
     { key: "stores", label: "STORES" },
@@ -357,14 +363,18 @@ function StatusSteps({ status }: { status: string }) {
     { key: "completed", label: "COMPLETED" },
   ];
 
+  const isBypassed = storesStatus === "bypass_requested" && (status === "approved" || status === "completed");
+
   const getStepState = (stepKey: string) => {
     if (status === "rejected") {
       return stepKey === "raised" ? "done" : stepKey === "stores" ? "rejected" : "pending";
     }
-    const statusOrder = ["pending", "stores_check", "approved", "purchasing", "completed"];
-    const currentIdx = statusOrder.indexOf(status === "pending" ? "pending" : status);
-    const stepMap: Record<string, number> = { raised: 0, stores: 1, approved: 2, purchasing: 3, completed: 4 };
+    if (isBypassed && stepKey === "stores") return "bypassed";
+    const statusOrder = ["stores_check", "approved", "purchasing", "completed"];
+    const currentIdx = statusOrder.indexOf(status);
+    const stepMap: Record<string, number> = { raised: -1, stores: 0, approved: 1, purchasing: 2, completed: 3 };
     const stepIdx = stepMap[stepKey];
+    if (stepIdx < 0) return "done"; // "raised" is always done
     if (stepIdx < currentIdx) return "done";
     if (stepIdx === currentIdx) return "active";
     return "pending";
@@ -381,11 +391,12 @@ function StatusSteps({ status }: { status: string }) {
               state === "done" ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" :
               state === "active" ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" :
               state === "rejected" ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" :
+              state === "bypassed" ? "border-orange-400 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" :
               "border-muted text-muted-foreground"
             }`}>
               {state === "done" && <Check className="w-3 h-3 inline mr-1" />}
               {state === "rejected" && <X className="w-3 h-3 inline mr-1" />}
-              {step.label}
+              {state === "bypassed" ? "BYPASSED" : step.label}
             </span>
           </div>
         );
@@ -460,6 +471,9 @@ export default function PurchaseIndents() {
 
   const [storeItemVerifications, setStoreItemVerifications] = useState<Record<number, StoreItemVerification>>({});
   const [procurementExtras, setProcurementExtras] = useState<Record<number, ProcurementExtra>>({});
+  const [bypassReason, setBypassReason] = useState("");
+  const [bypassNoteOpen, setBypassNoteOpen] = useState(false);
+  const [storesBypassNote, setStoresBypassNote] = useState("");
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
@@ -683,6 +697,35 @@ export default function PurchaseIndents() {
     },
   });
 
+  const storesBypassMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", `/api/purchase-indents/${selectedIndentId}/stores-bypass`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      toast({ title: "Bypass requested", description: "Manager has been alerted to review this indent." });
+      setBypassNoteOpen(false);
+      setStoresBypassNote("");
+      setView("list");
+      setSelectedIndentId(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to request bypass", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const procureMutation = useMutation({
+    mutationFn: ({ itemId, data }: { itemId: number; data: any }) =>
+      apiRequest("PATCH", `/api/purchase-indent-items/${itemId}/procure`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      toast({ title: "Procurement status updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update procurement status", description: err.message, variant: "destructive" });
+    },
+  });
+
   const reportQueryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (reportFilterDateFrom) params.set("dateFrom", reportFilterDateFrom);
@@ -807,7 +850,6 @@ export default function PurchaseIndents() {
       proposedBy: formProposedBy.toUpperCase(),
       raisedBy: formRaisedBy.toUpperCase(),
       remarks: formRemarks.toUpperCase() || null,
-      status: "pending",
       siteId: formSiteId ?? null,
       raisedFrom: formRaisedFrom ?? null,
       items: validItems.map(item => ({
@@ -832,7 +874,11 @@ export default function PurchaseIndents() {
 
   const openDetail = (indent: PurchaseIndentWithItems) => {
     setSelectedIndentId(indent.id);
-    if (indent.status === "pending") {
+    const ss = (indent as any).storesStatus as string | null;
+    const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
+
+    if (indent.status === "pending" || (indent.status === "stores_check" && storesNotVerified)) {
+      // Route to stores verification view
       const verifs: Record<number, StoreItemVerification> = {};
       indent.items.forEach(item => {
         verifs[item.id] = {
@@ -843,8 +889,11 @@ export default function PurchaseIndents() {
         };
       });
       setStoreItemVerifications(verifs);
+      setStoresBypassNote("");
+      setBypassNoteOpen(false);
       setView("stores");
     } else if (indent.status === "stores_check") {
+      // stores_check + verified or bypass_requested → approval detail view
       const qtys: Record<number, number> = {};
       const notes: Record<number, string> = {};
       indent.items.forEach(item => {
@@ -854,11 +903,12 @@ export default function PurchaseIndents() {
       setApprovedQtys(qtys);
       setReviewerNotes(notes);
       setApprovalRemarks("");
+      setBypassReason("");
       setView("detail");
     } else if (indent.status === "approved" || indent.status === "completed") {
       setPurchaseUpdates({});
       setProcurementExtras({});
-      setView("purchase");
+      setView("procurement");
     } else {
       setView("detail");
     }
@@ -872,6 +922,7 @@ export default function PurchaseIndents() {
     approveMutation.mutate({
       approvedItems,
       remarks: approvalRemarks.toUpperCase() || null,
+      bypassReason: bypassReason.trim() || undefined,
     });
   };
 
@@ -1361,7 +1412,7 @@ export default function PurchaseIndents() {
                               </Link>
                             ) : null}
                           </div>
-                          {getStatusBadge(indent.status)}
+                          {getStatusBadge(indent.status, (indent as any).storesStatus)}
                         </div>
                       </div>
                     </CardContent>
@@ -1634,7 +1685,7 @@ export default function PurchaseIndents() {
                     <PackageCheck className="w-4 h-4 text-cyan-600" />
                     {selectedIndent.indentNo} — Stores Verification
                   </CardTitle>
-                  {getStatusBadge(selectedIndent.status)}
+                  {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-2">
@@ -1678,7 +1729,7 @@ export default function PurchaseIndents() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
-                              <span className="font-semibold uppercase text-sm">{item.itemName}</span>
+                              <span className="font-semibold uppercase text-sm">{item.description}</span>
                               {getPriorityBadge(item.priority)}
                               {!isVerified && <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
                               {isVerified && (
@@ -1688,11 +1739,10 @@ export default function PurchaseIndents() {
                               )}
                             </div>
                             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                              <span>{item.category}</span>
                               <span className="font-semibold text-foreground">{item.qty} {item.uom}</span>
-                              {item.estimatedRate && <span>Est. ₹{item.estimatedRate}/{item.uom}</span>}
+                              {item.estRate && <span>Est. ₹{item.estRate}/{item.uom}</span>}
                             </div>
-                            {item.remarks && <p className="text-xs text-muted-foreground mt-0.5 italic">"{item.remarks}"</p>}
+                            {item.purpose && <p className="text-xs text-muted-foreground mt-0.5 italic">FOR: {item.purpose}</p>}
                           </div>
                           {isVerified && (
                             <div className="flex-shrink-0">
@@ -1770,7 +1820,7 @@ export default function PurchaseIndents() {
                             <strong>Manager Fast-Track:</strong> Urgent or unavailable items detected. You may also use the Approve action directly from the detail view to bypass stores queue.
                           </div>
                         )}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <Button
                             onClick={handleSubmitStoresVerify}
                             disabled={!allVerified || storesVerifyMutation.isPending}
@@ -1779,10 +1829,42 @@ export default function PurchaseIndents() {
                             {storesVerifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PackageCheck className="w-4 h-4 mr-2" />}
                             Submit Verification
                           </Button>
+                          <Button
+                            variant="outline"
+                            className="text-orange-600 border-orange-300"
+                            onClick={() => setBypassNoteOpen(prev => !prev)}
+                            data-testid="button-stores-bypass-toggle"
+                          >
+                            <AlertTriangle className="w-4 h-4 mr-1" />
+                            Request Bypass
+                          </Button>
                           <Button variant="outline" onClick={() => { setView("list"); setSelectedIndentId(null); }} data-testid="button-cancel-stores">
                             Cancel
                           </Button>
                         </div>
+                        {bypassNoteOpen && (
+                          <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
+                            <p className="text-xs text-orange-800 dark:text-orange-300 font-semibold">BYPASS REASON (required — will alert manager)</p>
+                            <Input
+                              value={storesBypassNote}
+                              onChange={(e) => setStoresBypassNote(e.target.value)}
+                              placeholder="e.g. Urgent site requirement, verbal clearance from manager..."
+                              className="text-sm"
+                              data-testid="input-bypass-reason"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-orange-700 border-orange-400"
+                              disabled={!storesBypassNote.trim() || storesBypassMutation.isPending}
+                              onClick={() => storesBypassMutation.mutate({ reason: storesBypassNote })}
+                              data-testid="button-submit-bypass"
+                            >
+                              {storesBypassMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              Submit Bypass Request
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -1829,7 +1911,7 @@ export default function PurchaseIndents() {
                         <Trash2 className="w-3 h-3 mr-1" /> DELETE
                       </Button>
                     )}
-                    {getStatusBadge(selectedIndent.status)}
+                    {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1867,7 +1949,7 @@ export default function PurchaseIndents() {
                   )}
                   <div>
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
-                    <StatusSteps status={selectedIndent.status} />
+                    <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} />
                   </div>
                 </CardContent>
               </Card>
@@ -2001,6 +2083,27 @@ export default function PurchaseIndents() {
                         data-testid="input-approval-remarks"
                       />
                     </div>
+
+                    {(() => {
+                      const ss = (selectedIndent as any).storesStatus as string | null;
+                      const storesNotDone = !ss || (ss !== "verified" && ss !== "bypass_requested");
+                      if (!storesNotDone) return null;
+                      return (
+                        <div className="pt-2 rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
+                          <Label className="text-xs uppercase text-orange-800 dark:text-orange-300 font-semibold">
+                            ⚡ STORES CHECK PENDING — Bypass Reason (required to approve without stores verification)
+                          </Label>
+                          <Textarea
+                            value={bypassReason}
+                            onChange={(e) => setBypassReason(e.target.value)}
+                            onBlur={(e) => setBypassReason(e.target.value.toUpperCase())}
+                            placeholder="STATE REASON FOR BYPASSING STORES VERIFICATION..."
+                            className="uppercase text-sm"
+                            data-testid="input-bypass-reason-approval"
+                          />
+                        </div>
+                      );
+                    })()}
 
                     <div className="pt-2">
                       <Label className="text-xs uppercase">REJECTION REASON (IF REJECTING)</Label>
@@ -2136,7 +2239,7 @@ export default function PurchaseIndents() {
         </>
       )}
 
-      {view === "purchase" && (
+      {(view === "purchase" || view === "procurement") && (
         <>
           {isLoadingDetail ? (
             <div className="flex justify-center py-12">
@@ -2170,7 +2273,7 @@ export default function PurchaseIndents() {
                         <Trash2 className="w-3 h-3 mr-1" /> DELETE
                       </Button>
                     )}
-                    {getStatusBadge(selectedIndent.status)}
+                    {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -2194,7 +2297,7 @@ export default function PurchaseIndents() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
-                    <StatusSteps status={selectedIndent.status} />
+                    <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} />
                   </div>
                 </CardContent>
               </Card>
@@ -2626,7 +2729,7 @@ export default function PurchaseIndents() {
                               className="border-b hover-elevate cursor-pointer"
                               onClick={() => {
                                 setSelectedIndentId(item.indentId);
-                                setView("purchase");
+                                setView("procurement");
                                 setPurchaseUpdates({});
                               }}
                               data-testid={`report-row-${item.itemId}`}

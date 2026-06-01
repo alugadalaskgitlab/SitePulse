@@ -927,6 +927,8 @@ export interface IStorage {
   getRecentIndentItemIds(limit?: number): Promise<number[]>;
   deletePurchaseIndent(id: number): Promise<boolean>;
   verifyIndentStores(id: number, items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[], verifiedBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  bypassIndentStores(id: number, reason: string, bypassedBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  procureItem(itemId: number, data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }, actionBy: string): Promise<PurchaseIndentItem | undefined>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -8782,7 +8784,19 @@ export class DatabaseStorage implements IStorage {
     let conditions: any[] = [];
     if (filters?.dateFrom) conditions.push(gte(purchaseIndents.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(purchaseIndents.date, filters.dateTo));
-    if (filters?.status) conditions.push(eq(purchaseIndents.status, filters.status));
+    if (filters?.status) {
+      // "pending" filter = legacy "pending" status + new "stores_check" with no storesStatus
+      if (filters.status === "pending") {
+        conditions.push(
+          or(
+            eq(purchaseIndents.status, "pending"),
+            and(eq(purchaseIndents.status, "stores_check"), isNull(purchaseIndents.storesStatus))
+          )!
+        );
+      } else {
+        conditions.push(eq(purchaseIndents.status, filters.status));
+      }
+    }
 
     const indents = await db.query.purchaseIndents.findMany({
       where: conditions.length ? and(...conditions) : undefined,
@@ -8825,7 +8839,7 @@ export class DatabaseStorage implements IStorage {
         indentNo,
         proposedBy: data.proposedBy.toUpperCase(),
         raisedBy: data.raisedBy.toUpperCase(),
-        status: data.status || "pending",
+        status: "stores_check",
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
         raisedFrom: (data as any).raisedFrom ?? null,
@@ -8853,19 +8867,22 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string): Promise<PurchaseIndentWithItems | undefined> {
+  async approvePurchaseIndent(id: number, approvedItems: { itemId: number; approvedQty: number }[], approvedBy: string, remarks?: string, bypassReason?: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
     return await db.transaction(async (tx) => {
       const approvedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const combinedRemarks = bypassReason
+        ? `[BYPASS: ${bypassReason.toUpperCase()}]${remarks ? ` ${remarks.toUpperCase()}` : ""}`
+        : remarks?.toUpperCase() || remarks;
 
       await tx.update(purchaseIndents)
         .set({
           status: "approved",
           approvedBy: approvedBy.toUpperCase(),
           approvedAt,
-          approvalRemarks: remarks?.toUpperCase() || remarks,
+          approvalRemarks: combinedRemarks,
         })
         .where(eq(purchaseIndents.id, id));
 
@@ -8911,12 +8928,19 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
+    // Validate all submitted itemIds belong to this indent
+    const validItemIds = new Set(existing.items.map(i => i.id));
+    for (const item of items) {
+      if (!validItemIds.has(item.itemId)) {
+        throw new Error(`Item ${item.itemId} does not belong to indent ${id}`);
+      }
+    }
+
     return await db.transaction(async (tx) => {
       const verifiedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
 
       await tx.update(purchaseIndents)
         .set({
-          status: "stores_check",
           storesStatus: "verified",
           storesVerifiedBy: verifiedBy.toUpperCase(),
           storesVerifiedAt: verifiedAt,
@@ -8930,15 +8954,82 @@ export class DatabaseStorage implements IStorage {
             stockAvailableQty: item.stockAvailableQty ?? null,
             storesItemNote: item.storesItemNote?.toUpperCase() || null,
           })
-          .where(eq(purchaseIndentItems.id, item.itemId));
+          .where(and(eq(purchaseIndentItems.id, item.itemId), eq(purchaseIndentItems.indentId, id)));
       }
 
-      const result = await db.query.purchaseIndents.findFirst({
+      const result = await tx.query.purchaseIndents.findFirst({
         where: eq(purchaseIndents.id, id),
         with: { items: { with: { history: { orderBy: desc(purchaseIndentItemHistory.actionAt) } } } },
       });
       return result as PurchaseIndentWithItems | undefined;
     });
+  }
+
+  async bypassIndentStores(id: number, reason: string, bypassedBy: string): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+
+    const bypassedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    await db.update(purchaseIndents)
+      .set({
+        storesStatus: "bypass_requested",
+        storesVerifiedBy: bypassedBy.toUpperCase(),
+        storesVerifiedAt: bypassedAt,
+      })
+      .where(eq(purchaseIndents.id, id));
+
+    const result = await db.query.purchaseIndents.findFirst({
+      where: eq(purchaseIndents.id, id),
+      with: { items: { with: { history: { orderBy: desc(purchaseIndentItemHistory.actionAt) } } } },
+    });
+    return result as PurchaseIndentWithItems | undefined;
+  }
+
+  async procureItem(
+    itemId: number,
+    data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string },
+    actionBy: string
+  ): Promise<PurchaseIndentItem | undefined> {
+    const action = data.action.toLowerCase();
+    const purchaseStatus = action === "received" ? "PURCHASED" : "ORDERED";
+    const updates: any = {
+      purchaseStatus,
+      vendor: data.vendor?.toUpperCase() || null,
+      rate: data.rate ?? null,
+      billNo: data.billNo?.toUpperCase() || null,
+      purchaseRemarks: data.purchaseRemarks?.toUpperCase() || null,
+      paymentMode: data.paymentMode || null,
+      expectedDelivery: data.expectedDelivery || null,
+    };
+    if (action === "ordered") {
+      updates.orderPlacedAt = data.orderPlacedAt || format(new Date(), "yyyy-MM-dd");
+    }
+    if (action === "received") {
+      updates.qtyPurchased = data.qtyPurchased ?? null;
+      updates.amount = data.rate != null && data.qtyPurchased != null ? data.rate * data.qtyPurchased : null;
+    }
+
+    const [updated] = await db.update(purchaseIndentItems)
+      .set(updates)
+      .where(eq(purchaseIndentItems.id, itemId))
+      .returning();
+
+    if (updated) {
+      await db.insert(purchaseIndentItemHistory).values({
+        itemId,
+        action: purchaseStatus,
+        actionBy: actionBy.toUpperCase(),
+        actionAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+        qtyValue: updates.qtyPurchased ?? null,
+        vendor: updates.vendor ?? null,
+        billNo: updates.billNo ?? null,
+        amount: updates.amount ?? null,
+        notes: updates.purchaseRemarks ?? null,
+      }).catch(() => {});
+
+      await this.checkAndCompleteIndent(updated.indentId);
+    }
+    return updated as PurchaseIndentItem | undefined;
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
