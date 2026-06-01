@@ -2,6 +2,8 @@ import { useParams } from "wouter";
 import { Link } from "wouter";
 import { ChevronLeft, HardHat, MapPin, Layers, FlaskConical, Wrench, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
+import type { SectionKey as PermissionSectionKey } from "@shared/permissions";
 import {
   PartyMaster,
   SitesMasterSection,
@@ -17,36 +19,42 @@ const SECTIONS = {
     subtitle: "Manage contractor parties, job names & associated accounts",
     Icon: HardHat,
     Component: PartyMaster,
+    permission: "master_parties" as PermissionSectionKey,
   },
   sites: {
     title: "Site Master",
     subtitle: "Add and manage site locations linked to parties",
     Icon: MapPin,
     Component: SitesMasterSection,
+    permission: "master_parties" as PermissionSectionKey,
   },
   materials: {
     title: "Material Master",
     subtitle: "Define aggregate materials, bitumen, LDO & other inputs",
     Icon: Layers,
     Component: MaterialMaster,
+    permission: "master_materials" as PermissionSectionKey,
   },
   "mix-templates": {
     title: "Mix Templates",
     subtitle: "Configure bituminous mix designs with component proportions",
     Icon: FlaskConical,
     Component: MixTemplateMaster,
+    permission: "master_materials" as PermissionSectionKey,
   },
   equipment: {
     title: "Equipment Master",
     subtitle: "Register equipment, assign categories & manage fleet details",
     Icon: Wrench,
     Component: EquipmentMasterSection,
+    permission: "master_equipment" as PermissionSectionKey,
   },
   personnel: {
     title: "Personnel / Operators",
     subtitle: "Manage operator names, designations & shift assignments",
     Icon: Users,
     Component: PersonnelMasterSection,
+    permission: "master_personnel" as PermissionSectionKey,
   },
 } as const;
 
@@ -54,6 +62,7 @@ type SectionKey = keyof typeof SECTIONS;
 
 export default function PlantMasters() {
   const params = useParams<{ section: string }>();
+  const { sectionVisible, isAdmin } = useAuth();
   const section = params.section as SectionKey;
   const config = SECTIONS[section];
 
@@ -61,6 +70,17 @@ export default function PlantMasters() {
     return (
       <div className="max-w-5xl mx-auto p-6">
         <p className="text-muted-foreground">Section not found.</p>
+      </div>
+    );
+  }
+
+  if (!isAdmin && !sectionVisible(config.permission)) {
+    return (
+      <div className="mx-auto max-w-md text-center py-20 space-y-3">
+        <h2 className="text-xl font-semibold">No access</h2>
+        <p className="text-sm text-muted-foreground">
+          You don't have permission to view this section. Contact an administrator if you think this is wrong.
+        </p>
       </div>
     );
   }
