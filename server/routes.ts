@@ -4832,7 +4832,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_procurement")) return;
       const input = createPurchaseIndentRequestSchema.parse(req.body);
       const indent = await storage.createPurchaseIndent(input);
-      sendPushToSection("purchase_indents_approve", "New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "New Purchase Indent", `${indent.indentNo} raised by ${indent.raisedBy}`, "/plant/purchase-indents").catch(() => {});
       res.status(201).json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4891,7 +4891,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
-      sendPushToAll("Indent Approved", `${indent.indentNo} approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Indent Approved", `${indent.indentNo} approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4918,7 +4918,7 @@ export async function registerRoutes(
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
-      sendPushToAll("Indent Rejected", `${indent.indentNo} rejected by ${rejectedBy}`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Indent Rejected", `${indent.indentNo} rejected by ${rejectedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       console.error("Error rejecting purchase indent:", err);
@@ -4946,7 +4946,7 @@ export async function registerRoutes(
       const indent = await storage.verifyIndentStores(id, items, verifiedBy);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
 
-      sendPushToSection("purchase_indents_approve", "Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents").catch(() => {});
+      sendPushToSection("purchase_indents_view", "Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -5010,7 +5010,7 @@ export async function registerRoutes(
       const parsed = createIrnRequestSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
       const irn = await storage.createInternalRequisition(parsed.data);
-      sendPushToSection("irn_approve", "New IRN Raised", `${irn.irnNo} raised by ${irn.raisedBy}`, "/irn").catch(() => {});
+      sendPushToSection("irn_view", "New IRN Raised", `${irn.irnNo} raised by ${irn.raisedBy}`, "/irn").catch(() => {});
       res.status(201).json(irn);
     } catch (err) {
       console.error("Error creating IRN:", err);
@@ -5027,7 +5027,7 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
       const irn = await storage.storesVerifyIrn(id, parsed.data);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
-      sendPushToSection("irn_approve", "IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});
+      sendPushToSection("irn_view", "IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});
       res.json(irn);
     } catch (err) {
       console.error("Error verifying IRN:", err);
@@ -5055,9 +5055,9 @@ export async function registerRoutes(
       const irn = await storage.approveIrn(id, parsed.data);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
       if (parsed.data.action === "approve") {
-        sendPushToSection("irn_raise", "IRN Approved", `${irn.irnNo} approved by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+        sendPushToSection("irn_view", "IRN Approved", `${irn.irnNo} approved by ${parsed.data.actionBy}`, "/irn").catch(() => {});
       } else {
-        sendPushToSection("irn_raise", "IRN Rejected", `${irn.irnNo} rejected by ${parsed.data.actionBy}`, "/irn").catch(() => {});
+        sendPushToSection("irn_view", "IRN Rejected", `${irn.irnNo} rejected by ${parsed.data.actionBy}`, "/irn").catch(() => {});
       }
       res.json(irn);
     } catch (err) {
@@ -5389,7 +5389,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_diesel")) return;
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
-      sendPushToAll("New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_view", "New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
       res.status(201).json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5423,7 +5423,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
-      sendPushToAll("Diesel Approved", `${requirement.date} - ${requirement.totalApproved} L approved by ${approvedBy}`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_view", "Diesel Approved", `${requirement.date} - ${requirement.totalApproved} L approved by ${approvedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5450,7 +5450,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
-      sendPushToAll("Diesel Rejected", `${requirement.date} rejected by ${rejectedBy}`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_view", "Diesel Rejected", `${requirement.date} rejected by ${rejectedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       console.error("Error rejecting diesel requirement:", err);
@@ -5968,7 +5968,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
       const bill = await storage.createVendorBill(input);
-      sendPushToAll("New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
+      sendPushToSection("vendor_bills_view", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
       res.status(201).json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -6046,7 +6046,7 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
-      sendPushToAll("Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      sendPushToSection("vendor_bills_view", "Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -7179,6 +7179,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "grn and items are required" });
       }
       const result = await storage.createStoreGrn(grn, items, grnCategory || undefined);
+      sendPushToSection("stores_inventory", "GRN Created", `${result.grnNo ?? "GRN"} — ${grn.supplierName ?? "Supplier"}`, "/stores").catch(() => {});
       res.status(201).json(result);
     } catch (err) {
       console.error("POST /api/stores/grns:", err);
