@@ -488,7 +488,7 @@ export default function PurchaseIndents() {
   const [grnDialogSupplier, setGrnDialogSupplier] = useState("");
   const [grnDialogInvoiceNo, setGrnDialogInvoiceNo] = useState("");
   const [grnDialogRemarks, setGrnDialogRemarks] = useState("");
-  type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string };
+  type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string; autoLinked: boolean };
   const [grnLines, setGrnLines] = useState<GrnDialogLine[]>([]);
   const [grnOpenDropdownIdx, setGrnOpenDropdownIdx] = useState<number | null>(null);
 
@@ -831,10 +831,44 @@ export default function PurchaseIndents() {
       uom: i.uom,
       storeItemId: "",
       itemSearch: "",
+      autoLinked: false,
     })));
     setGrnOpenDropdownIdx(null);
     setShowGrnDialog(true);
   }
+
+  function fuzzyMatchStoreItem(description: string, items: Array<{ id: number; name: string; uom: string; category: string }>) {
+    const norm = (s: string) => s.toUpperCase().trim().replace(/\s+/g, " ");
+    const desc = norm(description);
+    const exact = items.find(si => norm(si.name) === desc);
+    if (exact) return exact;
+    const contains = items.find(si => norm(si.name).includes(desc) || desc.includes(norm(si.name)));
+    if (contains) return contains;
+    const descWords = desc.split(" ").filter(w => w.length > 2);
+    if (descWords.length === 0) return null;
+    const descWordSet = new Set(descWords);
+    let bestMatch: typeof items[0] | null = null;
+    let bestScore = 0;
+    for (const si of items) {
+      const itemWords = norm(si.name).split(" ").filter(w => w.length > 2);
+      const itemWordSet = new Set(itemWords);
+      let matches = 0;
+      for (const w of descWordSet) { if (itemWordSet.has(w)) matches++; }
+      const score = matches / Math.max(descWordSet.size, itemWordSet.size);
+      if (score > bestScore && score >= 0.6) { bestScore = score; bestMatch = si; }
+    }
+    return bestMatch;
+  }
+
+  useEffect(() => {
+    if (!showGrnDialog || actualStoreItems.length === 0) return;
+    setGrnLines(prev => prev.map(line => {
+      if (line.storeItemId) return line;
+      const match = fuzzyMatchStoreItem(line.description, actualStoreItems);
+      if (!match) return line;
+      return { ...line, storeItemId: String(match.id), itemSearch: match.name, uom: match.uom, autoLinked: true };
+    }));
+  }, [showGrnDialog, actualStoreItems]);
 
   function handleGrnSubmit() {
     if (!selectedIndent) return;
@@ -3323,8 +3357,13 @@ export default function PurchaseIndents() {
                       <div key={line.indentItemId} className="border rounded-lg p-3 space-y-2 bg-gray-50 dark:bg-gray-900/40" data-testid={`grn-line-${idx}`}>
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{idx + 1}. {line.description}</p>
-                          {selectedItem && (
-                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5">
+                          {selectedItem && line.autoLinked && (
+                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800 rounded-full px-2 py-0.5" data-testid={`badge-auto-linked-${idx}`}>
+                              <Check className="w-3 h-3 mr-1" /> Auto-linked ✓
+                            </span>
+                          )}
+                          {selectedItem && !line.autoLinked && (
+                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5" data-testid={`badge-linked-${idx}`}>
                               <Check className="w-3 h-3 mr-1" /> Linked
                             </span>
                           )}
@@ -3337,7 +3376,7 @@ export default function PurchaseIndents() {
                                 value={grnOpenDropdownIdx === idx ? line.itemSearch : (selectedItem?.name || line.itemSearch)}
                                 onChange={e => {
                                   const val = e.target.value;
-                                  setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, itemSearch: val, storeItemId: "" } : l));
+                                  setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, itemSearch: val, storeItemId: "", autoLinked: false } : l));
                                   setGrnOpenDropdownIdx(idx);
                                 }}
                                 onFocus={() => setGrnOpenDropdownIdx(idx)}
@@ -3361,6 +3400,7 @@ export default function PurchaseIndents() {
                                           storeItemId: String(si.id),
                                           itemSearch: si.name,
                                           uom: si.uom,
+                                          autoLinked: false,
                                         } : l));
                                         setGrnOpenDropdownIdx(null);
                                       }}
