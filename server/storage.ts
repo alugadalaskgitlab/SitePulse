@@ -8966,6 +8966,11 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
+    // State guard: only valid while indent is in stores_check phase
+    if (existing.status !== "stores_check") {
+      throw new Error(`Cannot verify stores for an indent in '${existing.status}' status.`);
+    }
+
     // Validate all submitted itemIds belong to this indent
     const validItemIds = new Set(existing.items.map(i => i.id));
     for (const item of items) {
@@ -9007,6 +9012,11 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
 
+    // State guard: only valid while indent is in stores_check phase
+    if (existing.status !== "stores_check") {
+      throw new Error(`Cannot request stores bypass for an indent in '${existing.status}' status.`);
+    }
+
     const bypassedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
     await db.update(purchaseIndents)
       .set({
@@ -9034,6 +9044,13 @@ export class DatabaseStorage implements IStorage {
     const [existingItem] = await db.select().from(purchaseIndentItems)
       .where(eq(purchaseIndentItems.id, itemId)).limit(1);
     if (!existingItem) return undefined;
+
+    // State guard: procurement only valid when indent is approved or already purchasing
+    const [indentState] = await db.select({ status: purchaseIndents.status })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, existingItem.indentId)).limit(1);
+    if (indentState && !["approved", "purchasing"].includes(indentState.status)) {
+      throw new Error(`Cannot procure items on an indent in '${indentState.status}' status.`);
+    }
 
     const purchaseStatus = action === "received" ? "PURCHASED" : "ORDERED";
 

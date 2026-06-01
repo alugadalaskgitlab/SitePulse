@@ -4854,7 +4854,12 @@ export async function registerRoutes(
             message: "Stores verification is required before approval. Bypass is only available for urgent items, stock-shortage items, or after a bypass request from stores."
           });
         }
-        // Bypass eligible: bypassReason is strongly recommended but not hard-required
+        // Bypass eligible: bypassReason is required when stores haven't verified
+        if (!bypassReason?.trim()) {
+          return res.status(400).json({
+            message: "A bypass reason is required when approving without stores verification."
+          });
+        }
       }
 
       const approvedBy = currentUserName(req);
@@ -4928,6 +4933,7 @@ export async function registerRoutes(
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
       console.error("Error verifying stores:", err);
       res.status(500).json({ message: "Failed to submit stores verification" });
     }
@@ -4947,6 +4953,7 @@ export async function registerRoutes(
       sendPushToAll("Bypass Requested", `${indent.indentNo} — stores bypass requested by ${bypassedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
       console.error("Error bypassing stores:", err);
       res.status(500).json({ message: "Failed to request stores bypass" });
     }
@@ -4975,6 +4982,7 @@ export async function registerRoutes(
       res.json(item);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
       console.error("Error procuring item:", err);
       res.status(500).json({ message: "Failed to update procurement status" });
     }
