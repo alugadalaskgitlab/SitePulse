@@ -9039,7 +9039,9 @@ export class DatabaseStorage implements IStorage {
 
     const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
     const allTerminal = allItems.every(item =>
-      item.purchaseStatus && terminalStatuses.includes(item.purchaseStatus.toUpperCase())
+      // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
+      (item.approvedQty != null && item.approvedQty <= 0) ||
+      (item.purchaseStatus != null && terminalStatuses.includes(item.purchaseStatus.toUpperCase()))
     );
 
     if (allTerminal && allItems.length > 0) {

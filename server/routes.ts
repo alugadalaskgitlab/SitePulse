@@ -4959,8 +4959,8 @@ export async function registerRoutes(
       const procureSchema = z.object({
         action: z.enum(["ordered", "received"]),
         vendor: z.string().optional(),
-        rate: z.number().optional(),
-        qtyPurchased: z.number().optional(),
+        rate: z.coerce.number().optional(),
+        qtyPurchased: z.coerce.number().optional(),
         expectedDelivery: z.string().optional(),
         orderPlacedAt: z.string().optional(),
         paymentMode: z.string().optional(),

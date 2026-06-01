@@ -952,8 +952,8 @@ export default function PurchaseIndents() {
         setApprovalRemarks("");
         setBypassReason("");
         setView("detail");
-      } else {
-        // Stores user → verification view
+      } else if (canCreateStores) {
+        // Stores user with write permission → verification view
         const verifs: Record<number, StoreItemVerification> = {};
         indent.items.forEach(item => {
           verifs[item.id] = {
@@ -967,6 +967,9 @@ export default function PurchaseIndents() {
         setStoresBypassNote("");
         setBypassNoteOpen(false);
         setView("stores");
+      } else {
+        // No approval or stores-write permission → read-only detail view
+        setView("detail");
       }
     } else if (indent.status === "stores_check") {
       // stores_check + verified or bypass_requested → approval detail view
