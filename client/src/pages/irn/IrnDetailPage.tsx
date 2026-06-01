@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { format } from "date-fns";
 import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
@@ -55,7 +55,9 @@ function initVerifications(items: InternalRequisitionItem[]): ItemVerification[]
   }));
 }
 
-export default function IrnDetailPage({ id }: { id: number }) {
+export default function IrnDetailPage() {
+  const { id: idParam } = useParams<{ id: string }>();
+  const id = parseInt(idParam ?? "0");
   const [, navigate] = useLocation();
   const { sectionCan } = useAuth();
   const { toast } = useToast();

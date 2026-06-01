@@ -285,7 +285,7 @@ function AuthedShell() {
             <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "admin_settings")} />
             <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise")} />
             <Route path="/irn/new" component={gated(IrnRaisePage, "irn_raise")} />
-            <Route path="/irn/:id" component={gatedEither((p: any) => <IrnDetailPage id={parseInt(p.id)} />, "irn_view", "irn_raise")} />
+            <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
