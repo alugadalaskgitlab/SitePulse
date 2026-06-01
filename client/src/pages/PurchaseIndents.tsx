@@ -412,6 +412,8 @@ export default function PurchaseIndents() {
   const canCreate = sectionCan("site_procurement", "create");
   const canEdit = sectionCan("site_procurement", "edit");
   const canViewStores = sectionCan("stores_inventory", "view");
+  const canCreateStores = sectionCan("stores_inventory", "create");
+  const isApprover = canApprove("purchase_indents_approve");
   const canDelete = isAdmin;
   const canForceClose = isAdmin;
   const { getPlantBackLink } = useOrigin();
@@ -474,6 +476,8 @@ export default function PurchaseIndents() {
   const [bypassReason, setBypassReason] = useState("");
   const [bypassNoteOpen, setBypassNoteOpen] = useState(false);
   const [storesBypassNote, setStoresBypassNote] = useState("");
+  const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
+  const [procureItemData, setProcureItemData] = useState<Record<number, { vendor?: string; rate?: string; qtyPurchased?: string; expectedDelivery?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }>>({});
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
@@ -878,20 +882,35 @@ export default function PurchaseIndents() {
     const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
 
     if (indent.status === "pending" || (indent.status === "stores_check" && storesNotVerified)) {
-      // Route to stores verification view
-      const verifs: Record<number, StoreItemVerification> = {};
-      indent.items.forEach(item => {
-        verifs[item.id] = {
-          stockStatus: (item as any).stockStatus || "",
-          stockAvailableQty: (item as any).stockAvailableQty?.toString() || "",
-          storesItemNote: (item as any).storesItemNote || "",
-          showNote: !!(item as any).storesItemNote,
-        };
-      });
-      setStoreItemVerifications(verifs);
-      setStoresBypassNote("");
-      setBypassNoteOpen(false);
-      setView("stores");
+      // Approvers go directly to approval/bypass view; stores users go to verification view
+      if (isApprover) {
+        const qtys: Record<number, number> = {};
+        const notes: Record<number, string> = {};
+        indent.items.forEach(item => {
+          qtys[item.id] = item.approvedQty ?? item.qty;
+          notes[item.id] = (item as any).reviewerNote || "";
+        });
+        setApprovedQtys(qtys);
+        setReviewerNotes(notes);
+        setApprovalRemarks("");
+        setBypassReason("");
+        setView("detail");
+      } else {
+        // Stores user → verification view
+        const verifs: Record<number, StoreItemVerification> = {};
+        indent.items.forEach(item => {
+          verifs[item.id] = {
+            stockStatus: (item as any).stockStatus || "",
+            stockAvailableQty: (item as any).stockAvailableQty?.toString() || "",
+            storesItemNote: (item as any).storesItemNote || "",
+            showNote: !!(item as any).storesItemNote,
+          };
+        });
+        setStoreItemVerifications(verifs);
+        setStoresBypassNote("");
+        setBypassNoteOpen(false);
+        setView("stores");
+      }
     } else if (indent.status === "stores_check") {
       // stores_check + verified or bypass_requested → approval detail view
       const qtys: Record<number, number> = {};

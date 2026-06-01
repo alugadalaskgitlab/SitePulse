@@ -232,35 +232,35 @@ function AuthedShell() {
             <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
             <Route path="/site/material-trips" component={gated(SiteMaterialTrips, "site_materials")} />
             <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
-            <Route path="/site/purchases" component={gated(SitePurchasesReport, "site_procurement")} />
+            <Route path="/site/purchases" component={gatedEither(SitePurchasesReport, "report_site_purchases", "site_procurement")} />
             <Route path="/plant" component={PlantHome} />
             <Route path="/plant/dashboard" component={Plant} />
-            <Route path="/plant/new" component={gated(PlantNew, "admin_settings")} />
+            <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "admin_settings")} />
             <Route path="/plant/material-receipts" component={gated(PlantMaterialReceipts, "plant_materials")} />
             <Route path="/plant/material-issues" component={gated(PlantMaterialIssues, "plant_materials")} />
             <Route path="/plant/material-returns" component={gated(PlantMaterialReturns, "plant_materials")} />
             <Route path="/plant/dispatches" component={gated(PlantDispatches, "plant_production")} />
             <Route path="/plant/equipment-usage" component={gated(PlantEquipmentUsage, "plant_equipment")} />
-            <Route path="/plant/generator-logs" component={gated(PlantGeneratorLogs, "plant_equipment")} />
-            <Route path="/plant/maintenance" component={gated(PlantMaintenance, "plant_equipment")} />
-            {rmcEnabled && <Route path="/plant/rmc" component={gated(RmcHub, "plant_production")} />}
-            {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={gated(RmcMixDesigns, "plant_production")} />}
-            {rmcEnabled && <Route path="/plant/rmc/batch-records" component={gated(RmcBatchRecords, "plant_production")} />}
-            {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={gated(RmcRawMaterials, "plant_materials")} />}
-            {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gated(RmcCubeTests, "plant_production")} />}
-            {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gated(RmcDailyReport, "plant_daily_reports")} />}
-            {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gated(RmcDeliveryChallans, "plant_production")} />}
+            <Route path="/plant/generator-logs" component={gatedEither(PlantGeneratorLogs, "plant_generator_logs", "plant_equipment")} />
+            <Route path="/plant/maintenance" component={gatedEither(PlantMaintenance, "plant_maintenance", "plant_equipment")} />
+            {rmcEnabled && <Route path="/plant/rmc" component={gatedEither(RmcHub, "rmc_operations", "rmc_batch_records", "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/mix-designs" component={gatedEither(RmcMixDesigns, "rmc_mix_designs", "rmc_operations", "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/batch-records" component={gatedEither(RmcBatchRecords, "rmc_batch_records", "rmc_operations", "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/raw-materials" component={gatedEither(RmcRawMaterials, "rmc_raw_materials", "rmc_operations", "plant_materials")} />}
+            {rmcEnabled && <Route path="/plant/rmc/cube-tests" component={gatedEither(RmcCubeTests, "rmc_cube_tests", "rmc_operations", "plant_production")} />}
+            {rmcEnabled && <Route path="/plant/rmc/daily-report" component={gatedEither(RmcDailyReport, "rmc_daily_report", "plant_daily_reports")} />}
+            {rmcEnabled && <Route path="/plant/rmc/delivery-challans" component={gatedEither(RmcDeliveryChallans, "rmc_delivery_challans", "rmc_operations", "plant_production")} />}
             <Route path="/plant/stock" component={gated(PlantStock, "plant_stock")} />
             <Route path="/plant/variance-report" component={gated(PlantVarianceReport, "plant_variance")} />
             <Route path="/plant/audit-report" component={gated(PlantAuditReport, "plant_audit")} />
             <Route path="/plant/diesel-procurement" component={gated(PlantDieselProcurementReport, "plant_diesel_proc")} />
             <Route path="/plant/bitumen-stock" component={gated(PlantBitumenStock, "plant_bitumen")} />
             <Route path="/plant/ldo-flow-meter" component={gated(PlantLdoFlowMeter, "plant_ldo")} />
-            <Route path="/plant/ldo-backfill" component={gated(PlantLdoBackfill, "admin_settings")} />
-            <Route path="/plant/ldo-dip-backfill" component={gated(PlantLdoDipBackfill, "admin_settings")} />
-            <Route path="/plant/stock-reassign" component={gated(PlantStockReassign, "plant_stock")} />
-            <Route path="/plant/stock-transfer" component={gated(PlantStockTransfer, "plant_stock")} />
-            <Route path="/plant/ledger-rebuild" component={gated(PlantLedgerRebuild, "plant_stock")} />
+            <Route path="/plant/ldo-backfill" component={gatedEither(PlantLdoBackfill, "admin_ldo_tools", "admin_settings")} />
+            <Route path="/plant/ldo-dip-backfill" component={gatedEither(PlantLdoDipBackfill, "admin_ldo_tools", "admin_settings")} />
+            <Route path="/plant/stock-reassign" component={gatedEither(PlantStockReassign, "admin_ledger_tools", "plant_stock")} />
+            <Route path="/plant/stock-transfer" component={gatedEither(PlantStockTransfer, "admin_ledger_tools", "plant_stock")} />
+            <Route path="/plant/ledger-rebuild" component={gatedEither(PlantLedgerRebuild, "admin_ledger_tools", "plant_stock")} />
             <Route path="/plant/shift-log-manpower-review" component={gatedEither(PlantShiftLogManpowerReview, "plant_manpower_review", "plant_shift_logs")} />
             <Route path="/plant/shift-log" component={gated(PlantShiftLog, "plant_shift_logs")} />
             <Route path="/plant/shift-log/:date" component={gated(PlantShiftLog, "plant_shift_logs")} />
@@ -278,8 +278,8 @@ function AuthedShell() {
             <Route path="/plant/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
             <Route path="/finance/vendor-bills" component={gatedEither(VendorBills, "vendor_bills_view", "vendor_bills")} />
             <Route path="/plant/rate-cards" component={gatedEither(RateCards, "rate_cards", "admin_settings")} />
-            <Route path="/plant/data-sync" component={gated(DataSync, "admin_settings")} />
-            <Route path="/plant/:id" component={gated(PlantDetails, "admin_settings")} />
+            <Route path="/plant/data-sync" component={gatedEither(DataSync, "data_sync", "admin_settings")} />
+            <Route path="/plant/:id" component={gatedEither(PlantDetails, "site_management", "admin_settings")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
@@ -289,17 +289,17 @@ function AuthedShell() {
             <Route path="/stores/issues/new" component={gated(() => <StoresIssue isNew />, "stores_inventory")} />
             <Route path="/stores/issues/:id" component={gated((p: any) => <StoresIssue detailId={parseInt(p.id)} />, "stores_inventory")} />
             <Route path="/stores/ledger/:itemId" component={gated(StoresLedger, "stores_inventory")} />
-            <Route path="/admin/site-backfill" component={gated(SiteBackfill, "admin_settings")} />
+            <Route path="/admin/site-backfill" component={gatedEither(SiteBackfill, "site_management", "admin_settings")} />
             <Route path="/admin/settings" component={gated(AdminSettings, "admin_settings")} />
-            <Route path="/admin/users" component={gated(UserManagement, "user_management")} />
+            <Route path="/admin/users" component={gatedEither(UserManagement, "user_management", "permission_manager")} />
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
-            <Route path="/admin/reports" component={gated(AdminReports, "reports")} />
-            <Route path="/admin/management-report" component={gatedEither(ManagementReport, "reports", "admin_settings")} />
-            <Route path="/admin/mix-estimates" component={gated(MixEstimates, "reports")} />
-            <Route path="/admin/mix-impact" component={gated(MixImpact, "reports")} />
-            <Route path="/admin/mix-comparison" component={gated(MixComparativeReport, "reports")} />
-            <Route path="/admin/scenario-comparison" component={gated(ScenarioComparison, "reports")} />
-            <Route path="/admin/concrete-estimates" component={gated(ConcreteEstimates, "reports")} />
+            <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />
+            <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
+            <Route path="/admin/mix-estimates" component={gatedEither(MixEstimates, "mix_calculator", "reports")} />
+            <Route path="/admin/mix-impact" component={gatedEither(MixImpact, "mix_calculator", "reports")} />
+            <Route path="/admin/mix-comparison" component={gatedEither(MixComparativeReport, "mix_calculator", "reports")} />
+            <Route path="/admin/scenario-comparison" component={gatedEither(ScenarioComparison, "mix_calculator", "reports")} />
+            <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
             <Route component={NotFound} />
           </Switch>
         </div>

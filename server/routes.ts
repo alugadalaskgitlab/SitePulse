@@ -4839,8 +4839,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
 
-      // If stores check not yet done, only allow approval if indent has urgent items,
-      // out-of-stock/short items, or stores flagged bypass_requested.
+      // Stores verification gate: bypass is only allowed for urgent items, stock-issue items,
+      // or when stores team has explicitly requested a bypass (bypass_requested).
       const storesStatus = (existingIndent as any).storesStatus;
       if (storesStatus !== "verified") {
         const hasUrgent = existingIndent.items.some(i => i.priority === "urgent");
@@ -4848,11 +4848,13 @@ export async function registerRoutes(
           const ss = (i as any).stockStatus;
           return ss === "out_of_stock" || ss === "short";
         });
-        if (!hasUrgent && !hasStockIssue && storesStatus !== "bypass_requested") {
-          if (!bypassReason?.trim()) {
-            return res.status(400).json({ message: "Stores verification is required before approval, or provide a bypass reason." });
-          }
+        const bypassEligible = hasUrgent || hasStockIssue || storesStatus === "bypass_requested";
+        if (!bypassEligible) {
+          return res.status(400).json({
+            message: "Stores verification is required before approval. Bypass is only available for urgent items, stock-shortage items, or after a bypass request from stores."
+          });
         }
+        // Bypass eligible: bypassReason is strongly recommended but not hard-required
       }
 
       const approvedBy = currentUserName(req);
