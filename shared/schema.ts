@@ -1389,6 +1389,9 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   expectedDelivery: date("expected_delivery"),
   orderPlacedAt: text("order_placed_at"),
   paymentMode: text("payment_mode"),
+  // Specification / part number
+  spec: text("spec"),
+  partNo: text("part_no"),
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {

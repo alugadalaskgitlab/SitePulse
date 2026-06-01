@@ -228,6 +228,8 @@ const UOM_ITEM_OPTIONS = ["NOS", "KG", "METERS", "LITERS", "SET", "PAIR", "BOX",
 
 interface ItemRow {
   description: string;
+  spec: string;
+  partNo: string;
   qty: number;
   uom: string;
   purpose: string;
@@ -453,7 +455,7 @@ export default function PurchaseIndents() {
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(null);
   const [formItems, setFormItems] = useState<ItemRow[]>([
-    { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null },
+    { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null },
   ]);
 
   useEffect(() => {
@@ -857,11 +859,11 @@ export default function PurchaseIndents() {
     setFormRemarks("");
     setFormSiteId(null);
     setFormRaisedFrom(null);
-    setFormItems([{ description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
+    setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
+    setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -900,6 +902,8 @@ export default function PurchaseIndents() {
       raisedFrom: formRaisedFrom ?? null,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
+        spec: item.spec?.trim().toUpperCase() || undefined,
+        partNo: item.partNo?.trim().toUpperCase() || undefined,
         qty: item.qty,
         uom: item.uom,
         purpose: item.purpose,
@@ -1053,6 +1057,8 @@ export default function PurchaseIndents() {
       setFormRaisedFrom((selectedIndent as any).raisedFrom ?? null);
       setFormItems(selectedIndent.items.map(item => ({
         description: item.description,
+        spec: (item as any).spec || "",
+        partNo: (item as any).partNo || "",
         qty: item.qty,
         uom: item.uom,
         purpose: item.purpose,
@@ -1499,7 +1505,7 @@ export default function PurchaseIndents() {
                             <div className="mt-2.5 flex flex-wrap gap-1.5">
                               {indent.items.slice(0, 5).map(item => (
                                 <span key={item.id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                  {item.description} — {item.qty} {item.uom}
+                                  {item.description}{(item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
                                 </span>
                               ))}
                               {indent.items.length > 5 && (
@@ -1668,6 +1674,28 @@ export default function PurchaseIndents() {
                           }}
                           data-testid={`input-item-desc-${index}`}
                         />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">SPEC / DIMENSIONS <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            value={item.spec}
+                            onChange={(e) => updateItem(index, "spec", e.target.value)}
+                            placeholder="e.g. FE 400 · 12mm Dia, 10mm thickness"
+                            className="text-sm"
+                            data-testid={`input-item-spec-${index}`}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">PART NO / CAT. NO <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            value={item.partNo}
+                            onChange={(e) => updateItem(index, "partNo", e.target.value)}
+                            placeholder="e.g. SKF 6205, IS 1786"
+                            className="text-sm"
+                            data-testid={`input-item-partno-${index}`}
+                          />
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
@@ -1867,6 +1895,7 @@ export default function PurchaseIndents() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
                               <span className="font-semibold uppercase text-sm">{item.description}</span>
+                              {(item as any).spec && <span className="text-xs text-slate-600 dark:text-slate-300 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
                               {getPriorityBadge(item.priority)}
                               {!isVerified && <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
                               {isVerified && (
@@ -2193,7 +2222,10 @@ export default function PurchaseIndents() {
                           'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
                         }`} data-testid={`card-approval-item-${item.id}`}>
                           <div className="flex justify-between items-start">
-                            <h3 className={`font-semibold text-sm ${st.action==='rejected'?'line-through text-red-800 dark:text-red-300':st.action==='approved'?'text-emerald-900 dark:text-emerald-300':'text-amber-900 dark:text-amber-300'}`}>{index+1}. {item.description}</h3>
+                            <div>
+                              <h3 className={`font-semibold text-sm ${st.action==='rejected'?'line-through text-red-800 dark:text-red-300':st.action==='approved'?'text-emerald-900 dark:text-emerald-300':'text-amber-900 dark:text-amber-300'}`}>{index+1}. {item.description}</h3>
+                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic mt-0.5">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
+                            </div>
                             <div className="shrink-0 text-right">
                               <span className={`font-bold text-sm ${st.action==='rejected'?'text-red-700':st.action==='approved'?'text-emerald-700':'text-amber-700'}`}>{st.action==='modified'?st.approvedQty:item.qty} {item.uom}</span>
                               {st.action==='modified' && <p className="text-[10px] text-amber-600/80 line-through">req: {item.qty}</p>}
@@ -2220,6 +2252,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-bold text-gray-900 dark:text-gray-100">{index+1}. {item.description}</p>
+                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                               <p className="text-xs text-muted-foreground">FOR: {item.purpose}</p>
                             </div>
                             <div className="text-right shrink-0">
@@ -2531,6 +2564,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start">
                               <div>
                                 <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
+                                {(item as any).spec && <p className="text-xs text-slate-500 dark:text-slate-400 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
                               </div>
                             </div>
@@ -2547,6 +2581,7 @@ export default function PurchaseIndents() {
                         return (
                           <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
                             <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
+                            {(item as any).spec && <p className="text-xs text-slate-500 dark:text-slate-400 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                             <p className="text-xs text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
                               {item.purchaseRemarks ? ` · ${item.purchaseRemarks}` : ""}</p>
                           </div>
@@ -2559,6 +2594,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{realIndex + 1}. {item.description}</h3>
+                                {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
                               </div>
                             </div>
@@ -2597,6 +2633,7 @@ export default function PurchaseIndents() {
                             <div className="flex justify-between items-start mb-1.5">
                               <div>
                                 <h3 className="font-semibold text-blue-900 dark:text-blue-300">{realIndex + 1}. {item.description}</h3>
+                                {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
                               </div>
                             </div>
@@ -2658,6 +2695,7 @@ export default function PurchaseIndents() {
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex-1 min-w-0">
                               <h3 className="font-bold text-gray-900 dark:text-gray-100">{realIndex + 1}. {item.description}</h3>
+                              {(item as any).spec && <p className="text-xs text-slate-600 dark:text-slate-300 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                               <p className="text-xs text-gray-500 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                             </div>
                             <span className="shrink-0 inline-flex items-center text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">

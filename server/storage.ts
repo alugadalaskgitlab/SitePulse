@@ -8869,6 +8869,8 @@ export class DatabaseStorage implements IStorage {
           data.items.map(item => ({
             indentId: indent.id,
             description: item.description.toUpperCase(),
+            spec: (item as any).spec?.toUpperCase() || null,
+            partNo: (item as any).partNo?.toUpperCase() || null,
             qty: item.qty,
             uom: item.uom.toUpperCase(),
             purpose: item.purpose.toUpperCase(),
@@ -9239,6 +9241,8 @@ export class DatabaseStorage implements IStorage {
           data.items.map(item => ({
             indentId: id,
             description: item.description.toUpperCase(),
+            spec: (item as any).spec?.toUpperCase() || null,
+            partNo: (item as any).partNo?.toUpperCase() || null,
             qty: item.qty,
             uom: item.uom.toUpperCase(),
             purpose: item.purpose.toUpperCase(),
