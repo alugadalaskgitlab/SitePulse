@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -481,6 +481,15 @@ export default function PurchaseIndents() {
   const [forceCloseReason, setForceCloseReason] = useState("");
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
 
+  const [showGrnDialog, setShowGrnDialog] = useState(false);
+  const [grnDialogDate, setGrnDialogDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [grnDialogSupplier, setGrnDialogSupplier] = useState("");
+  const [grnDialogInvoiceNo, setGrnDialogInvoiceNo] = useState("");
+  const [grnDialogRemarks, setGrnDialogRemarks] = useState("");
+  type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string };
+  const [grnLines, setGrnLines] = useState<GrnDialogLine[]>([]);
+  const [grnOpenDropdownIdx, setGrnOpenDropdownIdx] = useState<number | null>(null);
+
   const [storeItemVerifications, setStoreItemVerifications] = useState<Record<number, StoreItemVerification>>({});
   const [procurementExtras, setProcurementExtras] = useState<Record<number, ProcurementExtra>>({});
   const [bypassReason, setBypassReason] = useState("");
@@ -556,6 +565,11 @@ export default function PurchaseIndents() {
   const { data: storeStockBalance } = useQuery<Array<{ id: number; name: string; uom: string; category: string; balance: number }>>({
     queryKey: ["/api/stores/stock-balance"],
     enabled: canCreateStores,
+  });
+
+  const { data: actualStoreItems = [] } = useQuery<Array<{ id: number; name: string; uom: string; category: string }>>({
+    queryKey: ["/api/stores/items"],
+    enabled: canCreateStores && showGrnDialog,
   });
 
   useEffect(() => {
@@ -774,6 +788,73 @@ export default function PurchaseIndents() {
       toast({ title: "Failed to update procurement status", description: err.message, variant: "destructive" });
     },
   });
+
+  const createGrnMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      toast({ title: "GRN created — items added to stock" });
+      setShowGrnDialog(false);
+    },
+    onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
+  });
+
+  function openGrnDialog() {
+    if (!selectedIndent) return;
+    const purchasedItems = selectedIndent.items.filter(i => {
+      const ps = (i.purchaseStatus || "").toLowerCase();
+      return ps === "purchased" || ps === "partial";
+    });
+    const firstVendor = purchasedItems.find(i => i.vendor)?.vendor || "";
+    setGrnDialogDate(format(new Date(), "yyyy-MM-dd"));
+    setGrnDialogSupplier(firstVendor);
+    setGrnDialogInvoiceNo("");
+    setGrnDialogRemarks("");
+    setGrnLines(purchasedItems.map(i => ({
+      indentItemId: i.id,
+      description: i.description,
+      qty: ((i as any).qtyPurchased ?? i.approvedQty ?? i.qty).toString(),
+      rate: i.rate?.toString() || "",
+      uom: i.uom,
+      storeItemId: "",
+      itemSearch: "",
+    })));
+    setGrnOpenDropdownIdx(null);
+    setShowGrnDialog(true);
+  }
+
+  function handleGrnSubmit() {
+    if (!selectedIndent) return;
+    const validLines = grnLines.filter(l => l.storeItemId && parseFloat(l.qty) > 0);
+    if (validLines.length === 0) {
+      toast({ title: "Please link at least one item to a store catalogue entry", variant: "destructive" });
+      return;
+    }
+    if (!grnDialogDate) {
+      toast({ title: "Please enter a date", variant: "destructive" });
+      return;
+    }
+    createGrnMutation.mutate({
+      grn: {
+        date: grnDialogDate,
+        supplier: grnDialogSupplier.trim() || "—",
+        invoiceNo: grnDialogInvoiceNo.trim() || null,
+        invoiceDate: null,
+        siteId: (selectedIndent as any).siteId || null,
+        indentRef: selectedIndent.indentNo,
+        remarks: grnDialogRemarks.trim() || null,
+        status: "finalized",
+        acceptanceStatus: "accepted",
+      },
+      items: validLines.map(l => ({
+        itemId: parseInt(l.storeItemId),
+        qty: parseFloat(l.qty),
+        rate: l.rate ? parseFloat(l.rate) : null,
+        uom: l.uom,
+      })),
+    });
+  }
 
   const reportQueryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -2475,8 +2556,21 @@ export default function PurchaseIndents() {
                       </p>
                     </div>
                     <div className="flex flex-col gap-1 items-end shrink-0">
-                      {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+                        {canViewStores && indentGrnCounts?.[selectedIndent.indentNo] ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-600/80 text-white border border-emerald-400/40 rounded-full px-2 py-0.5" data-testid="badge-grn-count">
+                            <Package className="w-3 h-3" />
+                            {indentGrnCounts[selectedIndent.indentNo]} GRN{indentGrnCounts[selectedIndent.indentNo] > 1 ? "s" : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        {canCreateStores && selectedIndent.items.some(i => ["purchased","partial"].includes((i.purchaseStatus || "").toLowerCase())) && (
+                          <button onClick={openGrnDialog} className="text-[11px] text-emerald-300 underline hover:text-white font-semibold" data-testid="button-create-grn">
+                            + Create GRN
+                          </button>
+                        )}
                         {selectedIndent.status !== "completed" && canEdit && (
                           <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
                         )}
@@ -2986,6 +3080,192 @@ export default function PurchaseIndents() {
           ) : null}
         </>
       )}
+
+      {/* GRN Creation Dialog */}
+      <Dialog open={showGrnDialog} onOpenChange={open => { if (!open) setShowGrnDialog(false); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-[#0F5F64]" />
+              Create GRN — {selectedIndent?.indentNo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            {/* Header fields */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground">Date *</Label>
+                <Input type="date" value={grnDialogDate} onChange={e => setGrnDialogDate(e.target.value)} data-testid="input-grn-date" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground">Supplier / Vendor</Label>
+                <Input
+                  value={grnDialogSupplier}
+                  onChange={e => setGrnDialogSupplier(e.target.value)}
+                  onBlur={e => setGrnDialogSupplier(e.target.value.toUpperCase())}
+                  placeholder="Vendor name"
+                  className="uppercase"
+                  data-testid="input-grn-supplier"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground">Invoice No.</Label>
+                <Input
+                  value={grnDialogInvoiceNo}
+                  onChange={e => setGrnDialogInvoiceNo(e.target.value)}
+                  placeholder="Optional"
+                  data-testid="input-grn-invoice-no"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground">Remarks</Label>
+                <Input
+                  value={grnDialogRemarks}
+                  onChange={e => setGrnDialogRemarks(e.target.value)}
+                  placeholder="Optional"
+                  data-testid="input-grn-remarks"
+                />
+              </div>
+            </div>
+
+            {/* Line items */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Items to Receive ({grnLines.length})
+              </p>
+              {grnLines.length === 0 ? (
+                <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
+                  No purchased items found on this indent.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {grnLines.map((line, idx) => {
+                    const filteredItems = actualStoreItems.filter(si =>
+                      !line.itemSearch || si.name.toLowerCase().includes(line.itemSearch.toLowerCase())
+                    ).slice(0, 20);
+                    const selectedItem = actualStoreItems.find(si => String(si.id) === line.storeItemId);
+                    return (
+                      <div key={line.indentItemId} className="border rounded-lg p-3 space-y-2 bg-gray-50 dark:bg-gray-900/40" data-testid={`grn-line-${idx}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{idx + 1}. {line.description}</p>
+                          {selectedItem && (
+                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5">
+                              <Check className="w-3 h-3 mr-1" /> Linked
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-bold uppercase text-muted-foreground">Store Catalogue Item *</Label>
+                            <div className="relative">
+                              <Input
+                                value={grnOpenDropdownIdx === idx ? line.itemSearch : (selectedItem?.name || line.itemSearch)}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, itemSearch: val, storeItemId: "" } : l));
+                                  setGrnOpenDropdownIdx(idx);
+                                }}
+                                onFocus={() => setGrnOpenDropdownIdx(idx)}
+                                placeholder="Search store items..."
+                                className="text-sm"
+                                data-testid={`input-grn-item-search-${idx}`}
+                                autoComplete="off"
+                              />
+                              {grnOpenDropdownIdx === idx && (
+                                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-44 overflow-y-auto text-sm">
+                                  {filteredItems.length === 0 ? (
+                                    <div className="px-3 py-2 text-muted-foreground text-xs">No items found</div>
+                                  ) : filteredItems.map(si => (
+                                    <div
+                                      key={si.id}
+                                      className="px-3 py-2 cursor-pointer hover:bg-[#0F5F64]/10 flex justify-between items-center"
+                                      onMouseDown={e => {
+                                        e.preventDefault();
+                                        setGrnLines(prev => prev.map((l, i) => i === idx ? {
+                                          ...l,
+                                          storeItemId: String(si.id),
+                                          itemSearch: si.name,
+                                          uom: si.uom,
+                                        } : l));
+                                        setGrnOpenDropdownIdx(null);
+                                      }}
+                                      data-testid={`grn-item-option-${si.id}-${idx}`}
+                                    >
+                                      <span className="font-medium">{si.name}</span>
+                                      <span className="text-xs text-muted-foreground ml-2">{si.category} · {si.uom}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">Qty</Label>
+                              <Input
+                                type="number"
+                                value={line.qty}
+                                onChange={e => setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l))}
+                                min="0"
+                                step="any"
+                                className="text-sm"
+                                data-testid={`input-grn-qty-${idx}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">Rate (₹)</Label>
+                              <Input
+                                type="number"
+                                value={line.rate}
+                                onChange={e => setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, rate: e.target.value } : l))}
+                                min="0"
+                                step="any"
+                                placeholder="0.00"
+                                className="text-sm"
+                                data-testid={`input-grn-rate-${idx}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">UOM</Label>
+                              <Input
+                                value={line.uom}
+                                onChange={e => setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, uom: e.target.value } : l))}
+                                placeholder="NOS"
+                                className="text-sm uppercase"
+                                data-testid={`input-grn-uom-${idx}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              Only items marked as <strong>purchased / partial</strong> appear here. Link each to a store catalogue entry to update stock balance.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" size="sm" onClick={() => setShowGrnDialog(false)} data-testid="button-grn-cancel">
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#0F5F64] hover:bg-[#0a4a4e] text-white"
+                size="sm"
+                disabled={createGrnMutation.isPending || grnLines.every(l => !l.storeItemId)}
+                onClick={handleGrnSubmit}
+                data-testid="button-grn-submit"
+              >
+                {createGrnMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Package className="w-3.5 h-3.5 mr-1.5" />}
+                Create GRN
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addStoreItemOpen} onOpenChange={open => { setAddStoreItemOpen(open); if (!open) setAddStoreItemTargetIdx(null); }}>
         <DialogContent className="max-w-sm">
