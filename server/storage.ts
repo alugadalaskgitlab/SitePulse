@@ -8937,6 +8937,9 @@ export class DatabaseStorage implements IStorage {
           approvedBy: approvedBy.toUpperCase(),
           approvedAt,
           approvalRemarks: combinedRemarks,
+          // Mark storesStatus as "bypassed" when manager approves without stores verification
+          // so StatusSteps renders the stores step as amber "BYPASSED" (not green "done").
+          ...(bypassReason ? { storesStatus: "bypassed" } : {}),
         })
         .where(eq(purchaseIndents.id, id));
 

@@ -372,7 +372,9 @@ function StatusSteps({ status, storesStatus }: { status: string; storesStatus?: 
     { key: "completed", label: "COMPLETED" },
   ];
 
-  const isBypassed = storesStatus === "bypass_requested" && (status === "approved" || status === "completed");
+  // "bypassed" = manager directly approved without stores verification (direct bypass)
+  // "bypass_requested" = stores requested bypass and manager approved subsequently
+  const isBypassed = (storesStatus === "bypassed" || storesStatus === "bypass_requested") && (status === "approved" || status === "completed");
 
   const getStepState = (stepKey: string) => {
     if (status === "rejected") {
@@ -1528,6 +1530,22 @@ export default function PurchaseIndents() {
                                 {verified && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Verified {verified}</span></>}
                                 {approved && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full inline-block ${indent.status === "rejected" ? "bg-red-400" : "bg-emerald-400"}`} />{indent.status === "rejected" ? "Rejected" : "Approved"} {approved}</span></>}
                               </div>
+                            );
+                          })()}
+
+                          {/* Explicit Verify Stock action for stores users */}
+                          {(() => {
+                            const ss = (indent as any).storesStatus as string | null;
+                            const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
+                            if (!(indent.status === "stores_check" && storesNotVerified && canCreateStores)) return null;
+                            return (
+                              <button
+                                className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); openDetail(indent); }}
+                                data-testid={`button-verify-stock-${indent.id}`}
+                              >
+                                <PackageCheck className="w-3 h-3" /> VERIFY STOCK →
+                              </button>
                             );
                           })()}
                         </div>
