@@ -206,6 +206,29 @@ input[type="number"]::-webkit-outer-spin-button {
   margin: 0;
 }
 
+/* ── Date input — ensure calendar picker button is always visible ── */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: hsl(var(--muted));
+}
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.65;
+}
+.dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 input[type="number"] {
   -moz-appearance: textfield;
 }
