@@ -4938,7 +4938,7 @@ export async function registerRoutes(
       const indent = await storage.verifyIndentStores(id, items, verifiedBy);
       if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
 
-      sendPushToAll("Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents").catch(() => {});
+      sendPushToAudience("Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents", "managers").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
