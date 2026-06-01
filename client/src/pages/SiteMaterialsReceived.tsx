@@ -26,15 +26,13 @@ export default function SiteMaterialsReceived() {
   const sp = new URLSearchParams(search);
   const returnTo = sp.get("returnTo") || "/site/hub";
 
-  const today = format(new Date(), "yyyy-MM-dd");
-
   const mgmtReportSite = sp.get("from") === "management-report" ? (sp.get("site") || null) : null;
 
   const urlFilterKeys = ["dateFrom", "dateTo", "site", "material", "supplier", "workType"];
   const urlHasFilterParams = urlFilterKeys.some((k) => sp.has(k));
   const urlFilterDefaults = urlHasFilterParams ? {
-    dateFrom: sp.get("dateFrom") ?? today,
-    dateTo: sp.get("dateTo") ?? today,
+    dateFrom: sp.get("dateFrom") ?? "",
+    dateTo: sp.get("dateTo") ?? "",
     site: sp.get("site") ?? "",
     material: sp.get("material") ?? "",
     supplier: sp.get("supplier") ?? "",
@@ -42,10 +40,10 @@ export default function SiteMaterialsReceived() {
   } : {};
 
   const [filters, setFilters, resetFilters] = usePersistedFilters(
-    "site-materials-received:filters:v2",
+    "site-materials-received:filters:v3",
     {
-      dateFrom: today,
-      dateTo: today,
+      dateFrom: "",
+      dateTo: "",
       site: "",
       material: "",
       supplier: "",
@@ -56,8 +54,8 @@ export default function SiteMaterialsReceived() {
   );
 
   const hasActiveFilters =
-    filters.dateFrom !== today ||
-    filters.dateTo !== today ||
+    !!filters.dateFrom ||
+    !!filters.dateTo ||
     !!filters.site ||
     !!filters.material ||
     !!filters.supplier ||
