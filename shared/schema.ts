@@ -1352,6 +1352,10 @@ export const purchaseIndents = pgTable("purchase_indents", {
   unlockedByUserId: integer("unlocked_by_user_id"),
   unlockedAt: timestamp("unlocked_at"),
   unlockReason: text("unlock_reason"),
+  // Stores verification workflow
+  storesStatus: text("stores_status"),
+  storesVerifiedBy: text("stores_verified_by"),
+  storesVerifiedAt: text("stores_verified_at"),
 });
 
 export const purchaseIndentItems = pgTable("purchase_indent_items", {
@@ -1377,6 +1381,14 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   cancelledBy: text("cancelled_by"),
   cancelledAt: text("cancelled_at"),
   reviewerNote: text("reviewer_note"),
+  // Stores verification per item
+  stockStatus: text("stock_status"),
+  stockAvailableQty: real("stock_available_qty"),
+  storesItemNote: text("stores_item_note"),
+  // Procurement tracking per item
+  expectedDelivery: date("expected_delivery"),
+  orderPlacedAt: text("order_placed_at"),
+  paymentMode: text("payment_mode"),
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {

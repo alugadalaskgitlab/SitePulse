@@ -926,6 +926,7 @@ export interface IStorage {
   setItemReviewerNote(itemId: number, note: string): Promise<void>;
   getRecentIndentItemIds(limit?: number): Promise<number[]>;
   deletePurchaseIndent(id: number): Promise<boolean>;
+  verifyIndentStores(id: number, items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[], verifiedBy: string): Promise<PurchaseIndentWithItems | undefined>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -8900,6 +8901,44 @@ export class DatabaseStorage implements IStorage {
       with: { items: true },
     });
     return result as PurchaseIndentWithItems | undefined;
+  }
+
+  async verifyIndentStores(
+    id: number,
+    items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[],
+    verifiedBy: string
+  ): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      const verifiedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+
+      await tx.update(purchaseIndents)
+        .set({
+          status: "stores_check",
+          storesStatus: "verified",
+          storesVerifiedBy: verifiedBy.toUpperCase(),
+          storesVerifiedAt: verifiedAt,
+        })
+        .where(eq(purchaseIndents.id, id));
+
+      for (const item of items) {
+        await tx.update(purchaseIndentItems)
+          .set({
+            stockStatus: item.stockStatus || null,
+            stockAvailableQty: item.stockAvailableQty ?? null,
+            storesItemNote: item.storesItemNote?.toUpperCase() || null,
+          })
+          .where(eq(purchaseIndentItems.id, item.itemId));
+      }
+
+      const result = await db.query.purchaseIndents.findFirst({
+        where: eq(purchaseIndents.id, id),
+        with: { items: { with: { history: { orderBy: desc(purchaseIndentItemHistory.actionAt) } } } },
+      });
+      return result as PurchaseIndentWithItems | undefined;
+    });
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {

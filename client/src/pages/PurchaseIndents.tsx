@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -197,7 +197,19 @@ function MaterialCombobox({
   );
 }
 
-type ViewMode = "list" | "form" | "detail" | "purchase" | "report";
+type ViewMode = "list" | "form" | "detail" | "purchase" | "report" | "stores";
+
+interface StoreItemVerification {
+  stockStatus: string;
+  stockAvailableQty: string;
+  storesItemNote: string;
+  showNote: boolean;
+}
+
+interface ProcurementExtra {
+  expectedDelivery: string;
+  paymentMode: string;
+}
 
 const PURPOSE_OPTIONS = [
   "DG SET", "PLANT", "OFFICE", "SITE", "EQUIPMENT REPAIR", "VEHICLE MAINTENANCE", "OTHER"
@@ -232,7 +244,9 @@ interface PurchaseUpdateData {
 function getStatusBadge(status: string) {
   switch (status) {
     case "pending":
-      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING APPROVAL</Badge>;
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING STORES</Badge>;
+    case "stores_check":
+      return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-stores-check">AWAITING APPROVAL</Badge>;
     case "approved":
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid="badge-status-approved">APPROVED</Badge>;
     case "completed":
@@ -337,6 +351,7 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
 function StatusSteps({ status }: { status: string }) {
   const steps = [
     { key: "raised", label: "RAISED" },
+    { key: "stores", label: "STORES" },
     { key: "approved", label: "APPROVED" },
     { key: "purchasing", label: "PURCHASING" },
     { key: "completed", label: "COMPLETED" },
@@ -344,11 +359,11 @@ function StatusSteps({ status }: { status: string }) {
 
   const getStepState = (stepKey: string) => {
     if (status === "rejected") {
-      return stepKey === "raised" ? "done" : stepKey === "approved" ? "rejected" : "pending";
+      return stepKey === "raised" ? "done" : stepKey === "stores" ? "rejected" : "pending";
     }
-    const statusOrder = ["pending", "approved", "purchasing", "completed"];
+    const statusOrder = ["pending", "stores_check", "approved", "purchasing", "completed"];
     const currentIdx = statusOrder.indexOf(status === "pending" ? "pending" : status);
-    const stepMap: Record<string, number> = { raised: 0, approved: 1, purchasing: 2, completed: 3 };
+    const stepMap: Record<string, number> = { raised: 0, stores: 1, approved: 2, purchasing: 3, completed: 4 };
     const stepIdx = stepMap[stepKey];
     if (stepIdx < currentIdx) return "done";
     if (stepIdx === currentIdx) return "active";
@@ -381,7 +396,7 @@ function StatusSteps({ status }: { status: string }) {
 
 export default function PurchaseIndents() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin } = useAuth();
+  const { sectionCan, isAdmin, canApprove } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
   const canCreate = sectionCan("site_procurement", "create");
   const canEdit = sectionCan("site_procurement", "edit");
@@ -443,6 +458,9 @@ export default function PurchaseIndents() {
   const [forceCloseReason, setForceCloseReason] = useState("");
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<number>>(new Set());
 
+  const [storeItemVerifications, setStoreItemVerifications] = useState<Record<number, StoreItemVerification>>({});
+  const [procurementExtras, setProcurementExtras] = useState<Record<number, ProcurementExtra>>({});
+
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
   const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Aggregate", uom: "NOS" });
@@ -479,7 +497,7 @@ export default function PurchaseIndents() {
     queryKey: ["/api/purchase-indents"],
   });
 
-  const { data: summary } = useQuery<{
+  const { data: summary } = useQuery<{ storesCheck?: number;
     total: number;
     pending: number;
     approved: number;
@@ -651,6 +669,20 @@ export default function PurchaseIndents() {
       apiRequest("PATCH", `/api/purchase-indent-items/${itemId}/reviewer-note`, { note }),
   });
 
+  const storesVerifyMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", `/api/purchase-indents/${selectedIndentId}/stores-verify`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      toast({ title: "Stores verification submitted", description: "Indent is now awaiting manager approval." });
+      setView("list");
+      setSelectedIndentId(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to submit verification", description: err.message, variant: "destructive" });
+    },
+  });
+
   const reportQueryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (reportFilterDateFrom) params.set("dateFrom", reportFilterDateFrom);
@@ -801,10 +833,22 @@ export default function PurchaseIndents() {
   const openDetail = (indent: PurchaseIndentWithItems) => {
     setSelectedIndentId(indent.id);
     if (indent.status === "pending") {
+      const verifs: Record<number, StoreItemVerification> = {};
+      indent.items.forEach(item => {
+        verifs[item.id] = {
+          stockStatus: (item as any).stockStatus || "",
+          stockAvailableQty: (item as any).stockAvailableQty?.toString() || "",
+          storesItemNote: (item as any).storesItemNote || "",
+          showNote: !!(item as any).storesItemNote,
+        };
+      });
+      setStoreItemVerifications(verifs);
+      setView("stores");
+    } else if (indent.status === "stores_check") {
       const qtys: Record<number, number> = {};
       const notes: Record<number, string> = {};
       indent.items.forEach(item => {
-        qtys[item.id] = item.qty;
+        qtys[item.id] = item.approvedQty ?? item.qty;
         notes[item.id] = (item as any).reviewerNote || "";
       });
       setApprovedQtys(qtys);
@@ -813,6 +857,7 @@ export default function PurchaseIndents() {
       setView("detail");
     } else if (indent.status === "approved" || indent.status === "completed") {
       setPurchaseUpdates({});
+      setProcurementExtras({});
       setView("purchase");
     } else {
       setView("detail");
@@ -876,6 +921,7 @@ export default function PurchaseIndents() {
       toast({ title: "Please select a purchase status", variant: "destructive" });
       return;
     }
+    const extra = procurementExtras[itemId] || { expectedDelivery: "", paymentMode: "" };
     purchaseUpdateMutation.mutate({
       itemId,
       data: {
@@ -886,6 +932,8 @@ export default function PurchaseIndents() {
         rate: update.rate ? parseFloat(update.rate) : undefined,
         amount: update.amount ? parseFloat(update.amount) : undefined,
         purchaseRemarks: update.purchaseRemarks.toUpperCase() || undefined,
+        expectedDelivery: extra.expectedDelivery || undefined,
+        paymentMode: extra.paymentMode || undefined,
       },
     });
   };
@@ -928,11 +976,48 @@ export default function PurchaseIndents() {
   const getIndentBorderColor = (status: string) => {
     switch (status) {
       case "pending": return "border-l-amber-500";
+      case "stores_check": return "border-l-cyan-500";
       case "approved": return "border-l-emerald-500";
       case "completed": return "border-l-blue-500";
       case "rejected": return "border-l-red-500";
       default: return "border-l-muted";
     }
+  };
+
+  const handleSubmitStoresVerify = () => {
+    if (!selectedIndentId || !selectedIndent) return;
+    const allVerified = selectedIndent.items.every(item => {
+      const v = storeItemVerifications[item.id];
+      return v && v.stockStatus;
+    });
+    if (!allVerified) {
+      toast({ title: "Please set stock status for all items", variant: "destructive" });
+      return;
+    }
+    const items = selectedIndent.items.map(item => {
+      const v = storeItemVerifications[item.id] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false };
+      return {
+        itemId: item.id,
+        stockStatus: v.stockStatus,
+        stockAvailableQty: v.stockAvailableQty ? parseFloat(v.stockAvailableQty) : undefined,
+        storesItemNote: v.storesItemNote || undefined,
+      };
+    });
+    storesVerifyMutation.mutate({ items });
+  };
+
+  const updateStoreVerification = (itemId: number, field: keyof StoreItemVerification, value: string | boolean) => {
+    setStoreItemVerifications(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false }), [field]: value },
+    }));
+  };
+
+  const updateProcurementExtra = (itemId: number, field: keyof ProcurementExtra, value: string) => {
+    setProcurementExtras(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || { expectedDelivery: "", paymentMode: "credit" }), [field]: value },
+    }));
   };
 
   const hasUnfulfilledItems = (items: PurchaseIndentItem[]) => {
@@ -1086,17 +1171,23 @@ export default function PurchaseIndents() {
 
       {view === "list" && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <Card data-testid="card-summary-total">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL INDENTS</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL</p>
                 <p className="text-2xl font-bold mt-1" data-testid="text-total-count">{summary?.total || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-pending">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PENDING APPROVAL</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PENDING STORES</p>
                 <p className="text-2xl font-bold mt-1 text-amber-600" data-testid="text-pending-count">{summary?.pending || 0}</p>
+              </CardContent>
+            </Card>
+            <Card data-testid="card-summary-stores-check">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">AWAITING APPROVAL</p>
+                <p className="text-2xl font-bold mt-1 text-cyan-600" data-testid="text-stores-check-count">{summary?.storesCheck || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-approved">
@@ -1132,7 +1223,8 @@ export default function PurchaseIndents() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">ALL STATUS</SelectItem>
-                      <SelectItem value="pending">PENDING</SelectItem>
+                      <SelectItem value="pending">PENDING STORES</SelectItem>
+                      <SelectItem value="stores_check">AWAITING APPROVAL</SelectItem>
                       <SelectItem value="approved">APPROVED</SelectItem>
                       <SelectItem value="completed">COMPLETED</SelectItem>
                       <SelectItem value="rejected">REJECTED</SelectItem>
@@ -1528,6 +1620,181 @@ export default function PurchaseIndents() {
         </>
       )}
 
+      {view === "stores" && (
+        <>
+          {isLoadingDetail ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : selectedIndent ? (
+            <>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="text-base uppercase flex items-center gap-2" data-testid="text-stores-indent-no">
+                    <PackageCheck className="w-4 h-4 text-cyan-600" />
+                    {selectedIndent.indentNo} — Stores Verification
+                  </CardTitle>
+                  {getStatusBadge(selectedIndent.status)}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-2">
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Date</p>
+                      <p className="font-semibold uppercase">{format(new Date(selectedIndent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Raised By</p>
+                      <p className="font-semibold uppercase">{selectedIndent.raisedBy}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Purpose</p>
+                      <p className="font-semibold uppercase">{selectedIndent.purpose}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Location</p>
+                      <p className="font-semibold uppercase">{selectedIndent.location}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-cyan-200 bg-cyan-50 dark:bg-cyan-950/30 dark:border-cyan-800 px-3 py-2 text-xs text-cyan-800 dark:text-cyan-300">
+                    <strong>Stores Team:</strong> Check each item against current stock. Set status and available quantity where applicable, then submit for manager approval.
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase">Items to Verify ({selectedIndent.items.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {selectedIndent.items.map((item, idx) => {
+                    const v = storeItemVerifications[item.id] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false };
+                    const isInStock = v.stockStatus === "in_stock";
+                    const isShort = v.stockStatus === "short";
+                    const isOut = v.stockStatus === "out_of_stock";
+                    const isVerified = !!v.stockStatus;
+                    return (
+                      <div key={item.id} className={`border rounded-lg p-3 space-y-3 ${isInStock ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20" : isShort ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20" : isOut ? "border-red-300 bg-red-50/50 dark:bg-red-950/20" : "border-border"}`} data-testid={`stores-item-${item.id}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
+                              <span className="font-semibold uppercase text-sm">{item.itemName}</span>
+                              {getPriorityBadge(item.priority)}
+                              {!isVerified && <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
+                              {isVerified && (
+                                <Badge variant="outline" className={`text-xs ${isInStock ? "bg-emerald-50 text-emerald-700 border-emerald-300" : isShort ? "bg-amber-50 text-amber-700 border-amber-300" : "bg-red-50 text-red-700 border-red-300"}`}>
+                                  {isInStock ? "IN STOCK" : isShort ? "SHORT" : "OUT OF STOCK"}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                              <span>{item.category}</span>
+                              <span className="font-semibold text-foreground">{item.qty} {item.uom}</span>
+                              {item.estimatedRate && <span>Est. ₹{item.estimatedRate}/{item.uom}</span>}
+                            </div>
+                            {item.remarks && <p className="text-xs text-muted-foreground mt-0.5 italic">"{item.remarks}"</p>}
+                          </div>
+                          {isVerified && (
+                            <div className="flex-shrink-0">
+                              {isInStock ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : isOut ? <XCircle className="w-5 h-5 text-red-500" /> : <AlertTriangle className="w-5 h-5 text-amber-500" />}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase">Stock Status:</span>
+                          {(["in_stock", "short", "out_of_stock"] as const).map((s) => (
+                            <Button
+                              key={s}
+                              size="sm"
+                              variant={v.stockStatus === s ? "default" : "outline"}
+                              className={`text-xs h-7 px-2 ${v.stockStatus === s && s === "in_stock" ? "bg-emerald-600 hover:bg-emerald-700" : v.stockStatus === s && s === "short" ? "bg-amber-500 hover:bg-amber-600" : v.stockStatus === s && s === "out_of_stock" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                              onClick={() => updateStoreVerification(item.id, "stockStatus", s)}
+                              data-testid={`button-stock-${item.id}-${s}`}
+                            >
+                              {s === "in_stock" ? "✓ In Stock" : s === "short" ? "⚠ Short" : "✗ Out"}
+                            </Button>
+                          ))}
+                        </div>
+
+                        {(isShort || isOut) && (
+                          <div className="flex items-center gap-3">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase whitespace-nowrap">Qty Available:</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={v.stockAvailableQty}
+                              onChange={(e) => updateStoreVerification(item.id, "stockAvailableQty", e.target.value)}
+                              className="h-8 w-28 text-sm"
+                              placeholder="0"
+                              data-testid={`input-stock-qty-${item.id}`}
+                            />
+                            <span className="text-xs text-muted-foreground">of {item.qty} {item.uom} requested</span>
+                          </div>
+                        )}
+
+                        <div>
+                          {!v.showNote ? (
+                            <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => updateStoreVerification(item.id, "showNote", true)} data-testid={`button-add-note-${item.id}`}>
+                              + Add stores note
+                            </Button>
+                          ) : (
+                            <div className="space-y-1">
+                              <label className="text-xs font-semibold text-muted-foreground uppercase">Stores Note:</label>
+                              <Input
+                                value={v.storesItemNote}
+                                onChange={(e) => updateStoreVerification(item.id, "storesItemNote", e.target.value)}
+                                className="h-8 text-sm"
+                                placeholder="e.g. available at second rack, check with vendor…"
+                                data-testid={`input-stores-note-${item.id}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {(() => {
+                    const allVerified = selectedIndent.items.every(item => !!storeItemVerifications[item.id]?.stockStatus);
+                    const hasUrgentOrOut = selectedIndent.items.some(item => item.priority === "urgent" || storeItemVerifications[item.id]?.stockStatus === "out_of_stock" || storeItemVerifications[item.id]?.stockStatus === "short");
+                    const canBypass = canApprove("purchase_indents_approve");
+                    return (
+                      <div className="pt-2 border-t space-y-3">
+                        {!allVerified && (
+                          <p className="text-xs text-muted-foreground italic">Set stock status for all items to enable submission.</p>
+                        )}
+                        {hasUrgentOrOut && canBypass && allVerified && (
+                          <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                            <strong>Manager Fast-Track:</strong> Urgent or unavailable items detected. You may also use the Approve action directly from the detail view to bypass stores queue.
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3">
+                          <Button
+                            onClick={handleSubmitStoresVerify}
+                            disabled={!allVerified || storesVerifyMutation.isPending}
+                            data-testid="button-submit-stores-verify"
+                          >
+                            {storesVerifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PackageCheck className="w-4 h-4 mr-2" />}
+                            Submit Verification
+                          </Button>
+                          <Button variant="outline" onClick={() => { setView("list"); setSelectedIndentId(null); }} data-testid="button-cancel-stores">
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card><CardContent className="py-8 text-center text-muted-foreground"><p>INDENT NOT FOUND</p></CardContent></Card>
+          )}
+        </>
+      )}
+
       {view === "detail" && (
         <>
           {isLoadingDetail ? (
@@ -1605,7 +1872,7 @@ export default function PurchaseIndents() {
                 </CardContent>
               </Card>
 
-              {selectedIndent.status === "pending" ? (
+              {(selectedIndent.status === "stores_check" || selectedIndent.status === "pending") ? (
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-2">
                     <CardTitle className="text-base uppercase">ITEMS - REVIEW & APPROVE QUANTITIES</CardTitle>
@@ -1657,6 +1924,14 @@ export default function PurchaseIndents() {
                             )}
                           </div>
                         </div>
+                        {(item as any).stockStatus && (
+                          <div className={`mt-2 flex items-center gap-2 flex-wrap text-xs px-2 py-1.5 rounded-md border ${(item as any).stockStatus === "in_stock" ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300" : (item as any).stockStatus === "short" ? "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"}`}>
+                            <PackageCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="font-semibold">STORES:</span>
+                            <span>{(item as any).stockStatus === "in_stock" ? "In Stock" : (item as any).stockStatus === "short" ? `Short — ${(item as any).stockAvailableQty ?? 0} ${item.uom} available` : "Out of Stock"}</span>
+                            {(item as any).storesItemNote && <span className="text-muted-foreground italic">· {(item as any).storesItemNote}</span>}
+                          </div>
+                        )}
                         <div className="flex items-center gap-4 mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-md flex-wrap">
                           <div className="text-sm">
                             <span className="text-muted-foreground">INTENDED:</span>{" "}
@@ -2148,6 +2423,35 @@ export default function PurchaseIndents() {
                                   data-testid={`input-amount-${item.id}`}
                                 />
                                 <p className="text-xs text-muted-foreground mt-0.5">AUTO-CALCULATED: QTY x RATE</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <div>
+                                <Label className="text-xs">EXPECTED DELIVERY DATE</Label>
+                                <Input
+                                  type="date"
+                                  value={procurementExtras[item.id]?.expectedDelivery || (item as any).expectedDelivery || ""}
+                                  onChange={(e) => updateProcurementExtra(item.id, "expectedDelivery", e.target.value)}
+                                  data-testid={`input-expected-delivery-${item.id}`}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">PAYMENT MODE</Label>
+                                <Select
+                                  value={procurementExtras[item.id]?.paymentMode || (item as any).paymentMode || "credit"}
+                                  onValueChange={(v) => updateProcurementExtra(item.id, "paymentMode", v)}
+                                >
+                                  <SelectTrigger data-testid={`select-payment-mode-${item.id}`}>
+                                    <SelectValue placeholder="SELECT..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cash">CASH</SelectItem>
+                                    <SelectItem value="credit">CREDIT</SelectItem>
+                                    <SelectItem value="upi">UPI</SelectItem>
+                                    <SelectItem value="cheque">CHEQUE</SelectItem>
+                                    <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
                             <div className="mb-3">

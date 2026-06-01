@@ -4765,6 +4765,7 @@ export async function registerRoutes(
       const summary = {
         total: all.length,
         pending: all.filter(i => i.status === "pending").length,
+        storesCheck: all.filter(i => i.status === "stores_check").length,
         approved: all.filter(i => i.status === "approved").length,
         rejected: all.filter(i => i.status === "rejected").length,
         completed: all.filter(i => i.status === "completed").length,
@@ -4882,6 +4883,35 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/purchase-indents/:id/stores-verify", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!assertEdit(req, res, "site_procurement")) return;
+
+      const verifySchema = z.object({
+        items: z.array(z.object({
+          itemId: z.number(),
+          stockStatus: z.string(),
+          stockAvailableQty: z.number().optional(),
+          storesItemNote: z.string().optional(),
+        })),
+      });
+
+      const { items } = verifySchema.parse(req.body);
+      const verifiedBy = currentUserName(req);
+
+      const indent = await storage.verifyIndentStores(id, items, verifiedBy);
+      if (!indent) return res.status(404).json({ message: "Purchase indent not found" });
+
+      sendPushToAll("Stores Verified", `${indent.indentNo} verified by stores — awaiting manager approval`, "/plant/purchase-indents").catch(() => {});
+      res.json(indent);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Error verifying stores:", err);
+      res.status(500).json({ message: "Failed to submit stores verification" });
+    }
+  });
+
   app.post("/api/purchase-indents/:id/notify", async (req, res) => {
     try {
       if (!assertEdit(req, res, "site_procurement")) return;
@@ -4945,6 +4975,9 @@ export async function registerRoutes(
         amount: z.number().optional(),
         purchaseRemarks: z.string().optional(),
         actionBy: z.string().optional(),
+        expectedDelivery: z.string().optional(),
+        orderPlacedAt: z.string().optional(),
+        paymentMode: z.string().optional(),
       });
       const { actionBy, ...purchaseData } = updateSchema.parse(req.body);
       const item = await storage.updatePurchaseItemStatus(itemId, purchaseData, actionBy || "SYSTEM");
