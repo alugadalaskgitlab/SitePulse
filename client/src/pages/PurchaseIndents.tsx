@@ -985,7 +985,7 @@ export default function PurchaseIndents() {
       setApprovalRemarks("");
       setBypassReason("");
       setView("detail");
-    } else if (indent.status === "approved" || indent.status === "completed") {
+    } else if (indent.status === "approved" || indent.status === "purchasing" || indent.status === "completed") {
       setPurchaseUpdates({});
       setProcurementExtras({});
       setView("procurement");
@@ -1018,6 +1018,23 @@ export default function PurchaseIndents() {
 
   const handleFinaliseApproval = () => {
     if (!selectedIndent) return;
+    // If ALL items are rejected, treat the whole indent as rejected
+    const allRejected = selectedIndent.items.every(item => itemApprovalStates[item.id]?.action === 'rejected');
+    if (allRejected) {
+      const combinedReason = selectedIndent.items
+        .map(item => {
+          const st = itemApprovalStates[item.id];
+          return st?.rejectReason?.trim() ? `${item.description}: ${st.rejectReason.trim()}` : item.description;
+        })
+        .join("; ");
+      const reason = (approvalRemarks.trim() || combinedReason).toUpperCase();
+      if (!reason) {
+        toast({ title: "Enter a rejection reason in the remarks field", variant: "destructive" });
+        return;
+      }
+      rejectMutation.mutate({ reason });
+      return;
+    }
     const approvedItems = selectedIndent.items.map(item => {
       const st = itemApprovalStates[item.id];
       if (!st || st.action === 'pending') return { itemId: item.id, approvedQty: item.qty };

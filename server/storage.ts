@@ -9028,6 +9028,16 @@ export class DatabaseStorage implements IStorage {
         notes: updates.purchaseRemarks ?? null,
       }).catch(() => {});
 
+      // Transition indent from "approved" → "purchasing" on first procurement action
+      const [indentRow] = await db.select({ status: purchaseIndents.status })
+        .from(purchaseIndents)
+        .where(eq(purchaseIndents.id, updated.indentId));
+      if (indentRow?.status === "approved") {
+        await db.update(purchaseIndents)
+          .set({ status: "purchasing" })
+          .where(eq(purchaseIndents.id, updated.indentId));
+      }
+
       await this.checkAndCompleteIndent(updated.indentId);
     }
     return updated as PurchaseIndentItem | undefined;
@@ -9045,9 +9055,13 @@ export class DatabaseStorage implements IStorage {
     );
 
     if (allTerminal && allItems.length > 0) {
+      // Only advance from in-progress procurement states; never overwrite rejected/pending
       await db.update(purchaseIndents)
         .set({ status: "completed" })
-        .where(eq(purchaseIndents.id, indentId));
+        .where(and(
+          eq(purchaseIndents.id, indentId),
+          inArray(purchaseIndents.status, ["approved", "purchasing"])
+        ));
     }
   }
 
