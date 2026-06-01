@@ -4,9 +4,9 @@ import express from "express";
 import { createServer } from "http";
 import request from "supertest";
 
-const { sendPushToAllSpy, createBitumenSpy, createLdoSpy, updateBitumenSpy, updateLdoSpy, deleteBitumenSpy, deleteLdoSpy } = vi.hoisted(() => {
+const { sendPushToSectionSpy, createBitumenSpy, createLdoSpy, updateBitumenSpy, updateLdoSpy, deleteBitumenSpy, deleteLdoSpy } = vi.hoisted(() => {
   return {
-    sendPushToAllSpy: vi.fn().mockResolvedValue(undefined),
+    sendPushToSectionSpy: vi.fn().mockResolvedValue(undefined),
     deleteBitumenSpy: vi.fn().mockResolvedValue({ id: 1 }),
     deleteLdoSpy: vi.fn().mockResolvedValue({ id: 2 }),
     createBitumenSpy: vi.fn().mockResolvedValue({
@@ -99,9 +99,12 @@ vi.mock("../server/storage", () => {
 });
 
 vi.mock("../server/push", () => ({
-  sendPushToAll: sendPushToAllSpy,
+  sendPushToAll: vi.fn().mockResolvedValue(undefined),
+  sendPushToSection: sendPushToSectionSpy,
   sendTestPush: vi.fn().mockResolvedValue(undefined),
   sendPushToAudience: vi.fn().mockResolvedValue(undefined),
+  sendPushToRaiser: vi.fn().mockResolvedValue(undefined),
+  sendPushToUser: vi.fn().mockResolvedValue(undefined),
   initPush: vi.fn(),
 }));
 
@@ -178,7 +181,7 @@ const VALID_LDO_BODY = {
 
 describe("Dip reading push notification body", () => {
   it("bitumen POST sends notification body with actual depthCm, not 'undefined'", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .post("/api/plant-module/bitumen-dip-readings")
@@ -187,17 +190,17 @@ describe("Dip reading push notification body", () => {
 
     expect(res.status).toBe(201);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("Bitumen Dip Reading");
     expect(body).not.toContain("undefined");
     expect(body).toBe(`Tank ${VALID_BITUMEN_BODY.tankNumber} - ${VALID_BITUMEN_BODY.depthCm}cm`);
   });
 
   it("LDO POST sends notification body with actual depthCm, not 'undefined'", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .post("/api/plant-module/ldo-dip-readings")
@@ -206,17 +209,17 @@ describe("Dip reading push notification body", () => {
 
     expect(res.status).toBe(201);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("LDO Dip Reading");
     expect(body).not.toContain("undefined");
     expect(body).toBe(`Tank ${VALID_LDO_BODY.tankNumber} - ${VALID_LDO_BODY.depthCm}cm`);
   });
 
   it("bitumen PATCH sends notification body without 'undefined' and includes tank info", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .patch("/api/plant-module/bitumen-dip-readings/1")
@@ -225,17 +228,17 @@ describe("Dip reading push notification body", () => {
 
     expect(res.status).toBe(200);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("Bitumen Dip Updated");
     expect(body).not.toContain("undefined");
     expect(body).toBe("Tank 2 reading updated");
   });
 
   it("LDO PATCH sends notification body without 'undefined' and includes reading info", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .patch("/api/plant-module/ldo-dip-readings/2")
@@ -244,44 +247,44 @@ describe("Dip reading push notification body", () => {
 
     expect(res.status).toBe(200);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("LDO Dip Updated");
     expect(body).not.toContain("undefined");
     expect(body).toBe("LDO dip reading #2 updated");
   });
 
   it("bitumen DELETE sends notification body without 'undefined' and includes reading id", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .delete("/api/plant-module/bitumen-dip-readings/1");
 
     expect(res.status).toBe(200);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("Bitumen Dip Deleted");
     expect(body).not.toContain("undefined");
     expect(body).toBe("Bitumen dip reading #1 deleted");
   });
 
   it("LDO DELETE sends notification body without 'undefined' and includes reading id", async () => {
-    sendPushToAllSpy.mockClear();
+    sendPushToSectionSpy.mockClear();
 
     const res = await request(app)
       .delete("/api/plant-module/ldo-dip-readings/2");
 
     expect(res.status).toBe(200);
 
-    const calls = sendPushToAllSpy.mock.calls;
+    const calls = sendPushToSectionSpy.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
 
-    const [title, body] = calls[0];
+    const [, title, body] = calls[0];
     expect(title).toBe("LDO Dip Deleted");
     expect(body).not.toContain("undefined");
     expect(body).toBe("LDO dip reading #2 deleted");

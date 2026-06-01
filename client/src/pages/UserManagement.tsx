@@ -55,7 +55,6 @@ import {
   ArrowLeft,
   MapPin,
   ShieldHalf,
-  Bell,
 } from "lucide-react";
 
 type SafeUser = {
@@ -655,10 +654,9 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
               {ACTIONS.map((a) => (
                 <th
                   key={a}
-                  className={`px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]${a === "notify" ? " border-l border-border" : ""}`}
-                  title={a === "notify" ? "Push notification — user receives an alert when this section fires an event" : undefined}
+                  className="px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]"
                 >
-                  {a === "notify" ? <Bell className="h-3.5 w-3.5 mx-auto" /> : ACTION_LABELS[a]}
+                  {ACTION_LABELS[a]}
                 </th>
               ))}
               <th className="px-2 py-2 text-center font-medium min-w-[44px]">All</th>
@@ -678,7 +676,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                     return (
                       <td
                         key={a}
-                        className={`text-center px-2 py-1.5${a === "notify" ? " border-l border-border" : ""}`}
+                        className="text-center px-2 py-1.5"
                       >
                         <Checkbox
                           checked={!!row[a]}
