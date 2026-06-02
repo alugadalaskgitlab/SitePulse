@@ -781,7 +781,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
 }
 
 function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: string; rmcEnabled?: boolean }) {
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isAdmin, isManager } = useAuth();
   const isRmc = rmcEnabled;
   const todayStr = new Date().toISOString().slice(0, 10);
   const appendRoleAndTab = (path: string) => {
@@ -852,6 +852,22 @@ function ReportsTab({ plantType = "hma", rmcEnabled = false }: { plantType?: str
               <div className="flex-1">
                 <h3 className="font-semibold text-lg">RMC Daily Report</h3>
                 <p className="text-sm text-muted-foreground">Day-wise RMC production, materials & cube test summary</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+        )}
+        {(isAdmin || isManager) && (
+        <Link href="/plant/dispatch-summary">
+          <Card className="hover-elevate cursor-pointer h-full border-indigo-200 dark:border-indigo-800" data-testid="tile-plant-project-dispatch-summary">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                <BarChart3 className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg">Plant-Project Dispatch Summary</h3>
+                <p className="text-sm text-muted-foreground">Cross-plant dispatch analysis — loads & MT by plant and party</p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </CardContent>

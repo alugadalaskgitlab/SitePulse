@@ -12,9 +12,9 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable } from "@shared/schema";
 import { db } from "./db";
-import { isNull, inArray as drizzleInArray } from "drizzle-orm";
+import { isNull, inArray as drizzleInArray, sql, and, eq, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -5044,7 +5044,7 @@ export async function registerRoutes(
 
   app.patch("/api/irn/:id/approve", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "irn_approve")) return;
+      if (!assertApprove(req, res, "irn_approve")) return;
       const id = Number(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
@@ -8307,6 +8307,58 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("RMC daily report Excel error", err);
       if (!res.headersSent) res.status(500).json({ message: err.message || "Export failed" });
+    }
+  });
+
+  // ============================================
+  // CROSS-PLANT / PROJECT DISPATCH SUMMARY REPORT
+  // ============================================
+  app.get("/api/reports/plant-project-dispatch-summary", async (req, res) => {
+    try {
+      if (!assertView(req, res, "plant_production")) return;
+
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo   = req.query.dateTo   as string | undefined;
+      const plantNamesRaw = req.query.plantNames as string | undefined;
+      const partyIdsRaw   = req.query.partyIds   as string | undefined;
+
+      const plantNamesFilter = plantNamesRaw
+        ? plantNamesRaw.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      const partyIdsFilter = partyIdsRaw
+        ? partyIdsRaw.split(",").map((s) => parseInt(s, 10)).filter((n) => !isNaN(n))
+        : [];
+
+      const conditions: ReturnType<typeof eq>[] = [];
+      if (dateFrom) conditions.push(gte(truckDispatchesTable.date, dateFrom));
+      if (dateTo)   conditions.push(lte(truckDispatchesTable.date, dateTo));
+      if (plantNamesFilter.length > 0) conditions.push(drizzleInArray(truckDispatchesTable.plantName, plantNamesFilter));
+      if (partyIdsFilter.length > 0)   conditions.push(drizzleInArray(truckDispatchesTable.partyId,   partyIdsFilter));
+
+      const rows = await db
+        .select({
+          plantName: truckDispatchesTable.plantName,
+          partyId:   truckDispatchesTable.partyId,
+          partyName: sql<string>`COALESCE(${partiesTable.name}, 'Unknown')`,
+          loadCount: sql<number>`COUNT(*)::int`,
+          totalMT:   sql<number>`ROUND(SUM(${truckDispatchesTable.loadWeight})::numeric, 2)::float`,
+          mixTypes:  sql<string[]>`array_agg(DISTINCT ${mixTemplatesTable.mixType} ORDER BY ${mixTemplatesTable.mixType}) FILTER (WHERE ${mixTemplatesTable.mixType} IS NOT NULL)`,
+        })
+        .from(truckDispatchesTable)
+        .leftJoin(partiesTable,    eq(truckDispatchesTable.partyId,       partiesTable.id))
+        .leftJoin(mixTemplatesTable, eq(truckDispatchesTable.mixTemplateId, mixTemplatesTable.id))
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .groupBy(
+          truckDispatchesTable.plantName,
+          truckDispatchesTable.partyId,
+          sql`COALESCE(${partiesTable.name}, 'Unknown')`,
+        )
+        .orderBy(asc(truckDispatchesTable.plantName), asc(sql`COALESCE(${partiesTable.name}, 'Unknown')`));
+
+      res.json(rows);
+    } catch (err: any) {
+      console.error("plant-project-dispatch-summary error:", err);
+      res.status(500).json({ message: "Failed to generate plant-project dispatch summary" });
     }
   });
 

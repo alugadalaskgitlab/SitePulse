@@ -49,6 +49,7 @@ import PlantDailyReport from "@/pages/PlantDailyReport";
 import PlantDailyReports from "@/pages/PlantDailyReports";
 import PlantHeatingSessions from "@/pages/PlantHeatingSessions";
 import PlantHeatingTrends from "@/pages/PlantHeatingTrends";
+import PlantProjectReport from "@/pages/PlantProjectReport";
 import PlantHeatingMismatch from "@/pages/PlantHeatingMismatch";
 import PlantLdoMismatch from "@/pages/PlantLdoMismatch";
 import PlantLdoReconciliation from "@/pages/PlantLdoReconciliation";
@@ -274,6 +275,7 @@ function AuthedShell() {
             <Route path="/plant/heating-sessions" component={gated(PlantHeatingSessions, "plant_heating")} />
             <Route path="/plant/heating-sessions/:date" component={gated(PlantHeatingSessions, "plant_heating")} />
             <Route path="/plant/heating-trends" component={gatedEither(PlantHeatingTrends, "plant_heating_trends", "plant_heating")} />
+            <Route path="/plant/dispatch-summary" component={gatedEither(PlantProjectReport, "plant_daily_reports", "plant_production")} />
             <Route path="/plant/heating-mismatch/:date" component={gated(PlantHeatingMismatch, "plant_heating")} />
             <Route path="/plant/ldo-mismatch/:date" component={gated(PlantLdoMismatch, "plant_heating")} />
             <Route path="/plant/ldo-reconciliation" component={gatedEither(PlantLdoReconciliation, "plant_ldo_reconciliation", "plant_stock")} />
