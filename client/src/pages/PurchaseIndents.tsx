@@ -580,7 +580,7 @@ export default function PurchaseIndents() {
   const { sectionCan, isAdmin, canApprove } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
   const canCreate = sectionCan("site_procurement", "create");
-  const canEdit = sectionCan("site_procurement", "edit");
+  const canEdit = sectionCan("site_procurement", "edit") || isAdmin;
   const canViewStores = sectionCan("stores_inventory", "view");
   const canCreateStores = sectionCan("stores_inventory", "create");
   const isApprover = canApprove("purchase_indents_approve");
@@ -1803,7 +1803,7 @@ export default function PurchaseIndents() {
                       <div className="flex justify-between items-start gap-4 flex-wrap">
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-base uppercase" data-testid={`text-indent-no-${indent.id}`}>{indent.indentNo}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                             {format(new Date(indent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                             {" \u2022 "}PROPOSED BY {indent.proposedBy}
                             {" \u2022 "}RAISED BY {indent.raisedBy}
@@ -1822,7 +1822,7 @@ export default function PurchaseIndents() {
                             {priorities.map(p => (
                               <span key={p}>{getPriorityBadge(p)}</span>
                             ))}
-                            <span className="text-xs text-muted-foreground pt-1">{purposes.join(" / ")}</span>
+                            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium pt-1">{purposes.join(" / ")}</span>
                             {(() => {
                               const reqDates = indent.items
                                 .map(i => (i as any).requiredBy)
@@ -1847,12 +1847,12 @@ export default function PurchaseIndents() {
                           {indent.items.length > 0 && (
                             <div className="mt-2.5 flex flex-wrap gap-1.5">
                               {indent.items.slice(0, 5).map(item => (
-                                <span key={item.id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                <span key={item.id} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-slate-600">
                                   {item.description}{(item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
                                 </span>
                               ))}
                               {indent.items.length > 5 && (
-                                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-700">
+                                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-900 text-gray-600 border border-gray-200 dark:border-slate-700">
                                   +{indent.items.length - 5} more
                                 </span>
                               )}
@@ -2438,7 +2438,7 @@ export default function PurchaseIndents() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base uppercase" data-testid="text-detail-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {selectedIndent.status !== "completed" && canEdit && (
+                    {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -2877,7 +2877,7 @@ export default function PurchaseIndents() {
                             + Create GRN
                           </button>
                         )}
-                        {selectedIndent.status !== "completed" && canEdit && (
+                        {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                           <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
                         )}
                         {canDelete && (

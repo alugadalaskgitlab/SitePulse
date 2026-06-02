@@ -717,7 +717,7 @@ export default function IrnDetailPage() {
                                 className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium cursor-pointer hover:opacity-80 transition-opacity ${color}`}
                               >
                                 <Warehouse className="h-3 w-3" />
-                                {live.approx && <span className="opacity-60">~</span>}
+                                {live.approx && <span className="mr-0.5">~</span>}
                                 {live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom || item.uom}
                               </button>
                             );
