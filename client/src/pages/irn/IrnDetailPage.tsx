@@ -92,21 +92,34 @@ export default function IrnDetailPage() {
     enabled: canVerify && irn?.status === "pending_stores",
   });
 
-  // Build a map: UPPER(materialName) → total balance across all parties
-  const liveStockMap = useMemo(() => {
-    const map = new Map<string, { balance: number; uom: string }>();
-    if (!stockLookupRows) return map;
+  // Build a map: UPPER(materialName) → total balance across all parties + sorted list for partial matching
+  const liveStock = useMemo(() => {
+    const exact = new Map<string, { balance: number; uom: string }>();
+    if (!stockLookupRows) return { exact, sorted: [] as { key: string; balance: number; uom: string }[] };
     for (const row of stockLookupRows) {
       const key = row.materialName.toUpperCase().trim();
-      const existing = map.get(key);
-      if (existing) {
-        existing.balance += row.balance;
-      } else {
-        map.set(key, { balance: row.balance, uom: row.uom ?? "" });
+      const existing = exact.get(key);
+      if (existing) { existing.balance += row.balance; }
+      else { exact.set(key, { balance: row.balance, uom: row.uom ?? "" }); }
+    }
+    const sorted = [...exact.entries()].map(([key, val]) => ({ key, ...val }));
+    return { exact, sorted };
+  }, [stockLookupRows]);
+
+  // Find a live stock entry for an IRN item — tries exact match first, then word-level partial
+  function findLiveStock(materialName: string): { balance: number; uom: string; approx: boolean } | null {
+    const needle = materialName.toUpperCase().trim();
+    const ex = liveStock.exact.get(needle);
+    if (ex) return { ...ex, approx: false };
+    // Partial: a stock entry whose name-words appear in the IRN material name (or vice versa)
+    for (const entry of liveStock.sorted) {
+      const stockWords = entry.key.split(/\s+/).filter(w => w.length >= 3);
+      if (stockWords.some(w => needle.includes(w) || entry.key.includes(needle))) {
+        return { balance: entry.balance, uom: entry.uom, approx: true };
       }
     }
-    return map;
-  }, [stockLookupRows]);
+    return null;
+  }
 
   const [verifications, setVerifications] = useState<ItemVerification[]>([]);
   const [storesRemarks, setStoresRemarks] = useState("");
@@ -689,7 +702,7 @@ export default function IrnDetailPage() {
                         <div className="flex items-center justify-between gap-1">
                           <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
                           {(() => {
-                            const live = liveStockMap.get(item.material.toUpperCase().trim());
+                            const live = findLiveStock(item.material);
                             if (!live) return null;
                             const color = live.balance >= item.qty
                               ? "bg-green-50 border-green-200 text-green-700"
@@ -699,11 +712,12 @@ export default function IrnDetailPage() {
                             return (
                               <button
                                 type="button"
-                                title="Click to use live balance"
+                                title={live.approx ? `Approx. match — click to use ${live.balance.toFixed(2)} ${live.uom}` : "Click to use live balance"}
                                 onClick={() => updateVerification(item.id, "stockAvailable", Math.max(0, live.balance))}
                                 className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium cursor-pointer hover:opacity-80 transition-opacity ${color}`}
                               >
                                 <Warehouse className="h-3 w-3" />
+                                {live.approx && <span className="opacity-60">~</span>}
                                 {live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom || item.uom}
                               </button>
                             );

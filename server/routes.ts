@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, eq, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -5017,6 +5017,117 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error fetching stock lookup:", err);
       res.status(500).json({ message: "Failed to fetch stock lookup" });
+    }
+  });
+
+  // Returns IRN items queued for procurement (approved IRNs with items needing a PI).
+  app.get("/api/irn/procurement-queue", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const rows = await db
+        .select({
+          itemId: internalRequisitionItems.id,
+          irnId: internalRequisitions.id,
+          irnNo: internalRequisitions.irnNo,
+          irnDate: internalRequisitions.date,
+          raisedBy: internalRequisitions.raisedBy,
+          raisedFrom: internalRequisitions.raisedFrom,
+          irnStatus: internalRequisitions.status,
+          material: internalRequisitionItems.material,
+          qty: internalRequisitionItems.qty,
+          uom: internalRequisitionItems.uom,
+          urgency: internalRequisitionItems.urgency,
+          purpose: internalRequisitionItems.purpose,
+          needByDate: internalRequisitionItems.needByDate,
+          procureQty: internalRequisitionItems.procureQty,
+          itemStatus: internalRequisitionItems.itemStatus,
+          storesNotes: internalRequisitionItems.storesNotes,
+        })
+        .from(internalRequisitionItems)
+        .innerJoin(internalRequisitions, eq(internalRequisitionItems.irnId, internalRequisitions.id))
+        .where(
+          and(
+            drizzleInArray(internalRequisitionItems.itemStatus, ["queued_procurement", "partially_issued"]),
+            drizzleInArray(internalRequisitions.status, ["approved", "stores_verified"])
+          )
+        )
+        .orderBy(asc(internalRequisitions.date));
+
+      // Attach linkedPiId per IRN
+      const irnIds = [...new Set(rows.map(r => r.irnId))];
+      const linkedPis = irnIds.length
+        ? await db.select({ id: purchaseIndentsTable.id, sourceIrnId: purchaseIndentsTable.sourceIrnId })
+            .from(purchaseIndentsTable)
+            .where(drizzleInArray(purchaseIndentsTable.sourceIrnId, irnIds))
+        : [];
+      const linkedPiMap: Record<number, number> = {};
+      for (const pi of linkedPis) {
+        if (pi.sourceIrnId != null) linkedPiMap[pi.sourceIrnId] = pi.id;
+      }
+
+      res.json(rows.map(r => ({ ...r, linkedPiId: linkedPiMap[r.irnId] ?? null })));
+    } catch (err) {
+      console.error("Error fetching procurement queue:", err);
+      res.status(500).json({ message: "Failed to fetch procurement queue" });
+    }
+  });
+
+  // Creates a PI from all queued/partially-issued items on an approved IRN.
+  app.post("/api/irn/:id/raise-pi", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_procurement")) return;
+      const irnId = Number(req.params.id);
+      if (isNaN(irnId)) return res.status(400).json({ message: "Invalid IRN id" });
+
+      const irn = await storage.getInternalRequisition(irnId);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      if (!["approved", "stores_verified"].includes(irn.status)) {
+        return res.status(400).json({ message: "PI can only be raised for approved or stores-verified IRNs" });
+      }
+
+      // Check if a PI already exists for this IRN
+      const [existing] = await db.select({ id: purchaseIndentsTable.id })
+        .from(purchaseIndentsTable)
+        .where(eq(purchaseIndentsTable.sourceIrnId, irnId))
+        .limit(1);
+      if (existing) {
+        return res.status(409).json({ message: "A PI has already been raised for this IRN", piId: existing.id });
+      }
+
+      const queuedItems = irn.items.filter(i =>
+        ["queued_procurement", "partially_issued"].includes(i.itemStatus) && (i.procureQty ?? 0) > 0
+      );
+      if (!queuedItems.length) {
+        return res.status(400).json({ message: "No items queued for procurement on this IRN" });
+      }
+
+      const userName = currentUserName(req);
+      const indent = await storage.createPurchaseIndent({
+        date: new Date().toISOString().slice(0, 10),
+        indentNo: "",          // auto-generated inside createPurchaseIndent
+        proposedBy: irn.raisedBy,
+        raisedBy: userName,
+        status: "stores_check",
+        remarks: `AUTO-RAISED FROM IRN ${irn.irnNo}`,
+        siteId: (irn as any).siteId ?? null,
+        raisedFrom: irn.raisedFrom,
+        sourceIrnId: irnId,
+        items: queuedItems.map(item => ({
+          description: item.material,
+          qty: item.procureQty!,
+          uom: item.uom,
+          purpose: item.purpose,
+          priority: item.urgency === "urgent" ? "urgent" : item.urgency === "high" ? "high" : "normal",
+          requiredBy: item.needByDate ?? null,
+          indentId: 0,         // filled by createPurchaseIndent
+        } as any)),
+      } as any);
+
+      sendPushToSection("purchase_indents_view", "Purchase Indent Raised", `${indent.indentNo} raised from IRN ${irn.irnNo}`, "/plant/purchase-indents").catch(() => {});
+      res.status(201).json(indent);
+    } catch (err) {
+      console.error("Error raising PI from IRN:", err);
+      res.status(500).json({ message: "Failed to raise PI" });
     }
   });
 

@@ -1,16 +1,39 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   ClipboardList, Plus, ChevronRight, AlertTriangle, Clock,
   CheckCircle2, Archive, ShieldCheck, XCircle, ShoppingCart,
+  ListTodo, PackageCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { InternalRequisitionWithItems } from "@shared/schema";
+
+type ProcurementQueueItem = {
+  itemId: number;
+  irnId: number;
+  irnNo: string;
+  irnDate: string;
+  raisedBy: string;
+  raisedFrom: string;
+  irnStatus: string;
+  material: string;
+  qty: number;
+  uom: string;
+  urgency: string;
+  purpose: string;
+  needByDate: string | null;
+  procureQty: number | null;
+  itemStatus: string;
+  storesNotes: string | null;
+  linkedPiId: number | null;
+};
 
 const STATUS_TABS = [
   { key: "all", label: "All" },
@@ -19,7 +42,14 @@ const STATUS_TABS = [
   { key: "approved", label: "Approved" },
   { key: "rejected", label: "Rejected" },
   { key: "closed", label: "Closed" },
+  { key: "procurement_queue", label: "Procurement Queue" },
 ];
+
+const URGENCY_COLOR: Record<string, string> = {
+  urgent: "bg-red-50 text-red-700 border-red-200",
+  high: "bg-orange-50 text-orange-700 border-orange-200",
+  normal: "bg-gray-100 text-gray-600 border-gray-200",
+};
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "pending_stores")
@@ -41,6 +71,151 @@ function UrgencyDot({ items }: { items: InternalRequisitionWithItems["items"] })
   return <span className="text-xs text-gray-400">Normal</span>;
 }
 
+function ProcurementQueueTab() {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const canProcure = useAuth().sectionCan("site_procurement", "create");
+
+  const { data: queueItems, isLoading } = useQuery<ProcurementQueueItem[]>({
+    queryKey: ["/api/irn/procurement-queue"],
+  });
+
+  const raisePiMutation = useMutation({
+    mutationFn: (irnId: number) =>
+      apiRequest("POST", `/api/irn/${irnId}/raise-pi`).then(r => r.json()),
+    onSuccess: (pi) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/irn/procurement-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
+      toast({ title: "PI Raised", description: `${pi.indentNo} created from IRN queue` });
+      navigate(`/plant/purchase-indents`);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to raise PI", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return <div className="p-4 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>;
+  }
+
+  if (!queueItems?.length) {
+    return (
+      <div className="py-16 text-center">
+        <CheckCircle2 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 font-medium">Procurement queue is empty</p>
+        <p className="text-sm text-gray-400 mt-1">Items queued for purchase from verified IRNs will appear here</p>
+      </div>
+    );
+  }
+
+  // Group by IRN
+  const grouped = new Map<number, { header: ProcurementQueueItem; items: ProcurementQueueItem[] }>();
+  for (const item of queueItems) {
+    if (!grouped.has(item.irnId)) {
+      grouped.set(item.irnId, { header: item, items: [] });
+    }
+    grouped.get(item.irnId)!.items.push(item);
+  }
+
+  return (
+    <div className="divide-y divide-gray-100">
+      {[...grouped.values()].map(({ header, items }) => {
+        const hasPi = items.some(i => i.linkedPiId != null);
+        const piId = items.find(i => i.linkedPiId != null)?.linkedPiId;
+        const isRaising = raisePiMutation.isPending && raisePiMutation.variables === header.irnId;
+
+        return (
+          <div key={header.irnId} className="p-4 space-y-3">
+            {/* IRN header row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => navigate(`/irn/${header.irnId}`)}
+                  className="font-mono font-semibold text-amber-700 text-sm hover:underline"
+                >
+                  {header.irnNo}
+                </button>
+                <span className="text-sm text-gray-600">{header.raisedBy}</span>
+                <span className="text-xs text-gray-400">{header.raisedFrom}</span>
+                <span className="text-xs text-gray-400">
+                  {header.irnDate ? format(new Date(header.irnDate), "dd MMM yyyy") : "—"}
+                </span>
+                {hasPi && piId && (
+                  <button
+                    onClick={() => navigate("/plant/purchase-indents")}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-indigo-50 border-indigo-200 text-indigo-700 hover:opacity-80"
+                  >
+                    <ShoppingCart className="h-3 w-3" /> PI #{piId} Raised
+                  </button>
+                )}
+              </div>
+              {canProcure && !hasPi && (
+                <Button
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shrink-0"
+                  disabled={isRaising}
+                  onClick={() => raisePiMutation.mutate(header.irnId)}
+                >
+                  <ShoppingCart className="h-3.5 w-3.5" />
+                  {isRaising ? "Raising…" : "Raise PI"}
+                </Button>
+              )}
+            </div>
+
+            {/* Items table */}
+            <div className="bg-gray-50 rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Material</th>
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Procure Qty</th>
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Urgency</th>
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Need By</th>
+                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {items.map(item => (
+                    <tr key={item.itemId}>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-gray-800">{item.material}</p>
+                        <p className="text-xs text-gray-400">{item.purpose}</p>
+                        {item.storesNotes && <p className="text-xs text-blue-600 mt-0.5">Stores: {item.storesNotes}</p>}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-gray-800">
+                        {item.procureQty ?? item.qty} <span className="font-normal text-gray-500">{item.uom}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${URGENCY_COLOR[item.urgency] ?? URGENCY_COLOR.normal}`}>
+                          {item.urgency === "urgent" ? "🔴 Urgent" : item.urgency === "high" ? "🟠 High" : "Normal"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-600">
+                        {item.needByDate ? format(new Date(item.needByDate), "dd MMM yyyy") : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        {item.itemStatus === "queued_procurement" ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">
+                            <ListTodo className="h-3 w-3" /> Queued
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                            <PackageCheck className="h-3 w-3" /> Partial Issue
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function IrnListPage() {
   const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -55,6 +230,7 @@ export default function IrnListPage() {
       if (!res.ok) throw new Error("Failed to fetch IRNs");
       return res.json();
     },
+    enabled: statusFilter !== "procurement_queue",
   });
 
   return (
@@ -89,7 +265,9 @@ export default function IrnListPage() {
               onClick={() => setStatusFilter(tab.key)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 statusFilter === tab.key
-                  ? "bg-amber-600 text-white shadow-sm"
+                  ? tab.key === "procurement_queue"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-amber-600 text-white shadow-sm"
                   : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
               }`}
             >
@@ -99,7 +277,9 @@ export default function IrnListPage() {
         </div>
 
         <div className="bg-white border rounded-lg overflow-hidden">
-          {isLoading ? (
+          {statusFilter === "procurement_queue" ? (
+            <ProcurementQueueTab />
+          ) : isLoading ? (
             <div className="p-4 space-y-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
