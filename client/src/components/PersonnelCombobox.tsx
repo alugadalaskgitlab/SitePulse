@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Search, User } from "lucide-react";
 
-type Personnel = { id: number; fullName: string; designation?: string | null; isActive?: boolean };
+type Personnel = { id: number; name: string; role?: string | null; isActive?: number | null };
 
 interface PersonnelComboboxProps {
   value: string;
@@ -31,9 +31,9 @@ export function PersonnelCombobox({
 
   useEffect(() => { setQuery(value); }, [value]);
 
-  const active = personnel.filter(p => p.isActive !== false);
+  const active = personnel.filter(p => p.isActive !== 0);
   const filtered = query.trim()
-    ? active.filter(p => p.fullName.toLowerCase().includes(query.toLowerCase()))
+    ? active.filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
     : active;
 
   function select(name: string) {
@@ -83,16 +83,16 @@ export function PersonnelCombobox({
               <div
                 key={p.id}
                 className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2 text-xs"
-                onClick={() => select(p.fullName)}
+                onClick={() => select(p.name)}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <User className="h-3 w-3 text-gray-400 shrink-0" />
-                  <span className="font-medium truncate">{p.fullName.toUpperCase()}</span>
-                  {p.designation && (
-                    <span className="text-gray-400 shrink-0">{p.designation}</span>
+                  <span className="font-medium truncate">{p.name.toUpperCase()}</span>
+                  {p.role && (
+                    <span className="text-gray-400 shrink-0">{p.role}</span>
                   )}
                 </div>
-                {p.fullName.toUpperCase() === value.toUpperCase() && (
+                {p.name.toUpperCase() === value.toUpperCase() && (
                   <Check className="h-3 w-3 text-amber-600 shrink-0" />
                 )}
               </div>
