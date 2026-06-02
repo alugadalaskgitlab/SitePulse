@@ -30,7 +30,7 @@ interface NavItem {
 }
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
-  const { user, isAdmin, isManager, logout } = useAuth();
+  const { user, isAdmin, isManager, logout, sectionVisible } = useAuth();
   const { rmcEnabled, companyName } = useFeatureFlags();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -58,6 +58,19 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ? (unassignedData?.dieselRequirements?.length ?? 0) + (unassignedData?.purchaseIndents?.length ?? 0)
     : 0;
 
+  const canSeeIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
+  const { data: pendingIrns } = useQuery<unknown[]>({
+    queryKey: ["/api/irn", "pending_stores"],
+    queryFn: async () => {
+      const res = await fetch("/api/irn?status=pending_stores", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: canSeeIrn,
+    staleTime: 60_000,
+  });
+  const pendingIrnCount = pendingIrns?.length ?? 0;
+
   const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
   const initials = user?.fullName
     ? user.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -75,6 +88,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment" },
     { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores" },
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
+    ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
     { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
   ];
 
@@ -113,7 +127,8 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
         <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
         {mainNavItems.map((item) => {
           const active = isNavActive(item);
-          const showBadge = item.href === "/" && unassignedCount > 0;
+          const showUnassignedBadge = item.href === "/" && unassignedCount > 0;
+          const showIrnBadge = item.href === "/irn" && pendingIrnCount > 0;
           return (
             <Link key={item.href} href={item.href}>
               <a
@@ -126,12 +141,20 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
               >
                 <item.icon className="w-4 h-4 flex-shrink-0" />
                 <span className="flex-1">{item.label}</span>
-                {showBadge && (
+                {showUnassignedBadge && (
                   <span
                     data-testid="badge-dashboard-unassigned"
                     className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
                   >
                     {unassignedCount}
+                  </span>
+                )}
+                {showIrnBadge && (
+                  <span
+                    data-testid="badge-irn-pending"
+                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
+                  >
+                    {pendingIrnCount}
                   </span>
                 )}
               </a>
