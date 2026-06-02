@@ -1384,21 +1384,8 @@ export default function PurchaseIndents() {
     };
 
     if (indent.status === "pending" || (indent.status === "stores_check" && storesNotVerified)) {
-      // Approvers go directly to approval/bypass view; stores users go to verification view
-      if (isApprover) {
-        const qtys: Record<number, number> = {};
-        const notes: Record<number, string> = {};
-        indent.items.forEach(item => {
-          qtys[item.id] = item.approvedQty ?? item.qty;
-          notes[item.id] = (item as any).reviewerNote || "";
-        });
-        setApprovedQtys(qtys);
-        setReviewerNotes(notes);
-        initApprovalStates(indent.items);
-        setApprovalRemarks("");
-        setBypassReason("");
-        setView("detail");
-      } else if (canCreateStores) {
+      // Stores write permission takes priority — dual-role users (stores + approver) verify stock first
+      if (canCreateStores) {
         // Stores user with write permission → verification view
         const verifs: Record<number, StoreItemVerification> = {};
         indent.items.forEach(item => {
@@ -1413,6 +1400,20 @@ export default function PurchaseIndents() {
         setStoresBypassNote("");
         setBypassNoteOpen(false);
         setView("stores");
+      } else if (isApprover) {
+        // Pure approver (no stores write permission) → approval/bypass view directly
+        const qtys: Record<number, number> = {};
+        const notes: Record<number, string> = {};
+        indent.items.forEach(item => {
+          qtys[item.id] = item.approvedQty ?? item.qty;
+          notes[item.id] = (item as any).reviewerNote || "";
+        });
+        setApprovedQtys(qtys);
+        setReviewerNotes(notes);
+        initApprovalStates(indent.items);
+        setApprovalRemarks("");
+        setBypassReason("");
+        setView("detail");
       } else {
         // No approval or stores-write permission → read-only detail view
         setView("detail");
@@ -2626,6 +2627,27 @@ export default function PurchaseIndents() {
 
               {(selectedIndent.status === "stores_check" || selectedIndent.status === "pending") ? (
                 <>
+                  {/* Guard: if stores hasn't verified yet and current user has stores write permission,
+                      show an info bar instead of the approval action panel */}
+                  {(() => {
+                    const _ss = (selectedIndent as any).storesStatus as string | null;
+                    const _blocked = canCreateStores && (!_ss || (_ss !== "verified" && _ss !== "bypass_requested"));
+                    if (!_blocked) return null;
+                    return (
+                      <Card className="shadow-none border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                        <CardContent className="py-3 px-4 flex items-center gap-3">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Stores verification required</p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Complete stock verification before items can be approved.</p>
+                          </div>
+                          <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 shrink-0 text-xs" onClick={() => openDetail(selectedIndent)} data-testid="button-stores-verify-now">
+                            Verify Now
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
                   {/* Summary bar */}
                   {(() => {
                     const allItems = selectedIndent.items;
@@ -2758,19 +2780,24 @@ export default function PurchaseIndents() {
                             {(item as any).requiredBy && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">REQ. BY: {format(new Date((item as any).requiredBy+"T00:00:00"),"dd-MMM-yyyy").toUpperCase()}</span>}
                             {stockBadge}
                           </div>
-                          {st.action === 'pending' && (
-                            <div className="grid grid-cols-3 gap-2 mt-1">
-                              <button onClick={() => updateState({ action:'approved', approvedQty:item.qty })} className="flex flex-col items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 py-2.5 rounded-lg transition-colors" data-testid={`button-approve-item-${item.id}`}>
-                                <Check className="w-5 h-5" /><span className="text-xs font-semibold">Approve</span>
-                              </button>
-                              <button onClick={() => updateState({ action:'modifying', modQty:item.qty.toString() })} className="flex flex-col items-center gap-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 py-2.5 rounded-lg transition-colors" data-testid={`button-modify-item-${item.id}`}>
-                                <Edit2 className="w-4 h-4" /><span className="text-xs font-semibold">Modify Qty</span>
-                              </button>
-                              <button onClick={() => updateState({ action:'rejecting', rejectReason:'' })} className="flex flex-col items-center gap-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 py-2.5 rounded-lg transition-colors" data-testid={`button-reject-item-${item.id}`}>
-                                <X className="w-5 h-5" /><span className="text-xs font-semibold">Reject</span>
-                              </button>
-                            </div>
-                          )}
+                          {st.action === 'pending' && (() => {
+                            const _ss2 = (selectedIndent as any).storesStatus as string | null;
+                            const _blocked2 = canCreateStores && (!_ss2 || (_ss2 !== "verified" && _ss2 !== "bypass_requested"));
+                            if (_blocked2) return null;
+                            return (
+                              <div className="grid grid-cols-3 gap-2 mt-1">
+                                <button onClick={() => updateState({ action:'approved', approvedQty:item.qty })} className="flex flex-col items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 py-2.5 rounded-lg transition-colors" data-testid={`button-approve-item-${item.id}`}>
+                                  <Check className="w-5 h-5" /><span className="text-xs font-semibold">Approve</span>
+                                </button>
+                                <button onClick={() => updateState({ action:'modifying', modQty:item.qty.toString() })} className="flex flex-col items-center gap-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 py-2.5 rounded-lg transition-colors" data-testid={`button-modify-item-${item.id}`}>
+                                  <Edit2 className="w-4 h-4" /><span className="text-xs font-semibold">Modify Qty</span>
+                                </button>
+                                <button onClick={() => updateState({ action:'rejecting', rejectReason:'' })} className="flex flex-col items-center gap-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 py-2.5 rounded-lg transition-colors" data-testid={`button-reject-item-${item.id}`}>
+                                  <X className="w-5 h-5" /><span className="text-xs font-semibold">Reject</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
                           {st.action === 'modifying' && (
                             <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
                               <label className="block text-xs font-medium text-amber-900 dark:text-amber-300 mb-1.5">Approved Qty ({item.uom})</label>
