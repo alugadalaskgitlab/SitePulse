@@ -5073,6 +5073,193 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/irn/:id/issue-voucher", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const irn = await storage.getInternalRequisition(id);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      if (irn.status !== "approved") {
+        return res.status(400).json({ message: "Issue voucher is only available for approved IRNs" });
+      }
+      const issueItems = irn.items.filter((i: any) => i.issueQty && Number(i.issueQty) > 0);
+      if (issueItems.length === 0) {
+        return res.status(400).json({ message: "No items flagged for issue from store" });
+      }
+
+      const fmtDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return "-";
+        try {
+          const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+          const d = new Date(dateStr + (dateStr.length === 10 ? "T00:00:00" : ""));
+          if (Number.isNaN(d.getTime())) return dateStr;
+          return `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        } catch { return dateStr; }
+      };
+      const fmtQty = (qty: number | null | undefined) => {
+        if (qty == null) return "0.00";
+        return Number(qty).toFixed(2);
+      };
+
+      const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="IssueVoucher-${irn.irnNo.replace(/\//g, "-")}.pdf"`);
+        res.send(pdfBuffer);
+      });
+
+      const pageW = 515;
+      const amber = "#d97706";
+      const tableX = 40;
+
+      try {
+        const logoPath = path.join(process.cwd(), "client", "public", "hlc-logo.jpg");
+        if (fs.existsSync(logoPath)) {
+          const logoWidth = 60;
+          const logoX = (pageW - logoWidth) / 2 + tableX;
+          const logoY = doc.y;
+          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          doc.y = logoY + 65;
+        }
+      } catch {}
+
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
+      doc.moveDown(0.2);
+      doc.fontSize(11).font("Helvetica").fillColor("#333").text("ISSUE VOUCHER", { align: "center" });
+      doc.moveDown(0.5);
+
+      doc.moveTo(tableX, doc.y).lineTo(tableX + pageW, doc.y).strokeColor(amber).lineWidth(2).stroke();
+      doc.moveDown(0.5);
+
+      const metaY = doc.y;
+      doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
+      doc.text(`IRN No: ${irn.irnNo}`, tableX, metaY);
+      doc.text(`Date: ${fmtDate(irn.date)}`, tableX + 300, metaY);
+      doc.moveDown(0.4);
+      doc.font("Helvetica").fontSize(10);
+      doc.text(`Raised By: ${irn.raisedBy}`, tableX);
+      doc.text(`Section: ${irn.raisedFrom}`, tableX + 300, doc.y - 14);
+      doc.moveDown(0.8);
+
+      const colWidths = [25, 225, 80, 80, 105];
+      const headers = ["#", "Material / Description", "Qty Req.", "Issue Qty", "UOM"];
+      let y = doc.y;
+
+      doc.fillColor("#fff").rect(tableX, y, pageW, 20).fill(amber);
+      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
+      let cx = tableX;
+      headers.forEach((h, i) => {
+        const align = i >= 2 ? "center" : "left";
+        doc.text(h, cx + 4, y + 5, { width: colWidths[i] - 8, align, lineBreak: false });
+        cx += colWidths[i];
+      });
+      y += 20;
+
+      issueItems.forEach((item: any, idx: number) => {
+        const matText = item.material || "";
+        const purposeText = item.purpose ? item.purpose : "";
+        const matH = doc.heightOfString(matText, { width: colWidths[1] - 8, fontSize: 9 });
+        const purposeH = purposeText ? doc.heightOfString(purposeText, { width: colWidths[1] - 8, fontSize: 7 }) + 2 : 0;
+        const rowH = Math.max(20, matH + purposeH + 8);
+
+        if (y + rowH > 720) { doc.addPage(); y = 40; }
+
+        const bgColor = idx % 2 === 0 ? "#fff" : "#f9f9f9";
+        doc.fillColor(bgColor).rect(tableX, y, pageW, rowH).fill();
+
+        cx = tableX;
+        doc.fillColor("#000").fontSize(9).font("Helvetica");
+        doc.text(String(idx + 1), cx + 4, y + 4, { width: colWidths[0] - 8, align: "center", lineBreak: false });
+        cx += colWidths[0];
+
+        doc.text(matText, cx + 4, y + 4, { width: colWidths[1] - 8, align: "left", lineBreak: true });
+        if (purposeText) {
+          doc.fillColor("#666").fontSize(7).font("Helvetica-Oblique");
+          doc.text(purposeText, cx + 4, y + 4 + matH + 1, { width: colWidths[1] - 8, align: "left", lineBreak: false });
+          doc.fillColor("#000").fontSize(9).font("Helvetica");
+        }
+        cx += colWidths[1];
+
+        doc.text(fmtQty(item.qty), cx + 4, y + 4, { width: colWidths[2] - 8, align: "center", lineBreak: false });
+        cx += colWidths[2];
+
+        doc.fillColor("#15803d").font("Helvetica-Bold");
+        doc.text(fmtQty(item.issueQty), cx + 4, y + 4, { width: colWidths[3] - 8, align: "center", lineBreak: false });
+        cx += colWidths[3];
+
+        doc.fillColor("#000").font("Helvetica");
+        doc.text(item.uom || "-", cx + 4, y + 4, { width: colWidths[4] - 8, align: "center", lineBreak: false });
+
+        y += rowH;
+      });
+
+      doc.strokeColor("#999").lineWidth(0.5);
+      doc.moveTo(tableX, y).lineTo(tableX + pageW, y).stroke();
+
+      if (y + 24 > 720) { doc.addPage(); y = 40; }
+      doc.fillColor(amber).rect(tableX, y, pageW, 24).fill();
+      doc.fillColor("#fff").fontSize(10).font("Helvetica-Bold");
+      doc.text(`TOTAL ISSUE ITEMS: ${issueItems.length}`, tableX + 4, y + 7, { width: pageW - 8, align: "left" });
+      y += 24;
+
+      if (irn.storesRemarks) {
+        if (y + 40 > 720) { doc.addPage(); y = 40; }
+        y += 16;
+        doc.fillColor("#555").fontSize(9).font("Helvetica-Oblique");
+        doc.text(`Stores Remarks: ${irn.storesRemarks}`, tableX, y, { width: pageW });
+        y = doc.y + 8;
+      }
+
+      if (y + 140 > 720) { doc.addPage(); y = 40; }
+      y += 40;
+
+      const signAreaW = Math.floor(pageW / 3);
+
+      doc.fillColor("#000").fontSize(9).font("Helvetica");
+      doc.text("Raised By", tableX, y, { width: signAreaW, align: "center" });
+      doc.text("Stores Verified By", tableX + signAreaW, y, { width: signAreaW, align: "center" });
+      doc.text("Approved By", tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      y += 40;
+
+      [tableX, tableX + signAreaW, tableX + signAreaW * 2].forEach((sx) => {
+        doc.moveTo(sx + 8, y).lineTo(sx + signAreaW - 8, y).strokeColor("#000").lineWidth(0.5).stroke();
+      });
+      y += 6;
+
+      doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+      doc.text(irn.raisedBy || "", tableX, y, { width: signAreaW, align: "center" });
+      doc.text(irn.storesVerifiedBy || "", tableX + signAreaW, y, { width: signAreaW, align: "center" });
+      doc.text(irn.approvedBy || "", tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      y += 14;
+
+      doc.fontSize(8).font("Helvetica").fillColor("#555");
+      if (irn.storesVerifiedAt) {
+        const svDate = new Date(irn.storesVerifiedAt);
+        doc.text(svDate.toLocaleString("en-IN"), tableX + signAreaW, y, { width: signAreaW, align: "center" });
+      }
+      if (irn.approvedAt) {
+        const appDate = new Date(irn.approvedAt);
+        doc.text(appDate.toLocaleString("en-IN"), tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      }
+
+      const pages = doc.bufferedPageRange();
+      for (let i = 0; i < pages.count; i++) {
+        doc.switchToPage(i);
+        doc.fillColor("#555").fontSize(8).font("Helvetica");
+        doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, tableX, 800, { width: pageW / 2, align: "left" });
+        doc.text(`Page ${i + 1} of ${pages.count}`, tableX + pageW / 2, 800, { width: pageW / 2, align: "right" });
+      }
+
+      doc.end();
+    } catch (err) {
+      console.error("Error generating IRN issue voucher PDF:", err);
+      res.status(500).json({ message: "Failed to generate issue voucher PDF" });
+    }
+  });
+
   app.patch("/api/purchase-indent-items/:id/procure", async (req, res) => {
     try {
       if (!assertEdit(req, res, "site_procurement")) return;

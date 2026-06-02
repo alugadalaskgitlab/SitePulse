@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
-  ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart,
+  ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -374,6 +374,18 @@ export default function IrnDetailPage() {
                 </div>
               )}
             </div>
+            {/* Download Issue Voucher — shown when there are issue items */}
+            {irn.items.filter((i) => i.issueQty && i.issueQty > 0).length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher`, "_blank")}
+                className="gap-2 text-sm border-green-300 text-green-700 hover:bg-green-50"
+                data-testid="button-download-issue-voucher"
+              >
+                <Download className="h-4 w-4" />
+                Download Issue Voucher
+              </Button>
+            )}
             {/* Raise PI button — shown when procure items exist and PI not yet raised */}
             {irn.items.filter((i) => i.procureQty && i.procureQty > 0).length > 0 && (
               (irn as any).linkedPiId ? (
