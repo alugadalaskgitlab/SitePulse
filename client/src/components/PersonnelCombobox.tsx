@@ -75,7 +75,7 @@ export function PersonnelCombobox({
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-gray-400 italic text-xs">
               {query.trim()
-                ? `No match — "${query.trim()}" will be saved as-is`
+                ? `No match — "${query.trim().toUpperCase()}" will be saved as typed`
                 : "No active personnel found"}
             </div>
           ) : (
