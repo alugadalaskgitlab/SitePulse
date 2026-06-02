@@ -586,7 +586,7 @@ export default function IrnDetailPage() {
                 </div>
               ) : (
                 <Button
-                  onClick={() => navigate(`/purchase-indents?fromIrnId=${irn.id}`)}
+                  onClick={() => navigate(`/plant/purchase-indents?fromIrnId=${irn.id}`)}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-sm px-5"
                   data-testid="button-raise-pi-from-irn"
                 >

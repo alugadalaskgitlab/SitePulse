@@ -651,7 +651,6 @@ export default function PurchaseIndents() {
   const [grnDialogSupplier, setGrnDialogSupplier] = useState("");
   const [grnDialogInvoiceNo, setGrnDialogInvoiceNo] = useState("");
   const [grnDialogRemarks, setGrnDialogRemarks] = useState("");
-  const [grnSupplierSuggestions, setGrnSupplierSuggestions] = useState<string[]>([]);
   type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string; autoLinked: boolean };
   const [grnLines, setGrnLines] = useState<GrnDialogLine[]>([]);
   const [grnOpenDropdownIdx, setGrnOpenDropdownIdx] = useState<number | null>(null);
@@ -786,6 +785,32 @@ export default function PurchaseIndents() {
   const { data: plantMaterialsForGrn = [] } = useQuery<Array<{ id: number; name: string; defaultUom: string; category: string }>>({
     queryKey: ["/api/plant-module/materials"],
     enabled: canCreateStores && showGrnDialog,
+  });
+
+  // Collect numeric storeItemIds from currently linked GRN lines (excludes pm: plant-material IDs)
+  const linkedStoreItemIds = useMemo(() => {
+    if (!showGrnDialog) return [];
+    const ids = grnLines
+      .map(l => l.storeItemId)
+      .filter((s): s is string => !!s && !s.startsWith("pm:"))
+      .map(s => parseInt(s, 10))
+      .filter(n => !isNaN(n) && n > 0);
+    return [...new Set(ids)];
+  }, [showGrnDialog, grnLines]);
+
+  const { data: grnSupplierHistory = [] } = useQuery<string[]>({
+    queryKey: ["/api/stores/grns/supplier-history", linkedStoreItemIds.join(",")],
+    queryFn: async () => {
+      if (linkedStoreItemIds.length === 0) return [];
+      const res = await fetch(
+        `/api/stores/grns/supplier-history?itemIds=${linkedStoreItemIds.join(",")}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return [];
+      return res.json() as Promise<string[]>;
+    },
+    enabled: showGrnDialog && linkedStoreItemIds.length > 0,
+    staleTime: 60_000,
   });
 
   // Combined catalogue: store items first, then plant/bulk materials not already in store items
@@ -3628,7 +3653,13 @@ export default function PurchaseIndents() {
                   placeholder="Vendor name"
                   className="uppercase"
                   data-testid="input-grn-supplier"
+                  list="grn-supplier-datalist"
                 />
+                {grnSupplierHistory.length > 0 && (
+                  <datalist id="grn-supplier-datalist">
+                    {grnSupplierHistory.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-semibold uppercase text-muted-foreground">Invoice No.</Label>
