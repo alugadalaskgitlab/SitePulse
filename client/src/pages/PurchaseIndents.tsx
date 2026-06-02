@@ -1023,9 +1023,34 @@ export default function PurchaseIndents() {
     },
   });
 
+  const GRN_MAPPINGS_KEY = "grn_item_mappings";
+  const normDesc = (s: string) => s.toUpperCase().trim().replace(/\s+/g, " ");
+
+  function loadGrnMappings(): Record<string, string> {
+    try {
+      return JSON.parse(localStorage.getItem(GRN_MAPPINGS_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveGrnMappings(lines: typeof grnLines) {
+    try {
+      const stored = loadGrnMappings();
+      for (const line of lines) {
+        if (line.storeItemId) {
+          stored[normDesc(line.description)] = line.storeItemId;
+        }
+      }
+      localStorage.setItem(GRN_MAPPINGS_KEY, JSON.stringify(stored));
+    } catch {
+    }
+  }
+
   const createGrnMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/stores/grns", data),
     onSuccess: () => {
+      saveGrnMappings(grnLines);
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       toast({ title: "GRN created — items added to stock" });
@@ -1085,8 +1110,15 @@ export default function PurchaseIndents() {
 
   useEffect(() => {
     if (!showGrnDialog || actualStoreItems.length === 0) return;
+    const storedMappings = loadGrnMappings();
     setGrnLines(prev => prev.map(line => {
       if (line.storeItemId) return line;
+      const key = normDesc(line.description);
+      const persistedId = storedMappings[key];
+      if (persistedId) {
+        const item = actualStoreItems.find(si => String(si.id) === persistedId);
+        if (item) return { ...line, storeItemId: persistedId, itemSearch: item.name, uom: item.uom, autoLinked: true };
+      }
       const match = fuzzyMatchStoreItem(line.description, actualStoreItems);
       if (!match) return line;
       return { ...line, storeItemId: String(match.id), itemSearch: match.name, uom: match.uom, autoLinked: true };
