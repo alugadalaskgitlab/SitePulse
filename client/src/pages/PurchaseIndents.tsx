@@ -19,6 +19,7 @@ import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHis
 import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
 import type { LocationValue } from "@/components/LocationPicker";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { PersonnelCombobox } from "@/components/PersonnelCombobox";
 
 type StoreItem = { id: number; name: string; uom: string; category: string };
 
@@ -649,6 +650,7 @@ export default function PurchaseIndents() {
   const [approvedQtys, setApprovedQtys] = useState<Record<number, number>>({});
 
   const [purchaseUpdates, setPurchaseUpdates] = useState<Record<number, PurchaseUpdateData>>({});
+  type ProcureItemData = { vendor?: string; rate?: string; qtyPurchased?: string; expectedDelivery?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string; purchasedBy?: string };
 
   const [cancelItemId, setCancelItemId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -673,7 +675,7 @@ export default function PurchaseIndents() {
   const [bypassNoteOpen, setBypassNoteOpen] = useState(false);
   const [storesBypassNote, setStoresBypassNote] = useState("");
   const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
-  const [procureItemData, setProcureItemData] = useState<Record<number, { vendor?: string; rate?: string; qtyPurchased?: string; expectedDelivery?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }>>({});
+  const [procureItemData, setProcureItemData] = useState<Record<number, ProcureItemData>>({});
   const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
@@ -2079,24 +2081,20 @@ export default function PurchaseIndents() {
                 </div>
                 <div>
                   <Label className="text-xs uppercase">PROPOSED BY</Label>
-                  <Input
+                  <PersonnelCombobox
                     value={formProposedBy}
-                    onChange={(e) => setFormProposedBy(e.target.value)}
-                    onBlur={(e) => setFormProposedBy(e.target.value.toUpperCase())}
-                    placeholder="WHO PROPOSED THIS"
-                    className="uppercase"
+                    onChange={setFormProposedBy}
+                    placeholder="Search personnel…"
                     data-testid="input-proposed-by"
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">PERSON WHO IDENTIFIED THE NEED</p>
                 </div>
                 <div>
                   <Label className="text-xs uppercase">RAISED BY</Label>
-                  <Input
+                  <PersonnelCombobox
                     value={formRaisedBy}
-                    onChange={(e) => setFormRaisedBy(e.target.value)}
-                    onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())}
-                    placeholder="WHO IS RAISING"
-                    className="uppercase"
+                    onChange={setFormRaisedBy}
+                    placeholder="Search personnel…"
                     data-testid="input-raised-by"
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">PERSON CREATING THIS INDENT</p>
@@ -3205,6 +3203,7 @@ export default function PurchaseIndents() {
                                 </p>
                                 <p className="text-xs text-emerald-600 dark:text-emerald-400">
                                   {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
+                                  {(item as any).purchasedBy ? ` · Purchased by ${(item as any).purchasedBy}` : ""}
                                 </p>
                                 {((item as any).expectedDelivery || (item as any).paymentMode) && (
                                   <div className="flex flex-wrap gap-2 items-center mt-1">
@@ -3350,6 +3349,15 @@ export default function PurchaseIndents() {
                             </div>
                           )}
                           <div className="space-y-3">
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Purchased By</label>
+                              <PersonnelCombobox
+                                value={procData.purchasedBy || ""}
+                                onChange={v => setProcData({ purchasedBy: v })}
+                                placeholder="Who is purchasing this item…"
+                                data-testid={`input-procure-purchased-by-${item.id}`}
+                              />
+                            </div>
                             <div>
                               <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Vendor / Supplier</label>
                               <Input

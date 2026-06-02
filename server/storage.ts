@@ -939,7 +939,7 @@ export interface IStorage {
   deletePurchaseIndent(id: number): Promise<boolean>;
   verifyIndentStores(id: number, items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[], verifiedBy: string): Promise<PurchaseIndentWithItems | undefined>;
   bypassIndentStores(id: number, reason: string, bypassedBy: string): Promise<PurchaseIndentWithItems | undefined>;
-  procureItem(itemId: number, data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string }, actionBy: string): Promise<PurchaseIndentItem | undefined>;
+  procureItem(itemId: number, data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string; purchasedBy?: string }, actionBy: string): Promise<PurchaseIndentItem | undefined>;
 
   // Internal Requisition Notes (IRN)
   getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
@@ -9085,7 +9085,7 @@ export class DatabaseStorage implements IStorage {
 
   async procureItem(
     itemId: number,
-    data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string },
+    data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string; purchasedBy?: string },
     actionBy: string
   ): Promise<PurchaseIndentItem | undefined> {
     const action = data.action.toLowerCase();
@@ -9111,6 +9111,7 @@ export class DatabaseStorage implements IStorage {
     const effectivePayment  = data.paymentMode     != null ? data.paymentMode                 : (action === "received" ? (existingItem as any).paymentMode      : null);
     const effectiveBillNo   = data.billNo          != null ? data.billNo.toUpperCase()         : (action === "received" ? existingItem.billNo           : null);
     const effectiveRemarks  = data.purchaseRemarks != null ? data.purchaseRemarks.toUpperCase(): (action === "received" ? existingItem.purchaseRemarks   : null);
+    const effectivePurchasedBy = data.purchasedBy != null ? data.purchasedBy.toUpperCase() : (action === "received" ? (existingItem as any).purchasedBy : null);
 
     const updates: any = {
       purchaseStatus,
@@ -9120,6 +9121,7 @@ export class DatabaseStorage implements IStorage {
       purchaseRemarks: effectiveRemarks  || null,
       paymentMode:     effectivePayment  || null,
       expectedDelivery: effectiveDelivery || null,
+      purchasedBy:     effectivePurchasedBy || null,
     };
     if (action === "ordered") {
       updates.orderPlacedAt = data.orderPlacedAt || format(new Date(), "yyyy-MM-dd");

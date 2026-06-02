@@ -9,6 +9,7 @@ import {
   ClipboardList, ChevronLeft, Plus, Trash2, AlertTriangle,
   Info, Package, Search, Check, MapPin,
 } from "lucide-react";
+import { PersonnelCombobox } from "@/components/PersonnelCombobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -152,6 +153,7 @@ const itemSchema = z.object({
 
 const formSchema = z.object({
   raisedFrom: z.string().min(1, "Section is required"),
+  raisedBy: z.string().min(1, "Raised By is required"),
   siteId: z.number().int().nullish(),
   remarks: z.string().optional(),
   items: z.array(itemSchema).min(1),
@@ -190,6 +192,7 @@ export default function IrnRaisePage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       raisedFrom: prefillLabel || "Site Operations",
+      raisedBy: user?.fullName?.toUpperCase() ?? user?.email ?? "",
       siteId: null,
       remarks: "",
       items: [{ material: "", qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" }],
@@ -207,7 +210,7 @@ export default function IrnRaisePage() {
         date: today,
         raisedFrom: data.raisedFrom,
         siteId: data.siteId ?? null,
-        raisedBy: user?.fullName ?? user?.email ?? "Unknown",
+        raisedBy: data.raisedBy || user?.fullName || user?.email || "Unknown",
         raisedByUserId: user?.id,
         remarks: data.remarks,
         items: data.items.map((item) => ({
@@ -313,13 +316,16 @@ export default function IrnRaisePage() {
 
               {/* Raised By */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Raised By</Label>
-                <Input
-                  value={user?.fullName ?? user?.email ?? ""}
-                  readOnly
-                  className="h-9 text-sm bg-gray-50 text-gray-500"
+                <Label className="text-xs font-medium">Raised By <span className="text-red-500">*</span></Label>
+                <PersonnelCombobox
+                  value={form.watch("raisedBy")}
+                  onChange={(v) => form.setValue("raisedBy", v, { shouldValidate: true })}
+                  placeholder="Search personnel…"
                   data-testid="input-raised-by"
                 />
+                {form.formState.errors.raisedBy && (
+                  <p className="text-xs text-red-500">{form.formState.errors.raisedBy.message}</p>
+                )}
               </div>
 
               {/* Date */}

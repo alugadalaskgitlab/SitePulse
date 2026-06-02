@@ -1396,6 +1396,8 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   // Specification / part number
   spec: text("spec"),
   partNo: text("part_no"),
+  // Who physically purchased this item
+  purchasedBy: text("purchased_by"),
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {

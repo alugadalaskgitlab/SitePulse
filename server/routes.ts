@@ -5450,6 +5450,7 @@ export async function registerRoutes(
         paymentMode: z.string().optional(),
         billNo: z.string().optional(),
         purchaseRemarks: z.string().optional(),
+        purchasedBy: z.string().optional(),
       });
       const data = procureSchema.parse(req.body);
       const actionBy = currentUserName(req);
