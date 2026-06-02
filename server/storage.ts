@@ -776,6 +776,7 @@ export interface IStorage {
   getIndentFulfilmentStatus(): Promise<Record<string, boolean>>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getRecentGrnSuppliers(limit?: number, permittedSiteIds?: number[]): Promise<string[]>;
+  getGrnSuppliersByItems(itemIds: number[]): Promise<string[]>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
   createStoreGrn(grn: Omit<InsertStoreGrn, 'grnNumber'>, items: Omit<InsertStoreGrnItem, 'grnId'>[], grnCategory?: string): Promise<StoreGrnWithItems>;
   updateStoreGrn(id: number, data: { acceptanceStatus?: string; acceptanceRemarks?: string | null; status?: string; indentRef?: string | null }): Promise<StoreGrnWithItems | undefined>;
@@ -17401,6 +17402,26 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  async getGrnSuppliersByItems(itemIds: number[]): Promise<string[]> {
+    if (itemIds.length === 0) return [];
+    // Join grn_items → grns, filter by itemId, count occurrences, rank most-frequent first
+    const rows = await db
+      .select({ supplier: storeGrns.supplier, cnt: sql<number>`count(*)::int` })
+      .from(storeGrnItems)
+      .innerJoin(storeGrns, eq(storeGrnItems.grnId, storeGrns.id))
+      .where(
+        and(
+          inArray(storeGrnItems.itemId, itemIds),
+          ne(storeGrns.status, "draft"),
+          ne(storeGrns.supplier, "—"),
+          ne(storeGrns.supplier, ""),
+        ),
+      )
+      .groupBy(storeGrns.supplier)
+      .orderBy(desc(sql<number>`count(*)`));
+    return rows.map(r => r.supplier.trim()).filter(Boolean);
   }
 
   async getRecentGrnItemIds(limit = 5): Promise<number[]> {

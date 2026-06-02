@@ -4860,7 +4860,7 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/:id/approve", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { pin, approvedItems, remarks, bypassReason } = req.body;
+      const { pin, approvedItems, remarks } = req.body;
 
       if (!assertApprove(req, res, "purchase_indents_approve")) return;
       // Self-approval prevention: the approver must differ from the raiser.
@@ -4870,27 +4870,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
 
-      // Stores verification gate: bypass is only allowed for urgent items, stock-issue items,
-      // or when stores team has explicitly requested a bypass (bypass_requested).
+      // Stores verification is mandatory before approval.
       const storesStatus = (existingIndent as any).storesStatus;
       if (storesStatus !== "verified") {
-        const hasUrgent = existingIndent.items.some(i => i.priority === "urgent");
-        const hasStockIssue = existingIndent.items.some(i => {
-          const ss = (i as any).stockStatus;
-          return ss === "out_of_stock" || ss === "short";
+        return res.status(400).json({
+          message: "Stores verification must be completed before this indent can be approved.",
         });
-        const bypassEligible = hasUrgent || hasStockIssue || storesStatus === "bypass_requested";
-        if (!bypassEligible) {
-          return res.status(400).json({
-            message: "Stores verification is required before approval. Bypass is only available for urgent items, stock-shortage items, or after a bypass request from stores."
-          });
-        }
-        // Bypass eligible: bypassReason is required when stores haven't verified
-        if (!bypassReason?.trim()) {
-          return res.status(400).json({
-            message: "A bypass reason is required when approving without stores verification."
-          });
-        }
       }
 
       const approvedBy = currentUserName(req);
@@ -4901,17 +4886,12 @@ export async function registerRoutes(
       }));
       const validatedItems = approvedItemsSchema.parse(approvedItems);
 
-      const indent = await storage.approvePurchaseIndent(id, validatedItems, approvedBy, remarks, bypassReason?.trim() || undefined);
+      const indent = await storage.approvePurchaseIndent(id, validatedItems, approvedBy, remarks, undefined);
       if (!indent) {
         return res.status(404).json({ message: "Purchase indent not found" });
       }
-      const wasBypassed = !!bypassReason?.trim();
       sendPushToSection("purchase_indents_view", "Indent Approved", `${indent.indentNo} approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
-      const raiserTitle = wasBypassed ? "Your Indent Was Approved (Bypassed)" : "Your Indent Was Approved";
-      const raiserBody = wasBypassed
-        ? `${indent.indentNo} was approved by ${approvedBy} (stores verification bypassed)`
-        : `${indent.indentNo} has been approved by ${approvedBy}`;
-      sendPushToRaiser(indent.authorUserId, indent.raisedBy, raiserTitle, raiserBody, "/plant/purchase-indents").catch(() => {});
+      sendPushToRaiser(indent.authorUserId, indent.raisedBy, "Your Indent Was Approved", `${indent.indentNo} has been approved by ${approvedBy}`, "/plant/purchase-indents").catch(() => {});
       res.json(indent);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5095,7 +5075,7 @@ export async function registerRoutes(
       }
 
       const queuedItems = irn.items.filter(i =>
-        ["queued_procurement", "partially_issued"].includes(i.itemStatus) && (i.procureQty ?? 0) > 0
+        ["queued_procurement", "partially_issued"].includes(i.itemStatus) && (i.procureQty ?? i.qty) > 0
       );
       if (!queuedItems.length) {
         return res.status(400).json({ message: "No items queued for procurement on this IRN" });
@@ -5114,7 +5094,7 @@ export async function registerRoutes(
         sourceIrnId: irnId,
         items: queuedItems.map(item => ({
           description: item.material,
-          qty: item.procureQty!,
+          qty: item.procureQty ?? item.qty,
           uom: item.uom,
           purpose: item.purpose,
           priority: item.urgency === "urgent" ? "urgent" : item.urgency === "high" ? "high" : "normal",
@@ -7512,6 +7492,22 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/stores/grns:", err);
       res.status(500).json({ error: "Failed to fetch GRNs" });
+    }
+  });
+
+  app.get("/api/stores/grns/supplier-history", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const raw = (req.query.itemIds as string) || "";
+      const itemIds = raw
+        .split(",")
+        .map(s => parseInt(s.trim(), 10))
+        .filter(n => !isNaN(n) && n > 0);
+      const suppliers = await storage.getGrnSuppliersByItems(itemIds);
+      res.json(suppliers);
+    } catch (err) {
+      console.error("GET /api/stores/grns/supplier-history:", err);
+      res.status(500).json({ error: "Failed to fetch supplier history" });
     }
   });
 

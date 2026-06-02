@@ -651,13 +651,13 @@ export default function PurchaseIndents() {
   const [grnDialogSupplier, setGrnDialogSupplier] = useState("");
   const [grnDialogInvoiceNo, setGrnDialogInvoiceNo] = useState("");
   const [grnDialogRemarks, setGrnDialogRemarks] = useState("");
+  const [grnSupplierSuggestions, setGrnSupplierSuggestions] = useState<string[]>([]);
   type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string; autoLinked: boolean };
   const [grnLines, setGrnLines] = useState<GrnDialogLine[]>([]);
   const [grnOpenDropdownIdx, setGrnOpenDropdownIdx] = useState<number | null>(null);
 
   const [storeItemVerifications, setStoreItemVerifications] = useState<Record<number, StoreItemVerification>>({});
   const [procurementExtras, setProcurementExtras] = useState<Record<number, ProcurementExtra>>({});
-  const [bypassReason, setBypassReason] = useState("");
   const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
   const [procureItemData, setProcureItemData] = useState<Record<number, ProcureItemData>>({});
   const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
@@ -1388,7 +1388,7 @@ export default function PurchaseIndents() {
         setView("detail");
       }
     } else if (indent.status === "stores_check") {
-      // stores_check + verified or bypass_requested → approval detail view
+      // stores_check + verified → approval detail view
       const qtys: Record<number, number> = {};
       const notes: Record<number, string> = {};
       indent.items.forEach(item => {
@@ -1418,7 +1418,6 @@ export default function PurchaseIndents() {
     approveMutation.mutate({
       approvedItems,
       remarks: approvalRemarks.toUpperCase() || null,
-      bypassReason: bypassReason.trim() || undefined,
     });
   };
 
@@ -1460,7 +1459,6 @@ export default function PurchaseIndents() {
     approveMutation.mutate({
       approvedItems,
       remarks: approvalRemarks.toUpperCase() || null,
-      bypassReason: bypassReason.trim() || undefined,
     });
   };
 
@@ -2565,18 +2563,6 @@ export default function PurchaseIndents() {
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} />
                   </div>
-                  {(selectedIndent.status === "approved" || selectedIndent.status === "completed") &&
-                    ((selectedIndent as any).storesStatus === "bypassed" || (selectedIndent as any).storesStatus === null) && (
-                    <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800 px-3 py-2.5 flex items-start gap-2" data-testid="alert-stores-bypassed">
-                      <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-bold text-orange-700 dark:text-orange-300 uppercase tracking-wider">Stores Check Bypassed</p>
-                        {selectedIndent.approvalRemarks && (selectedIndent.approvalRemarks as string).includes("[BYPASS:") && (
-                          <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">{selectedIndent.approvalRemarks}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
@@ -2586,7 +2572,7 @@ export default function PurchaseIndents() {
                       show an info bar instead of the approval action panel */}
                   {(() => {
                     const _ss = (selectedIndent as any).storesStatus as string | null;
-                    const _blocked = canCreateStores && (!_ss || (_ss !== "verified" && _ss !== "bypass_requested"));
+                    const _blocked = canCreateStores && (!_ss || _ss !== "verified");
                     if (!_blocked) return null;
                     return (
                       <Card className="shadow-none border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
@@ -2737,7 +2723,7 @@ export default function PurchaseIndents() {
                           </div>
                           {st.action === 'pending' && (() => {
                             const _ss2 = (selectedIndent as any).storesStatus as string | null;
-                            const _blocked2 = canCreateStores && (!_ss2 || (_ss2 !== "verified" && _ss2 !== "bypass_requested"));
+                            const _blocked2 = canCreateStores && (!_ss2 || _ss2 !== "verified");
                             if (_blocked2) return null;
                             return (
                               <div className="grid grid-cols-3 gap-2 mt-1">
@@ -2786,16 +2772,6 @@ export default function PurchaseIndents() {
                         <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"><FileText className="w-4 h-4 text-gray-500" />Overall Manager Remarks</label>
                         <Textarea value={approvalRemarks} onChange={(e)=>setApprovalRemarks(e.target.value)} onBlur={(e)=>setApprovalRemarks(e.target.value.toUpperCase())} placeholder="Add any final comments for stores or procurement..." className="uppercase min-h-[70px]" data-testid="input-approval-remarks" />
                       </div>
-                      {(() => {
-                        const ss = (selectedIndent as any).storesStatus as string | null;
-                        if (ss === "verified" || ss === "bypass_requested") return null;
-                        return (
-                          <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
-                            <Label className="text-xs uppercase text-orange-800 dark:text-orange-300 font-semibold">⚡ STORES CHECK PENDING — Bypass Reason</Label>
-                            <Textarea value={bypassReason} onChange={(e)=>setBypassReason(e.target.value)} onBlur={(e)=>setBypassReason(e.target.value.toUpperCase())} placeholder="STATE REASON FOR BYPASSING STORES VERIFICATION..." className="uppercase text-sm" data-testid="input-bypass-reason-approval" />
-                          </div>
-                        );
-                      })()}
                     </CardContent>
                   </Card>
 
@@ -2993,17 +2969,6 @@ export default function PurchaseIndents() {
                       <p className="text-sm"><strong>Approved</strong>{" "}
                         <span className="text-teal-200">· {selectedIndent.approvedBy}{selectedIndent.approvedAt ? ` · ${selectedIndent.approvedAt}` : ""}</span>
                       </p>
-                    </div>
-                  )}
-                  {((selectedIndent as any).storesStatus === "bypassed" || (selectedIndent as any).storesStatus === null) && (
-                    <div className="bg-orange-500/20 border border-orange-300/40 rounded-lg px-3 py-2.5 flex items-start gap-2" data-testid="alert-stores-bypassed-procurement">
-                      <AlertTriangle className="w-4 h-4 text-orange-300 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-bold text-orange-200 uppercase tracking-wider">Stores Check Bypassed</p>
-                        {selectedIndent.approvalRemarks && (selectedIndent.approvalRemarks as string).includes("[BYPASS:") && (
-                          <p className="text-xs text-orange-300 mt-0.5">{selectedIndent.approvalRemarks}</p>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
