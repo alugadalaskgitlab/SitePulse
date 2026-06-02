@@ -176,8 +176,9 @@ export default function IrnDetailPage() {
           updated.issueQty = Math.min(sa, reqQty);
           updated.procureQty = Math.max(0, reqQty - sa);
         }
-        if (field === "issueQty") { updated.procureQty = Math.max(0, reqQty - Number(value)); }
-        if (field === "procureQty") { updated.issueQty = Math.max(0, reqQty - Number(value)); }
+        // issueQty change sets a baseline procureQty (user can raise it further for replenishment)
+        if (field === "issueQty") { updated.procureQty = Math.max(updated.procureQty, reqQty - Number(value)); }
+        // procureQty is free — storekeeper can queue more than the deficit for stock replenishment
         return updated;
       })
     );

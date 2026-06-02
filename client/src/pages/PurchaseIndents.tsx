@@ -679,13 +679,24 @@ export default function PurchaseIndents() {
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
   const [addStoreItemForm, setAddStoreItemForm] = useState({ name: "", category: "Aggregate", uom: "NOS" });
+  // tracks whether the "Add to Catalogue" was triggered from the GRN dialog (vs the PI item form)
+  const [addStoreItemFromGrn, setAddStoreItemFromGrn] = useState(false);
 
   const addStoreItemMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/plant-module/materials", data); return res.json(); },
     onSuccess: (newItem: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
       toast({ title: `"${newItem.name}" added to materials catalogue` });
-      if (addStoreItemTargetIdx !== null) {
+      if (addStoreItemFromGrn && addStoreItemTargetIdx !== null) {
+        // Link the new catalogue item directly into the GRN line
+        setGrnLines(prev => prev.map((l, i) => i === addStoreItemTargetIdx ? {
+          ...l,
+          storeItemId: String(newItem.id),
+          itemSearch: newItem.name,
+          uom: (newItem.defaultUom || l.uom || "NOS").toUpperCase(),
+          autoLinked: false,
+        } : l));
+      } else if (addStoreItemTargetIdx !== null) {
         const updated = [...formItems];
         updated[addStoreItemTargetIdx] = {
           ...updated[addStoreItemTargetIdx],
@@ -698,6 +709,7 @@ export default function PurchaseIndents() {
       setAddStoreItemOpen(false);
       setAddStoreItemForm({ name: "", category: "Aggregate", uom: "NOS" });
       setAddStoreItemTargetIdx(null);
+      setAddStoreItemFromGrn(false);
     },
     onError: () => toast({ title: "Error adding material", variant: "destructive" }),
   });
@@ -1029,9 +1041,10 @@ export default function PurchaseIndents() {
       return ps === "purchased" || ps === "partial";
     });
     const firstVendor = purchasedItems.find(i => i.vendor)?.vendor || "";
+    const firstBillNo = purchasedItems.find(i => (i as any).billNo)?.billNo || "";
     setGrnDialogDate(format(new Date(), "yyyy-MM-dd"));
     setGrnDialogSupplier(firstVendor);
-    setGrnDialogInvoiceNo("");
+    setGrnDialogInvoiceNo(firstBillNo);
     setGrnDialogRemarks("");
     setGrnLines(purchasedItems.map(i => ({
       indentItemId: i.id,
@@ -3628,7 +3641,25 @@ export default function PurchaseIndents() {
                               {grnOpenDropdownIdx === idx && (
                                 <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-44 overflow-y-auto text-sm">
                                   {filteredItems.length === 0 ? (
-                                    <div className="px-3 py-2 text-muted-foreground text-xs">No items found</div>
+                                    <div className="px-3 py-2 space-y-1.5">
+                                      <p className="text-muted-foreground text-xs">No items found in catalogue.</p>
+                                      <button
+                                        type="button"
+                                        className="text-xs text-[#0F5F64] font-semibold hover:underline flex items-center gap-1"
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          setGrnOpenDropdownIdx(null);
+                                          const prefill = line.itemSearch.trim() || line.description;
+                                          setAddStoreItemForm({ name: prefill.toUpperCase(), category: "Spares", uom: line.uom || "NOS" });
+                                          setAddStoreItemTargetIdx(idx);
+                                          setAddStoreItemFromGrn(true);
+                                          setAddStoreItemOpen(true);
+                                        }}
+                                        data-testid={`button-grn-add-catalogue-${idx}`}
+                                      >
+                                        + Add "{line.itemSearch || line.description}" to Store Catalogue
+                                      </button>
+                                    </div>
                                   ) : filteredItems.map(si => (
                                     <div
                                       key={si.id}
