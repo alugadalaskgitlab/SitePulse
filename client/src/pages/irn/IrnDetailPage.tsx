@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { format } from "date-fns";
@@ -6,6 +6,7 @@ import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
   ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
+  Warehouse,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,28 @@ export default function IrnDetailPage() {
       return res.json();
     },
   });
+
+  // Fetch live stock balances for stores verification form
+  const { data: stockLookupRows } = useQuery<{ materialName: string; balance: number; uom: string | null; partyId: number | null }[]>({
+    queryKey: ["/api/irn/stock-lookup"],
+    enabled: canVerify && irn?.status === "pending_stores",
+  });
+
+  // Build a map: UPPER(materialName) → total balance across all parties
+  const liveStockMap = useMemo(() => {
+    const map = new Map<string, { balance: number; uom: string }>();
+    if (!stockLookupRows) return map;
+    for (const row of stockLookupRows) {
+      const key = row.materialName.toUpperCase().trim();
+      const existing = map.get(key);
+      if (existing) {
+        existing.balance += row.balance;
+      } else {
+        map.set(key, { balance: row.balance, uom: row.uom ?? "" });
+      }
+    }
+    return map;
+  }, [stockLookupRows]);
 
   const [verifications, setVerifications] = useState<ItemVerification[]>([]);
   const [storesRemarks, setStoresRemarks] = useState("");
@@ -663,7 +686,29 @@ export default function IrnDetailPage() {
 
                     <div className="grid grid-cols-12 gap-3 items-end">
                       <div className="col-span-3 space-y-1">
-                        <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
+                        <div className="flex items-center justify-between gap-1">
+                          <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
+                          {(() => {
+                            const live = liveStockMap.get(item.material.toUpperCase().trim());
+                            if (!live) return null;
+                            const color = live.balance >= item.qty
+                              ? "bg-green-50 border-green-200 text-green-700"
+                              : live.balance > 0
+                              ? "bg-amber-50 border-amber-200 text-amber-700"
+                              : "bg-red-50 border-red-200 text-red-600";
+                            return (
+                              <button
+                                type="button"
+                                title="Click to use live balance"
+                                onClick={() => updateVerification(item.id, "stockAvailable", Math.max(0, live.balance))}
+                                className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium cursor-pointer hover:opacity-80 transition-opacity ${color}`}
+                              >
+                                <Warehouse className="h-3 w-3" />
+                                {live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom || item.uom}
+                              </button>
+                            );
+                          })()}
+                        </div>
                         <Input
                           type="number"
                           value={v.stockAvailable}
