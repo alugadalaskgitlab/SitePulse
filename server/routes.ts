@@ -7503,7 +7503,10 @@ export async function registerRoutes(
         .split(",")
         .map(s => parseInt(s.trim(), 10))
         .filter(n => !isNaN(n) && n > 0);
-      const suppliers = await storage.getGrnSuppliersByItems(itemIds);
+      const permittedSiteIds = req.authUser && !req.authUser.isAdmin
+        ? await storage.getUserPermittedSiteIds(req.authUser.id)
+        : undefined;
+      const suppliers = await storage.getGrnSuppliersByItems(itemIds, permittedSiteIds ?? undefined);
       res.json(suppliers);
     } catch (err) {
       console.error("GET /api/stores/grns/supplier-history:", err);
