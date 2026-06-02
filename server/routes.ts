@@ -5776,7 +5776,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "site_diesel")) return;
       const input = createDieselRequirementRequestSchema.parse(req.body);
       const requirement = await storage.createDieselRequirement(input);
-      sendPushToSection("diesel_req_view", "New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_approve", "New Diesel Requirement", `${requirement.date} - ${requirement.totalPlanned} L planned`, "/plant/diesel-requirements").catch(() => {});
       res.status(201).json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5810,7 +5810,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
-      sendPushToSection("diesel_req_view", "Diesel Approved", `${requirement.date} - ${requirement.totalApproved} L approved by ${approvedBy}`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_raise", "Diesel Approved", `${requirement.date} - ${requirement.totalApproved} L approved by ${approvedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5837,7 +5837,7 @@ export async function registerRoutes(
       if (!requirement) {
         return res.status(404).json({ message: "Diesel requirement not found" });
       }
-      sendPushToSection("diesel_req_view", "Diesel Rejected", `${requirement.date} rejected by ${rejectedBy}`, "/plant/diesel-requirements").catch(() => {});
+      sendPushToSection("diesel_req_raise", "Diesel Rejected", `${requirement.date} rejected by ${rejectedBy}`, "/plant/diesel-requirements").catch(() => {});
       res.json(requirement);
     } catch (err) {
       console.error("Error rejecting diesel requirement:", err);
@@ -6355,7 +6355,7 @@ export async function registerRoutes(
       if (!assertCreate(req, res, "vendor_bills")) return;
       const input = createVendorBillRequestSchema.parse(req.body);
       const bill = await storage.createVendorBill(input);
-      sendPushToSection("vendor_bills_view", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
+      sendPushToSection("vendor_bills_approve", "New Vendor Bill", `${bill.billNo} - ${bill.vendorName}`, "/plant/vendor-bills").catch(() => {});
       res.status(201).json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -6433,7 +6433,8 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
-      sendPushToSection("vendor_bills_view", "Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      const vbNotifSection = status === "verified" ? "vendor_bills_approve" : "vendor_bills_view";
+      sendPushToSection(vbNotifSection, "Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
