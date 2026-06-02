@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { format } from "date-fns";
@@ -106,25 +106,54 @@ export default function IrnDetailPage() {
     return { exact, sorted };
   }, [stockLookupRows]);
 
-  // Find a live stock entry for an IRN item — tries exact match first, then word-level partial
+  // Find the best live stock entry for an IRN item:
+  // 1. Exact name match (always wins)
+  // 2. Among all approximate word-level matches, pick the one with the highest balance
   function findLiveStock(materialName: string): { balance: number; uom: string; approx: boolean } | null {
     const needle = materialName.toUpperCase().trim();
     const ex = liveStock.exact.get(needle);
     if (ex) return { ...ex, approx: false };
-    // Partial: a stock entry whose name-words appear in the IRN material name (or vice versa)
+    // Collect all approximate matches, return the best (highest balance)
+    let best: { balance: number; uom: string } | null = null;
     for (const entry of liveStock.sorted) {
       const stockWords = entry.key.split(/\s+/).filter(w => w.length >= 3);
       if (stockWords.some(w => needle.includes(w) || entry.key.includes(needle))) {
-        return { balance: entry.balance, uom: entry.uom, approx: true };
+        if (!best || entry.balance > best.balance) {
+          best = { balance: entry.balance, uom: entry.uom };
+        }
       }
     }
-    return null;
+    return best ? { ...best, approx: true } : null;
   }
 
   const [verifications, setVerifications] = useState<ItemVerification[]>([]);
   const [storesRemarks, setStoresRemarks] = useState("");
   const [verified, setVerified] = useState(false);
   const [approvalRemarks, setApprovalRemarks] = useState("");
+
+  // Auto-fill stock + set smart default action when live stock data arrives (first time only)
+  const autoFillApplied = useRef(false);
+  useEffect(() => {
+    if (liveStock.sorted.length === 0 || !irn || verifications.length === 0) return;
+    if (autoFillApplied.current) return;
+    autoFillApplied.current = true;
+    setVerifications(prev => prev.map(v => {
+      const item = irn.items.find(i => i.id === v.itemId);
+      if (!item) return v;
+      if (item.storesAction != null) return v; // already verified — keep saved values
+      const live = findLiveStock(item.material);
+      if (!live) return v;
+      const balance = Math.max(0, live.balance);
+      if (balance === 0) {
+        return { ...v, stockAvailable: 0, storesAction: "procure", issueQty: 0, procureQty: item.qty };
+      } else if (balance < item.qty) {
+        return { ...v, stockAvailable: balance, storesAction: "split", issueQty: Math.min(balance, item.qty), procureQty: Math.max(0, item.qty - balance) };
+      } else {
+        return { ...v, stockAvailable: balance, storesAction: "issue", issueQty: item.qty, procureQty: 0 };
+      }
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStock.sorted.length, verifications.length]);
 
   // init verifications when irn loads
   if (irn && verifications.length === 0 && irn.items.length > 0) {
@@ -699,36 +728,24 @@ export default function IrnDetailPage() {
 
                     <div className="grid grid-cols-12 gap-3 items-end">
                       <div className="col-span-3 space-y-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
-                          {(() => {
-                            const live = findLiveStock(item.material);
-                            if (!live) return null;
-                            const color = live.balance >= item.qty
-                              ? "bg-green-50 border-green-200 text-green-700"
-                              : live.balance > 0
-                              ? "bg-amber-50 border-amber-200 text-amber-700"
-                              : "bg-red-50 border-red-200 text-red-600";
-                            return (
-                              <button
-                                type="button"
-                                title={live.approx ? `Approx. match — click to use ${live.balance.toFixed(2)} ${live.uom}` : "Click to use live balance"}
-                                onClick={() => updateVerification(item.id, "stockAvailable", Math.max(0, live.balance))}
-                                className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium cursor-pointer hover:opacity-80 transition-opacity ${color}`}
-                              >
-                                <Warehouse className="h-3 w-3" />
-                                {live.approx && <span className="mr-0.5">~</span>}
-                                {live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom || item.uom}
-                              </button>
-                            );
-                          })()}
-                        </div>
+                        <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
                         <Input
                           type="number"
                           value={v.stockAvailable}
                           onChange={(e) => updateVerification(item.id, "stockAvailable", Number(e.target.value))}
                           className={`h-8 text-sm font-medium ${v.stockAvailable >= item.qty ? "border-green-300 bg-green-50" : v.stockAvailable === 0 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
                         />
+                        {(() => {
+                          const live = findLiveStock(item.material);
+                          if (!live) return null;
+                          const color = live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500";
+                          return (
+                            <p className={`text-[10px] flex items-center gap-0.5 ${color}`}>
+                              <Warehouse className="h-2.5 w-2.5" />
+                              Plant stock: {live.approx ? "~" : ""}{live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom}
+                            </p>
+                          );
+                        })()}
                       </div>
                       <div className="col-span-3 space-y-1">
                         <Label className="text-xs text-gray-500">Action</Label>

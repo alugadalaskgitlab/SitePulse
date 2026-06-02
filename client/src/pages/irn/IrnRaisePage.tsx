@@ -159,7 +159,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-const UOM_OPTIONS = ["MT", "KL", "Nos", "KG", "Ltrs", "Bags", "Rmt", "Sqm", "Sets"];
+const UOM_OPTIONS = ["MT", "KL", "NOS", "KG", "Ltrs", "Bags", "RMT", "SQM", "SETS", "LITERS", "BARRELS", "DRUMS", "PAIRS", "BOX", "ROLLS", "PACKETS", "CFT", "CUM"];
 
 // ── Page ──────────────────────────────────────────────────────────────────
 
@@ -461,15 +461,16 @@ export default function IrnRaisePage() {
                     </div>
                     <div className="col-span-3 space-y-1">
                       <Label className="text-xs">UOM</Label>
-                      <Select
+                      <Input
+                        list="irn-uom-options"
                         value={form.watch(`items.${idx}.uom`)}
-                        onValueChange={(v) => form.setValue(`items.${idx}.uom`, v)}
-                      >
-                        <SelectTrigger className="h-9 text-sm bg-white"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {UOM_OPTIONS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                        onChange={(e) => form.setValue(`items.${idx}.uom`, e.target.value.toUpperCase())}
+                        className="h-9 text-sm bg-white uppercase"
+                        placeholder="UOM"
+                      />
+                      <datalist id="irn-uom-options">
+                        {UOM_OPTIONS.map((u) => <option key={u} value={u} />)}
+                      </datalist>
                     </div>
                     <div className="col-span-6 space-y-1">
                       <Label className="text-xs">Urgency</Label>

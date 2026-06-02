@@ -2082,16 +2082,19 @@ export default function PurchaseIndents() {
                         </div>
                         <div>
                           <Label className="text-xs">UOM</Label>
-                          <Select value={item.uom} onValueChange={(v) => updateItem(index, "uom", v)}>
-                            <SelectTrigger data-testid={`select-item-uom-${index}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {UOM_ITEM_OPTIONS.map(u => (
-                                <SelectItem key={u} value={u}>{u}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="relative">
+                            <Input
+                              list="pi-uom-options"
+                              value={item.uom}
+                              onChange={(e) => updateItem(index, "uom", e.target.value.toUpperCase())}
+                              className="uppercase"
+                              placeholder="UOM"
+                              data-testid={`input-item-uom-${index}`}
+                            />
+                            <datalist id="pi-uom-options">
+                              {UOM_ITEM_OPTIONS.map(u => <option key={u} value={u} />)}
+                            </datalist>
+                          </div>
                         </div>
                         <div>
                           <Label className="text-xs">PURPOSE</Label>
