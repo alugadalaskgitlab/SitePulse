@@ -1422,7 +1422,6 @@ export default function PurchaseIndents() {
       setReviewerNotes(notes);
       initApprovalStates(indent.items);
       setApprovalRemarks("");
-      setBypassReason("");
       setView("detail");
     } else if (indent.status === "approved" || indent.status === "purchasing" || indent.status === "completed") {
       setPurchaseUpdates({});
