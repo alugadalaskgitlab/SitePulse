@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, type ComponentType } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -413,6 +413,164 @@ function StatusSteps({ status, storesStatus }: { status: string; storesStatus?: 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
+  const [open, setOpen] = useState(false);
+
+  type AuditEvent = {
+    icon: ComponentType<{ className?: string }>;
+    label: string;
+    actor: string | null;
+    timestamp: string | null;
+    note: string | null;
+    colorClass: string;
+    dotClass: string;
+  };
+
+  const events: AuditEvent[] = [];
+
+  const fmt = (ts: string | null | undefined) => {
+    if (!ts) return null;
+    try {
+      return format(new Date(ts), "dd-MMM-yyyy HH:mm").toUpperCase();
+    } catch {
+      return ts;
+    }
+  };
+
+  const storesStatus = (indent as any).storesStatus as string | null;
+  const storesVerifiedBy = (indent as any).storesVerifiedBy as string | null;
+  const storesVerifiedAt = (indent as any).storesVerifiedAt as string | null;
+  const createdAt = (indent as any).createdAt as string | null;
+
+  events.push({
+    icon: FileText,
+    label: "Indent Raised",
+    actor: indent.raisedBy,
+    timestamp: fmt(createdAt),
+    note: null,
+    colorClass: "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700",
+    dotClass: "bg-blue-500",
+  });
+
+  if (storesStatus === "verified" && storesVerifiedBy) {
+    events.push({
+      icon: ClipboardCheck,
+      label: "Stores Verified",
+      actor: storesVerifiedBy,
+      timestamp: fmt(storesVerifiedAt),
+      note: null,
+      colorClass: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700",
+      dotClass: "bg-emerald-500",
+    });
+  } else if (storesStatus === "bypass_requested") {
+    events.push({
+      icon: AlertTriangle,
+      label: "Stores Bypass Requested",
+      actor: storesVerifiedBy,
+      timestamp: fmt(storesVerifiedAt),
+      note: null,
+      colorClass: "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700",
+      dotClass: "bg-orange-400",
+    });
+  } else if (
+    storesStatus === "bypassed" ||
+    (storesStatus === null &&
+      (indent.status === "approved" || indent.status === "completed"))
+  ) {
+    const bypassNote = (() => {
+      const r = indent.approvalRemarks ?? "";
+      const m = r.match(/\[BYPASS:\s*(.*?)\]/i);
+      return m ? m[1].trim() : null;
+    })();
+    events.push({
+      icon: AlertTriangle,
+      label: "Stores Check Bypassed",
+      actor: indent.approvedBy ?? null,
+      timestamp: null,
+      note: bypassNote,
+      colorClass: "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700",
+      dotClass: "bg-orange-400",
+    });
+  }
+
+  if (indent.status === "approved" || indent.status === "completed") {
+    const cleanRemarks = (() => {
+      const r = indent.approvalRemarks ?? "";
+      const stripped = r.replace(/\[BYPASS:[^\]]*\]/gi, "").trim();
+      return stripped || null;
+    })();
+    events.push({
+      icon: CheckCircle2,
+      label: "Approved",
+      actor: indent.approvedBy ?? null,
+      timestamp: fmt((indent as any).approvedAt),
+      note: cleanRemarks,
+      colorClass: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700",
+      dotClass: "bg-emerald-600",
+    });
+  } else if (indent.status === "rejected") {
+    events.push({
+      icon: XCircle,
+      label: "Rejected",
+      actor: indent.approvedBy ?? null,
+      timestamp: fmt((indent as any).approvedAt),
+      note: indent.rejectionReason ?? null,
+      colorClass: "text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700",
+      dotClass: "bg-red-500",
+    });
+  }
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden" data-testid="panel-audit-trail">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/40 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors text-left"
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-audit-trail"
+      >
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+          <ClipboardList className="w-4 h-4" />
+          <span className="text-sm font-semibold uppercase tracking-wide">Audit Trail</span>
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 text-[10px] font-bold">{events.length}</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+      </button>
+      {open && (
+        <div className="px-4 py-4 bg-white dark:bg-card space-y-0" data-testid="audit-trail-events">
+          {events.map((ev, i) => {
+            const Icon = ev.icon;
+            return (
+              <div key={i} className="flex gap-3" data-testid={`audit-event-${i}`}>
+                <div className="flex flex-col items-center">
+                  <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${ev.colorClass}`}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  {i < events.length - 1 && (
+                    <div className="w-px flex-1 bg-gray-200 dark:bg-gray-700 my-1" />
+                  )}
+                </div>
+                <div className={`pb-4 ${i === events.length - 1 ? "pb-0" : ""} min-w-0`}>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">{ev.label}</p>
+                  {ev.actor && (
+                    <p className="text-xs text-muted-foreground mt-0.5 uppercase">{ev.actor}</p>
+                  )}
+                  {ev.timestamp && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Clock className="w-3 h-3 inline shrink-0" /> {ev.timestamp}
+                    </p>
+                  )}
+                  {ev.note && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">{ev.note}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2605,6 +2763,7 @@ export default function PurchaseIndents() {
                   </CardContent>
                 </Card>
               )}
+              <IndentAuditTrail indent={selectedIndent} />
             </>
           ) : (
             <Card>
@@ -3089,6 +3248,7 @@ export default function PurchaseIndents() {
                     });
                 })()}
               </div>
+              <IndentAuditTrail indent={selectedIndent} />
             </>
           ) : (
             <Card>
