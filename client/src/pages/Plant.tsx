@@ -5,7 +5,7 @@ import { useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench, FlaskConical, TestTube, BarChart3 } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench, FlaskConical, TestTube, BarChart3, Cylinder } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
@@ -21,6 +21,9 @@ import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION, N
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Party, PlantMaterial, MixTemplate, EquipmentMasterType, MixType, MaterialOpeningStock, Personnel, LdoFlowReading, PlantSettings, PlantSettingsWithSite, Site } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import type { PlantTankConfig, SingleTankConfig, TankSlot } from "@shared/tank-calibration";
+import { generateChartPreview, parseTankConfig, getTankCapacity, TANK_SHAPE_LABELS, TANK_SLOT_LABELS } from "@shared/tank-calibration";
 import { EQUIPMENT_TYPES, METER_TYPES, PERSONNEL_ROLES } from "@shared/schema";
 import { computeTankStock } from "@/lib/ldoStock";
 import { format } from "date-fns";
@@ -1360,6 +1363,130 @@ const PLANT_TYPE_LABELS: Record<string, string> = {
   mixed: "Mixed (HMA + RMC)",
 };
 
+// ── Per-slot tank configuration editor ─────────────────────────────────────
+function TankSlotEditor({
+  slotKey,
+  label,
+  config,
+  onChange,
+}: {
+  slotKey: TankSlot;
+  label: string;
+  config: SingleTankConfig | undefined;
+  onChange: (cfg: SingleTankConfig | undefined) => void;
+}) {
+  const enabled = !!config;
+  const shape = config?.shape ?? "horizontal_cylinder";
+
+  const defaultForShape = (s: string): SingleTankConfig => {
+    if (s === "vertical_cylinder") return { shape: "vertical_cylinder", diameterCm: 200, heightCm: 150 };
+    if (s === "vertical_cone_top") return { shape: "vertical_cone_top", diameterCm: 200, cylinderHeightCm: 150, coneHeightCm: 30 };
+    return { shape: "horizontal_cylinder", diameterCm: 250, lengthCm: 1060 };
+  };
+
+  const update = (patch: Partial<any>) => onChange({ ...config!, ...patch } as SingleTankConfig);
+  const numField = (val: number | undefined, key: string) =>
+    <Input type="number" min={0} value={val ?? ""} placeholder="cm"
+      onChange={(e) => update({ [key]: parseFloat(e.target.value) || 0 })}
+      className="h-8 text-sm" data-testid={`input-tank-${slotKey}-${key}`} />;
+
+  const preview = enabled && config && config.diameterCm > 0 ? generateChartPreview(config) : null;
+  const capacity = enabled && config && config.diameterCm > 0 ? getTankCapacity(config) : 0;
+
+  return (
+    <div className={`border rounded-lg p-3 space-y-3 ${enabled ? "border-teal-200 dark:border-teal-800 bg-teal-50/30 dark:bg-teal-900/10" : "bg-muted/20"}`}>
+      <div className="flex items-center gap-3">
+        <Switch
+          checked={enabled}
+          onCheckedChange={(checked) => onChange(checked ? defaultForShape("horizontal_cylinder") : undefined)}
+          data-testid={`switch-tank-${slotKey}`}
+        />
+        <span className="font-medium text-sm">{label}</span>
+        {enabled && capacity > 0 && (
+          <span className="ml-auto text-xs text-muted-foreground">{Math.round(capacity).toLocaleString()} L capacity</span>
+        )}
+      </div>
+
+      {enabled && config && (
+        <>
+          <div>
+            <Label className="text-xs">Tank Shape</Label>
+            <Select value={shape} onValueChange={(v) => onChange(defaultForShape(v))}>
+              <SelectTrigger className="mt-1 h-8 text-sm" data-testid={`select-tank-${slotKey}-shape`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(TANK_SHAPE_LABELS).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>{l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Diameter (cm)</Label>
+              {numField(config.diameterCm, "diameterCm")}
+            </div>
+            {config.shape === "horizontal_cylinder" && (
+              <div>
+                <Label className="text-xs">Length (cm)</Label>
+                {numField(config.lengthCm, "lengthCm")}
+              </div>
+            )}
+            {config.shape === "vertical_cylinder" && (
+              <div>
+                <Label className="text-xs">Height (cm)</Label>
+                {numField(config.heightCm, "heightCm")}
+              </div>
+            )}
+            {config.shape === "vertical_cone_top" && (
+              <>
+                <div>
+                  <Label className="text-xs">Cylinder Height (cm)</Label>
+                  {numField(config.cylinderHeightCm, "cylinderHeightCm")}
+                </div>
+                <div className="col-span-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Cone Height (cm)</Label>
+                    {numField(config.coneHeightCm, "coneHeightCm")}
+                  </div>
+                  <div />
+                </div>
+              </>
+            )}
+            <div>
+              <Label className="text-xs">Dead Stock Depth (cm)</Label>
+              <Input type="number" min={0} value={config.deadStockDepthCm ?? ""}
+                placeholder="e.g. 12"
+                onChange={(e) => update({ deadStockDepthCm: parseFloat(e.target.value) || undefined })}
+                className="h-8 text-sm" data-testid={`input-tank-${slotKey}-deadStock`} />
+            </div>
+          </div>
+
+          {preview && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Chart Preview</p>
+              <div className="grid grid-cols-3 text-xs gap-x-4 gap-y-0.5">
+                <span className="text-muted-foreground font-medium">% Full</span>
+                <span className="text-muted-foreground font-medium">Dip (cm)</span>
+                <span className="text-muted-foreground font-medium">Volume (L)</span>
+                {preview.map((row) => (
+                  <span key={row.pct} className="contents">
+                    <span>{row.pct}%</span>
+                    <span>{row.depthCm}</span>
+                    <span>{row.volumeL.toLocaleString()}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function PlantTypeConfigSection() {
   const { toast } = useToast();
   const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettingsWithSite[]>({
@@ -1382,12 +1509,22 @@ export function PlantTypeConfigSection() {
   const [addName, setAddName] = useState("");
   const [addType, setAddType] = useState<string>("hma");
   const [addSiteId, setAddSiteId] = useState<string>("");
+  const [addPartyId, setAddPartyId] = useState<string>("");
 
   // ── Assign-site dialog state ─────────────────────────────────────────────────
   const [assignSiteTarget, setAssignSiteTarget] = useState<PlantSettingsWithSite | null>(null);
   const [assignSiteId, setAssignSiteId] = useState<string>("");
 
+  // ── Primary party dialog state ───────────────────────────────────────────────
+  const [primaryPartyTarget, setPrimaryPartyTarget] = useState<PlantSettingsWithSite | null>(null);
+  const [primaryPartyIdEdit, setPrimaryPartyIdEdit] = useState<string>("");
+
+  // ── Tank Calibration dialog state ────────────────────────────────────────────
+  const [calibrateTarget, setCalibrateTarget] = useState<PlantSettings | null>(null);
+  const [calibrateConfig, setCalibrateConfig] = useState<PlantTankConfig>({});
+
   const { data: sitesList = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
+  const { data: partiesList = [] } = useQuery<Party[]>({ queryKey: ["/api/parties"] });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['/api/plant-module/plant-settings'] });
 
@@ -1398,9 +1535,11 @@ export function PlantTypeConfigSection() {
       const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(editTarget.plantName)}`, {
         plantType: editType,
         siteId: editTarget.siteId ?? null,
+        primaryPartyId: (editTarget as any).primaryPartyId ?? null,
         bitumenTank1LitresPerCm: editTarget.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: editTarget.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: editTarget.bitumenDensityKgPerL ?? null,
+        tankConfig: (editTarget as any).tankConfig ?? null,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
@@ -1458,9 +1597,11 @@ export function PlantTypeConfigSection() {
       const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(name)}`, {
         plantType: addType,
         siteId: addSiteId ? parseInt(addSiteId) : null,
+        primaryPartyId: addPartyId ? parseInt(addPartyId) : null,
         bitumenTank1LitresPerCm: null,
         bitumenTank2LitresPerCm: null,
         bitumenDensityKgPerL: null,
+        tankConfig: null,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
@@ -1472,6 +1613,7 @@ export function PlantTypeConfigSection() {
       setAddName("");
       setAddType("hma");
       setAddSiteId("");
+      setAddPartyId("");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -1483,9 +1625,11 @@ export function PlantTypeConfigSection() {
       const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(assignSiteTarget.plantName)}`, {
         plantType: assignSiteTarget.plantType ?? "hma",
         siteId: assignSiteId ? parseInt(assignSiteId) : null,
+        primaryPartyId: (assignSiteTarget as any).primaryPartyId ?? null,
         bitumenTank1LitresPerCm: assignSiteTarget.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: assignSiteTarget.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: assignSiteTarget.bitumenDensityKgPerL ?? null,
+        tankConfig: (assignSiteTarget as any).tankConfig ?? null,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
@@ -1496,6 +1640,57 @@ export function PlantTypeConfigSection() {
       toast({ title: "Site assigned", description: assignSiteId ? `"${assignSiteTarget?.plantName}" linked to ${siteName}.` : `"${assignSiteTarget?.plantName}" is now unlinked from any site.` });
       setAssignSiteTarget(null);
       setAssignSiteId("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Set / update primary party for an existing plant
+  const primaryPartyMutation = useMutation({
+    mutationFn: async () => {
+      if (!primaryPartyTarget) throw new Error("No plant selected");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(primaryPartyTarget.plantName)}`, {
+        plantType: primaryPartyTarget.plantType ?? "hma",
+        siteId: primaryPartyTarget.siteId ?? null,
+        primaryPartyId: primaryPartyIdEdit ? parseInt(primaryPartyIdEdit) : null,
+        bitumenTank1LitresPerCm: primaryPartyTarget.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: primaryPartyTarget.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: primaryPartyTarget.bitumenDensityKgPerL ?? null,
+        tankConfig: (primaryPartyTarget as any).tankConfig ?? null,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      const partyName = primaryPartyIdEdit ? (partiesList.find(p => String(p.id) === primaryPartyIdEdit)?.name ?? "selected party") : "none";
+      toast({ title: "Primary party updated", description: primaryPartyIdEdit ? `"${primaryPartyTarget?.plantName}" default party set to ${partyName}.` : `"${primaryPartyTarget?.plantName}" primary party cleared.` });
+      setPrimaryPartyTarget(null);
+      setPrimaryPartyIdEdit("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Save tank calibration config
+  const calibrateMutation = useMutation({
+    mutationFn: async () => {
+      if (!calibrateTarget) throw new Error("No plant selected");
+      const res = await apiRequest("PUT", `/api/plant-module/plant-settings/${encodeURIComponent(calibrateTarget.plantName)}`, {
+        plantType: calibrateTarget.plantType ?? "hma",
+        siteId: calibrateTarget.siteId ?? null,
+        primaryPartyId: (calibrateTarget as any).primaryPartyId ?? null,
+        bitumenTank1LitresPerCm: calibrateTarget.bitumenTank1LitresPerCm ?? null,
+        bitumenTank2LitresPerCm: calibrateTarget.bitumenTank2LitresPerCm ?? null,
+        bitumenDensityKgPerL: calibrateTarget.bitumenDensityKgPerL ?? null,
+        tankConfig: Object.keys(calibrateConfig).length > 0 ? JSON.stringify(calibrateConfig) : null,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Tank calibration saved", description: `Tank dimensions for "${calibrateTarget?.plantName}" have been saved.` });
+      setCalibrateTarget(null);
+      setCalibrateConfig({});
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -1557,6 +1752,31 @@ export function PlantTypeConfigSection() {
                 >
                   <MapPin className="w-3 h-3 mr-1" />
                   Site
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPrimaryPartyTarget(s);
+                    setPrimaryPartyIdEdit((s as any).primaryPartyId ? String((s as any).primaryPartyId) : "");
+                  }}
+                  data-testid={`btn-primary-party-${s.plantName}`}
+                >
+                  <Users className="w-3 h-3 mr-1" />
+                  Party
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const existing = parseTankConfig((s as any).tankConfig ?? null);
+                    setCalibrateTarget(s);
+                    setCalibrateConfig(existing ?? {});
+                  }}
+                  data-testid={`btn-calibrate-tanks-${s.plantName}`}
+                >
+                  <Cylinder className="w-3 h-3 mr-1" />
+                  Tanks
                 </Button>
                 <Button
                   variant="outline"
@@ -1703,7 +1923,7 @@ export function PlantTypeConfigSection() {
       </AlertDialog>
 
       {/* ── Add Plant Dialog ───────────────────────────────────────────────────── */}
-      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); } }}>
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); setAddPartyId(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Another Plant</DialogTitle>
@@ -1737,7 +1957,7 @@ export function PlantTypeConfigSection() {
               </Select>
             </div>
             <div>
-              <Label>Site / Project <span className="text-muted-foreground text-xs">(optional — leave blank for shared/mobile plant)</span></Label>
+              <Label>Site / Project <span className="text-muted-foreground text-xs">(optional)</span></Label>
               <Select value={addSiteId || "__none__"} onValueChange={v => setAddSiteId(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1" data-testid="select-add-plant-site">
                   <SelectValue placeholder="Not assigned to a site" />
@@ -1748,8 +1968,20 @@ export function PlantTypeConfigSection() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Primary Party <span className="text-muted-foreground text-xs">(optional — default contractor for manpower)</span></Label>
+              <Select value={addPartyId || "__none__"} onValueChange={v => setAddPartyId(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1" data-testid="select-add-plant-party">
+                  <SelectValue placeholder="No default party" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— No default party —</SelectItem>
+                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); }} data-testid="btn-cancel-add-plant">Cancel</Button>
+              <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddType("hma"); setAddSiteId(""); setAddPartyId(""); }} data-testid="btn-cancel-add-plant">Cancel</Button>
               <Button
                 onClick={() => addMutation.mutate()}
                 disabled={addMutation.isPending || !addName.trim()}
@@ -1792,6 +2024,90 @@ export function PlantTypeConfigSection() {
                 data-testid="btn-confirm-assign-site"
               >
                 {assignSiteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Primary Party Dialog ───────────────────────────────────────────────── */}
+      <Dialog open={!!primaryPartyTarget} onOpenChange={(o) => { if (!o) { setPrimaryPartyTarget(null); setPrimaryPartyIdEdit(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Primary Party</DialogTitle>
+            <DialogDescription>
+              The default contractor/party used for manpower entries on <strong>{primaryPartyTarget?.plantName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Primary Party</Label>
+              <Select value={primaryPartyIdEdit || "__none__"} onValueChange={v => setPrimaryPartyIdEdit(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1" data-testid="select-primary-party">
+                  <SelectValue placeholder="No default party" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— No default party —</SelectItem>
+                  {partiesList.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setPrimaryPartyTarget(null); setPrimaryPartyIdEdit(""); }} data-testid="btn-cancel-primary-party">Cancel</Button>
+              <Button
+                onClick={() => primaryPartyMutation.mutate()}
+                disabled={primaryPartyMutation.isPending}
+                data-testid="btn-confirm-primary-party"
+              >
+                {primaryPartyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Tank Calibration Dialog ────────────────────────────────────────────── */}
+      <Dialog open={!!calibrateTarget} onOpenChange={(o) => { if (!o) { setCalibrateTarget(null); setCalibrateConfig({}); } }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cylinder className="w-5 h-5 text-teal-600" />
+              Tank Calibration — {calibrateTarget?.plantName}
+            </DialogTitle>
+            <DialogDescription>
+              Configure tank dimensions to auto-generate accurate dip charts. Tanks not enabled here will fall back to the plant's default lookup tables.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-1 gap-3">
+              {(Object.entries(TANK_SLOT_LABELS) as [TankSlot, string][]).map(([slot, label]) => (
+                <TankSlotEditor
+                  key={slot}
+                  slotKey={slot}
+                  label={label}
+                  config={calibrateConfig[slot]}
+                  onChange={(cfg) => {
+                    setCalibrateConfig(prev => {
+                      const next = { ...prev };
+                      if (cfg) next[slot] = cfg;
+                      else delete next[slot];
+                      return next;
+                    });
+                  }}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Tip: For horizontal cylinders, enter the inner diameter and the internal barrel length. For vertical tanks, diameter and fill height. Dead stock depth excludes the unpumpable bottom layer from usable volume calculations.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setCalibrateTarget(null); setCalibrateConfig({}); }} data-testid="btn-cancel-calibrate">Cancel</Button>
+              <Button
+                onClick={() => calibrateMutation.mutate()}
+                disabled={calibrateMutation.isPending}
+                data-testid="btn-save-calibrate"
+              >
+                {calibrateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Calibration"}
               </Button>
             </div>
           </div>

@@ -64,6 +64,7 @@ import {
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
+import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll } from "./push";
 import {
   type CreateDprRequest,
@@ -2277,6 +2278,8 @@ export class DatabaseStorage implements IStorage {
       bitumenTank1LitresPerCm: input.bitumenTank1LitresPerCm ?? null,
       bitumenTank2LitresPerCm: input.bitumenTank2LitresPerCm ?? null,
       bitumenDensityKgPerL: input.bitumenDensityKgPerL ?? null,
+      tankConfig: (input as any).tankConfig ?? null,
+      primaryPartyId: (input as any).primaryPartyId ?? null,
       ...(input.plantType !== undefined ? { plantType: input.plantType } : {}),
       siteId: input.siteId ?? null,
       updatedAt: new Date(),
@@ -2310,9 +2313,11 @@ export class DatabaseStorage implements IStorage {
         plantName: newName,
         plantType: existing.plantType,
         siteId: existing.siteId,
+        primaryPartyId: existing.primaryPartyId,
         bitumenTank1LitresPerCm: existing.bitumenTank1LitresPerCm,
         bitumenTank2LitresPerCm: existing.bitumenTank2LitresPerCm,
         bitumenDensityKgPerL: existing.bitumenDensityKgPerL,
+        tankConfig: existing.tankConfig,
         updatedAt: new Date(),
       }).returning();
       await tx.delete(plantSettings).where(eq(plantSettings.plantName, oldName));
@@ -13542,16 +13547,31 @@ export class DatabaseStorage implements IStorage {
     await tx.delete(bitumenDipReadings).where(eq(bitumenDipReadings.sourceShiftLogId, log.id));
     await tx.delete(ldoDipReadings).where(eq(ldoDipReadings.sourceShiftLogId, log.id));
 
+    // Load per-plant tank calibration config (non-transactional read is safe here)
+    const [psRow] = await db.select().from(plantSettings)
+      .where(eq(plantSettings.plantName, log.plantName)).limit(1);
+    const plantTankConfig = parseTankConfig(psRow?.tankConfig ?? null);
+
+    // Per-plant-aware volume helpers — fall back to hardcoded charts when not configured
+    const bitumenVol = (tank: 1 | 2, depth: number): number => {
+      const cfg = tank === 1 ? plantTankConfig?.bitumen1 : plantTankConfig?.bitumen2;
+      return cfg ? calcTankVol(cfg, depth) : getVolumeAtDepth(depth);
+    };
+    const ldoVol = (tank: 1 | 2, depth: number): number => {
+      const cfg = tank === 1 ? plantTankConfig?.ldo1 : plantTankConfig?.ldo2;
+      return cfg ? calcTankVol(cfg, depth) : getLdoVolumeAtDepth(tank, depth);
+    };
+
     const ldoRows: any[] = [];
     // Compute consumption deltas early. Dip-stick is the authoritative source while
     // flow meters are being calibrated; meter delta is kept as a fallback only.
     const dipDeltaT1 =
       log.ldoTank1OpeningDip != null && log.ldoTank1ClosingDip != null
-        ? getLdoVolumeAtDepth(1, log.ldoTank1OpeningDip) - getLdoVolumeAtDepth(1, log.ldoTank1ClosingDip)
+        ? ldoVol(1, log.ldoTank1OpeningDip) - ldoVol(1, log.ldoTank1ClosingDip)
         : null;
     const dipDeltaT2 =
       log.ldoTank2OpeningDip != null && log.ldoTank2ClosingDip != null
-        ? getLdoVolumeAtDepth(2, log.ldoTank2OpeningDip) - getLdoVolumeAtDepth(2, log.ldoTank2ClosingDip)
+        ? ldoVol(2, log.ldoTank2OpeningDip) - ldoVol(2, log.ldoTank2ClosingDip)
         : null;
     const meterDeltaT1 =
       log.ldoTank1OpeningMeter != null && log.ldoTank1ClosingMeter != null
@@ -13604,7 +13624,7 @@ export class DatabaseStorage implements IStorage {
     const bitumenRows: any[] = [];
     const pushBitumen = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
       if (depth === null || depth === undefined) return;
-      const vol = getVolumeAtDepth(depth);
+      const vol = bitumenVol(tank as 1 | 2, depth);
       const wt = vol * BITUMEN_DENSITY_KG_PER_LITER;
       bitumenRows.push({
         date: log.date,
@@ -13629,7 +13649,7 @@ export class DatabaseStorage implements IStorage {
     const ldoDipRows: any[] = [];
     const pushLdoDip = (tank: number, type: "opening" | "closing", depth: number | null | undefined, time: string | null) => {
       if (depth === null || depth === undefined) return;
-      const vol = getLdoVolumeAtDepth(tank, depth);
+      const vol = ldoVol(tank as 1 | 2, depth);
       const wt = vol * LDO_DENSITY_KG_PER_LITER;
       ldoDipRows.push({
         date: log.date,

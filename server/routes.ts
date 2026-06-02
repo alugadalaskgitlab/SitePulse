@@ -16,6 +16,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, eq, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
@@ -3388,10 +3389,12 @@ export async function registerRoutes(
         plantName,
         plantType: req.body?.plantType ?? "hma",
         siteId: req.body?.siteId ?? null,
+        primaryPartyId: req.body?.primaryPartyId ?? null,
         bitumenTank1LitresPerCm: req.body?.bitumenTank1LitresPerCm ?? null,
         bitumenTank2LitresPerCm: req.body?.bitumenTank2LitresPerCm ?? null,
         bitumenDensityKgPerL: req.body?.bitumenDensityKgPerL ?? null,
-      });
+        tankConfig: req.body?.tankConfig ?? null,
+      } as any);
       const saved = await storage.upsertPlantSettings(parsed);
       res.json(saved);
     } catch (err: any) {
@@ -3671,6 +3674,14 @@ export async function registerRoutes(
         }
       }
 
+      // Load per-plant tank config once — used by both Consumption Summary and Tank Status sections
+      const pSettings = await storage.getPlantSettings(summary.plantName);
+      const pTankConfig = parseTankConfig(pSettings?.tankConfig ?? null);
+      const bitumenVolForTank = (tank: 1 | 2, depth: number): number => {
+        const cfg = tank === 1 ? pTankConfig?.bitumen1 : pTankConfig?.bitumen2;
+        return cfg ? calcTankVol(cfg, depth) : getVolumeAtDepth(depth);
+      };
+
       // ── Consumption Summary — fetches the same index row used by the
       // on-screen PlantDailyReports page so displayed numbers align closely.
       {
@@ -3700,8 +3711,8 @@ export async function registerRoutes(
         doc.font("Helvetica").text(`  ${dgDieselL != null ? `${dgDieselL.toFixed(1)} L${dgSessionStr}` : "\u2014"}`);
 
         // Bitumen: template vs actual (from shift-log dip readings, same as index)
-        const dipToMt = (dip: number | null | undefined): number =>
-          dip == null ? 0 : getVolumeAtDepth(dip) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
+        const dipToMt = (tank: 1 | 2, dip: number | null | undefined): number =>
+          dip == null ? 0 : bitumenVolForTank(tank, dip) * BITUMEN_DENSITY_KG_PER_LITER / 1000;
         const t1Opening = idxRow?.bitumenTank1OpeningDip ?? null;
         const t1Closing = idxRow?.bitumenTank1ClosingDip ?? null;
         const t2Opening = idxRow?.bitumenTank2OpeningDip ?? null;
@@ -3711,8 +3722,8 @@ export async function registerRoutes(
         let bitumenActualMt: number | null = null;
         if (t1HasBoth || t2HasBoth) {
           bitumenActualMt = 0;
-          if (t1HasBoth) bitumenActualMt += Math.max(0, dipToMt(t1Opening) - dipToMt(t1Closing));
-          if (t2HasBoth) bitumenActualMt += Math.max(0, dipToMt(t2Opening) - dipToMt(t2Closing));
+          if (t1HasBoth) bitumenActualMt += Math.max(0, dipToMt(1, t1Opening) - dipToMt(1, t1Closing));
+          if (t2HasBoth) bitumenActualMt += Math.max(0, dipToMt(2, t2Opening) - dipToMt(2, t2Closing));
         }
         const templateMt: number | null = idxRow?.bitumenTemplateMt ?? null;
         const bitVarPct = (bitumenActualMt != null && templateMt != null && templateMt > 0)
@@ -3783,22 +3794,25 @@ export async function registerRoutes(
       line("Tank 1 Temp (°C)", summary.shift?.bitumenTank1Temp);
       line("Tank 2 Temp (°C)", summary.shift?.bitumenTank2Temp);
       const fmtDipMt = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)} MT`);
-      const dipToRow = (label: string, dip: number | null | undefined) => {
+      const dipToRow = (label: string, tank: 1 | 2, dip: number | null | undefined) => {
         if (dip == null) { line(label, "—"); return; }
-        const totalVol = getVolumeAtDepth(dip);
-        const usableVol = getUsableVolume(dip);
-        const deadVol = Math.round(totalVol - usableVol);
+        const cfg = tank === 1 ? pTankConfig?.bitumen1 : pTankConfig?.bitumen2;
+        const deadDepth = cfg?.deadStockDepthCm ?? 12.5;
+        const totalVol = cfg ? calcTankVol(cfg, dip) : getVolumeAtDepth(dip);
+        const deadVol = cfg ? calcTankVol(cfg, deadDepth) : getUsableVolume(0);
+        const usableVol = Math.max(0, totalVol - deadVol);
+        const deadVolDisplay = Math.round(totalVol - usableVol);
         const totalMt = totalVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
         const usableMt = usableVol * BITUMEN_DENSITY_KG_PER_LITER / 1000;
         line(`${label} — Dip (cm)`, dip.toFixed(1));
         line(`${label} — Total`, `${fmtDipMt(totalMt)} (${Math.round(totalVol).toLocaleString()} L)`);
         line(`${label} — Usable`, `${fmtDipMt(usableMt)} (${Math.round(usableVol).toLocaleString()} L)`);
-        line(`${label} — Dead Stock`, `${deadVol.toLocaleString()} L`);
+        line(`${label} — Dead Stock`, `${deadVolDisplay.toLocaleString()} L`);
       };
-      dipToRow("Tank 1 Opening", summary.shift?.bitumenTank1OpeningDip ?? null);
-      dipToRow("Tank 1 Closing", summary.shift?.bitumenTank1ClosingDip ?? null);
-      dipToRow("Tank 2 Opening", summary.shift?.bitumenTank2OpeningDip ?? null);
-      dipToRow("Tank 2 Closing", summary.shift?.bitumenTank2ClosingDip ?? null);
+      dipToRow("Tank 1 Opening", 1, summary.shift?.bitumenTank1OpeningDip ?? null);
+      dipToRow("Tank 1 Closing", 1, summary.shift?.bitumenTank1ClosingDip ?? null);
+      dipToRow("Tank 2 Opening", 2, summary.shift?.bitumenTank2OpeningDip ?? null);
+      dipToRow("Tank 2 Closing", 2, summary.shift?.bitumenTank2ClosingDip ?? null);
 
       if (summary.generators?.items?.length) {
         section(`Generator Logs (${summary.generators.items.length})  Total Diesel: ${summary.generators.totalDieselConsumedL?.toFixed(1) || 0} L`);

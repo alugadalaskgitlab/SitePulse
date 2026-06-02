@@ -187,9 +187,11 @@ export const plantSettings = pgTable("plant_settings", {
   plantName: text("plant_name").notNull(),
   plantType: text("plant_type").default("hma"), // "hma" | "rmc"
   siteId: integer("site_id").references(() => sites.id), // nullable FK; null = shared/mobile plant
+  primaryPartyId: integer("primary_party_id"), // optional default party for dispatches (no FK constraint for flexibility)
   bitumenTank1LitresPerCm: real("bitumen_tank1_litres_per_cm"),
   bitumenTank2LitresPerCm: real("bitumen_tank2_litres_per_cm"),
   bitumenDensityKgPerL: real("bitumen_density_kg_per_l"),
+  tankConfig: text("tank_config"), // JSON: PlantTankConfig (see shared/tank-calibration.ts)
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   plantNameUq: uniqueIndex("plant_settings_plant_name_uq").on(table.plantName),
