@@ -1,5 +1,5 @@
 import {
-  Users, Database, Wrench, Layers, MapPin, FlaskConical, HardHat, UserCheck,
+  Users, Database, Wrench, Layers, MapPin, FlaskConical, HardHat, UserCheck, Settings,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 const HUB = "/masters/hub";
 
 export default function AdminMastersHub() {
-  const { sectionVisible } = useAuth();
+  const { sectionVisible, isAdmin } = useAuth();
 
   return (
     <HubShell
@@ -112,6 +112,25 @@ export default function AdminMastersHub() {
             />
           </div>
         </div>
+
+        {isAdmin && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              System Configuration
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href="/masters/section/plant-config"
+                icon={Settings}
+                title="Plant Configuration"
+                description="Add, rename & configure plants — set type, site link & tank calibration"
+                accent="slate"
+                iconBg="bg-slate-50"
+                enabled={true}
+              />
+            </div>
+          </div>
+        )}
 
       </div>
     </HubShell>

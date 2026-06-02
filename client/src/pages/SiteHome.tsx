@@ -220,7 +220,7 @@ export default function SiteHome() {
             )}
 
             {canProcure && (
-              <Link href="/plant/purchase-indents?returnTo=/site" data-testid="link-purchase-indent">
+              <Link href="/plant/purchase-indents?returnTo=/site&from=site" data-testid="link-purchase-indent">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-violet-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-violet-100 dark:bg-violet-900/40 rounded-lg flex items-center justify-center group-hover:bg-violet-200 dark:group-hover:bg-violet-900/70 transition-colors">
                     <ShoppingCart className="w-4 h-4 text-violet-600 dark:text-violet-400" />

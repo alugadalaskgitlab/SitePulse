@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { Link } from "wouter";
-import { ChevronLeft, HardHat, MapPin, Layers, FlaskConical, Wrench, Users } from "lucide-react";
+import { ChevronLeft, HardHat, MapPin, Layers, FlaskConical, Wrench, Users, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import type { SectionKey as PermissionSectionKey } from "@shared/permissions";
@@ -11,6 +11,7 @@ import {
   MixTemplateMaster,
   EquipmentMasterSection,
   PersonnelMasterSection,
+  PlantTypeConfigSection,
 } from "@/pages/Plant";
 
 const SECTIONS = {
@@ -20,6 +21,7 @@ const SECTIONS = {
     Icon: HardHat,
     Component: PartyMaster,
     permission: "master_parties" as PermissionSectionKey,
+    adminOnly: false,
   },
   sites: {
     title: "Site Master",
@@ -27,6 +29,7 @@ const SECTIONS = {
     Icon: MapPin,
     Component: SitesMasterSection,
     permission: "master_parties" as PermissionSectionKey,
+    adminOnly: false,
   },
   materials: {
     title: "Material Master",
@@ -34,6 +37,7 @@ const SECTIONS = {
     Icon: Layers,
     Component: MaterialMaster,
     permission: "master_materials" as PermissionSectionKey,
+    adminOnly: false,
   },
   "mix-templates": {
     title: "Mix Templates",
@@ -41,6 +45,7 @@ const SECTIONS = {
     Icon: FlaskConical,
     Component: MixTemplateMaster,
     permission: "master_materials" as PermissionSectionKey,
+    adminOnly: false,
   },
   equipment: {
     title: "Equipment Master",
@@ -48,6 +53,7 @@ const SECTIONS = {
     Icon: Wrench,
     Component: EquipmentMasterSection,
     permission: "master_equipment" as PermissionSectionKey,
+    adminOnly: false,
   },
   personnel: {
     title: "Personnel / Operators",
@@ -55,6 +61,15 @@ const SECTIONS = {
     Icon: Users,
     Component: PersonnelMasterSection,
     permission: "master_personnel" as PermissionSectionKey,
+    adminOnly: false,
+  },
+  "plant-config": {
+    title: "Plant Configuration",
+    subtitle: "Add, rename and configure plants — set type, site link & tank calibration",
+    Icon: Settings,
+    Component: PlantTypeConfigSection,
+    permission: "master_parties" as PermissionSectionKey,
+    adminOnly: true,
   },
 } as const;
 
@@ -70,6 +85,17 @@ export default function PlantMasters() {
     return (
       <div className="max-w-5xl mx-auto p-6">
         <p className="text-muted-foreground">Section not found.</p>
+      </div>
+    );
+  }
+
+  if (config.adminOnly && !isAdmin) {
+    return (
+      <div className="mx-auto max-w-md text-center py-20 space-y-3">
+        <h2 className="text-xl font-semibold">Admin only</h2>
+        <p className="text-sm text-muted-foreground">
+          This section is restricted to administrators.
+        </p>
       </div>
     );
   }

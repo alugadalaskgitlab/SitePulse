@@ -1344,7 +1344,7 @@ const PLANT_TYPE_LABELS: Record<string, string> = {
   mixed: "Mixed (HMA + RMC)",
 };
 
-function PlantTypeConfigSection() {
+export function PlantTypeConfigSection() {
   const { toast } = useToast();
   const { data: allSettings = [], isLoading: settingsLoading } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ['/api/plant-module/plant-settings'],

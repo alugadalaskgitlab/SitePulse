@@ -137,7 +137,7 @@ export default function SiteHub() {
               enabled={sectionVisible("site_procurement")}
             />
             <HubActionTile
-              href="/plant/purchase-indents?returnTo=/site/hub"
+              href="/plant/purchase-indents?returnTo=/site/hub&from=site"
               icon={ShoppingCart}
               title="Purchase Indent"
               description="Raise and track purchase indents for site materials & requirements"

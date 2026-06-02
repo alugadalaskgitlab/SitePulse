@@ -596,6 +596,14 @@ export default function PurchaseIndents() {
     const v = sp.get("fromIrnId");
     return v ? parseInt(v) : null;
   })();
+  const defaultRaisedFrom: string | null = (() => {
+    const sp = new URLSearchParams(searchString);
+    const hub = sp.get("from");
+    if (hub === "hmp") return "HMP PLANT";
+    if (hub === "rmc") return "RMC PLANT";
+    if (hub === "equipment") return "EQUIPMENT & FLEET";
+    return null;
+  })();
 
   const [view, setView] = useState<ViewMode>(() => (fromIrnId ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
@@ -622,7 +630,7 @@ export default function PurchaseIndents() {
   const [formRaisedBy, setFormRaisedBy] = useState("");
   const [formRemarks, setFormRemarks] = useState("");
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
-  const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(null);
+  const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(fromIrnId ? null : defaultRaisedFrom);
   const [formItems, setFormItems] = useState<ItemRow[]>([
     { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null },
   ]);
@@ -1191,7 +1199,7 @@ export default function PurchaseIndents() {
     setFormRaisedBy("");
     setFormRemarks("");
     setFormSiteId(null);
-    setFormRaisedFrom(null);
+    setFormRaisedFrom(defaultRaisedFrom);
     setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
     setSourceIrnId(null);
   };

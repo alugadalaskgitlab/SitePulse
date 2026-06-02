@@ -350,7 +350,7 @@ export default function RmcHub() {
                 enabled={canProduction}
               />
               <HubActionTile
-                href="/plant/purchase-indents?returnTo=/rmc/hub"
+                href="/plant/purchase-indents?returnTo=/rmc/hub&from=rmc"
                 icon={ShoppingCart}
                 title="Purchase Indent"
                 description="Raise and track purchase indents for RMC materials & consumables"
