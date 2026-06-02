@@ -18417,14 +18417,14 @@ export class DatabaseStorage implements IStorage {
       with: { items: true },
     });
     if (!row) return undefined;
-    // Annotate with linkedPiId if a PI was raised from this IRN.
+    // Annotate with PI details if a PI was raised from this IRN.
     const linkedPis = await db
-      .select({ id: purchaseIndents.id })
+      .select({ id: purchaseIndents.id, indentNo: purchaseIndents.indentNo, raisedBy: purchaseIndents.raisedBy, createdAt: purchaseIndents.createdAt })
       .from(purchaseIndents)
       .where(eq(purchaseIndents.sourceIrnId, id))
       .limit(1);
-    const linkedPiId = linkedPis[0]?.id ?? null;
-    return { ...row, linkedPiId } as InternalRequisitionWithItems;
+    const linkedPi = linkedPis[0] ?? null;
+    return { ...row, linkedPiId: linkedPi?.id ?? null, linkedPi } as InternalRequisitionWithItems;
   }
 
   async updateInternalRequisition(

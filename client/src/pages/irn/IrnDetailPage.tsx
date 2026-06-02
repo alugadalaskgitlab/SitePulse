@@ -6,7 +6,7 @@ import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
   ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
-  Warehouse, Pencil, Trash2,
+  Warehouse, Pencil, Trash2, Clock, Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -506,10 +506,23 @@ export default function IrnDetailPage() {
     );
   }
 
-  // ── Approved view ──────────────────────────────────────────────────────────
-  if (isApproved) {
+  // ── Shared audit trail for approved / closed / rejected ────────────────────
+  if (isApproved || irn.status === "closed" || isRejected) {
+    const isClosed = irn.status === "closed";
+    const procureItems = irn.items.filter((i) => (i.procureQty ?? 0) > 0);
+    const issueItems = irn.items.filter((i) => (i.issueQty ?? 0) > 0);
+    const linkedPi = (irn as any).linkedPi as { id: number; indentNo: string; raisedBy: string; createdAt: string | null } | null;
+
+    const ITEM_STATUS_LABEL: Record<string, string> = {
+      issued: "Issued",
+      queued_procurement: "Queued for Procurement",
+      partially_issued: "Partially Issued",
+      pending: "Pending",
+    };
+
     return (
       <div className="min-h-screen bg-gray-50">
+        {/* Header */}
         <div className="bg-white border-b px-6 py-4">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate("/irn")} className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm">
@@ -523,211 +536,247 @@ export default function IrnDetailPage() {
         </div>
 
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
+
+          {/* ── 1. Requisition Meta ── */}
           <div className="bg-white border rounded-lg p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              <div className="flex items-start gap-2">
+                <User className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-500">Raised by</p>
+                  <p className="font-semibold text-gray-800">{irn.raisedBy}</p>
+                  {irn.createdAt && (
+                    <p className="text-xs text-gray-400">{format(new Date(irn.createdAt), "dd MMM yyyy, h:mm a")}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-500">Section</p>
+                  <p className="font-semibold text-gray-800">{irn.raisedFrom}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <Calendar className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-500">Date</p>
+                  <p className="font-semibold text-gray-800">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p>
+                </div>
+              </div>
+            </div>
+            {irn.remarks && (
+              <p className="text-xs text-gray-500 italic mt-3 pt-3 border-t">Remarks: "{irn.remarks}"</p>
+            )}
+          </div>
+
+          {/* ── 2. Items Detail ── */}
+          <div className="bg-white border rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <Hash className="h-4 w-4 text-gray-400" /> Items Requested
+            </h3>
+            <div className="space-y-3">
+              {irn.items.map((item, idx) => (
+                <div key={item.id} className="border rounded-lg p-3 bg-gray-50">
+                  {/* Item header row */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-400 font-mono">#{idx + 1}</span>
+                      <span className="font-semibold text-gray-900">{item.material}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs text-gray-500">Requested</span>
+                      <p className="font-bold text-gray-800 text-sm">{item.qty} <span className="font-normal text-gray-500 text-xs">{item.uom}</span></p>
+                    </div>
+                  </div>
+                  {/* Purpose + need by */}
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
+                    {item.purpose && (
+                      <div><span className="text-gray-400">Purpose: </span>{item.purpose}</div>
+                    )}
+                    {item.needByDate && (
+                      <div><span className="text-gray-400">Need by: </span><span className="font-medium">{format(new Date(item.needByDate), "dd MMM yyyy")}</span></div>
+                    )}
+                  </div>
+                  {/* Stores decision row */}
+                  {item.storesAction && (
+                    <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-200 mt-1">
+                      {item.stockAvailable != null && (
+                        <span className={`text-xs px-2 py-0.5 rounded border ${item.stockAvailable > 0 ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                          Stock at verification: {item.stockAvailable} {item.uom}
+                        </span>
+                      )}
+                      {(item.issueQty ?? 0) > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
+                          Issue {item.issueQty} {item.uom}
+                        </span>
+                      )}
+                      {(item.procureQty ?? 0) > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
+                          Procure {item.procureQty} {item.uom}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-500 italic">{ACTION_LABEL[item.storesAction] ?? item.storesAction}</span>
+                      {item.storesNotes && (
+                        <span className="text-xs text-blue-600">Note: {item.storesNotes}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Final status */}
+                  <div className="mt-2 text-right">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                      item.itemStatus === "issued" ? "bg-green-50 text-green-700 border-green-200" :
+                      item.itemStatus === "queued_procurement" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                      item.itemStatus === "partially_issued" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                      "bg-gray-100 text-gray-500 border-gray-200"
+                    }`}>
+                      {ITEM_STATUS_LABEL[item.itemStatus] ?? item.itemStatus}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="bg-white border border-green-200 rounded-xl p-6 text-center space-y-4">
-            <div className="p-4 bg-green-100 rounded-full w-fit mx-auto">
-              <ShieldCheck className="h-10 w-10 text-green-600" />
-            </div>
-            <h2 className="text-lg font-bold text-gray-900">Requisition Approved</h2>
-            <p className="text-sm text-gray-500">
-              Approved by <strong>{irn.approvedBy}</strong>
-              {irn.approvedAt ? ` on ${format(new Date(irn.approvedAt), "dd MMM yyyy, h:mm a")}` : ""}
-            </p>
-            {irn.approvalRemarks && (
-              <p className="text-xs text-gray-500 italic">"{irn.approvalRemarks}"</p>
-            )}
-            <div className="space-y-2 text-left max-w-sm mx-auto">
-              {irn.items.filter((i) => i.issueQty && i.issueQty > 0).length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded p-2.5 text-sm text-green-700">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <PackageCheck className="h-4 w-4 shrink-0" />
-                    <span className="font-semibold">{irn.items.filter((i) => i.issueQty && i.issueQty > 0).length} item(s) — Issue Voucher authorised</span>
-                  </div>
-                  <ul className="ml-6 space-y-0.5">
-                    {irn.items.filter((i) => i.issueQty && i.issueQty > 0).map((item) => (
-                      <li key={item.id} className="text-xs flex items-center justify-between">
-                        <span className="text-green-800">{item.material}</span>
-                        <span className="text-green-700 font-medium">{item.issueQty} {item.uom}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {irn.items.filter((i) => i.procureQty && i.procureQty > 0).length > 0 && (
-                <div className="bg-purple-50 border border-purple-200 rounded p-2.5 text-sm text-purple-700">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <ListTodo className="h-4 w-4 shrink-0" />
-                    <span className="font-semibold">{irn.items.filter((i) => i.procureQty && i.procureQty > 0).length} item(s) — Procurement Queue confirmed</span>
-                  </div>
-                  <ul className="ml-6 space-y-0.5">
-                    {irn.items.filter((i) => i.procureQty && i.procureQty > 0).map((item) => (
-                      <li key={item.id} className="text-xs flex items-center justify-between">
-                        <span className="text-purple-800">{item.material}</span>
-                        <span className="text-purple-700 font-medium">{item.procureQty} {item.uom}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+          {/* ── 3. Stores Verification ── */}
+          {irn.storesVerifiedBy && (
+            <div className="bg-white border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-700">Stores Verification</h3>
+                <span className="ml-auto text-xs text-gray-500">
+                  {irn.storesVerifiedBy}
+                  {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM yyyy, h:mm a")}` : ""}
+                </span>
+              </div>
+              {irn.storesRemarks && (
+                <p className="text-xs text-gray-500 italic ml-6">"{irn.storesRemarks}"</p>
               )}
             </div>
-            {/* Download Issue Voucher — shown when there are issue items */}
-            {irn.items.filter((i) => i.issueQty && i.issueQty > 0).length > 0 && (
+          )}
+
+          {/* ── 4. Manager Decision ── */}
+          {isApproved || isClosed ? (
+            <div className="bg-white border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldCheck className="h-4 w-4 text-green-600 shrink-0" />
+                <h3 className="text-sm font-semibold text-green-800">Approved</h3>
+                <span className="ml-auto text-xs text-gray-500">
+                  {irn.approvedBy}
+                  {irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM yyyy, h:mm a")}` : ""}
+                </span>
+              </div>
+              {irn.approvalRemarks && (
+                <p className="text-xs text-gray-500 italic ml-6">"{irn.approvalRemarks}"</p>
+              )}
+            </div>
+          ) : isRejected ? (
+            <div className="bg-white border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="h-4 w-4 text-red-600 shrink-0" />
+                <h3 className="text-sm font-semibold text-red-800">Rejected</h3>
+                <span className="ml-auto text-xs text-gray-500">
+                  {irn.rejectedBy}
+                  {irn.rejectedAt ? ` · ${format(new Date(irn.rejectedAt), "dd MMM yyyy, h:mm a")}` : ""}
+                </span>
+              </div>
+              {irn.rejectionReason && (
+                <p className="text-xs text-red-600 italic ml-6">"{irn.rejectionReason}"</p>
+              )}
+            </div>
+          ) : null}
+
+          {/* ── 5. Procurement / PI ── */}
+          {procureItems.length > 0 && (
+            <div className="bg-white border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <ListTodo className="h-4 w-4 text-purple-600 shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-700">Procurement Queue</h3>
+              </div>
+              <div className="space-y-1 mb-3">
+                {procureItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                    <span className="text-gray-800">{item.material}</span>
+                    <span className="text-purple-700 font-medium">{item.procureQty} {item.uom}</span>
+                  </div>
+                ))}
+              </div>
+              {linkedPi ? (
+                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded p-2.5 text-xs text-indigo-700">
+                  <ShoppingCart className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    PI <strong>{linkedPi.indentNo}</strong> raised by {linkedPi.raisedBy}
+                    {linkedPi.createdAt ? ` · ${format(new Date(linkedPi.createdAt), "dd MMM yyyy, h:mm a")}` : ""}
+                  </span>
+                </div>
+              ) : !isRejected && (
+                <Button
+                  onClick={() => navigate(`/plant/purchase-indents?fromIrnId=${irn.id}`)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-sm h-8 px-4"
+                  data-testid="button-raise-pi-from-irn"
+                >
+                  <ShoppingCart className="h-3.5 w-3.5" /> Raise PI
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* ── 6. Issue Voucher action ── */}
+          {issueItems.length > 0 && !isClosed && (
+            <div className="bg-white border rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PackageCheck className="h-4 w-4 text-green-600 shrink-0" />
+                <span className="text-sm text-gray-700 font-medium">{issueItems.length} item(s) — Issue Voucher authorised</span>
+              </div>
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher`, "_blank")}
                 className="gap-2 text-sm border-green-300 text-green-700 hover:bg-green-50"
                 data-testid="button-download-issue-voucher"
               >
-                <Download className="h-4 w-4" />
-                Download Issue Voucher
+                <Download className="h-4 w-4" /> Issue Voucher
               </Button>
-            )}
-            {/* Raise PI button — shown when procure items exist and PI not yet raised */}
-            {irn.items.filter((i) => i.procureQty && i.procureQty > 0).length > 0 && (
-              (irn as any).linkedPiId ? (
-                <div className="flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-sm text-indigo-700 max-w-sm mx-auto">
-                  <ShoppingCart className="h-4 w-4 shrink-0" />
-                  <span>Purchase Indent already raised from this IRN</span>
-                </div>
-              ) : (
+            </div>
+          )}
+
+          {/* ── 7. Closure ── */}
+          {isClosed && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <Archive className="h-4 w-4 text-gray-500 shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-700">Requisition Closed</h3>
+                <span className="ml-auto text-xs text-gray-500">
+                  {irn.closedBy}
+                  {irn.closedAt ? ` · ${format(new Date(irn.closedAt), "dd MMM yyyy, h:mm a")}` : ""}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ── 8. Actions (approved but not yet closed) ── */}
+          {isApproved && (
+            <div className="flex items-center gap-3 flex-wrap">
+              {canClose && allItemsIssued && (
                 <Button
-                  onClick={() => navigate(`/plant/purchase-indents?fromIrnId=${irn.id}`)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-sm px-5"
-                  data-testid="button-raise-pi-from-irn"
+                  variant="outline"
+                  onClick={() => closeMutation.mutate()}
+                  disabled={closeMutation.isPending}
+                  className="text-sm h-9 gap-2 border-gray-300 text-gray-600 hover:bg-gray-50"
+                  data-testid="button-close-irn-approved"
                 >
-                  <ShoppingCart className="h-4 w-4" />
-                  Raise PI from this IRN
+                  <Archive className="h-4 w-4" />
+                  {closeMutation.isPending ? "Closing…" : "Close / Mark Fulfilled"}
                 </Button>
-              )
-            )}
-            <div className="text-xs text-gray-400 border-t pt-3 mt-2">
-              Stores verified by {irn.storesVerifiedBy}
-              {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}
+              )}
+              <Button variant="outline" onClick={() => navigate("/irn")} className="text-sm">← Back to IRN list</Button>
             </div>
-            {/* Close / Mark Fulfilled — approved IRNs */}
-            {canClose && allItemsIssued && (
-              <Button
-                variant="outline"
-                onClick={() => closeMutation.mutate()}
-                disabled={closeMutation.isPending}
-                className="text-sm h-9 gap-2 border-gray-300 text-gray-600 hover:bg-gray-50"
-                data-testid="button-close-irn-approved"
-              >
-                <Archive className="h-4 w-4" />
-                {closeMutation.isPending ? "Closing…" : "Close / Mark Fulfilled"}
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => navigate("/irn")} className="mt-1">← Back to IRN list</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+          )}
 
-  // ── Closed view ────────────────────────────────────────────────────────────
-  if (irn.status === "closed") {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/irn")} className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm">
-              <ChevronLeft className="h-4 w-4" /> Requisitions
-            </button>
-            <span className="text-gray-300">/</span>
-            <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
-            <StatusBadge status={irn.status} />
-            {adminBar}
-          </div>
-        </div>
-
-        <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <div className="bg-white border rounded-lg p-4">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center space-y-3">
-            <div className="p-4 bg-gray-100 rounded-full w-fit mx-auto">
-              <Archive className="h-10 w-10 text-gray-500" />
-            </div>
-            <h2 className="text-lg font-bold text-gray-800">Requisition Closed</h2>
-            <p className="text-sm text-gray-500">
-              Closed by <strong>{(irn as any).closedBy ?? "—"}</strong>
-              {(irn as any).closedAt ? ` on ${format(new Date((irn as any).closedAt), "dd MMM yyyy, h:mm a")}` : ""}
-            </p>
-            <div className="space-y-1.5 text-left max-w-sm mx-auto">
-              {irn.items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between py-1 border-b last:border-0 text-sm">
-                  <span className="text-gray-700">{item.material}</span>
-                  <span className="text-xs text-gray-400">{item.itemStatus}</span>
-                </div>
-              ))}
-            </div>
-            <div className="text-xs text-gray-400 border-t pt-3 mt-2">
-              {irn.approvedBy && <>Approved by {irn.approvedBy}{irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM")}` : ""}<br /></>}
-              Stores verified by {irn.storesVerifiedBy}
-              {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}
-            </div>
-            <Button variant="outline" onClick={() => navigate("/irn")} className="mt-1">← Back to IRN list</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Rejected view ──────────────────────────────────────────────────────────
-  if (isRejected) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/irn")} className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm">
-              <ChevronLeft className="h-4 w-4" /> Requisitions
-            </button>
-            <span className="text-gray-300">/</span>
-            <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
-            <StatusBadge status={irn.status} />
-            {adminBar}
-          </div>
-        </div>
-
-        <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <div className="bg-white border rounded-lg p-4">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-red-200 rounded-xl p-6 text-center space-y-4">
-            <div className="p-4 bg-red-100 rounded-full w-fit mx-auto">
-              <XCircle className="h-10 w-10 text-red-600" />
-            </div>
-            <h2 className="text-lg font-bold text-gray-900">Requisition Rejected</h2>
-            <p className="text-sm text-gray-500">
-              Rejected by <strong>{irn.rejectedBy}</strong>
-              {irn.rejectedAt ? ` on ${format(new Date(irn.rejectedAt), "dd MMM yyyy, h:mm a")}` : ""}
-            </p>
-            {irn.rejectionReason && (
-              <p className="text-xs text-red-600 italic bg-red-50 border border-red-200 rounded p-2">"{irn.rejectionReason}"</p>
-            )}
-            <div className="text-xs text-gray-400 border-t pt-3">
-              Stores verified by {irn.storesVerifiedBy}
-              {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}
-            </div>
-            <Button variant="outline" onClick={() => navigate("/irn")} className="mt-1">← Back to IRN list</Button>
-          </div>
+          {(isClosed || isRejected) && (
+            <Button variant="outline" onClick={() => navigate("/irn")} className="text-sm">← Back to IRN list</Button>
+          )}
         </div>
       </div>
     );

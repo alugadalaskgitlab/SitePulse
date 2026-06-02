@@ -1515,6 +1515,7 @@ export type InsertInternalRequisitionItem = z.infer<typeof insertInternalRequisi
 export type InternalRequisitionWithItems = InternalRequisition & {
   items: InternalRequisitionItem[];
   linkedPiId?: number | null;
+  linkedPi?: { id: number; indentNo: string; raisedBy: string; createdAt: Date | string | null } | null;
 };
 
 export const createIrnRequestSchema = z.object({
