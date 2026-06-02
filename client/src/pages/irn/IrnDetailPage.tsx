@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
-  ShieldCheck, XCircle, ThumbsUp, ThumbsDown,
+  ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -374,6 +374,24 @@ export default function IrnDetailPage() {
                 </div>
               )}
             </div>
+            {/* Raise PI button — shown when procure items exist and PI not yet raised */}
+            {irn.items.filter((i) => i.procureQty && i.procureQty > 0).length > 0 && (
+              (irn as any).linkedPiId ? (
+                <div className="flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-sm text-indigo-700 max-w-sm mx-auto">
+                  <ShoppingCart className="h-4 w-4 shrink-0" />
+                  <span>Purchase Indent already raised from this IRN</span>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => navigate(`/purchase-indents?fromIrnId=${irn.id}`)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 text-sm px-5"
+                  data-testid="button-raise-pi-from-irn"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Raise PI from this IRN
+                </Button>
+              )
+            )}
             <div className="text-xs text-gray-400 border-t pt-3 mt-2">
               Stores verified by {irn.storesVerifiedBy}
               {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}

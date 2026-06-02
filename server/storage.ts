@@ -8918,6 +8918,7 @@ export class DatabaseStorage implements IStorage {
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
         raisedFrom: (data as any).raisedFrom ?? null,
+        sourceIrnId: (data as any).sourceIrnId ?? null,
       }).returning();
 
       let items: PurchaseIndentItem[] = [];
@@ -10887,7 +10888,8 @@ export class DatabaseStorage implements IStorage {
       await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS site_id integer REFERENCES sites(id) ON DELETE SET NULL`));
       await db.execute(sql.raw(`ALTER TABLE diesel_requirements ADD COLUMN IF NOT EXISTS raised_from text`));
       await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS raised_from text`));
-      console.log("ensureSiteIdColumns: site_id and raised_from columns verified/added on diesel_requirements and purchase_indents");
+      await db.execute(sql.raw(`ALTER TABLE purchase_indents ADD COLUMN IF NOT EXISTS source_irn_id integer`));
+      console.log("ensureSiteIdColumns: site_id, raised_from and source_irn_id columns verified/added on diesel_requirements and purchase_indents");
     }
 
   async backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }> {
@@ -18306,7 +18308,21 @@ export class DatabaseStorage implements IStorage {
       with: { items: true },
       orderBy: [desc(internalRequisitions.createdAt)],
     });
-    return rows as InternalRequisitionWithItems[];
+
+    // Annotate each IRN with linkedPiId if a PI was raised from it.
+    const irnIds = rows.map((r) => r.id);
+    let linkedPiMap: Record<number, number> = {};
+    if (irnIds.length > 0) {
+      const linkedPis = await db
+        .select({ id: purchaseIndents.id, sourceIrnId: purchaseIndents.sourceIrnId })
+        .from(purchaseIndents)
+        .where(inArray(purchaseIndents.sourceIrnId, irnIds));
+      for (const pi of linkedPis) {
+        if (pi.sourceIrnId != null) linkedPiMap[pi.sourceIrnId] = pi.id;
+      }
+    }
+
+    return rows.map((r) => ({ ...r, linkedPiId: linkedPiMap[r.id] ?? null })) as InternalRequisitionWithItems[];
   }
 
   async getInternalRequisition(id: number): Promise<InternalRequisitionWithItems | undefined> {
@@ -18314,7 +18330,15 @@ export class DatabaseStorage implements IStorage {
       where: eq(internalRequisitions.id, id),
       with: { items: true },
     });
-    return row as InternalRequisitionWithItems | undefined;
+    if (!row) return undefined;
+    // Annotate with linkedPiId if a PI was raised from this IRN.
+    const linkedPis = await db
+      .select({ id: purchaseIndents.id })
+      .from(purchaseIndents)
+      .where(eq(purchaseIndents.sourceIrnId, id))
+      .limit(1);
+    const linkedPiId = linkedPis[0]?.id ?? null;
+    return { ...row, linkedPiId } as InternalRequisitionWithItems;
   }
 
   async createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems> {

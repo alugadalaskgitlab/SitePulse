@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,7 +15,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
-import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry } from "@shared/schema";
+import type { PurchaseIndentWithItems, PurchaseIndentItem, PurchaseIndentItemHistoryEntry, InternalRequisitionWithItems } from "@shared/schema";
 import { LocationPicker, locationLabel, SECTION_OPTIONS } from "@/components/LocationPicker";
 import type { LocationValue } from "@/components/LocationPicker";
 import { useFeatureFlags } from "@/lib/featureFlags";
@@ -589,8 +589,17 @@ export default function PurchaseIndents() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "operations" });
 
-  const [view, setView] = useState<ViewMode>("list");
+  const searchString = useSearch();
+  const [, navigate] = useLocation();
+  const fromIrnId = (() => {
+    const sp = new URLSearchParams(searchString);
+    const v = sp.get("fromIrnId");
+    return v ? parseInt(v) : null;
+  })();
+
+  const [view, setView] = useState<ViewMode>(() => (fromIrnId ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
+  const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
 
   const PI_FILTER_KEY = "purchase-indents-filter";
 
@@ -695,6 +704,41 @@ export default function PurchaseIndents() {
   const { data: indents, isLoading } = useQuery<PurchaseIndentWithItems[]>({
     queryKey: ["/api/purchase-indents"],
   });
+
+  // Fetch source IRN for pre-filling when navigated from IrnDetailPage
+  const { data: sourceIrn } = useQuery<InternalRequisitionWithItems>({
+    queryKey: ["/api/irn", fromIrnId],
+    queryFn: async () => {
+      const res = await fetch(`/api/irn/${fromIrnId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("IRN not found");
+      return res.json();
+    },
+    enabled: !!fromIrnId,
+  });
+
+  // Pre-fill form once IRN data arrives
+  useEffect(() => {
+    if (!sourceIrn || !fromIrnId) return;
+    const procureItems = sourceIrn.items.filter((i) => i.procureQty && i.procureQty > 0);
+    if (procureItems.length === 0) return;
+    setFormItems(procureItems.map((i) => ({
+      description: i.material.toUpperCase(),
+      spec: "",
+      partNo: "",
+      qty: i.procureQty!,
+      uom: i.uom.toUpperCase(),
+      purpose: i.purpose.toUpperCase(),
+      priority: i.urgency === "urgent" ? "urgent" : i.urgency === "high" ? "normal" : "normal",
+      materialId: null,
+      estRate: null,
+      estAmount: null,
+      requiredBy: i.needByDate ?? null,
+    })));
+    setFormRaisedBy(sourceIrn.raisedBy);
+    if (sourceIrn.siteId) setFormSiteId(sourceIrn.siteId);
+    else if (sourceIrn.raisedFrom) setFormRaisedFrom(sourceIrn.raisedFrom);
+    setView("form");
+  }, [sourceIrn?.id]);
 
   const { data: summary } = useQuery<{ storesCheck?: number;
     total: number;
@@ -1149,6 +1193,7 @@ export default function PurchaseIndents() {
     setFormSiteId(null);
     setFormRaisedFrom(null);
     setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
+    setSourceIrnId(null);
   };
 
   const addItemRow = () => {
@@ -1189,6 +1234,7 @@ export default function PurchaseIndents() {
       remarks: formRemarks.toUpperCase() || null,
       siteId: formSiteId ?? null,
       raisedFrom: formRaisedFrom ?? null,
+      sourceIrnId: sourceIrnId ?? undefined,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
         spec: item.spec?.trim().toUpperCase() || undefined,
@@ -1874,6 +1920,17 @@ export default function PurchaseIndents() {
 
       {view === "form" && (
         <>
+          {sourceIrnId && sourceIrn && (
+            <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 text-sm text-indigo-800">
+              <ShoppingCart className="h-4 w-4 mt-0.5 shrink-0 text-indigo-600" />
+              <div>
+                <p className="font-semibold">Pre-filled from IRN <span className="font-mono">{sourceIrn.irnNo}</span></p>
+                <p className="text-xs text-indigo-600 mt-0.5">
+                  Items with procurement quantity have been populated below. Review and fill in Proposed By before submitting.
+                </p>
+              </div>
+            </div>
+          )}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base uppercase">INDENT DETAILS</CardTitle>

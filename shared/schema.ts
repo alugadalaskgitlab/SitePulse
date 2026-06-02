@@ -1346,6 +1346,8 @@ export const purchaseIndents = pgTable("purchase_indents", {
   createdAt: timestamp("created_at").defaultNow(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
   raisedFrom: text("raised_from"),
+  // Back-reference to the IRN that triggered this PI (if auto-raised).
+  sourceIrnId: integer("source_irn_id"),
   // Per-user record locking (Task #229).
   authorUserId: integer("author_user_id"),
   lockStatus: text("lock_status").notNull().default("locked"),
@@ -1504,7 +1506,10 @@ export type InternalRequisitionItem = typeof internalRequisitionItems.$inferSele
 export type InsertInternalRequisition = z.infer<typeof insertInternalRequisitionSchema>;
 export type InsertInternalRequisitionItem = z.infer<typeof insertInternalRequisitionItemSchema>;
 
-export type InternalRequisitionWithItems = InternalRequisition & { items: InternalRequisitionItem[] };
+export type InternalRequisitionWithItems = InternalRequisition & {
+  items: InternalRequisitionItem[];
+  linkedPiId?: number | null;
+};
 
 export const createIrnRequestSchema = z.object({
   date: z.string(),

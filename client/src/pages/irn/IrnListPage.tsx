@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   ClipboardList, Plus, ChevronRight, AlertTriangle, Clock,
-  CheckCircle2, Archive, ShieldCheck, XCircle,
+  CheckCircle2, Archive, ShieldCheck, XCircle, ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -139,7 +139,16 @@ export default function IrnListPage() {
                     <td className="px-4 py-3 text-gray-600">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</td>
                     <td className="px-4 py-3 text-gray-600">{irn.items.length} item{irn.items.length !== 1 ? "s" : ""}</td>
                     <td className="px-4 py-3"><UrgencyDot items={irn.items} /></td>
-                    <td className="px-4 py-3"><StatusBadge status={irn.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <StatusBadge status={irn.status} />
+                        {(irn as any).linkedPiId && (
+                          <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium text-xs gap-1">
+                            <ShoppingCart className="h-3 w-3" />PI Raised
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-xs text-gray-500">
                       {irn.status === "approved" && irn.approvedBy
                         ? <span className="text-green-700">{irn.approvedBy}{irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM")}` : ""}</span>
