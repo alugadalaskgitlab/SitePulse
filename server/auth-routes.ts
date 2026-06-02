@@ -267,6 +267,31 @@ export function registerAuthRoutes(app: Express) {
   app.get("/api/auth/me", sessionHandler);
   app.get("/api/auth/session", sessionHandler);
 
+  // Self-service: any authenticated user may update only their own notify flags,
+  // but only for sections where they already have view or create access.
+  // All other permission bits and out-of-scope sections are left untouched.
+  app.put("/api/auth/me/notify-preferences", requireAuth, async (req, res) => {
+    try {
+      const actor = req.authUser!;
+      const notifyPatch = z.record(z.string(), z.boolean()).parse(req.body);
+      const matrix = await loadUserPermissionsMatrix(actor.id);
+      for (const k of SECTION_KEYS) {
+        if (!(k in notifyPatch)) continue;
+        const row = matrix[k];
+        // Admins may toggle any section; others only where they have view or create.
+        const eligible = actor.isAdmin || (row.view || row.create);
+        if (!eligible) continue;
+        matrix[k] = { ...row, notify: !!notifyPatch[k] };
+      }
+      await setUserPermissions(actor.id, matrix);
+      res.json({ ok: true, matrix });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PUT /api/auth/me/notify-preferences]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   app.post("/api/auth/logout", async (req, res) => {
     try {
       await logoutSessionByToken(req.headers.cookie);

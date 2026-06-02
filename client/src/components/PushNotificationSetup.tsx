@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Bell, BellOff, Smartphone, Share, Plus, CheckCircle, XCircle, Loader2, Settings, ShieldOff } from "lucide-react";
+import { Bell, BellOff, Smartphone, Share, Plus, CheckCircle, XCircle, Loader2, Settings, ShieldOff, SlidersHorizontal } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -261,6 +262,13 @@ export function PushNotificationSetup() {
                 Enable Push Notifications
               </Button>
             )}
+
+            <Link href="/notifications/preferences" onClick={() => setOpen(false)}>
+              <a className="flex items-center justify-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground border border-dashed border-muted-foreground/30 rounded-md py-2 px-3 transition-colors hover:border-muted-foreground/60" data-testid="link-notification-preferences">
+                <SlidersHorizontal className="w-3 h-3" />
+                Manage which sections notify you
+              </a>
+            </Link>
 
             {isIos && !isStandalone && !isSubscribed && (
               <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
