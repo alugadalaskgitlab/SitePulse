@@ -1472,6 +1472,8 @@ export const internalRequisitions = pgTable("internal_requisitions", {
   rejectedBy: text("rejected_by"),
   rejectedAt: timestamp("rejected_at"),
   rejectionReason: text("rejection_reason"),
+  closedBy: text("closed_by"),
+  closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

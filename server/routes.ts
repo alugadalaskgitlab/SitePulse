@@ -5087,6 +5087,36 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/irn/:id/close", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const m = req.authPermissions;
+      const canApprove = req.authUser.isAdmin || !!(m?.["irn_approve"]?.approve);
+      const canStores = req.authUser.isAdmin || !!(m?.["stores_inventory"]?.create);
+      if (!canApprove && !canStores) {
+        return res.status(403).json({ error: "forbidden", message: "You do not have permission to close IRNs" });
+      }
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const existing = await storage.getInternalRequisition(id);
+      if (!existing) return res.status(404).json({ message: "IRN not found" });
+      if (existing.status !== "approved" && existing.status !== "stores_verified") {
+        return res.status(400).json({ message: "Only approved or stores-verified IRNs can be closed" });
+      }
+      const hasUnissuedItems = existing.items.some((item: any) => item.itemStatus !== "issued");
+      if (hasUnissuedItems) {
+        return res.status(400).json({ message: "All items must be issued before this IRN can be closed" });
+      }
+      const irn = await storage.closeIrn(id, currentUserName(req));
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      sendPushToSection("irn_view", "IRN Closed", `${irn.irnNo} marked as fulfilled`, "/irn").catch(() => {});
+      res.json(irn);
+    } catch (err) {
+      console.error("Error closing IRN:", err);
+      res.status(500).json({ message: "Failed to close IRN" });
+    }
+  });
+
   app.get("/api/irn/:id/issue-voucher", async (req, res) => {
     try {
       const id = Number(req.params.id);

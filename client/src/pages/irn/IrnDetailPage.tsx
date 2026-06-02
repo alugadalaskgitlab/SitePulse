@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
-  ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download,
+  ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +74,7 @@ export default function IrnDetailPage() {
   const { toast } = useToast();
   const canVerify = sectionCan("stores_inventory", "create");
   const canApprove = sectionCan("irn_approve", "create");
+  const canClose = sectionCan("irn_approve", "approve") || sectionCan("stores_inventory", "create");
 
   const { data: irn, isLoading } = useQuery<InternalRequisitionWithItems>({
     queryKey: ["/api/irn", id],
@@ -163,6 +164,25 @@ export default function IrnDetailPage() {
     },
   });
 
+  const closeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/irn/${id}/close`, {});
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Request failed");
+      }
+      return res.json() as Promise<InternalRequisitionWithItems>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/irn", id] });
+      toast({ title: "IRN Closed", description: "Requisition marked as fulfilled and closed." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Close failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -190,6 +210,7 @@ export default function IrnDetailPage() {
   const isStoresVerified = irn.status === "stores_verified";
   const isApproved = irn.status === "approved";
   const isRejected = irn.status === "rejected";
+  const allItemsIssued = irn.items.length > 0 && irn.items.every((i) => i.itemStatus === "issued");
 
   // ── Stores verification complete / awaiting approval view ──────────────────
   if (verified || (isStoresVerified && irn.storesVerifiedBy)) {
@@ -318,6 +339,31 @@ export default function IrnDetailPage() {
             </div>
           )}
 
+          {/* Close / Mark Fulfilled — stores_verified IRNs */}
+          {canClose && irn.status === "stores_verified" && allItemsIssued && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Archive className="h-4 w-4 text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-700">Mark as Fulfilled</h3>
+              </div>
+              <p className="text-xs text-gray-500">
+                If all items have been issued or actioned and no further steps are needed, you can close this requisition.
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => closeMutation.mutate()}
+                  disabled={closeMutation.isPending}
+                  className="text-sm h-9 gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
+                  data-testid="button-close-irn"
+                >
+                  <Archive className="h-4 w-4" />
+                  {closeMutation.isPending ? "Closing…" : "Close / Mark Fulfilled"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           <Button variant="outline" onClick={() => navigate("/irn")} className="text-sm">← Back to IRN list</Button>
         </div>
       </div>
@@ -405,6 +451,72 @@ export default function IrnDetailPage() {
               )
             )}
             <div className="text-xs text-gray-400 border-t pt-3 mt-2">
+              Stores verified by {irn.storesVerifiedBy}
+              {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}
+            </div>
+            {/* Close / Mark Fulfilled — approved IRNs */}
+            {canClose && allItemsIssued && (
+              <Button
+                variant="outline"
+                onClick={() => closeMutation.mutate()}
+                disabled={closeMutation.isPending}
+                className="text-sm h-9 gap-2 border-gray-300 text-gray-600 hover:bg-gray-50"
+                data-testid="button-close-irn-approved"
+              >
+                <Archive className="h-4 w-4" />
+                {closeMutation.isPending ? "Closing…" : "Close / Mark Fulfilled"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => navigate("/irn")} className="mt-1">← Back to IRN list</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Closed view ────────────────────────────────────────────────────────────
+  if (irn.status === "closed") {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b px-6 py-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate("/irn")} className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm">
+              <ChevronLeft className="h-4 w-4" /> Requisitions
+            </button>
+            <span className="text-gray-300">/</span>
+            <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
+            <StatusBadge status={irn.status} />
+          </div>
+        </div>
+
+        <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
+          <div className="bg-white border rounded-lg p-4">
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div></div>
+              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div></div>
+              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center space-y-3">
+            <div className="p-4 bg-gray-100 rounded-full w-fit mx-auto">
+              <Archive className="h-10 w-10 text-gray-500" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800">Requisition Closed</h2>
+            <p className="text-sm text-gray-500">
+              Closed by <strong>{(irn as any).closedBy ?? "—"}</strong>
+              {(irn as any).closedAt ? ` on ${format(new Date((irn as any).closedAt), "dd MMM yyyy, h:mm a")}` : ""}
+            </p>
+            <div className="space-y-1.5 text-left max-w-sm mx-auto">
+              {irn.items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between py-1 border-b last:border-0 text-sm">
+                  <span className="text-gray-700">{item.material}</span>
+                  <span className="text-xs text-gray-400">{item.itemStatus}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs text-gray-400 border-t pt-3 mt-2">
+              {irn.approvedBy && <>Approved by {irn.approvedBy}{irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM")}` : ""}<br /></>}
               Stores verified by {irn.storesVerifiedBy}
               {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a")}` : ""}
             </div>
