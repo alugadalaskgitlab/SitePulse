@@ -213,9 +213,9 @@ export default function IrnDetailPage() {
           {/* Meta */}
           <div className="bg-white border rounded-lg p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
+              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
+              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
             </div>
           </div>
 
@@ -224,7 +224,7 @@ export default function IrnDetailPage() {
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <h3 className="text-sm font-semibold text-gray-800">Stores Verification</h3>
-              <span className="text-xs text-gray-400 ml-auto">
+              <span className="text-sm text-gray-500 ml-auto">
                 {irn.storesVerifiedBy} · {irn.storesVerifiedAt ? format(new Date(irn.storesVerifiedAt), "dd MMM, h:mm a") : ""}
               </span>
             </div>
@@ -232,11 +232,11 @@ export default function IrnDetailPage() {
               {irn.items.map((item, idx) => (
                 <div key={item.id} className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">#{idx + 1}</span>
-                    <span className="font-medium text-gray-800">{item.material}</span>
+                    <span className="text-sm text-gray-400">#{idx + 1}</span>
+                    <span className="font-semibold text-gray-800">{item.material}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-3 text-sm">
                     {item.issueQty && item.issueQty > 0 ? (
                       <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
                         Issue {item.issueQty} {item.uom}
@@ -247,7 +247,7 @@ export default function IrnDetailPage() {
                         Procure {item.procureQty} {item.uom}
                       </span>
                     ) : null}
-                    <span className="text-gray-500">{ACTION_LABEL[item.storesAction ?? ""] ?? item.storesAction}</span>
+                    <span className="text-gray-600">{ACTION_LABEL[item.storesAction ?? ""] ?? item.storesAction}</span>
                   </div>
                 </div>
               ))}
@@ -342,9 +342,9 @@ export default function IrnDetailPage() {
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
           <div className="bg-white border rounded-lg p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
+              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
+              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
             </div>
           </div>
 
@@ -433,9 +433,9 @@ export default function IrnDetailPage() {
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
           <div className="bg-white border rounded-lg p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
+              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
+              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
             </div>
           </div>
 
@@ -488,15 +488,15 @@ export default function IrnDetailPage() {
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="flex items-center gap-2 text-gray-600">
               <User className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-400">Raised by</p><p className="font-medium text-gray-800 text-xs">{irn.raisedBy}</p></div>
+              <div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div>
             </div>
             <div className="flex items-center gap-2 text-gray-600">
               <FileText className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-400">Section</p><p className="font-medium text-gray-800 text-xs">{irn.raisedFrom}</p></div>
+              <div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div>
             </div>
             <div className="flex items-center gap-2 text-gray-600">
               <Calendar className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-400">Date</p><p className="font-medium text-gray-800 text-xs">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div>
+              <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div>
             </div>
           </div>
           {irn.remarks && (

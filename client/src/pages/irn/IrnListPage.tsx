@@ -149,7 +149,7 @@ export default function IrnListPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-sm text-gray-600">
                       {irn.status === "approved" && irn.approvedBy
                         ? <span className="text-green-700">{irn.approvedBy}{irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM")}` : ""}</span>
                         : irn.status === "rejected" && irn.rejectedBy
