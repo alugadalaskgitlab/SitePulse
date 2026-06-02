@@ -259,9 +259,6 @@ function getStatusBadge(status: string, storesStatus?: string | null) {
       if (storesStatus === "verified") {
         return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-stores-check">AWAITING APPROVAL</Badge>;
       }
-      if (storesStatus === "bypass_requested") {
-        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" data-testid="badge-status-bypass-requested">BYPASS REQUESTED</Badge>;
-      }
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-stores-check-pending">PENDING STORES</Badge>;
     case "approved":
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid="badge-status-approved">APPROVED</Badge>;
@@ -373,10 +370,9 @@ function StatusSteps({ status, storesStatus }: { status: string; storesStatus?: 
     { key: "completed", label: "COMPLETED" },
   ];
 
-  // "bypassed" = manager directly approved without stores verification (direct bypass)
-  // "bypass_requested" = stores requested bypass and manager approved subsequently
+
   // null on an approved/completed indent = stores step was skipped entirely (legacy or pre-stores-workflow)
-  const isBypassed = (storesStatus === "bypassed" || storesStatus === "bypass_requested" || storesStatus === null) && (status === "approved" || status === "completed");
+  const isBypassed = (storesStatus === "bypassed" || storesStatus === null) && (status === "approved" || status === "completed");
 
   const getStepState = (stepKey: string) => {
     if (status === "rejected") {
@@ -466,16 +462,6 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
       note: null,
       colorClass: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700",
       dotClass: "bg-emerald-500",
-    });
-  } else if (storesStatus === "bypass_requested") {
-    events.push({
-      icon: AlertTriangle,
-      label: "Stores Bypass Requested",
-      actor: storesVerifiedBy,
-      timestamp: fmt(storesVerifiedAt),
-      note: null,
-      colorClass: "text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700",
-      dotClass: "bg-orange-400",
     });
   } else if (
     storesStatus === "bypassed" ||
@@ -672,8 +658,6 @@ export default function PurchaseIndents() {
   const [storeItemVerifications, setStoreItemVerifications] = useState<Record<number, StoreItemVerification>>({});
   const [procurementExtras, setProcurementExtras] = useState<Record<number, ProcurementExtra>>({});
   const [bypassReason, setBypassReason] = useState("");
-  const [bypassNoteOpen, setBypassNoteOpen] = useState(false);
-  const [storesBypassNote, setStoresBypassNote] = useState("");
   const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
   const [procureItemData, setProcureItemData] = useState<Record<number, ProcureItemData>>({});
   const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
@@ -1018,21 +1002,6 @@ export default function PurchaseIndents() {
     },
   });
 
-  const storesBypassMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("PATCH", `/api/purchase-indents/${selectedIndentId}/stores-bypass`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
-      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
-      toast({ title: "Bypass requested", description: "Manager has been alerted to review this indent." });
-      setBypassNoteOpen(false);
-      setStoresBypassNote("");
-      setView("list");
-      setSelectedIndentId(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to request bypass", description: err.message, variant: "destructive" });
-    },
-  });
 
   const procureMutation = useMutation({
     mutationFn: ({ itemId, data }: { itemId: number; data: any }) =>
@@ -1373,7 +1342,7 @@ export default function PurchaseIndents() {
   const openDetail = (indent: PurchaseIndentWithItems) => {
     setSelectedIndentId(indent.id);
     const ss = (indent as any).storesStatus as string | null;
-    const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
+    const storesNotVerified = !ss || ss !== "verified";
 
     const initApprovalStates = (items: PurchaseIndentWithItems["items"]) => {
       const states: Record<number, ItemApprovalState> = {};
@@ -1988,7 +1957,7 @@ export default function PurchaseIndents() {
                           {/* Explicit Verify Stock action for stores users */}
                           {(() => {
                             const ss = (indent as any).storesStatus as string | null;
-                            const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
+                            const storesNotVerified = !ss || ss !== "verified";
                             if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores)) return null;
                             return (
                               <button
@@ -2492,17 +2461,10 @@ export default function PurchaseIndents() {
 
                   {(() => {
                     const allVerified = selectedIndent.items.every(item => !!storeItemVerifications[item.id]?.stockStatus);
-                    const hasUrgentOrOut = selectedIndent.items.some(item => item.priority === "urgent" || storeItemVerifications[item.id]?.stockStatus === "out_of_stock" || storeItemVerifications[item.id]?.stockStatus === "short");
-                    const canBypass = canApprove("purchase_indents_approve");
                     return (
                       <div className="pt-2 border-t space-y-3">
                         {!allVerified && (
                           <p className="text-xs text-muted-foreground italic">Set stock status for all items to enable submission.</p>
-                        )}
-                        {hasUrgentOrOut && canBypass && allVerified && (
-                          <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-                            <strong>Manager Fast-Track:</strong> Urgent or unavailable items detected. You may also use the Approve action directly from the detail view to bypass stores queue.
-                          </div>
                         )}
                         <div className="flex items-center gap-3 flex-wrap">
                           <Button
@@ -2513,42 +2475,10 @@ export default function PurchaseIndents() {
                             {storesVerifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PackageCheck className="w-4 h-4 mr-2" />}
                             Submit Verification
                           </Button>
-                          <Button
-                            variant="outline"
-                            className="text-orange-600 border-orange-300"
-                            onClick={() => setBypassNoteOpen(prev => !prev)}
-                            data-testid="button-stores-bypass-toggle"
-                          >
-                            <AlertTriangle className="w-4 h-4 mr-1" />
-                            Request Bypass
-                          </Button>
                           <Button variant="outline" onClick={() => { setView("list"); setSelectedIndentId(null); }} data-testid="button-cancel-stores">
                             Cancel
                           </Button>
                         </div>
-                        {bypassNoteOpen && (
-                          <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-3 space-y-2">
-                            <p className="text-xs text-orange-800 dark:text-orange-300 font-semibold">BYPASS REASON (required — will alert manager)</p>
-                            <Input
-                              value={storesBypassNote}
-                              onChange={(e) => setStoresBypassNote(e.target.value)}
-                              placeholder="e.g. Urgent site requirement, verbal clearance from manager..."
-                              className="text-sm"
-                              data-testid="input-bypass-reason"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-orange-700 border-orange-400"
-                              disabled={!storesBypassNote.trim() || storesBypassMutation.isPending}
-                              onClick={() => storesBypassMutation.mutate({ reason: storesBypassNote })}
-                              data-testid="button-submit-bypass"
-                            >
-                              {storesBypassMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                              Submit Bypass Request
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     );
                   })()}
