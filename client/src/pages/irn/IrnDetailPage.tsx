@@ -86,10 +86,10 @@ export default function IrnDetailPage() {
     },
   });
 
-  // Fetch live stock balances for stores verification form
+  // Fetch live stock balances for stores verification form AND manager approval view
   const { data: stockLookupRows } = useQuery<{ materialName: string; balance: number; uom: string | null; partyId: number | null }[]>({
     queryKey: ["/api/irn/stock-lookup"],
-    enabled: canVerify && irn?.status === "pending_stores",
+    enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
   });
 
   // Build a map: UPPER(materialName) → total balance across all parties + sorted list for partial matching
@@ -374,28 +374,40 @@ export default function IrnDetailPage() {
               </span>
             </div>
             <div className="space-y-2">
-              {irn.items.map((item, idx) => (
-                <div key={item.id} className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400">#{idx + 1}</span>
-                    <span className="font-semibold text-gray-800">{item.material}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
+              {irn.items.map((item, idx) => {
+                const stock = findLiveStock(item.material);
+                return (
+                  <div key={item.id} className="py-1.5 border-b last:border-0 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-400">#{idx + 1}</span>
+                        <span className="font-semibold text-gray-800">{item.material}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm">
+                        {item.issueQty && item.issueQty > 0 ? (
+                          <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                            Issue {item.issueQty} {item.uom}
+                          </span>
+                        ) : null}
+                        {item.procureQty && item.procureQty > 0 ? (
+                          <span className="text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                            Procure {item.procureQty} {item.uom}
+                          </span>
+                        ) : null}
+                        <span className="text-gray-600">{ACTION_LABEL[item.storesAction ?? ""] ?? item.storesAction}</span>
+                      </div>
+                    </div>
+                    {stock && (
+                      <div className="mt-1 ml-6">
+                        <span className={`text-xs px-2 py-0.5 rounded border ${stock.balance > 0 ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                          Stock: {stock.balance.toFixed(2)} {stock.uom}{stock.approx ? " (approx)" : ""}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    {item.issueQty && item.issueQty > 0 ? (
-                      <span className="text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-                        Issue {item.issueQty} {item.uom}
-                      </span>
-                    ) : null}
-                    {item.procureQty && item.procureQty > 0 ? (
-                      <span className="text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
-                        Procure {item.procureQty} {item.uom}
-                      </span>
-                    ) : null}
-                    <span className="text-gray-600">{ACTION_LABEL[item.storesAction ?? ""] ?? item.storesAction}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {displayIssue > 0 && (
               <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded p-2 text-xs text-green-700 mt-3">

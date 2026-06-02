@@ -317,7 +317,13 @@ export default function IrnListPage() {
                     <td className="px-4 py-3 text-gray-800 font-medium">{irn.raisedBy}</td>
                     <td className="px-4 py-3 text-gray-600">{irn.raisedFrom}</td>
                     <td className="px-4 py-3 text-gray-600">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</td>
-                    <td className="px-4 py-3 text-gray-600">{irn.items.length} item{irn.items.length !== 1 ? "s" : ""}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      <span className="text-xs text-gray-400 block">{irn.items.length} item{irn.items.length !== 1 ? "s" : ""}</span>
+                      <span className="text-xs text-gray-700 leading-snug">
+                        {irn.items.slice(0, 3).map(i => i.material).join(", ")}
+                        {irn.items.length > 3 ? ` +${irn.items.length - 3} more` : ""}
+                      </span>
+                    </td>
                     <td className="px-4 py-3"><UrgencyDot items={irn.items} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
