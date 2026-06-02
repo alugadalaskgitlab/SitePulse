@@ -797,6 +797,23 @@ export default function PurchaseIndents() {
     enabled: canCreateStores && showGrnDialog,
   });
 
+  const { data: plantMaterialsForGrn = [] } = useQuery<Array<{ id: number; name: string; defaultUom: string; category: string }>>({
+    queryKey: ["/api/plant-module/materials"],
+    enabled: canCreateStores && showGrnDialog,
+  });
+
+  // Combined catalogue: store items first, then plant/bulk materials not already in store items
+  const combinedGrnItems = (() => {
+    const storeNames = new Set(actualStoreItems.map(si => si.name.toUpperCase().trim()));
+    const plantExtras = plantMaterialsForGrn
+      .filter(pm => !storeNames.has(pm.name.toUpperCase().trim()))
+      .map(pm => ({ id: pm.id, name: pm.name, uom: pm.defaultUom || "CFT", category: pm.category || "Aggregate", isPlantMaterial: true }));
+    return [
+      ...actualStoreItems.map(si => ({ ...si, isPlantMaterial: false })),
+      ...plantExtras,
+    ];
+  })();
+
   useEffect(() => {
     if (view !== "stores" || !selectedIndent) return;
     setStoreItemVerifications(prev => {
@@ -1109,23 +1126,25 @@ export default function PurchaseIndents() {
   }
 
   useEffect(() => {
-    if (!showGrnDialog || actualStoreItems.length === 0) return;
+    if (!showGrnDialog || combinedGrnItems.length === 0) return;
     const storedMappings = loadGrnMappings();
     setGrnLines(prev => prev.map(line => {
       if (line.storeItemId) return line;
       const key = normDesc(line.description);
       const persistedId = storedMappings[key];
       if (persistedId) {
-        const item = actualStoreItems.find(si => String(si.id) === persistedId);
+        const item = combinedGrnItems.find(si => String(si.id) === persistedId && !si.isPlantMaterial);
         if (item) return { ...line, storeItemId: persistedId, itemSearch: item.name, uom: item.uom, autoLinked: true };
       }
-      const match = fuzzyMatchStoreItem(line.description, actualStoreItems);
+      const match = fuzzyMatchStoreItem(line.description, combinedGrnItems);
       if (!match) return line;
-      return { ...line, storeItemId: String(match.id), itemSearch: match.name, uom: match.uom, autoLinked: true };
+      const sid = (match as any).isPlantMaterial ? `pm:${match.id}` : String(match.id);
+      return { ...line, storeItemId: sid, itemSearch: match.name, uom: match.uom, autoLinked: true };
     }));
-  }, [showGrnDialog, actualStoreItems]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGrnDialog, combinedGrnItems.length]);
 
-  function handleGrnSubmit() {
+  async function handleGrnSubmit() {
     if (!selectedIndent) return;
     const validLines = grnLines.filter(l => l.storeItemId && parseFloat(l.qty) > 0);
     if (validLines.length === 0) {
@@ -1136,6 +1155,39 @@ export default function PurchaseIndents() {
       toast({ title: "Please enter a date", variant: "destructive" });
       return;
     }
+
+    // Resolve any plant-material lines (storeItemId = "pm:N") by finding or
+    // auto-creating a matching store item — keeps the GRN backend unchanged
+    const resolvedLines = await Promise.all(validLines.map(async l => {
+      if (!l.storeItemId.startsWith("pm:")) return l;
+      const pmId = parseInt(l.storeItemId.replace("pm:", ""));
+      const pm = plantMaterialsForGrn.find(p => p.id === pmId);
+      if (!pm) return null;
+      // Check if a store item with the same name already exists
+      const existing = actualStoreItems.find(si => si.name.toUpperCase().trim() === pm.name.toUpperCase().trim());
+      if (existing) return { ...l, storeItemId: String(existing.id) };
+      // Auto-create a store item for this plant material
+      try {
+        const res = await apiRequest("POST", "/api/stores/items", {
+          name: pm.name.toUpperCase(),
+          category: pm.category || "Aggregate",
+          defaultUom: pm.defaultUom || l.uom || "CFT",
+          isActive: 1,
+        });
+        const newItem = await res.json();
+        queryClient.invalidateQueries({ queryKey: ["/api/stores/items"] });
+        return { ...l, storeItemId: String(newItem.id) };
+      } catch {
+        return null;
+      }
+    }));
+
+    const finalLines = resolvedLines.filter(Boolean) as typeof validLines;
+    if (finalLines.length === 0) {
+      toast({ title: "Could not resolve item links — please try again", variant: "destructive" });
+      return;
+    }
+
     createGrnMutation.mutate({
       grn: {
         date: grnDialogDate,
@@ -1148,7 +1200,7 @@ export default function PurchaseIndents() {
         status: "finalized",
         acceptanceStatus: "accepted",
       },
-      items: validLines.map(l => ({
+      items: finalLines.map(l => ({
         itemId: parseInt(l.storeItemId),
         qty: parseFloat(l.qty),
         rate: l.rate ? parseFloat(l.rate) : null,
@@ -3634,10 +3686,14 @@ export default function PurchaseIndents() {
               ) : (
                 <div className="space-y-3">
                   {grnLines.map((line, idx) => {
-                    const filteredItems = actualStoreItems.filter(si =>
+                    const filteredItems = combinedGrnItems.filter(si =>
                       !line.itemSearch || si.name.toLowerCase().includes(line.itemSearch.toLowerCase())
                     ).slice(0, 20);
-                    const selectedItem = actualStoreItems.find(si => String(si.id) === line.storeItemId);
+                    const selectedItem = combinedGrnItems.find(si =>
+                      line.storeItemId.startsWith("pm:")
+                        ? si.isPlantMaterial && String(si.id) === line.storeItemId.replace("pm:", "")
+                        : !si.isPlantMaterial && String(si.id) === line.storeItemId
+                    );
                     return (
                       <div key={line.indentItemId} className="border rounded-lg p-3 space-y-2 bg-gray-50 dark:bg-gray-900/40" data-testid={`grn-line-${idx}`}>
                         <div className="flex items-start justify-between gap-2">
@@ -3694,13 +3750,14 @@ export default function PurchaseIndents() {
                                     </div>
                                   ) : filteredItems.map(si => (
                                     <div
-                                      key={si.id}
+                                      key={(si.isPlantMaterial ? "pm:" : "") + si.id}
                                       className="px-3 py-2 cursor-pointer hover:bg-[#0F5F64]/10 flex justify-between items-center"
                                       onMouseDown={e => {
                                         e.preventDefault();
+                                        const sid = si.isPlantMaterial ? `pm:${si.id}` : String(si.id);
                                         setGrnLines(prev => prev.map((l, i) => i === idx ? {
                                           ...l,
-                                          storeItemId: String(si.id),
+                                          storeItemId: sid,
                                           itemSearch: si.name,
                                           uom: si.uom,
                                           autoLinked: false,
@@ -3710,7 +3767,12 @@ export default function PurchaseIndents() {
                                       data-testid={`grn-item-option-${si.id}-${idx}`}
                                     >
                                       <span className="font-medium">{si.name}</span>
-                                      <span className="text-xs text-muted-foreground ml-2">{si.category} · {si.uom}</span>
+                                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2">
+                                        {si.isPlantMaterial && (
+                                          <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0">Bulk</span>
+                                        )}
+                                        {si.category} · {si.uom}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
