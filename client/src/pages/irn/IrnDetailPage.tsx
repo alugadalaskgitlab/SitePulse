@@ -301,7 +301,7 @@ export default function IrnDetailPage() {
 
   const adminBar = isAdmin ? (
     <div className="ml-auto flex items-center gap-1.5">
-      {irn.status === "pending_stores" && !deleteConfirm && (
+      {!deleteConfirm && (
         <button
           onClick={() => navigate(`/irn/raise?editId=${id}&returnTo=/irn/${id}`)}
           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white"

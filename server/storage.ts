@@ -9310,9 +9310,6 @@ export class DatabaseStorage implements IStorage {
   async updatePurchaseIndent(id: number, data: CreatePurchaseIndentRequest): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
-    if (existing.status === "completed") {
-      throw new Error(`Cannot edit indent with status: ${existing.status}`);
-    }
 
     return await db.transaction(async (tx) => {
       const updateFields: any = {

@@ -5250,7 +5250,7 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const existing = await storage.getInternalRequisition(id);
       if (!existing) return res.status(404).json({ message: "IRN not found" });
-      if (existing.status !== "pending_stores") {
+      if (existing.status !== "pending_stores" && !req.authUser?.isAdmin) {
         return res.status(400).json({ message: "IRN can only be edited while pending stores verification" });
       }
       const parsed = createIrnRequestSchema.safeParse(req.body);
