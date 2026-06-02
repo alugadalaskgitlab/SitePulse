@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems } from "@shared/schema";
 import { db } from "./db";
-import { isNull, inArray as drizzleInArray, sql, and, eq, gte, lte, asc } from "drizzle-orm";
+import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -5028,7 +5028,8 @@ export async function registerRoutes(
         .where(
           and(
             drizzleInArray(internalRequisitionItems.itemStatus, ["queued_procurement", "partially_issued"]),
-            drizzleInArray(internalRequisitions.status, ["approved", "stores_verified"])
+            drizzleInArray(internalRequisitions.status, ["approved", "stores_verified"]),
+            or(isNull(internalRequisitionItems.procureQty), gt(internalRequisitionItems.procureQty, 0))
           )
         )
         .orderBy(asc(internalRequisitions.date));

@@ -123,6 +123,7 @@ function ProcurementQueueTab() {
         const hasPi = items.some(i => i.linkedPiId != null);
         const piId = items.find(i => i.linkedPiId != null)?.linkedPiId;
         const isRaising = raisePiMutation.isPending && raisePiMutation.variables === header.irnId;
+        const hasProcureableItems = items.some(i => (i.procureQty ?? i.qty) > 0);
 
         return (
           <div key={header.irnId} className="p-4 space-y-3">
@@ -149,7 +150,7 @@ function ProcurementQueueTab() {
                   </button>
                 )}
               </div>
-              {canProcure && !hasPi && (
+              {canProcure && !hasPi && hasProcureableItems && (
                 <Button
                   size="sm"
                   className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shrink-0"
