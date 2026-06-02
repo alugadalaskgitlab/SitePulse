@@ -1391,8 +1391,6 @@ export default function PurchaseIndents() {
           };
         });
         setStoreItemVerifications(verifs);
-        setStoresBypassNote("");
-        setBypassNoteOpen(false);
         setView("stores");
       } else if (isApprover) {
         // Pure approver (no stores write permission) → approval/bypass view directly
