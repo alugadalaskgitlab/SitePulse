@@ -773,6 +773,7 @@ export interface IStorage {
   getStoreGrns(filters?: { dateFrom?: string; dateTo?: string; supplier?: string; indentRef?: string; siteId?: number; permittedSiteIds?: number[]; acceptanceStatus?: string; status?: string; item?: string; category?: string; awaitingPi?: boolean }): Promise<StoreGrnWithItems[]>;
   getStaleGrns(thresholdHours?: number, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
+  getIndentFulfilmentStatus(): Promise<Record<string, boolean>>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getRecentGrnSuppliers(limit?: number, permittedSiteIds?: number[]): Promise<string[]>;
   getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined>;
@@ -17453,6 +17454,45 @@ export class DatabaseStorage implements IStorage {
     const result: Record<string, number> = {};
     for (const r of rows) {
       if (r.indentRef) result[r.indentRef] = r.count;
+    }
+    return result;
+  }
+
+  async getIndentFulfilmentStatus(): Promise<Record<string, boolean>> {
+    // For each indent item that has at least one GRN line linked via indent_item_id,
+    // sum the received quantities and compare to the approved qty.
+    // An indent is "fully received" when every one of its approved items has
+    // total GRN qty >= approved qty.
+    const receivedRows = await db.execute(sql`
+      SELECT
+        pi.indent_no,
+        pii.id AS indent_item_id,
+        COALESCE(pii.approved_qty, pii.qty) AS approved_qty,
+        COALESCE(SUM(gi.qty), 0) AS received_qty
+      FROM purchase_indent_items pii
+      JOIN purchase_indents pi ON pi.id = pii.indent_id
+      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+      WHERE
+        (pii.purchase_status IS NULL OR UPPER(pii.purchase_status) NOT IN ('REJECTED','CANCELLED','NOT_PURCHASED'))
+        AND COALESCE(pii.approved_qty, pii.qty) > 0
+      GROUP BY pi.indent_no, pii.id, approved_qty
+    `);
+
+    // Group by indent: collect per-item fulfilment flags
+    const byIndent: Record<string, { total: number; fulfilled: number }> = {};
+    for (const row of receivedRows.rows as any[]) {
+      const indentNo: string = row.indent_no;
+      const receivedQty = parseFloat(row.received_qty) || 0;
+      const approvedQty = parseFloat(row.approved_qty) || 0;
+      if (!byIndent[indentNo]) byIndent[indentNo] = { total: 0, fulfilled: 0 };
+      byIndent[indentNo].total++;
+      if (receivedQty >= approvedQty && receivedQty > 0) byIndent[indentNo].fulfilled++;
+    }
+
+    // An indent is fully received only when every eligible item is fulfilled
+    const result: Record<string, boolean> = {};
+    for (const [indentNo, counts] of Object.entries(byIndent)) {
+      result[indentNo] = counts.total > 0 && counts.fulfilled === counts.total;
     }
     return result;
   }

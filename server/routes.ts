@@ -7787,6 +7787,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stores/indent-fulfilment-status", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const status = await storage.getIndentFulfilmentStatus();
+      res.json(status);
+    } catch (err) {
+      console.error("GET /api/stores/indent-fulfilment-status:", err);
+      res.status(500).json({ error: "Failed to fetch indent fulfilment status" });
+    }
+  });
+
   // ============================================
   // EQUIPMENT MAINTENANCE & BREAKDOWN LOGS (Task #696)
   // ============================================

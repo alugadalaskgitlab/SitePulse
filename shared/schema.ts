@@ -1961,6 +1961,7 @@ export const storeGrnItems = pgTable("store_grn_items", {
   qty: real("qty").notNull(),
   rate: real("rate"),
   uom: text("uom").notNull(),
+  indentItemId: integer("indent_item_id"),
 });
 
 export const storeIssues = pgTable("store_issues", {

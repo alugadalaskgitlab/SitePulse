@@ -851,6 +851,11 @@ export default function PurchaseIndents() {
     enabled: canViewStores,
   });
 
+  const { data: indentFulfilmentStatus } = useQuery<Record<string, boolean>>({
+    queryKey: ["/api/stores/indent-fulfilment-status"],
+    enabled: canViewStores,
+  });
+
   const indentRefForGrns = (view === "purchase" || view === "procurement") ? selectedIndent?.indentNo : undefined;
   const { data: linkedGrns = [] } = useQuery<{ id: number; grnNumber: string; date: string; supplier: string; acceptanceStatus: string; itemCount: number }[]>({
     queryKey: ["/api/stores/grns", "linked", indentRefForGrns ?? ""],
@@ -1205,6 +1210,7 @@ export default function PurchaseIndents() {
         qty: parseFloat(l.qty),
         rate: l.rate ? parseFloat(l.rate) : null,
         uom: l.uom,
+        indentItemId: l.indentItemId || null,
       })),
     });
   }
@@ -1635,6 +1641,11 @@ export default function PurchaseIndents() {
   const getTotalAmount = (items: PurchaseIndentItem[]) => {
     return items.reduce((sum, item) => sum + (item.amount || 0), 0);
   };
+
+  const isIndentFullyReceived = useMemo(() => {
+    if (!selectedIndent || !indentFulfilmentStatus) return false;
+    return indentFulfilmentStatus[selectedIndent.indentNo] === true;
+  }, [selectedIndent, indentFulfilmentStatus]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4">
@@ -2973,9 +2984,19 @@ export default function PurchaseIndents() {
                       </div>
                       <div className="flex gap-1 items-center">
                         {canCreateStores && selectedIndent.items.some(i => ["purchased","partial"].includes((i.purchaseStatus || "").toLowerCase())) && (
-                          <button onClick={openGrnDialog} className="text-[11px] text-emerald-300 underline hover:text-white font-semibold" data-testid="button-create-grn">
-                            + Create GRN
-                          </button>
+                          isIndentFullyReceived ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] text-emerald-300/60 font-semibold cursor-not-allowed select-none"
+                              title="All approved quantities have already been received"
+                              data-testid="badge-fully-received"
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Fully received
+                            </span>
+                          ) : (
+                            <button onClick={openGrnDialog} className="text-[11px] text-emerald-300 underline hover:text-white font-semibold" data-testid="button-create-grn">
+                              + Create GRN
+                            </button>
+                          )
                         )}
                         {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                           <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
