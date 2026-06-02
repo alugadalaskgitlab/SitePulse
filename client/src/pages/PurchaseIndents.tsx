@@ -254,6 +254,9 @@ interface PurchaseUpdateData {
 function getStatusBadge(status: string, storesStatus?: string | null) {
   switch (status) {
     case "pending":
+      if (storesStatus === "verified") {
+        return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-pending-verified">AWAITING APPROVAL</Badge>;
+      }
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING STORES</Badge>;
     case "stores_check":
       if (storesStatus === "verified") {
@@ -1377,7 +1380,7 @@ export default function PurchaseIndents() {
       setItemApprovalStates(states);
     };
 
-    if (indent.status === "pending" || (indent.status === "stores_check" && storesNotVerified)) {
+    if ((indent.status === "pending" && storesNotVerified) || (indent.status === "stores_check" && storesNotVerified)) {
       // Stores write permission takes priority — dual-role users (stores + approver) verify stock first
       if (canCreateStores) {
         // Stores user with write permission → verification view
@@ -1404,13 +1407,12 @@ export default function PurchaseIndents() {
         setReviewerNotes(notes);
         initApprovalStates(indent.items);
         setApprovalRemarks("");
-        setBypassReason("");
         setView("detail");
       } else {
         // No approval or stores-write permission → read-only detail view
         setView("detail");
       }
-    } else if (indent.status === "stores_check") {
+    } else if (indent.status === "pending" || indent.status === "stores_check") {
       // stores_check + verified → approval detail view
       const qtys: Record<number, number> = {};
       const notes: Record<number, string> = {};
