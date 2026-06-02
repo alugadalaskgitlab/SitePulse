@@ -2012,16 +2012,41 @@ export default function PurchaseIndents() {
                               <p className="text-xs text-emerald-600 mt-0.5">READY TO PURCHASE</p>
                             )}
                             {canViewStores && indentGrnCounts && indentGrnCounts[indent.indentNo] ? (
-                              <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}`}>
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 font-medium underline-offset-2 hover:underline cursor-pointer" data-testid={`text-grn-count-${indent.id}`}>
-                                  {indentGrnCounts[indent.indentNo]} GRN{indentGrnCounts[indent.indentNo] > 1 ? "s" : ""} RAISED ↗
-                                </p>
-                              </Link>
+                              (() => {
+                                const count = indentGrnCounts[indent.indentNo];
+                                const fullyReceived = indentFulfilmentStatus?.[indent.indentNo] === true;
+                                return (
+                                  <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}`}>
+                                    <span
+                                      className={`mt-1 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border cursor-pointer transition-colors ${
+                                        fullyReceived
+                                          ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                                          : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                                      }`}
+                                      data-testid={`badge-grn-status-${indent.id}`}
+                                    >
+                                      {fullyReceived ? (
+                                        <CheckCircle2 className="w-2.5 h-2.5" />
+                                      ) : (
+                                        <PackageCheck className="w-2.5 h-2.5" />
+                                      )}
+                                      {fullyReceived
+                                        ? `FULLY RECEIVED (${count} GRN${count > 1 ? "s" : ""})`
+                                        : `PARTIAL · ${count} GRN${count > 1 ? "s" : ""}`}
+                                      <span className="opacity-60">↗</span>
+                                    </span>
+                                  </Link>
+                                );
+                              })()
                             ) : canViewStores && indentGrnCounts && (indent.status === "approved" || indent.status === "completed") ? (
                               <Link href={`/stores/grns/new?indentRef=${encodeURIComponent(indent.indentNo)}`}>
-                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 font-medium underline-offset-2 hover:underline cursor-pointer" data-testid={`text-no-grn-${indent.id}`}>
-                                  NO DELIVERY RECORDED ↗
-                                </p>
+                                <span
+                                  className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
+                                  data-testid={`badge-no-grn-${indent.id}`}
+                                >
+                                  <Package className="w-2.5 h-2.5" />
+                                  NO GRN YET <span className="opacity-60">↗</span>
+                                </span>
                               </Link>
                             ) : null}
                           </div>
