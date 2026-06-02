@@ -1891,7 +1891,7 @@ export default function PurchaseIndents() {
                           {(() => {
                             const ss = (indent as any).storesStatus as string | null;
                             const storesNotVerified = !ss || (ss !== "verified" && ss !== "bypass_requested");
-                            if (!(indent.status === "stores_check" && storesNotVerified && canCreateStores)) return null;
+                            if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores)) return null;
                             return (
                               <button
                                 className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
