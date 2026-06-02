@@ -5249,6 +5249,41 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/irn/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const ok = await storage.deleteInternalRequisition(id);
+      if (!ok) return res.status(404).json({ message: "IRN not found" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Error deleting IRN:", err);
+      res.status(500).json({ message: "Failed to delete IRN" });
+    }
+  });
+
+  app.patch("/api/irn/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const existing = await storage.getInternalRequisition(id);
+      if (!existing) return res.status(404).json({ message: "IRN not found" });
+      if (existing.status !== "pending_stores") {
+        return res.status(400).json({ message: "IRN can only be edited while pending stores verification" });
+      }
+      const parsed = createIrnRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+      const irn = await storage.updateInternalRequisition(id, parsed.data);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      res.json(irn);
+    } catch (err) {
+      console.error("Error updating IRN:", err);
+      res.status(500).json({ message: "Failed to update IRN" });
+    }
+  });
+
   app.get("/api/irn/:id/issue-voucher", async (req, res) => {
     try {
       const id = Number(req.params.id);

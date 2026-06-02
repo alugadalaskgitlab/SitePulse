@@ -945,6 +945,8 @@ export interface IStorage {
   getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
   getInternalRequisition(id: number): Promise<InternalRequisitionWithItems | undefined>;
   createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems>;
+  updateInternalRequisition(id: number, data: CreateIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
+  deleteInternalRequisition(id: number): Promise<boolean>;
   storesVerifyIrn(id: number, data: StoresVerifyIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   approveIrn(id: number, data: ApproveIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   closeIrn(id: number, closedBy: string): Promise<InternalRequisitionWithItems | undefined>;
@@ -18402,6 +18404,55 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     const linkedPiId = linkedPis[0]?.id ?? null;
     return { ...row, linkedPiId } as InternalRequisitionWithItems;
+  }
+
+  async updateInternalRequisition(
+    id: number,
+    data: CreateIrnRequest,
+  ): Promise<InternalRequisitionWithItems | undefined> {
+    const existing = await this.getInternalRequisition(id);
+    if (!existing) return undefined;
+
+    return await db.transaction(async (tx) => {
+      await tx.delete(internalRequisitionItems).where(eq(internalRequisitionItems.irnId, id));
+
+      const items = await tx
+        .insert(internalRequisitionItems)
+        .values(
+          data.items.map((item) => ({
+            irnId: id,
+            material: item.material.toUpperCase(),
+            qty: item.qty,
+            uom: item.uom.toUpperCase(),
+            urgency: item.urgency ?? "normal",
+            purpose: item.purpose.toUpperCase(),
+            needByDate: item.needByDate ?? null,
+            itemStatus: "pending",
+          })),
+        )
+        .returning();
+
+      const [updated] = await tx
+        .update(internalRequisitions)
+        .set({
+          raisedBy: data.raisedBy.toUpperCase(),
+          raisedFrom: data.raisedFrom,
+          siteId: data.siteId ?? null,
+          remarks: data.remarks?.toUpperCase() ?? null,
+        })
+        .where(eq(internalRequisitions.id, id))
+        .returning();
+
+      return { ...updated, items, linkedPiId: existing.linkedPiId ?? null } as InternalRequisitionWithItems;
+    });
+  }
+
+  async deleteInternalRequisition(id: number): Promise<boolean> {
+    const result = await db
+      .delete(internalRequisitions)
+      .where(eq(internalRequisitions.id, id))
+      .returning({ id: internalRequisitions.id });
+    return result.length > 0;
   }
 
   async createInternalRequisition(data: CreateIrnRequest): Promise<InternalRequisitionWithItems> {

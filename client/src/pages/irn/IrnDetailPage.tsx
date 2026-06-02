@@ -6,7 +6,7 @@ import {
   ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
   ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
-  Warehouse,
+  Warehouse, Pencil, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,7 +71,7 @@ export default function IrnDetailPage() {
   const { id: idParam } = useParams<{ id: string }>();
   const id = parseInt(idParam ?? "0");
   const [, navigate] = useLocation();
-  const { sectionCan } = useAuth();
+  const { sectionCan, user, isAdmin } = useAuth();
   const { toast } = useToast();
   const canVerify = sectionCan("stores_inventory", "create");
   const canApprove = sectionCan("irn_approve", "create");
@@ -130,6 +130,7 @@ export default function IrnDetailPage() {
   const [storesRemarks, setStoresRemarks] = useState("");
   const [verified, setVerified] = useState(false);
   const [approvalRemarks, setApprovalRemarks] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // Auto-fill stock + set smart default action when live stock data arrives (first time only)
   const autoFillApplied = useRef(false);
@@ -249,6 +250,26 @@ export default function IrnDetailPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/irn/${id}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Failed to delete");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
+      toast({ title: "IRN deleted", description: "The requisition has been permanently deleted." });
+      navigate("/irn");
+    },
+    onError: (err: any) => {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+      setDeleteConfirm(false);
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -278,6 +299,42 @@ export default function IrnDetailPage() {
   const isRejected = irn.status === "rejected";
   const allItemsIssued = irn.items.length > 0 && irn.items.every((i) => i.itemStatus === "issued");
 
+  const adminBar = isAdmin ? (
+    <div className="ml-auto flex items-center gap-1.5">
+      {irn.status === "pending_stores" && !deleteConfirm && (
+        <button
+          onClick={() => navigate(`/irn/raise?editId=${id}&returnTo=/irn/${id}`)}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white"
+          data-testid="button-edit-irn"
+        >
+          <Pencil className="h-3 w-3" /> Edit
+        </button>
+      )}
+      {!deleteConfirm ? (
+        <button
+          onClick={() => setDeleteConfirm(true)}
+          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1 bg-white"
+          data-testid="button-delete-irn"
+        >
+          <Trash2 className="h-3 w-3" /> Delete
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 text-xs bg-red-50 border border-red-200 rounded px-3 py-1.5">
+          <span className="text-red-700 font-medium">Delete this IRN?</span>
+          <button
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+            className="text-red-700 underline font-semibold hover:text-red-900"
+            data-testid="button-confirm-delete-irn"
+          >
+            {deleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+          </button>
+          <button onClick={() => setDeleteConfirm(false)} className="text-gray-500 hover:text-gray-700">Cancel</button>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   // ── Stores verification complete / awaiting approval view ──────────────────
   if (verified || (isStoresVerified && irn.storesVerifiedBy)) {
     const displayIssue = irn.items.filter((i) => i.issueQty && i.issueQty > 0).length;
@@ -293,6 +350,7 @@ export default function IrnDetailPage() {
             <span className="text-gray-300">/</span>
             <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
             <StatusBadge status={irn.status} />
+            {adminBar}
           </div>
         </div>
 
@@ -448,6 +506,7 @@ export default function IrnDetailPage() {
             <span className="text-gray-300">/</span>
             <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
             <StatusBadge status={irn.status} />
+            {adminBar}
           </div>
         </div>
 
@@ -472,17 +531,37 @@ export default function IrnDetailPage() {
             {irn.approvalRemarks && (
               <p className="text-xs text-gray-500 italic">"{irn.approvalRemarks}"</p>
             )}
-            <div className="space-y-1.5 text-left max-w-sm mx-auto">
+            <div className="space-y-2 text-left max-w-sm mx-auto">
               {irn.items.filter((i) => i.issueQty && i.issueQty > 0).length > 0 && (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded p-2.5 text-sm text-green-700">
-                  <PackageCheck className="h-4 w-4 shrink-0" />
-                  <span><strong>{irn.items.filter((i) => i.issueQty && i.issueQty > 0).length} item(s)</strong> — Issue Voucher authorised</span>
+                <div className="bg-green-50 border border-green-200 rounded p-2.5 text-sm text-green-700">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <PackageCheck className="h-4 w-4 shrink-0" />
+                    <span className="font-semibold">{irn.items.filter((i) => i.issueQty && i.issueQty > 0).length} item(s) — Issue Voucher authorised</span>
+                  </div>
+                  <ul className="ml-6 space-y-0.5">
+                    {irn.items.filter((i) => i.issueQty && i.issueQty > 0).map((item) => (
+                      <li key={item.id} className="text-xs flex items-center justify-between">
+                        <span className="text-green-800">{item.material}</span>
+                        <span className="text-green-700 font-medium">{item.issueQty} {item.uom}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               {irn.items.filter((i) => i.procureQty && i.procureQty > 0).length > 0 && (
-                <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded p-2.5 text-sm text-purple-700">
-                  <ListTodo className="h-4 w-4 shrink-0" />
-                  <span><strong>{irn.items.filter((i) => i.procureQty && i.procureQty > 0).length} item(s)</strong> — Procurement Queue confirmed</span>
+                <div className="bg-purple-50 border border-purple-200 rounded p-2.5 text-sm text-purple-700">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <ListTodo className="h-4 w-4 shrink-0" />
+                    <span className="font-semibold">{irn.items.filter((i) => i.procureQty && i.procureQty > 0).length} item(s) — Procurement Queue confirmed</span>
+                  </div>
+                  <ul className="ml-6 space-y-0.5">
+                    {irn.items.filter((i) => i.procureQty && i.procureQty > 0).map((item) => (
+                      <li key={item.id} className="text-xs flex items-center justify-between">
+                        <span className="text-purple-800">{item.material}</span>
+                        <span className="text-purple-700 font-medium">{item.procureQty} {item.uom}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
@@ -552,6 +631,7 @@ export default function IrnDetailPage() {
             <span className="text-gray-300">/</span>
             <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
             <StatusBadge status={irn.status} />
+            {adminBar}
           </div>
         </div>
 
@@ -605,6 +685,7 @@ export default function IrnDetailPage() {
             <span className="text-gray-300">/</span>
             <span className="font-mono text-sm text-amber-700 font-semibold">{irn.irnNo}</span>
             <StatusBadge status={irn.status} />
+            {adminBar}
           </div>
         </div>
 
@@ -657,6 +738,7 @@ export default function IrnDetailPage() {
             <span className="font-mono font-semibold text-amber-700">{irn.irnNo}</span>
             <StatusBadge status={irn.status} />
           </div>
+          {adminBar}
         </div>
       </div>
 

@@ -33,9 +33,11 @@ const FROM_MAP: Record<string, string> = {
 
 function parseQueryParams() {
   const params = new URLSearchParams(window.location.search);
+  const editIdRaw = params.get("editId");
   return {
     fromParam: params.get("from") ?? "",
     returnTo: params.get("returnTo") ?? "",
+    editId: editIdRaw ? Number(editIdRaw) : null,
   };
 }
 
@@ -171,22 +173,20 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
-  const { fromParam, returnTo } = parseQueryParams();
+  const { fromParam, returnTo, editId } = parseQueryParams();
   const prefillLabel = FROM_MAP[fromParam] ?? "";
-  const isLocked = !!prefillLabel;
-  const showSiteField = fromParam === "site" || fromParam === "equipment";
+  const isLocked = !!prefillLabel && !editId;
   const backHref = returnTo || "/finance/hub";
 
-  const { data: sites = [] } = useQuery<{ id: number; name: string; isActive?: boolean }[]>({
-    queryKey: ["/api/sites"],
+  const { data: editIrn } = useQuery<InternalRequisitionWithItems>({
+    queryKey: ["/api/irn", editId],
     queryFn: async () => {
-      const res = await fetch("/api/sites");
-      if (!res.ok) return [];
+      const res = await fetch(`/api/irn/${editId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("IRN not found");
       return res.json();
     },
-    enabled: showSiteField,
+    enabled: !!editId,
   });
-  const activeSites = sites.filter((s) => s.isActive !== false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -199,6 +199,42 @@ export default function IrnRaisePage() {
     },
   });
 
+  const [editFillApplied, setEditFillApplied] = useState(false);
+  useEffect(() => {
+    if (!editIrn || editFillApplied) return;
+    form.reset({
+      raisedFrom: editIrn.raisedFrom,
+      raisedBy: editIrn.raisedBy,
+      siteId: editIrn.siteId ?? null,
+      remarks: editIrn.remarks ?? "",
+      items: editIrn.items.map((item) => ({
+        material: item.material,
+        qty: item.qty,
+        uom: item.uom,
+        urgency: (item.urgency ?? "normal") as "normal" | "high" | "urgent",
+        purpose: item.purpose,
+        needByDate: item.needByDate ?? "",
+      })),
+    });
+    setEditFillApplied(true);
+  }, [editIrn, editFillApplied, form]);
+
+  const raisedFrom = form.watch("raisedFrom");
+  const showSiteField = editId
+    ? (raisedFrom === "Site Operations" || raisedFrom === "Equipment & Fleet")
+    : (fromParam === "site" || fromParam === "equipment");
+
+  const { data: sites = [] } = useQuery<{ id: number; name: string; isActive?: boolean }[]>({
+    queryKey: ["/api/sites"],
+    queryFn: async () => {
+      const res = await fetch("/api/sites");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showSiteField,
+  });
+  const activeSites = sites.filter((s) => s.isActive !== false);
+
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
 
   const items = form.watch("items");
@@ -207,27 +243,37 @@ export default function IrnRaisePage() {
   const mutation = useMutation({
     mutationFn: async (data: FormValues) => {
       const body = {
-        date: today,
+        date: editIrn?.date ?? today,
         raisedFrom: data.raisedFrom,
         siteId: data.siteId ?? null,
         raisedBy: data.raisedBy || user?.fullName || user?.email || "Unknown",
-        raisedByUserId: user?.id,
+        raisedByUserId: editIrn?.raisedByUserId ?? user?.id,
         remarks: data.remarks,
         items: data.items.map((item) => ({
           ...item,
           qty: Number(item.qty),
         })),
       };
+      if (editId) {
+        const res = await apiRequest("PATCH", `/api/irn/${editId}`, body);
+        return res.json() as Promise<InternalRequisitionWithItems>;
+      }
       const res = await apiRequest("POST", "/api/irn", body);
       return res.json() as Promise<InternalRequisitionWithItems>;
     },
     onSuccess: (irn) => {
       queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
-      toast({ title: "IRN raised", description: `${irn.irnNo} submitted to stores` });
-      navigate(`/irn/${irn.id}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/irn", editId ?? irn.id] });
+      if (editId) {
+        toast({ title: "IRN updated", description: `${irn.irnNo} has been updated` });
+        navigate(returnTo || `/irn/${editId}`);
+      } else {
+        toast({ title: "IRN raised", description: `${irn.irnNo} submitted to stores` });
+        navigate(`/irn/${irn.id}`);
+      }
     },
     onError: (err: any) => {
-      toast({ title: "Failed to raise IRN", description: err.message, variant: "destructive" });
+      toast({ title: editId ? "Failed to update IRN" : "Failed to raise IRN", description: err.message, variant: "destructive" });
     },
   });
 
@@ -255,7 +301,7 @@ export default function IrnRaisePage() {
             <div className="p-1.5 bg-amber-100 rounded">
               <ClipboardList className="h-4 w-4 text-amber-700" />
             </div>
-            <span className="font-semibold text-gray-900">Raise Internal Requisition</span>
+            <span className="font-semibold text-gray-900">{editId ? "Edit Internal Requisition" : "Raise Internal Requisition"}</span>
           </div>
           {isLocked && (
             <Badge
