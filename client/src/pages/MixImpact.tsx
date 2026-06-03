@@ -569,17 +569,19 @@ function ScenarioComparison({
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function MixImpact() {
-  const { canCreate, isAdmin } = useAuth();
+  const { canCreate, isAdmin, isLoading: authLoading } = useAuth();
   const hasMainAppAccess = isAdmin || canCreate("mix_calculator");
   const canEdit = readEstimatorRole() === "admin" || hasMainAppAccess;
 
   useEffect(() => {
+    // Wait for auth to finish loading before deciding to redirect
+    if (authLoading) return;
     const r = readEstimatorRole();
     // Only redirect to estimator login if the user has no main-app access either
     if (!r && !hasMainAppAccess) {
       window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
-  }, [hasMainAppAccess]);
+  }, [hasMainAppAccess, authLoading]);
 
   const search = useSearch();
   const params = new URLSearchParams(search);

@@ -36,7 +36,7 @@ interface Props {
 
 export default function MixEstimates({ embedded = false }: Props) {
   const { toast } = useToast();
-  const { canCreate, isAdmin } = useAuth();
+  const { canCreate, isAdmin, isLoading: authLoading } = useAuth();
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
   const [editingContractor, setEditingContractor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -55,11 +55,13 @@ export default function MixEstimates({ embedded = false }: Props) {
   }, []);
 
   useEffect(() => {
+    // Wait for auth to finish loading before deciding to redirect
+    if (authLoading) return;
     // Only redirect to estimator login if the user has no main-app access either
     if (!embedded && !role && !hasMainAppAccess) {
       window.location.href = "/estimator-login?returnTo=/admin/mix-estimates";
     }
-  }, [role, embedded, hasMainAppAccess]);
+  }, [role, embedded, hasMainAppAccess, authLoading]);
 
   const renameMutation = useMutation({
     mutationFn: ({ ids, to }: { ids: number[]; to: string }) =>
