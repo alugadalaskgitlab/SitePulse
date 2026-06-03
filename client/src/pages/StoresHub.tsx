@@ -27,11 +27,24 @@ export default function StoresHub() {
   const { sectionVisible, isAdmin } = useAuth();
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
+  const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
 
   const { data: stock = [] } = useQuery<any[]>({
     queryKey: ["/api/stores/stock-summary"],
     enabled: canStores,
   });
+
+  const { data: irns = [] } = useQuery<any[]>({
+    queryKey: ["/api/irn"],
+    queryFn: async () => {
+      const res = await fetch("/api/irn");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: canIrn,
+  });
+
+  const pendingIrns = irns.filter((r: any) => r.status === "pending_stores" || r.status === "stores_verified").length;
 
   const totalItems = stock.length;
   const lowStockCount = stock.filter((s: any) => s.isLowStock).length;
@@ -115,6 +128,36 @@ export default function StoresHub() {
             />
           </div>
         </div>
+
+        {/* Internal Requisitions */}
+        {canIrn && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Internal Requisitions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href={`/irn/new?returnTo=${HUB}`}
+                icon={ClipboardList}
+                title="Raise Requisition"
+                description="Submit a new internal requisition for store items"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                enabled={sectionVisible("irn_raise")}
+              />
+              <HubActionTile
+                href={`/irn?returnTo=${HUB}`}
+                icon={ClipboardList}
+                title="All Requisitions"
+                description="Review and process pending internal requisition notes"
+                accent="indigo"
+                iconBg="bg-indigo-100"
+                badge={pendingIrns > 0 ? `${pendingIrns} pending` : undefined}
+                enabled={sectionVisible("irn_view")}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Bulk Materials */}
         {canBulk && (
