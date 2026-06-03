@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -200,6 +200,30 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const { data: sites = [] } = useQuery<Site[]>({ queryKey: ["/api/sites"] });
   const { data: recentItemIds = [] } = useQuery<number[]>({ queryKey: ["/api/stores/grns/recent-items"] });
   const { data: recentSuppliers = [] } = useQuery<string[]>({ queryKey: ["/api/stores/grns/recent-suppliers"] });
+
+  const formItemIds = useMemo(() => {
+    const ids = lines
+      .map(l => l.itemId)
+      .filter((s): s is string => !!s)
+      .map(s => parseInt(s, 10))
+      .filter(n => !isNaN(n) && n > 0);
+    return [...new Set(ids)];
+  }, [lines]);
+
+  const { data: grnSupplierHistory = [] } = useQuery<string[]>({
+    queryKey: ["/api/stores/grns/supplier-history", formItemIds.join(",")],
+    queryFn: async () => {
+      if (formItemIds.length === 0) return [];
+      const res = await fetch(
+        `/api/stores/grns/supplier-history?itemIds=${formItemIds.join(",")}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return [];
+      return res.json() as Promise<string[]>;
+    },
+    enabled: showForm && formItemIds.length > 0,
+    staleTime: 60_000,
+  });
 
   const { data: allIndentsGlobal = [] } = useQuery<PurchaseIndentFull[]>({
     queryKey: ["/api/purchase-indents"],
@@ -1351,28 +1375,68 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         required
                         autoComplete="off"
                         data-testid="input-grn-supplier"
+                        list="grn-supplier-datalist"
                       />
-                      {supplierDropdownOpen && recentSuppliers.length > 0 && (
-                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs" data-testid="dropdown-recent-suppliers">
-                          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
-                            Recently Used
-                          </div>
-                          {recentSuppliers
-                            .filter(s => !form.supplier || s.toLowerCase().includes(form.supplier.toLowerCase()))
-                            .map(s => (
-                              <div
-                                key={s}
-                                className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 ${form.supplier.toLowerCase() === s.toLowerCase() ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
-                                onMouseDown={e => {
-                                  e.preventDefault();
-                                  setForm(f => ({ ...f, supplier: s }));
-                                  setSupplierDropdownOpen(false);
-                                }}
-                                data-testid={`option-recent-supplier-${s.replace(/\s+/g, "-").toLowerCase()}`}
-                              >
-                                {s}
-                              </div>
-                            ))}
+                      {grnSupplierHistory.length > 0 && (
+                        <datalist id="grn-supplier-datalist">
+                          {grnSupplierHistory.map(s => <option key={s} value={s} />)}
+                        </datalist>
+                      )}
+                      {supplierDropdownOpen && (grnSupplierHistory.length > 0 || recentSuppliers.length > 0) && (
+                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-56 overflow-y-auto text-xs" data-testid="dropdown-recent-suppliers">
+                          {grnSupplierHistory.length > 0 && (() => {
+                            const filtered = grnSupplierHistory.filter(s => !form.supplier || s.toLowerCase().includes(form.supplier.toLowerCase()));
+                            if (filtered.length === 0) return null;
+                            return (
+                              <>
+                                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                  Past Suppliers for Selected Items
+                                </div>
+                                {filtered.map(s => (
+                                  <div
+                                    key={`hist-${s}`}
+                                    className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 ${form.supplier.toLowerCase() === s.toLowerCase() ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
+                                    onMouseDown={e => {
+                                      e.preventDefault();
+                                      setForm(f => ({ ...f, supplier: s }));
+                                      setSupplierDropdownOpen(false);
+                                    }}
+                                    data-testid={`option-item-supplier-${s.replace(/\s+/g, "-").toLowerCase()}`}
+                                  >
+                                    {s}
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          })()}
+                          {recentSuppliers.length > 0 && (() => {
+                            const histSet = new Set(grnSupplierHistory.map(s => s.toLowerCase()));
+                            const filtered = recentSuppliers
+                              .filter(s => !histSet.has(s.toLowerCase()))
+                              .filter(s => !form.supplier || s.toLowerCase().includes(form.supplier.toLowerCase()));
+                            if (filtered.length === 0) return null;
+                            return (
+                              <>
+                                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                  Recently Used
+                                </div>
+                                {filtered.map(s => (
+                                  <div
+                                    key={`recent-${s}`}
+                                    className={`px-3 py-2 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20 ${form.supplier.toLowerCase() === s.toLowerCase() ? "bg-violet-50 dark:bg-violet-900/20 font-medium" : ""}`}
+                                    onMouseDown={e => {
+                                      e.preventDefault();
+                                      setForm(f => ({ ...f, supplier: s }));
+                                      setSupplierDropdownOpen(false);
+                                    }}
+                                    data-testid={`option-recent-supplier-${s.replace(/\s+/g, "-").toLowerCase()}`}
+                                  >
+                                    {s}
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
