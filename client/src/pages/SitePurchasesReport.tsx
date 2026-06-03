@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useSearch } from "wouter";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2 } from "lucide-react";
+import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,16 +32,30 @@ interface SitePurchaseItem {
 export default function SitePurchasesReport() {
   const { toast } = useToast();
   const search = useSearch();
-  const returnTo = new URLSearchParams(search).get("returnTo") || "/site/dashboard";
+  const sp = new URLSearchParams(search);
+  const returnTo = sp.get("returnTo") || "/site/dashboard";
 
-  const [filters, setFilters] = usePersistedFilters(
+  const urlFilterKeys = ["dateFrom", "dateTo", "site", "workType"];
+  const urlHasFilterParams = urlFilterKeys.some((k) => sp.has(k));
+  const urlFilterDefaults = urlHasFilterParams
+    ? {
+        dateFrom: sp.get("dateFrom") ?? "",
+        dateTo: sp.get("dateTo") ?? "",
+        site: sp.get("site") ?? "",
+        workType: sp.get("workType") ?? "",
+      }
+    : {};
+
+  const [filters, setFilters, resetFilters] = usePersistedFilters(
     "site-purchases-report:filters:v1",
     {
       dateFrom: "",
       dateTo: "",
       site: "",
       workType: "",
+      ...urlFilterDefaults,
     },
+    { shouldHydrate: !urlHasFilterParams },
   );
 
   const [editingItem, setEditingItem] = useState<SitePurchaseItem | null>(null);
@@ -53,6 +67,9 @@ export default function SitePurchasesReport() {
     billNo: "",
     amount: "",
   });
+  const hasActiveFilters =
+    !!filters.dateFrom || !!filters.dateTo || !!filters.site || !!filters.workType;
+
   const queryString = new URLSearchParams({
     ...(filters.dateFrom && { dateFrom: filters.dateFrom }),
     ...(filters.dateTo && { dateTo: filters.dateTo }),
@@ -151,6 +168,11 @@ export default function SitePurchasesReport() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Filter className="w-4 h-4" /> Filters
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="ml-auto gap-1" data-testid="button-reset-filters">
+                  <X className="w-3 h-3" /> Clear
+                </Button>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
