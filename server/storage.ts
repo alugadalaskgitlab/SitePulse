@@ -8907,7 +8907,15 @@ export class DatabaseStorage implements IStorage {
       return { ...item, liveStockQty: null, liveStoreItemName: null };
     });
 
-    return { ...indent, items: enrichedItems } as PurchaseIndentWithItems | undefined;
+    let unlockedByName: string | null = null;
+    if ((indent as any).unlockedByUserId) {
+      const [unlocker] = await db.select({ fullName: users.fullName })
+        .from(users)
+        .where(eq(users.id, (indent as any).unlockedByUserId));
+      unlockedByName = unlocker?.fullName ?? null;
+    }
+
+    return { ...indent, items: enrichedItems, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
   private async generateIndentNo(tx: any): Promise<string> {

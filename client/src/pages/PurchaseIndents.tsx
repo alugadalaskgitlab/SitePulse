@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -455,6 +455,22 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
     colorClass: "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700",
     dotClass: "bg-blue-500",
   });
+
+  const unlockedByName = (indent as any).unlockedByName as string | null;
+  const unlockedAt = (indent as any).unlockedAt as string | null;
+  const unlockReason = (indent as any).unlockReason as string | null;
+
+  if (indent.lockStatus !== "locked" && (unlockedByName || unlockedAt)) {
+    events.push({
+      icon: LockOpen,
+      label: "Unlocked",
+      actor: unlockedByName,
+      timestamp: fmt(unlockedAt),
+      note: unlockReason,
+      colorClass: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700",
+      dotClass: "bg-amber-500",
+    });
+  }
 
   if (storesStatus === "verified" && storesVerifiedBy) {
     events.push({
