@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   ClipboardList, Plus, ChevronRight, AlertTriangle, Clock,
   CheckCircle2, Archive, ShieldCheck, XCircle, ShoppingCart,
-  ListTodo, PackageCheck,
+  ListTodo, PackageCheck, Search, X, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -108,7 +110,6 @@ function ProcurementQueueTab() {
     );
   }
 
-  // Group by IRN
   const grouped = new Map<number, { header: ProcurementQueueItem; items: ProcurementQueueItem[] }>();
   for (const item of queueItems) {
     if (!grouped.has(item.irnId)) {
@@ -127,7 +128,6 @@ function ProcurementQueueTab() {
 
         return (
           <div key={header.irnId} className="p-4 space-y-3">
-            {/* IRN header row */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <button
@@ -163,7 +163,6 @@ function ProcurementQueueTab() {
               )}
             </div>
 
-            {/* Items table */}
             <div className="bg-gray-50 rounded-lg border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100 border-b">
@@ -220,19 +219,55 @@ function ProcurementQueueTab() {
 export default function IrnListPage() {
   const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [keyword, setKeyword] = useState("");
+  const [raisedByFilter, setRaisedByFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const { sectionCan } = useAuth();
   const canRaise = sectionCan("irn_raise", "create");
 
+  const hasFilters = keyword || raisedByFilter || dateFrom || dateTo;
+
+  function clearFilters() {
+    setKeyword("");
+    setRaisedByFilter("");
+    setDateFrom("");
+    setDateTo("");
+  }
+
+  const apiParams = useMemo(() => {
+    const p = new URLSearchParams();
+    if (statusFilter !== "all") p.set("status", statusFilter);
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo) p.set("dateTo", dateTo);
+    return p.toString();
+  }, [statusFilter, dateFrom, dateTo]);
+
   const { data: irns, isLoading } = useQuery<InternalRequisitionWithItems[]>({
-    queryKey: ["/api/irn", statusFilter],
+    queryKey: ["/api/irn", statusFilter, dateFrom, dateTo],
     queryFn: async () => {
-      const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-      const res = await fetch(`/api/irn${params}`, { credentials: "include" });
+      const qs = apiParams ? `?${apiParams}` : "";
+      const res = await fetch(`/api/irn${qs}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch IRNs");
       return res.json();
     },
     enabled: statusFilter !== "procurement_queue",
   });
+
+  const filteredIrns = useMemo(() => {
+    if (!irns) return [];
+    const kw = keyword.trim().toLowerCase();
+    const rb = raisedByFilter.trim().toLowerCase();
+    return irns.filter((irn) => {
+      if (kw) {
+        const irnNoMatch = irn.irnNo.toLowerCase().includes(kw);
+        const itemMatch = irn.items.some((i) => i.material.toLowerCase().includes(kw));
+        if (!irnNoMatch && !itemMatch) return false;
+      }
+      if (rb && !irn.raisedBy.toLowerCase().includes(rb)) return false;
+      return true;
+    });
+  }, [irns, keyword, raisedByFilter]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -249,7 +284,7 @@ export default function IrnListPage() {
           </div>
           {canRaise && (
             <Link href="/irn/new">
-              <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-2">
+              <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-2" data-testid="button-raise-irn">
                 <Plus className="h-4 w-4" /> Raise New IRN
               </Button>
             </Link>
@@ -259,10 +294,11 @@ export default function IrnListPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-5">
         {/* Status tabs */}
-        <div className="flex gap-1 bg-white border rounded-lg p-1 mb-5 flex-wrap">
+        <div className="flex gap-1 bg-white border rounded-lg p-1 mb-4 flex-wrap">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.key}
+              data-testid={`tab-status-${tab.key}`}
               onClick={() => setStatusFilter(tab.key)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 statusFilter === tab.key
@@ -277,6 +313,83 @@ export default function IrnListPage() {
           ))}
         </div>
 
+        {/* Search / filter bar — hidden on procurement queue tab */}
+        {statusFilter !== "procurement_queue" && (
+          <div className="bg-white border rounded-lg p-3 mb-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Keyword */}
+              <div className="sm:col-span-2 lg:col-span-1 space-y-1">
+                <Label className="text-xs font-medium text-gray-500">Search</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <Input
+                    data-testid="input-irn-keyword"
+                    className="pl-8 h-8 text-sm"
+                    placeholder="IRN no. or item…"
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Raised by */}
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-gray-500">Raised By</Label>
+                <Input
+                  data-testid="input-irn-raised-by"
+                  className="h-8 text-sm"
+                  placeholder="Name…"
+                  value={raisedByFilter}
+                  onChange={(e) => setRaisedByFilter(e.target.value)}
+                />
+              </div>
+
+              {/* Date From */}
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <CalendarDays className="h-3 w-3" /> From
+                </Label>
+                <Input
+                  data-testid="input-irn-date-from"
+                  type="date"
+                  className="h-8 text-sm"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              {/* Date To */}
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <CalendarDays className="h-3 w-3" /> To
+                </Label>
+                <Input
+                  data-testid="input-irn-date-to"
+                  type="date"
+                  className="h-8 text-sm"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {hasFilters && (
+              <div className="flex items-center justify-between pt-1 border-t">
+                <span className="text-xs text-gray-500">
+                  {filteredIrns.length} result{filteredIrns.length !== 1 ? "s" : ""} matching filters
+                </span>
+                <button
+                  data-testid="button-clear-filters"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 font-medium"
+                >
+                  <X className="h-3 w-3" /> Clear filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="bg-white border rounded-lg overflow-hidden">
           {statusFilter === "procurement_queue" ? (
             <ProcurementQueueTab />
@@ -284,12 +397,18 @@ export default function IrnListPage() {
             <div className="p-4 space-y-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          ) : !irns?.length ? (
+          ) : !filteredIrns.length ? (
             <div className="py-16 text-center">
               <ClipboardList className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No requisitions found</p>
+              <p className="text-gray-500 font-medium" data-testid="text-no-irns">
+                {hasFilters ? "No requisitions match your filters" : "No requisitions found"}
+              </p>
               <p className="text-sm text-gray-400 mt-1">
-                {statusFilter === "all" ? "Raise your first IRN to get started" : `No ${STATUS_TABS.find(t => t.key === statusFilter)?.label.toLowerCase()} requisitions`}
+                {hasFilters
+                  ? "Try adjusting your search or date range"
+                  : statusFilter === "all"
+                  ? "Raise your first IRN to get started"
+                  : `No ${STATUS_TABS.find(t => t.key === statusFilter)?.label.toLowerCase()} requisitions`}
               </p>
             </div>
           ) : (
@@ -308,9 +427,10 @@ export default function IrnListPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {irns.map((irn) => (
+                {filteredIrns.map((irn) => (
                   <tr
                     key={irn.id}
+                    data-testid={`row-irn-${irn.id}`}
                     className="hover:bg-amber-50/40 cursor-pointer transition-colors"
                     onClick={() => navigate(`/irn/${irn.id}`)}
                   >
