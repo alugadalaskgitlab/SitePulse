@@ -654,7 +654,7 @@ export default function PurchaseIndents() {
   const [grnDialogSupplier, setGrnDialogSupplier] = useState("");
   const [grnDialogInvoiceNo, setGrnDialogInvoiceNo] = useState("");
   const [grnDialogRemarks, setGrnDialogRemarks] = useState("");
-  type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string; autoLinked: boolean };
+  type GrnDialogLine = { indentItemId: number; description: string; qty: string; rate: string; uom: string; storeItemId: string; itemSearch: string; autoLinked: boolean; approvedQty: number };
   const [grnLines, setGrnLines] = useState<GrnDialogLine[]>([]);
   const [grnOpenDropdownIdx, setGrnOpenDropdownIdx] = useState<number | null>(null);
 
@@ -870,6 +870,17 @@ export default function PurchaseIndents() {
     enabled: canViewStores,
   });
 
+  const { data: grnReceivedByItem = {} } = useQuery<Record<number, number>>({
+    queryKey: ["/api/stores/indent-received-per-item", selectedIndent?.id],
+    enabled: showGrnDialog && !!selectedIndent?.id,
+    queryFn: async () => {
+      if (!selectedIndent?.id) return {};
+      const res = await fetch(`/api/stores/indent-received-per-item?indentId=${selectedIndent.id}`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+  });
+
   const indentRefForGrns = (view === "purchase" || view === "procurement") ? selectedIndent?.indentNo : undefined;
   const { data: linkedGrns = [] } = useQuery<{ id: number; grnNumber: string; date: string; supplier: string; acceptanceStatus: string; itemCount: number }[]>({
     queryKey: ["/api/stores/grns", "linked", indentRefForGrns ?? ""],
@@ -1077,7 +1088,20 @@ export default function PurchaseIndents() {
       toast({ title: "GRN created — items added to stock" });
       setShowGrnDialog(false);
     },
-    onError: () => toast({ title: "Error creating GRN", variant: "destructive" }),
+    onError: (err: any) => {
+      try {
+        const msg: string = err?.message ?? "";
+        if (msg.startsWith("422:")) {
+          const jsonPart = msg.slice(msg.indexOf("{"));
+          const body = JSON.parse(jsonPart);
+          if (body?.details?.length) {
+            toast({ title: "Over-receipt blocked", description: body.details.join("; "), variant: "destructive" });
+            return;
+          }
+        }
+      } catch {}
+      toast({ title: "Error creating GRN", variant: "destructive" });
+    },
   });
 
   function openGrnDialog() {
@@ -1101,6 +1125,7 @@ export default function PurchaseIndents() {
       storeItemId: "",
       itemSearch: "",
       autoLinked: false,
+      approvedQty: i.approvedQty ?? i.qty,
     })));
     setGrnOpenDropdownIdx(null);
     setShowGrnDialog(true);
@@ -3794,7 +3819,7 @@ export default function PurchaseIndents() {
                                 onChange={e => setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l))}
                                 min="0"
                                 step="any"
-                                className="text-sm"
+                                className={`text-sm ${(() => { const alreadyRcvd = grnReceivedByItem[line.indentItemId] ?? 0; const remaining = line.approvedQty - alreadyRcvd; const entered = parseFloat(line.qty); return !isNaN(entered) && entered > remaining ? "border-red-400 focus-visible:ring-red-400" : ""; })()}`}
                                 data-testid={`input-grn-qty-${idx}`}
                               />
                             </div>
@@ -3822,6 +3847,31 @@ export default function PurchaseIndents() {
                               />
                             </div>
                           </div>
+                          {(() => {
+                            const alreadyRcvd = grnReceivedByItem[line.indentItemId] ?? 0;
+                            const remaining = line.approvedQty - alreadyRcvd;
+                            const entered = parseFloat(line.qty);
+                            if (!isNaN(entered) && entered > remaining) {
+                              return (
+                                <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300" data-testid={`warning-over-receipt-${idx}`}>
+                                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                  <span>
+                                    Over-receipt: {entered} {line.uom} entered but only <strong>{remaining} {line.uom}</strong> remain
+                                    {alreadyRcvd > 0 && <span className="text-red-500 dark:text-red-400"> ({alreadyRcvd} already received)</span>}.
+                                    Max receivable: {remaining} {line.uom}.
+                                  </span>
+                                </div>
+                              );
+                            }
+                            if (alreadyRcvd > 0) {
+                              return (
+                                <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid={`info-already-received-${idx}`}>
+                                  {alreadyRcvd} {line.uom} already received · {remaining > 0 ? `${remaining} remaining` : "fully received"}
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </div>
                     );
@@ -3841,7 +3891,7 @@ export default function PurchaseIndents() {
               <Button
                 className="bg-[#0F5F64] hover:bg-[#0a4a4e] text-white"
                 size="sm"
-                disabled={createGrnMutation.isPending || grnLines.every(l => !l.storeItemId)}
+                disabled={createGrnMutation.isPending || grnLines.every(l => !l.storeItemId) || grnLines.filter(l => l.storeItemId && parseFloat(l.qty) > 0).some(l => { const alreadyRcvd = grnReceivedByItem[l.indentItemId] ?? 0; const remaining = l.approvedQty - alreadyRcvd; const entered = parseFloat(l.qty); return !isNaN(entered) && entered > remaining; })}
                 onClick={handleGrnSubmit}
                 data-testid="button-grn-submit"
               >

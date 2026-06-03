@@ -774,6 +774,9 @@ export interface IStorage {
   getStaleGrns(thresholdHours?: number, permittedSiteIds?: number[]): Promise<StoreGrnWithItems[]>;
   getStoreGrnCountsByIndentRef(): Promise<Record<string, number>>;
   getIndentFulfilmentStatus(): Promise<Record<string, boolean>>;
+  getReceivedQtyByIndentItem(indentId: number): Promise<Record<number, number>>;
+  getIndentItemIdsForIndentNo(indentNo: string): Promise<Set<number>>;
+  checkGrnOverReceipt(items: { indentItemId: number; qty: number }[]): Promise<string[]>;
   getRecentGrnItemIds(limit?: number): Promise<number[]>;
   getRecentGrnSuppliers(limit?: number, permittedSiteIds?: number[]): Promise<string[]>;
   getGrnSuppliersByItems(itemIds: number[], permittedSiteIds?: number[]): Promise<string[]>;
@@ -17520,6 +17523,76 @@ export class DatabaseStorage implements IStorage {
       result[indentNo] = counts.total > 0 && counts.fulfilled === counts.total;
     }
     return result;
+  }
+
+  async getIndentItemIdsForIndentNo(indentNo: string): Promise<Set<number>> {
+    const rows = await db.execute(sql`
+      SELECT pii.id
+      FROM purchase_indent_items pii
+      JOIN purchase_indents pi ON pi.id = pii.indent_id
+      WHERE pi.indent_no = ${indentNo}
+    `);
+    return new Set((rows.rows as any[]).map(r => Number(r.id)));
+  }
+
+  async getReceivedQtyByIndentItem(indentId: number): Promise<Record<number, number>> {
+    const rows = await db.execute(sql`
+      SELECT pii.id AS indent_item_id, COALESCE(SUM(gi.qty), 0) AS received_qty
+      FROM purchase_indent_items pii
+      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+      WHERE pii.indent_id = ${indentId}
+      GROUP BY pii.id
+    `);
+    const result: Record<number, number> = {};
+    for (const row of rows.rows as any[]) {
+      result[Number(row.indent_item_id)] = parseFloat(row.received_qty) || 0;
+    }
+    return result;
+  }
+
+  async checkGrnOverReceipt(items: { indentItemId: number; qty: number }[]): Promise<string[]> {
+    if (items.length === 0) return [];
+    const indentItemIds = items.map(it => it.indentItemId);
+    const rows = await db.execute(sql`
+      SELECT
+        pii.id AS indent_item_id,
+        pii.description,
+        COALESCE(pii.approved_qty, pii.qty) AS approved_qty,
+        COALESCE(SUM(gi.qty), 0) AS received_qty
+      FROM purchase_indent_items pii
+      LEFT JOIN store_grn_items gi ON gi.indent_item_id = pii.id
+      WHERE pii.id = ANY(${indentItemIds}::int[])
+      GROUP BY pii.id, pii.description, approved_qty
+    `);
+    // Aggregate incoming quantities by indentItemId so multiple lines for the same
+    // item are summed before comparing against the remaining balance.
+    const incomingByItemId = new Map<number, number>();
+    for (const it of items) {
+      incomingByItemId.set(it.indentItemId, (incomingByItemId.get(it.indentItemId) ?? 0) + it.qty);
+    }
+
+    // Track which IDs were found in the DB
+    const foundIds = new Set<number>();
+    const violations: string[] = [];
+    for (const row of rows.rows as any[]) {
+      const id = Number(row.indent_item_id);
+      foundIds.add(id);
+      const approvedQty = parseFloat(row.approved_qty) || 0;
+      const alreadyReceived = parseFloat(row.received_qty) || 0;
+      const remaining = approvedQty - alreadyReceived;
+      const totalIncoming = incomingByItemId.get(id) ?? 0;
+      if (totalIncoming > 0 && totalIncoming > remaining) {
+        const desc = row.description || `Item #${id}`;
+        violations.push(`"${desc}": ${totalIncoming} entered but only ${remaining} remaining (approved ${approvedQty}, already received ${alreadyReceived})`);
+      }
+    }
+    // Any requested indentItemId not found in the DB is invalid
+    for (const id of indentItemIds) {
+      if (!foundIds.has(id)) {
+        violations.push(`Item #${id}: indent item not found — possible tampering`);
+      }
+    }
+    return violations;
   }
 
   async getStoreGrn(id: number): Promise<StoreGrnWithItems | undefined> {

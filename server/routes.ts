@@ -7585,6 +7585,35 @@ export async function registerRoutes(
       if (!grn || !items || !Array.isArray(items)) {
         return res.status(400).json({ error: "grn and items are required" });
       }
+
+      // Server-side over-receipt guard: reject if any line would exceed its approved qty.
+      // When grn.indentRef is set, all line items must carry indentItemId so the guard
+      // cannot be bypassed by simply omitting the field on a crafted request.
+      if (grn.indentRef) {
+        const missingLink = (items as any[]).some(it => it.indentItemId == null);
+        if (missingLink) {
+          return res.status(400).json({ error: "All GRN line items must include indentItemId when creating against an indent" });
+        }
+        // Validate that every provided indentItemId actually belongs to this indent
+        const validIndentItemIds = await storage.getIndentItemIdsForIndentNo(grn.indentRef);
+        if (validIndentItemIds.size === 0) {
+          return res.status(400).json({ error: `Indent "${grn.indentRef}" not found or has no items` });
+        }
+        const foreignIds = (items as any[]).filter(it => !validIndentItemIds.has(Number(it.indentItemId)));
+        if (foreignIds.length > 0) {
+          return res.status(400).json({ error: "One or more indentItemId values do not belong to the referenced indent" });
+        }
+      }
+      const linkedItems = (items as any[]).filter(it => it.indentItemId != null);
+      if (linkedItems.length > 0) {
+        const violations = await storage.checkGrnOverReceipt(
+          linkedItems.map(it => ({ indentItemId: Number(it.indentItemId), qty: parseFloat(it.qty) || 0 }))
+        );
+        if (violations.length > 0) {
+          return res.status(422).json({ error: "Over-receipt blocked", details: violations });
+        }
+      }
+
       const result = await storage.createStoreGrn(grn, items, grnCategory || undefined);
       sendPushToSection("stores_inventory", "GRN Created", `${result.grnNo ?? "GRN"} — ${grn.supplierName ?? "Supplier"}`, "/stores").catch(() => {});
       res.status(201).json(result);
@@ -7832,6 +7861,30 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/stores/indent-fulfilment-status:", err);
       res.status(500).json({ error: "Failed to fetch indent fulfilment status" });
+    }
+  });
+
+  app.get("/api/stores/indent-received-per-item", async (req, res) => {
+    try {
+      if (!assertView(req, res, "stores_inventory")) return;
+      const indentId = Number(req.query.indentId);
+      if (!indentId || isNaN(indentId)) return res.status(400).json({ error: "indentId is required" });
+      // Site-scope authorization: ensure this user can see this indent's site
+      if (req.authUser && !req.authUser.isAdmin) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null) {
+          const indent = await storage.getPurchaseIndent(indentId);
+          if (!indent) return res.status(404).json({ error: "Indent not found" });
+          if (indent.siteId && !permittedIds.includes(indent.siteId)) {
+            return res.status(403).json({ error: "Access denied for this site" });
+          }
+        }
+      }
+      const data = await storage.getReceivedQtyByIndentItem(indentId);
+      res.json(data);
+    } catch (err) {
+      console.error("GET /api/stores/indent-received-per-item:", err);
+      res.status(500).json({ error: "Failed to fetch received qty per item" });
     }
   });
 
