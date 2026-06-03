@@ -44,6 +44,33 @@ function parseCookie(header: string | undefined, name: string): string | undefin
   return undefined;
 }
 
+// Auth helper for mix-calculator write endpoints.
+// Accepts EITHER: estimator admin cookie (for estimator-portal users)
+// OR: main-app user with mix_calculator permission (for the given action).
+type MixCalcAction = 'create' | 'edit' | 'delete';
+function assertMixCalcWrite(req: Request, res: Response, action: MixCalcAction): boolean {
+  // 1. Estimator admin cookie is always accepted for writes
+  const cookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
+  const estimatorRole = verifyRoleCookie(cookieVal);
+  if (estimatorRole === 'admin') return true;
+
+  // 2. Main-app user must be authenticated and have the right mix_calculator permission
+  if (!req.authUser) {
+    res.status(401).json({ message: "Authentication required" });
+    return false;
+  }
+  if (req.authUser.isAdmin) return true;
+  const perm = req.authPermissions?.["mix_calculator"];
+  const allowed = action === 'create' ? !!perm?.create
+    : action === 'edit' ? !!perm?.edit
+    : !!perm?.delete;
+  if (!allowed) {
+    res.status(403).json({ message: "You don't have permission to perform this action." });
+    return false;
+  }
+  return true;
+}
+
 function getSessionSecret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s) throw new Error('SESSION_SECRET environment variable is not set');
@@ -7147,7 +7174,7 @@ export async function registerRoutes(
 
   app.post("/api/mix-estimates", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertMixCalcWrite(req, res, "create")) return;
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const createdBy = req.authUser?.id ?? null;
@@ -7161,15 +7188,10 @@ export async function registerRoutes(
 
   app.put("/api/mix-estimates/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertMixCalcWrite(req, res, "edit")) return;
       const id = parseInt(req.params.id);
       const existing = await storage.getMixEstimate(id);
       if (!existing) return res.status(404).json({ message: "Estimate not found" });
-      const isAdmin = req.authUser?.isAdmin ?? false;
-      const isOwner = existing.createdBy !== null && existing.createdBy === req.authUser?.id;
-      if (!isAdmin && !isOwner) {
-        return res.status(403).json({ message: "You can only edit your own estimates" });
-      }
       const { name, state, totalMt, totalAmt, contractorList, contractor } = req.body;
       if (!name || !state) return res.status(400).json({ message: "name and state required" });
       const estimate = await storage.updateMixEstimate(id, { name, state, totalMt: totalMt || 0, totalAmt: totalAmt || 0, contractorList: contractorList || "", contractor: contractor || null });
@@ -7183,7 +7205,7 @@ export async function registerRoutes(
 
   app.delete("/api/mix-estimates/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertMixCalcWrite(req, res, "delete")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteMixEstimate(id);
       if (!deleted) return res.status(404).json({ message: "Estimate not found" });
@@ -7208,7 +7230,7 @@ export async function registerRoutes(
 
   app.post("/api/price-scenarios", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "admin_settings")) return;
+      if (!assertMixCalcWrite(req, res, "create")) return;
       const { estimateId, name, revisedPrices, baseState } = req.body;
       if (!estimateId || !name) return res.status(400).json({ message: "estimateId and name required" });
       const rp = revisedPrices ? (typeof revisedPrices === "string" ? revisedPrices : JSON.stringify(revisedPrices)) : "{}";
@@ -7235,7 +7257,7 @@ export async function registerRoutes(
 
   app.patch("/api/price-scenarios/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "admin_settings")) return;
+      if (!assertMixCalcWrite(req, res, "edit")) return;
       const id = parseInt(req.params.id);
       const { name, state, baseState } = req.body;
       const updated = await storage.updatePriceScenario(id, { name, state, baseState });
@@ -7249,7 +7271,7 @@ export async function registerRoutes(
 
   app.delete("/api/price-scenarios/:id", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertMixCalcWrite(req, res, "delete")) return;
       const id = parseInt(req.params.id);
       const deleted = await storage.deletePriceScenario(id);
       if (!deleted) return res.status(404).json({ message: "Scenario not found" });
@@ -7262,7 +7284,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-contractor", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertMixCalcWrite(req, res, "edit")) return;
       const { from, to } = req.body;
       if (!from || !to) return res.status(400).json({ message: "from and to are required" });
       const count = await storage.renameContractor(from, to);
@@ -7275,7 +7297,7 @@ export async function registerRoutes(
 
   app.patch("/api/mix-estimates/rename-project", async (req, res) => {
     try {
-      if (!assertAdmin(req, res)) return;
+      if (!assertMixCalcWrite(req, res, "edit")) return;
       const { ids, to } = req.body;
       if (!Array.isArray(ids) || ids.length === 0 || !to) return res.status(400).json({ message: "ids and to are required" });
       let count = 0;

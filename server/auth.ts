@@ -565,6 +565,10 @@ export const PUBLIC_API_PATHS = new Set<string>([
 export function isPublicApiPath(path: string): boolean {
   if (PUBLIC_API_PATHS.has(path)) return true;
   if (path.startsWith("/api/estimator/")) return true;
+  // Mix calculator data — accessible to estimator-portal users (PIN auth) as well as
+  // main-app users. Write operations are gated per-handler via assertMixCalcWrite.
+  if (path.startsWith("/api/mix-estimates")) return true;
+  if (path.startsWith("/api/price-scenarios")) return true;
   return false;
 }
 
