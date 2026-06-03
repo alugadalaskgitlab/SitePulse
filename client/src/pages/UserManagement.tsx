@@ -55,6 +55,8 @@ import {
   ArrowLeft,
   MapPin,
   ShieldHalf,
+  BellOff,
+  AlertTriangle,
 } from "lucide-react";
 
 type SafeUser = {
@@ -558,6 +560,10 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
 
   const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
 
+  const notifyMismatch =
+    target?.notificationsEnabled === false &&
+    Object.values(matrix).some((row) => row.notify);
+
   // For partial managers, a permission checkbox is only enabled if the manager themselves has that permission.
   function canGrantAction(section: SectionKey, action: Action): boolean {
     if (!isPartialManager) return true;
@@ -656,7 +662,14 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                   key={a}
                   className="px-2 py-2 text-center whitespace-nowrap font-medium min-w-[52px]"
                 >
-                  {ACTION_LABELS[a]}
+                  {a === "notify" && notifyMismatch ? (
+                    <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Push notifications are disabled for this user">
+                      {ACTION_LABELS[a]}
+                      <AlertTriangle className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    ACTION_LABELS[a]
+                  )}
                 </th>
               ))}
               <th className="px-2 py-2 text-center font-medium min-w-[44px]">All</th>
@@ -725,6 +738,18 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
             )}
           </DialogTitle>
         </DialogHeader>
+
+        {notifyMismatch && (
+          <div
+            className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+            data-testid="banner-notify-mismatch"
+          >
+            <BellOff className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Push notifications are disabled for this user — Notify checkboxes won't fire until enabled.
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 mb-2">
           {!isPartialManager && (
