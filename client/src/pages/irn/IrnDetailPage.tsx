@@ -250,6 +250,25 @@ export default function IrnDetailPage() {
     },
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/irn/${id}/reopen`, {});
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Request failed");
+      }
+      return res.json() as Promise<InternalRequisitionWithItems>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/irn", id] });
+      toast({ title: "IRN Reopened", description: "Requisition has been returned to Approved status." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reopen failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("DELETE", `/api/irn/${id}`);
@@ -744,13 +763,26 @@ export default function IrnDetailPage() {
           {/* ── 7. Closure ── */}
           {isClosed && (
             <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Archive className="h-4 w-4 text-gray-500 shrink-0" />
                 <h3 className="text-sm font-semibold text-gray-700">Requisition Closed</h3>
                 <span className="ml-auto text-xs text-gray-500">
                   {irn.closedBy}
                   {irn.closedAt ? ` · ${format(new Date(irn.closedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
+                {(isAdmin || canClose) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => reopenMutation.mutate()}
+                    disabled={reopenMutation.isPending}
+                    className="text-sm h-8 gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    data-testid="button-reopen-irn"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    {reopenMutation.isPending ? "Reopening…" : "Reopen"}
+                  </Button>
+                )}
               </div>
             </div>
           )}

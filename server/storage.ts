@@ -954,6 +954,7 @@ export interface IStorage {
   storesVerifyIrn(id: number, data: StoresVerifyIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   approveIrn(id: number, data: ApproveIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   closeIrn(id: number, closedBy: string): Promise<InternalRequisitionWithItems | undefined>;
+  reopenIrn(id: number): Promise<InternalRequisitionWithItems | undefined>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -18684,6 +18685,28 @@ export class DatabaseStorage implements IStorage {
         status: "closed",
         closedBy: closedBy.toUpperCase(),
         closedAt: new Date(),
+      })
+      .where(eq(internalRequisitions.id, id))
+      .returning();
+
+    const items = await db
+      .select()
+      .from(internalRequisitionItems)
+      .where(eq(internalRequisitionItems.irnId, id));
+
+    return { ...updated, items };
+  }
+
+  async reopenIrn(id: number): Promise<InternalRequisitionWithItems | undefined> {
+    const existing = await this.getInternalRequisition(id);
+    if (!existing) return undefined;
+
+    const [updated] = await db
+      .update(internalRequisitions)
+      .set({
+        status: "approved",
+        closedBy: null,
+        closedAt: null,
       })
       .where(eq(internalRequisitions.id, id))
       .returning();

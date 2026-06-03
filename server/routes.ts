@@ -5230,6 +5230,30 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/irn/:id/reopen", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const m = req.authPermissions;
+      const canReopen = req.authUser.isAdmin || !!(m?.["irn_approve"]?.approve);
+      if (!canReopen) {
+        return res.status(403).json({ error: "forbidden", message: "You do not have permission to reopen IRNs" });
+      }
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const existing = await storage.getInternalRequisition(id);
+      if (!existing) return res.status(404).json({ message: "IRN not found" });
+      if (existing.status !== "closed") {
+        return res.status(400).json({ message: "Only closed IRNs can be reopened" });
+      }
+      const irn = await storage.reopenIrn(id);
+      if (!irn) return res.status(404).json({ message: "IRN not found" });
+      res.json(irn);
+    } catch (err) {
+      console.error("Error reopening IRN:", err);
+      res.status(500).json({ message: "Failed to reopen IRN" });
+    }
+  });
+
   app.delete("/api/irn/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
