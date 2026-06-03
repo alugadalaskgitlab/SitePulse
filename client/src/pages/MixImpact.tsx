@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
 import { calcMixRatesAndJobs, diffCalcInputs, type CalcState, type RevisedPrices } from "@/lib/mixCalc";
 import { readEstimatorRole } from "@/lib/estimatorAuth";
+import { useAuth } from "@/lib/auth-context";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtDateTime(d?: string | Date | null) {
@@ -568,14 +569,17 @@ function ScenarioComparison({
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function MixImpact() {
+  const { canCreate, isAdmin } = useAuth();
+  const hasMainAppAccess = isAdmin || canCreate("mix_calculator");
+  const canEdit = readEstimatorRole() === "admin" || hasMainAppAccess;
+
   useEffect(() => {
     const r = readEstimatorRole();
-    if (!r) {
+    // Only redirect to estimator login if the user has no main-app access either
+    if (!r && !hasMainAppAccess) {
       window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
-  }, []);
-
-  const canEdit = readEstimatorRole() === "admin";
+  }, [hasMainAppAccess]);
 
   const search = useSearch();
   const params = new URLSearchParams(search);

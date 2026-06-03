@@ -14,6 +14,7 @@ import { buildMixComparisonData } from "@/lib/mixComparisonData";
 import { MixComparisonContent } from "./MixComparativeReport";
 
 import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
+import { useAuth } from "@/lib/auth-context";
 
 function fmtAmt(v: number | null | undefined) {
   if (!v) return "—";
@@ -35,6 +36,7 @@ interface Props {
 
 export default function MixEstimates({ embedded = false }: Props) {
   const { toast } = useToast();
+  const { canCreate, isAdmin } = useAuth();
   const [collapsedContractors, setCollapsedContractors] = useState<Record<string, boolean>>({});
   const [editingContractor, setEditingContractor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -43,7 +45,9 @@ export default function MixEstimates({ embedded = false }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const role = readEstimatorRole();
-  const canEdit = role === "admin";
+  // Main-app users with mix_calculator create permission (or admins) can also edit
+  const hasMainAppAccess = isAdmin || canCreate("mix_calculator");
+  const canEdit = role === "admin" || hasMainAppAccess;
 
   const isStandalonePWA = useMemo(() => {
     const nav: Navigator & { standalone?: boolean } = window.navigator;
@@ -51,10 +55,11 @@ export default function MixEstimates({ embedded = false }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!embedded && !role) {
+    // Only redirect to estimator login if the user has no main-app access either
+    if (!embedded && !role && !hasMainAppAccess) {
       window.location.href = "/estimator-login?returnTo=/admin/mix-estimates";
     }
-  }, [role, embedded]);
+  }, [role, embedded, hasMainAppAccess]);
 
   const renameMutation = useMutation({
     mutationFn: ({ ids, to }: { ids: number[]; to: string }) =>
