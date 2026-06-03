@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1628,6 +1628,165 @@ export default function PurchaseIndents() {
     }
   };
 
+  const handlePrintIndent = (indent: PurchaseIndentWithItems) => {
+    const esc = (v: string | null | undefined): string => {
+      if (v == null) return "";
+      return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+               .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    };
+
+    const fmtTs = (ts: string | null | undefined) => {
+      if (!ts) return "—";
+      try { return format(new Date(ts), "dd-MMM-yyyy HH:mm").toUpperCase(); } catch { return esc(ts); }
+    };
+
+    const statusLabel = (s: string) => ({
+      pending: "PENDING", stores_check: "STORES CHECK", approved: "APPROVED",
+      rejected: "REJECTED", completed: "COMPLETED",
+    }[s] ?? esc(s.toUpperCase()));
+
+    const priorityLabel = (p: string) => ({ normal: "Normal", high: "HIGH", urgent: "URGENT" }[p] ?? esc(p));
+
+    const location = locationLabel(
+      { siteId: (indent as any).siteId ?? null, raisedFrom: (indent as any).raisedFrom ?? null },
+      sitesList
+    );
+
+    const storesStatus = (indent as any).storesStatus as string | null;
+    const storesVerifiedBy = (indent as any).storesVerifiedBy as string | null;
+    const storesVerifiedAt = (indent as any).storesVerifiedAt as string | null;
+    const createdAt = (indent as any).createdAt as string | null;
+
+    type AuditRow = { label: string; actor: string | null; timestamp: string | null; note: string | null };
+    const auditEvents: AuditRow[] = [];
+
+    auditEvents.push({ label: "Indent Raised", actor: indent.raisedBy, timestamp: fmtTs(createdAt), note: null });
+
+    if (storesStatus === "verified" && storesVerifiedBy) {
+      auditEvents.push({ label: "Stores Verified", actor: storesVerifiedBy, timestamp: fmtTs(storesVerifiedAt), note: null });
+    } else if (storesStatus === "bypassed" || (storesStatus === null && (indent.status === "approved" || indent.status === "completed"))) {
+      const m = (indent.approvalRemarks ?? "").match(/\[BYPASS:\s*(.*?)\]/i);
+      auditEvents.push({ label: "Stores Check Bypassed", actor: indent.approvedBy ?? null, timestamp: null, note: m ? m[1].trim() : null });
+    }
+
+    if (indent.status === "approved" || indent.status === "completed") {
+      const cleanRemarks = (indent.approvalRemarks ?? "").replace(/\[BYPASS:[^\]]*\]/gi, "").trim() || null;
+      auditEvents.push({ label: "Approved", actor: indent.approvedBy ?? null, timestamp: fmtTs((indent as any).approvedAt), note: cleanRemarks });
+    } else if (indent.status === "rejected") {
+      auditEvents.push({ label: "Rejected", actor: indent.approvedBy ?? null, timestamp: fmtTs((indent as any).approvedAt), note: indent.rejectionReason ?? null });
+    }
+
+    const itemRows = indent.items.map((item, i) => {
+      const approvedCell = item.approvedQty != null ? `${item.approvedQty} ${esc(item.uom)}` : "—";
+      const statusCell = item.purchaseStatus ? esc(item.purchaseStatus.toUpperCase()) : (item.cancelledBy ? "CANCELLED" : "—");
+      return `
+        <tr style="border-bottom:1px solid #e5e7eb;">
+          <td style="padding:6px 8px;font-weight:600;">${i + 1}. ${esc(item.description)}</td>
+          <td style="padding:6px 8px;">${item.qty} ${esc(item.uom)}</td>
+          <td style="padding:6px 8px;">${approvedCell}</td>
+          <td style="padding:6px 8px;">${esc(item.purpose)}</td>
+          <td style="padding:6px 8px;">${priorityLabel(item.priority)}</td>
+          <td style="padding:6px 8px;">${statusCell}</td>
+        </tr>`;
+    }).join("");
+
+    const auditRows = auditEvents.map(ev => `
+      <tr style="border-bottom:1px solid #e5e7eb;">
+        <td style="padding:6px 8px;font-weight:600;">${esc(ev.label)}</td>
+        <td style="padding:6px 8px;">${esc(ev.actor) || "—"}</td>
+        <td style="padding:6px 8px;">${esc(ev.timestamp) || "—"}</td>
+        <td style="padding:6px 8px;font-style:italic;color:#6b7280;">${esc(ev.note)}</td>
+      </tr>`).join("");
+
+    const printedAt = format(new Date(), "dd-MMM-yyyy HH:mm").toUpperCase();
+    const indentDate = format(new Date(indent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase();
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+  <title>Purchase Indent ${esc(indent.indentNo)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; margin: 0; padding: 24px; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 8px; color: #374151; border-bottom: 2px solid #d1d5db; padding-bottom: 4px; }
+    .header-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .header-grid .field label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #6b7280; display: block; margin-bottom: 2px; }
+    .header-grid .field span { font-weight: 600; }
+    .status-badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: #f3f4f6; color: #374151; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead tr { background: #f9fafb; }
+    thead th { padding: 7px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
+    .footer { margin-top: 40px; font-size: 9px; color: #9ca3af; text-align: right; }
+    @media print {
+      body { padding: 10mm; }
+      @page { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #111;padding-bottom:12px;">
+    <div>
+      <h1>Purchase Indent</h1>
+      <div style="font-size:20px;font-weight:800;color:#0F5F64;">${esc(indent.indentNo)}</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="status-badge">${statusLabel(indent.status)}</div>
+      <div style="font-size:10px;color:#6b7280;margin-top:4px;">Printed: ${printedAt}</div>
+    </div>
+  </div>
+
+  <div class="header-grid">
+    <div class="field"><label>Date</label><span>${indentDate}</span></div>
+    <div class="field"><label>Proposed By</label><span>${esc(indent.proposedBy)}</span></div>
+    <div class="field"><label>Raised By</label><span>${esc(indent.raisedBy)}</span></div>
+    <div class="field"><label>Location / Raised From</label><span>${esc(location) || "—"}</span></div>
+    <div class="field"><label>Total Items</label><span>${indent.items.length}</span></div>
+    ${indent.remarks ? `<div class="field"><label>Remarks</label><span>${esc(indent.remarks)}</span></div>` : ""}
+  </div>
+
+  <h2>Items</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Qty Requested</th>
+        <th>Qty Approved</th>
+        <th>Purpose</th>
+        <th>Priority</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <h2>Audit Trail</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Event</th>
+        <th>By</th>
+        <th>Timestamp</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>${auditRows}</tbody>
+  </table>
+
+  <div class="footer">SiteLog &middot; Purchase Indent ${esc(indent.indentNo)}</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  };
+
   const handleSubmitStoresVerify = () => {
     if (!selectedIndentId || !selectedIndent) return;
     const allVerified = selectedIndent.items.every(item => {
@@ -2566,6 +2725,15 @@ export default function PurchaseIndents() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base uppercase" data-testid="text-detail-indent-no">{selectedIndent.indentNo}</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-gray-600 border-gray-300"
+                      onClick={() => handlePrintIndent(selectedIndent)}
+                      data-testid="button-print-indent"
+                    >
+                      <Printer className="w-3 h-3 mr-1" /> PRINT
+                    </Button>
                     {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                       <Button
                         variant="outline"
@@ -3019,6 +3187,7 @@ export default function PurchaseIndents() {
                             </button>
                           )
                         )}
+                        <button onClick={() => handlePrintIndent(selectedIndent)} className="text-[11px] text-teal-200 underline hover:text-white flex items-center gap-0.5" data-testid="button-print-indent-purchase"><Printer className="w-3 h-3" /> Print</button>
                         {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                           <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
                         )}
