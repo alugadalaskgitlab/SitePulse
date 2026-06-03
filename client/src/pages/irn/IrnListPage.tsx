@@ -218,7 +218,11 @@ function ProcurementQueueTab() {
 
 export default function IrnListPage() {
   const [, navigate] = useLocation();
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get("status") ?? "";
+    return STATUS_TABS.some((t) => t.key === s) ? s : "all";
+  });
   const [keyword, setKeyword] = useState("");
   const [raisedByFilter, setRaisedByFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");

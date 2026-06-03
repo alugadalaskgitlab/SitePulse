@@ -55,11 +55,14 @@ export default function Home() {
     enabled: isAdmin,
   });
 
+  const canSeeIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
+
   const { data: internalRequisitions = [] } = useQuery<any[]>({
     queryKey: ["/api/irn", { status: "pending_stores" }],
     queryFn: () =>
       fetch("/api/irn?status=pending_stores", { credentials: "include" })
         .then((r) => r.json()),
+    enabled: canSeeIrn,
   });
 
   // ── Derived values ──
@@ -72,7 +75,7 @@ export default function Home() {
   const pendingIndents = purchaseIndents.filter(
     (p: any) => p.status === "pending" || p.status === "submitted" || p.status === "stores_check"
   );
-  const pendingIRN = Array.isArray(internalRequisitions) ? internalRequisitions.length : 0;
+  const pendingIRN = canSeeIrn && Array.isArray(internalRequisitions) ? internalRequisitions.length : 0;
   const totalPending = pendingDiesel.length + pendingIndents.length + pendingIRN;
 
   const todayDispatchCount = Array.isArray(dispatches) ? dispatches.length : 0;
@@ -365,7 +368,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Tier 4: Internal Requisitions */}
+                {/* Tier 4: Internal Requisitions (stores users only) */}
+                {canSeeIrn && (
                 <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-irn">
                   <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <FileText className="w-3.5 h-3.5 text-indigo-600" />
@@ -381,7 +385,7 @@ export default function Home() {
                       {pendingIRN > 0 ? `${pendingIRN} awaiting approval` : "All clear"}
                     </p>
                     {pendingIRN > 0 && (
-                      <Link href="/irn">
+                      <Link href="/irn?status=pending_stores">
                         <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </a>
@@ -389,6 +393,7 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+                )}
 
               </div>
             </div>
