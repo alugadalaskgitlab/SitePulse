@@ -6457,8 +6457,17 @@ export async function registerRoutes(
       if (!bill) {
         return res.status(404).json({ message: "Vendor bill not found" });
       }
-      const vbNotifSection = status === "verified" ? "vendor_bills_approve" : "vendor_bills_view";
-      sendPushToSection(vbNotifSection, "Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      if (status === "approved") {
+        sendPushToSection("vendor_bills_raise", "Vendor Bill Approved", `${bill.billNo} approved by ${actor}`, "/plant/vendor-bills").catch(() => {});
+        sendPushToRaiser(bill.authorUserId, bill.vendorName, "Your Bill Was Approved", `${bill.billNo} has been approved by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      } else if (status === "paid") {
+        sendPushToSection("vendor_bills_raise", "Vendor Bill Paid", `${bill.billNo} marked paid by ${actor}`, "/plant/vendor-bills").catch(() => {});
+        sendPushToRaiser(bill.authorUserId, bill.vendorName, "Your Bill Was Marked Paid", `${bill.billNo} has been marked as paid by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      } else if (status === "verified") {
+        sendPushToSection("vendor_bills_approve", "Vendor Bill Verified", `${bill.billNo} verified by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      } else {
+        sendPushToSection("vendor_bills_view", "Vendor Bill Updated", `${bill.billNo} - ${status.toUpperCase()} by ${actor}`, "/plant/vendor-bills").catch(() => {});
+      }
       res.json(bill);
     } catch (err) {
       if (err instanceof z.ZodError) {
