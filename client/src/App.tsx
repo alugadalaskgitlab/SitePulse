@@ -123,6 +123,12 @@ function Router() {
       <Route path="/estimator-hub" component={EstimatorHub} />
       <Route path="/concrete-calculator" component={ConcreteCalculator} />
       <Route path="/concrete-calculator-v2" component={ConcreteCalculatorV2} />
+      {/* Mix calculator pages are accessible to estimator-portal users (PIN auth) AND
+          main-app users with mix_calculator permission. The component handles its own auth. */}
+      <Route path="/admin/mix-estimates" component={MixEstimates} />
+      <Route path="/admin/mix-impact" component={MixImpact} />
+      <Route path="/admin/mix-comparison" component={MixComparativeReport} />
+      <Route path="/admin/scenario-comparison" component={ScenarioComparison} />
 
       {/* Home and hub pages use HubShell (sidebar layout) — no AppHeader wrapper. */}
       <Route path="/">
@@ -305,10 +311,6 @@ function AuthedShell() {
             <Route path="/admin/devices" component={gated(DeviceApproval, "device_approval")} />
             <Route path="/admin/reports" component={gatedEither(AdminReports, "report_management", "reports")} />
             <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
-            <Route path="/admin/mix-estimates" component={gatedEither(MixEstimates, "mix_calculator", "reports")} />
-            <Route path="/admin/mix-impact" component={gatedEither(MixImpact, "mix_calculator", "reports")} />
-            <Route path="/admin/mix-comparison" component={gatedEither(MixComparativeReport, "mix_calculator", "reports")} />
-            <Route path="/admin/scenario-comparison" component={gatedEither(ScenarioComparison, "mix_calculator", "reports")} />
             <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
             <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
             <Route path="/notifications/preferences" component={NotificationPreferences} />
