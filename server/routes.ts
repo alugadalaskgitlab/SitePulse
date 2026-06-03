@@ -20,7 +20,7 @@ import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
-import { requireAuth, isPublicApiPath } from "./auth";
+import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -134,6 +134,10 @@ export async function registerRoutes(
   app.use("/api", (req, res, next) => {
     const fullPath = (req.originalUrl || req.url).split("?")[0];
     if (isPublicApiPath(fullPath)) return next();
+    // Optional auth: try to populate req.authUser but don't block if no session.
+    // Used for mix-calculator APIs so both estimator-portal users and
+    // logged-in main-app users can reach the same handlers.
+    if (isOptionalAuthPath(fullPath)) return optionalAuth(req, res, next);
     return requireAuth(req, res, next);
   });
 
@@ -182,14 +186,52 @@ export async function registerRoutes(
     res.redirect(302, `/estimator-login?returnTo=${encodeURIComponent(returnTo)}`);
   });
 
-  app.get('/mix-calculator', (_req, res) => {
+  app.get('/mix-calculator', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     const root = process.env.NODE_ENV === 'production'
       ? path.join(process.cwd(), 'dist', 'public')
       : path.join(process.cwd(), 'client', 'public');
-    res.sendFile('mix-calculator.html', { root });
+
+    // If the user already has a valid estimator-portal cookie, serve the
+    // HTML as-is — the IIFE inside handles it synchronously.
+    const estCookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
+    const estRole = verifyRoleCookie(estCookieVal);
+    if (estRole === 'admin' || estRole === 'manager') {
+      return res.sendFile('mix-calculator.html', { root });
+    }
+
+    // No estimator cookie — check if this is a logged-in main-app user
+    // who has been granted mix_calculator access.
+    try {
+      const sess = await lookupSessionFromCookie(req.headers.cookie);
+      if (sess.kind === 'ok') {
+        const matrix = await loadUserPermissionsMatrix(sess.user.id);
+        const mp = matrix['mix_calculator'];
+        const canAccess = sess.user.isAdmin || mp?.view || mp?.create || mp?.edit;
+        if (canAccess) {
+          // Inject window.__serverRole so the IIFE inside mix-calculator.html
+          // can grant access without requiring an estimator cookie.
+          // Admin and users with create/edit → 'admin' role (Save button visible).
+          // View-only → 'manager' role (read-only).
+          const role = (sess.user.isAdmin || mp?.create || mp?.edit) ? 'admin' : 'manager';
+          const htmlPath = path.join(root, 'mix-calculator.html');
+          let html = fs.readFileSync(htmlPath, 'utf-8');
+          html = html.replace(
+            '<script>\n(function(){',
+            `<script>window.__serverRole='${role}';</script>\n<script>\n(function(){`
+          );
+          return res.send(html);
+        }
+      }
+    } catch {
+      // Fall through to estimator-login redirect
+    }
+
+    // Not authenticated via either route — redirect to estimator login.
+    const returnTo = encodeURIComponent(req.originalUrl || '/mix-calculator');
+    res.redirect(302, `/estimator-login?returnTo=${returnTo}`);
   });
 
   // Permission System v2 helper — resolves permitted site names for the current user.

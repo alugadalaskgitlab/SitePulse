@@ -565,11 +565,35 @@ export const PUBLIC_API_PATHS = new Set<string>([
 export function isPublicApiPath(path: string): boolean {
   if (PUBLIC_API_PATHS.has(path)) return true;
   if (path.startsWith("/api/estimator/")) return true;
-  // Mix calculator data — accessible to estimator-portal users (PIN auth) as well as
-  // main-app users. Write operations are gated per-handler via assertMixCalcWrite.
+  return false;
+}
+
+// Paths where we try to populate req.authUser if a session exists, but
+// don't block the request if no session is present.  Used for the mix
+// calculator API so both estimator-portal users (cookie only) and
+// logged-in main-app users (session cookie) can reach the same handlers.
+export function isOptionalAuthPath(path: string): boolean {
   if (path.startsWith("/api/mix-estimates")) return true;
   if (path.startsWith("/api/price-scenarios")) return true;
   return false;
+}
+
+// Like requireAuth but never returns 401 — it simply skips populating
+// req.authUser when no valid session is found.
+export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const sess = await lookupSessionFromCookie(req.headers.cookie);
+    if (sess.kind === "ok") {
+      req.authUser = sess.user;
+      req.authSessionId = sess.sessionId;
+      req.authDeviceId = sess.deviceId;
+      req.authPermissions = await loadUserPermissionsMatrix(sess.user.id);
+      touchSessionActivity(sess.sessionId, sess.deviceId).catch(() => {});
+    }
+  } catch {
+    // silently ignore — treat as unauthenticated
+  }
+  next();
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
