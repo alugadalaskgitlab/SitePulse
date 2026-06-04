@@ -4057,7 +4057,16 @@ function saveScenarioToDb(){
     method:'PATCH', headers:{'Content-Type':'application/json'},
     body:JSON.stringify(patchBody)
   })
-  .then(function(r){return r.json();})
+  .then(function(r){
+    if(!r.ok){
+      return r.json().then(function(body){
+        throw new Error(body.message||('HTTP '+r.status));
+      }, function(){
+        throw new Error('HTTP '+r.status);
+      });
+    }
+    return r.json();
+  })
   .then(function(sc){
     var dt=sc.updatedAt?new Date(sc.updatedAt):new Date();
     var parts=[String(dt.getDate()).padStart(2,'0'),['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()],dt.getFullYear()].join(' ');
@@ -4070,9 +4079,9 @@ function saveScenarioToDb(){
       window.location.href=href;
     },1800);
   })
-  .catch(function(){
+  .catch(function(err){
     if(btn) btn.textContent='💾 Save Scenario & Return';
-    showToast('Save failed — check connection',true);
+    showToast('Save failed — '+(err&&err.message?err.message:'check connection'),true);
   });
 }
 

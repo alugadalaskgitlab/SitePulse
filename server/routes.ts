@@ -62,7 +62,7 @@ function assertMixCalcWrite(req: Request, res: Response, action: MixCalcAction):
   if (req.authUser.isAdmin) return true;
   const perm = req.authPermissions?.["mix_calculator"];
   const allowed = action === 'create' ? !!perm?.create
-    : action === 'edit' ? !!perm?.edit
+    : action === 'edit' ? (!!perm?.edit || !!perm?.create)
     : !!perm?.delete;
   if (!allowed) {
     res.status(403).json({ message: "You don't have permission to perform this action." });

@@ -570,7 +570,7 @@ function ScenarioComparison({
 
 export default function MixImpact() {
   const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
-  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create");
+  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
   const canEdit = readEstimatorRole() === "admin" || hasMainAppAccess;
 
   useEffect(() => {
