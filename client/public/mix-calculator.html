@@ -230,6 +230,7 @@ body{font-size:11px;background:#fff}
     <a href="/admin/mix-estimates" class="btn btn-secondary btn-sm no-print">← Estimates</a>
     <a href="/estimator-hub" class="btn btn-secondary btn-sm no-print">← Hub</a>
     <button class="btn btn-secondary btn-sm no-print" id="btnSaved" onclick="openSavedPanel()" title="View saved estimates">📂 Saved</button>
+    <a id="btnPriceImpact" class="btn btn-secondary btn-sm no-print" href="#" title="View Price Impact scenarios for this estimate" style="display:none;color:var(--amber)">📊 Price Impact</a>
     <button class="btn btn-secondary btn-sm no-print admin-only" id="btnSave" onclick="saveToDb()" title="Save estimate to database" style="color:var(--green)">💾 Save</button>
     <button class="btn btn-secondary btn-sm no-print admin-only" onclick="resetState()" title="Clear saved data and reset all inputs to defaults" style="color:var(--red)">↺ Reset</button>
     <button class="btn btn-primary no-print" onclick="openPrintSettings()">🖨 Print</button>
@@ -1077,6 +1078,11 @@ function updateBadge(){
   var badge = document.getElementById('estimateBadge');
   if(currentEstimateName){ badge.textContent = currentEstimateName; badge.style.display = 'inline'; }
   else badge.style.display = 'none';
+  var piBtn = document.getElementById('btnPriceImpact');
+  if(piBtn){
+    if(currentEstimateId){ piBtn.setAttribute('href','/admin/mix-impact?estimateId='+currentEstimateId); piBtn.style.display=''; }
+    else { piBtn.setAttribute('href','#'); piBtn.style.display='none'; }
+  }
 }
 
 function autoEstimateName(){
@@ -3965,6 +3971,7 @@ function initScenarioMode(estimateId){
   if(!scenarioModeId) return;
   scenarioModeEstimateId = estimateId?parseInt(estimateId):null;
   if(scenarioModeEstimateId) currentEstimateId = scenarioModeEstimateId;
+  updateBadge();
   var backLink = document.getElementById('scenarioBackLink');
   if(backLink&&scenarioModeEstimateId) backLink.href='/admin/mix-impact?estimateId='+scenarioModeEstimateId;
   var banner = document.getElementById('scenarioBanner');

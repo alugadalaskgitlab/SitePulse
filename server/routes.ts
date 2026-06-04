@@ -194,16 +194,17 @@ export async function registerRoutes(
       ? path.join(process.cwd(), 'dist', 'public')
       : path.join(process.cwd(), 'client', 'public');
 
-    // If the user already has a valid estimator-portal cookie, serve the
-    // HTML as-is — the IIFE inside handles it synchronously.
+    // Estimator admin cookie → full access, no injection needed.
     const estCookieVal = parseCookie(req.headers.cookie, ESTIMATOR_COOKIE);
     const estRole = verifyRoleCookie(estCookieVal);
-    if (estRole === 'admin' || estRole === 'manager') {
+    if (estRole === 'admin') {
       return res.sendFile('mix-calculator.html', { root });
     }
 
-    // No estimator cookie — check if this is a logged-in main-app user
-    // who has been granted mix_calculator access.
+    // Check main-app session regardless of whether an estimator manager cookie
+    // exists — the session may grant a higher role (e.g. create/edit → 'admin')
+    // that would otherwise be blocked by a stale manager cookie.
+    let mainAppRole: 'admin' | 'manager' | null = null;
     try {
       const sess = await lookupSessionFromCookie(req.headers.cookie);
       if (sess.kind === 'ok') {
@@ -211,27 +212,40 @@ export async function registerRoutes(
         const mp = matrix['mix_calculator'];
         const canAccess = sess.user.isAdmin || mp?.view || mp?.create || mp?.edit;
         if (canAccess) {
-          // Inject window.__serverRole so the IIFE inside mix-calculator.html
-          // can grant access without requiring an estimator cookie.
-          // Admin and users with create/edit → 'admin' role (Save button visible).
-          // View-only → 'manager' role (read-only).
-          const role = (sess.user.isAdmin || mp?.create || mp?.edit) ? 'admin' : 'manager';
-          const htmlPath = path.join(root, 'mix-calculator.html');
-          let html = fs.readFileSync(htmlPath, 'utf-8');
-          html = html.replace(
-            '<script>\n(function(){',
-            `<script>window.__serverRole='${role}';</script>\n<script>\n(function(){`
-          );
-          return res.send(html);
+          mainAppRole = (sess.user.isAdmin || mp?.create || mp?.edit) ? 'admin' : 'manager';
         }
       }
     } catch {
-      // Fall through to estimator-login redirect
+      // ignore — fall through to estimator cookie check
     }
 
-    // Not authenticated via either route — redirect to estimator login.
-    const returnTo = encodeURIComponent(req.originalUrl || '/mix-calculator');
-    res.redirect(302, `/estimator-login?returnTo=${returnTo}`);
+    // Effective role = highest privilege between main-app session and estimator cookie.
+    const effectiveRole: 'admin' | 'manager' | null =
+      mainAppRole === 'admin' ? 'admin'
+      : estRole === 'manager' ? 'manager'
+      : mainAppRole;
+
+    if (!effectiveRole) {
+      // Not authenticated via either route — redirect to estimator login.
+      const returnTo = encodeURIComponent(req.originalUrl || '/mix-calculator');
+      return res.redirect(302, `/estimator-login?returnTo=${returnTo}`);
+    }
+
+    // Inject window.__serverRole when the main-app session provides access OR
+    // when it upgrades the role above the estimator cookie (manager → admin).
+    const needsInjection = !estRole || (mainAppRole === 'admin' && estRole === 'manager');
+    if (needsInjection) {
+      const htmlPath = path.join(root, 'mix-calculator.html');
+      let html = fs.readFileSync(htmlPath, 'utf-8');
+      html = html.replace(
+        '<script>\n(function(){',
+        `<script>window.__serverRole='${effectiveRole}';</script>\n<script>\n(function(){`
+      );
+      return res.send(html);
+    }
+
+    // Estimator manager cookie with no higher main-app role — serve as-is.
+    return res.sendFile('mix-calculator.html', { root });
   });
 
   // Permission System v2 helper — resolves permitted site names for the current user.
