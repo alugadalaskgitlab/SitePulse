@@ -404,6 +404,31 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   },
 ];
 
+// ── Sections that actually fire sendPushToSection() events ───────────────────
+// Derived from all sendPushToSection() call-sites in server/routes.ts.
+// Keep this in sync whenever new push calls are added.
+export const PUSH_ACTIVE_SECTIONS = new Set<SectionKey>([
+  "site_dprs",
+  "site_materials",
+  "purchase_indents_view",
+  "diesel_req_raise",
+  "diesel_req_approve",
+  "irn_view",
+  "plant_shift_logs",
+  "plant_equipment",
+  "plant_generator_logs",
+  "plant_production",
+  "plant_materials",
+  "plant_bitumen",
+  "plant_ldo",
+  "plant_daily_reports",
+  "plant_stock",
+  "stores_inventory",
+  "vendor_bills_view",
+  "vendor_bills_raise",
+  "vendor_bills_approve",
+]);
+
 export const SESSION_POLICIES = ["strict", "sticky"] as const;
 export type SessionPolicy = (typeof SESSION_POLICIES)[number];
 

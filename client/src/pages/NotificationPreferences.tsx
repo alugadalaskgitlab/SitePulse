@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bell, BellOff, Save, Loader2, CheckCircle } from "lucide-react";
+import { Bell, BellOff, Save, Loader2, CheckCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PERMISSION_GROUPS, SECTION_LABELS, type SectionKey, type PermissionMatrix } from "@shared/permissions";
+import { PERMISSION_GROUPS, SECTION_LABELS, PUSH_ACTIVE_SECTIONS, type SectionKey, type PermissionMatrix } from "@shared/permissions";
 
 function hasViewOrCreate(matrix: PermissionMatrix, key: SectionKey): boolean {
   const row = matrix[key];
@@ -62,7 +62,9 @@ export default function NotificationPreferences() {
     return g.sections.some((s) => hasViewOrCreate(permissions, s));
   });
 
-  const subscribedCount = Object.values(notifyMap).filter(Boolean).length;
+  const subscribedCount = (Object.keys(notifyMap) as SectionKey[]).filter(
+    (k) => notifyMap[k] && PUSH_ACTIVE_SECTIONS.has(k)
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -106,46 +108,81 @@ export default function NotificationPreferences() {
               : group.sections.filter((s) => hasViewOrCreate(permissions, s));
             if (sections.length === 0) return null;
 
-            const allOn = sections.every((s) => notifyMap[s]);
-            const someOn = sections.some((s) => notifyMap[s]);
+            const activeSections = sections.filter((s) => PUSH_ACTIVE_SECTIONS.has(s));
+            const allOn = activeSections.length > 0 && activeSections.every((s) => notifyMap[s]);
+            const someOn = activeSections.some((s) => notifyMap[s]);
 
             return (
               <div key={group.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
                   <h3 className="text-sm font-semibold text-slate-700">{group.label}</h3>
-                  <button
-                    className="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2 transition-colors"
-                    onClick={() => {
-                      const newVal = !allOn;
-                      const patch: Record<string, boolean> = {};
-                      sections.forEach((s) => { patch[s] = newVal; });
-                      setNotifyMap((prev) => ({ ...prev, ...patch }));
-                      setDirty(true);
-                    }}
-                    data-testid={`button-toggle-group-${group.id}`}
-                  >
-                    {allOn ? "Unsubscribe all" : someOn ? "Subscribe all" : "Subscribe all"}
-                  </button>
+                  {activeSections.length > 0 ? (
+                    <button
+                      className="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2 transition-colors"
+                      onClick={() => {
+                        const newVal = !allOn;
+                        const patch: Record<string, boolean> = {};
+                        activeSections.forEach((s) => { patch[s] = newVal; });
+                        setNotifyMap((prev) => ({ ...prev, ...patch }));
+                        setDirty(true);
+                      }}
+                      data-testid={`button-toggle-group-${group.id}`}
+                    >
+                      {allOn ? "Unsubscribe all" : someOn ? "Subscribe all" : "Subscribe all"}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">No alerts in this group</span>
+                  )}
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {sections.map((s) => (
-                    <div key={s} className="flex items-center justify-between px-4 py-3 hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {notifyMap[s] ? (
-                          <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                        ) : (
-                          <BellOff className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
-                        )}
-                        <span className="text-sm text-slate-700 truncate">{SECTION_LABELS[s]}</span>
+                  {sections.map((s) => {
+                    const isActive = PUSH_ACTIVE_SECTIONS.has(s);
+                    return (
+                      <div
+                        key={s}
+                        className={`flex items-center justify-between px-4 py-3 transition-colors ${isActive ? "hover:bg-slate-50/50" : "opacity-50"}`}
+                        data-testid={`row-notify-${s}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {isActive ? (
+                            notifyMap[s] ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <Bell className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            )
+                          ) : (
+                            <BellOff className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                          )}
+                          <span className={`text-sm truncate ${isActive ? "text-slate-700" : "text-slate-400"}`}>
+                            {SECTION_LABELS[s]}
+                          </span>
+                          {isActive ? (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 flex-shrink-0"
+                              data-testid={`badge-push-active-${s}`}
+                            >
+                              <Zap className="w-2.5 h-2.5" />
+                              Sends alerts
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200 flex-shrink-0"
+                              data-testid={`badge-push-inactive-${s}`}
+                            >
+                              No alerts yet
+                            </span>
+                          )}
+                        </div>
+                        <Switch
+                          checked={!!notifyMap[s]}
+                          onCheckedChange={(v) => isActive && toggle(s, v)}
+                          disabled={!isActive}
+                          data-testid={`switch-notify-${s}`}
+                          aria-label={`Notify for ${SECTION_LABELS[s]}`}
+                        />
                       </div>
-                      <Switch
-                        checked={!!notifyMap[s]}
-                        onCheckedChange={(v) => toggle(s, v)}
-                        data-testid={`switch-notify-${s}`}
-                        aria-label={`Notify for ${SECTION_LABELS[s]}`}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
