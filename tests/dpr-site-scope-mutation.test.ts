@@ -67,6 +67,8 @@ vi.mock("../server/auth", () => ({
     next();
   }),
   isPublicApiPath: vi.fn().mockReturnValue(false),
+  isOptionalAuthPath: vi.fn().mockReturnValue(false),
+  optionalAuth: vi.fn((_req: Request, _res: Response, next: NextFunction) => next()),
   parseCookie: vi.fn(),
   signToken: vi.fn(),
   verifySignedToken: vi.fn(),
