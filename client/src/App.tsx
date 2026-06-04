@@ -99,6 +99,7 @@ import AdminMastersHub from "@/pages/AdminMastersHub";
 import PlantMasters from "@/pages/PlantMasters";
 import NotFound from "@/pages/not-found";
 import NotificationPreferences from "@/pages/NotificationPreferences";
+import Account from "@/pages/Account";
 function Watermark() {
   return (
     <div 
@@ -314,6 +315,7 @@ function AuthedShell() {
             <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
             <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
             <Route path="/notifications/preferences" component={NotificationPreferences} />
+            <Route path="/account" component={Account} />
             <Route component={NotFound} />
           </Switch>
         </div>
