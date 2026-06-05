@@ -21,6 +21,7 @@ import {
   Download,
   Flame,
   GitCompare,
+  Lightbulb,
   Loader2,
   Pencil,
   ArrowRight,
@@ -178,6 +179,131 @@ function buildDaySummaries(
   });
 }
 
+interface DiagnosisItem {
+  sessionId: number;
+  sessionLabel: string;
+  issue: "missing_flow_entry" | "dip_override";
+  description: string;
+  steps: string[];
+  editLink: string;
+}
+
+function diagnoseDayMismatch(
+  day: DaySummary,
+  editSessionLink: (id: number) => string,
+): DiagnosisItem[] {
+  const items: DiagnosisItem[] = [];
+  const sessionIdsWithFlowEntry = new Set(
+    day.ledgerRows
+      .filter(r => r.sourceHeatingSessionId != null)
+      .map(r => r.sourceHeatingSessionId!),
+  );
+
+  for (const s of day.sessions) {
+    if (!s.ldoTank1Consumed || s.ldoTank1Consumed <= 0) continue;
+    const sessionLabel = `${heatingSessionTypeLabel(s.sessionType)} ${s.startTime || ""}→${s.endTime || ""}`.trim();
+
+    if (!sessionIdsWithFlowEntry.has(s.id)) {
+      items.push({
+        sessionId: s.id,
+        sessionLabel,
+        issue: "missing_flow_entry",
+        description:
+          "This session has a consumed amount recorded but no matching entry in the LDO flow ledger. The ledger total is lower than the sessions total by exactly this session's amount.",
+        steps: [
+          "Click \"Open Session\" to open this session's edit form.",
+          "Click Save without changing anything.",
+          "The system will automatically create the missing flow ledger entry — the mismatch will clear.",
+        ],
+        editLink: editSessionLink(s.id),
+      });
+    } else if (
+      s.ldoTank1OpeningDip != null &&
+      s.ldoTank1ClosingDip != null &&
+      s.ldoTank1OpeningMeter != null &&
+      s.ldoTank1ClosingMeter != null
+    ) {
+      const meterDelta = Math.max(0, s.ldoTank1ClosingMeter - s.ldoTank1OpeningMeter);
+      const dipDiff = Math.abs((s.ldoTank1Consumed || 0) - meterDelta);
+      if (dipDiff > MISMATCH_THRESHOLD_L) {
+        items.push({
+          sessionId: s.id,
+          sessionLabel,
+          issue: "dip_override",
+          description: `Tank 1 dip readings are filled in (${s.ldoTank1OpeningDip} cm → ${s.ldoTank1ClosingDip} cm), so the system used the total tank draw (boiler + dryer combined, ~${(s.ldoTank1Consumed || 0).toFixed(1)} L) instead of the boiler meter (${meterDelta.toFixed(1)} L). The dip captures everything drawn from the tank — not just the boiler.`,
+          steps: [
+            "Click \"Open Session\" to open this session's edit form.",
+            "In the \"LDO Tank Dip-Stick Readings\" section, clear the Tank 1 opening dip and Tank 1 closing dip fields (leave both blank).",
+            `Click Save. The system will switch to the boiler meter value (${meterDelta.toFixed(1)} L) and the mismatch will clear.`,
+          ],
+          editLink: editSessionLink(s.id),
+        });
+      }
+    }
+  }
+  return items;
+}
+
+function MismatchDiagnosisPanel({
+  day,
+  editSessionLink,
+}: {
+  day: DaySummary;
+  editSessionLink: (id: number) => string;
+}) {
+  const items = diagnoseDayMismatch(day, editSessionLink);
+  if (!day.hasMismatch || items.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-md border border-amber-400/60 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3"
+      data-testid={`panel-diagnosis-${day.date}`}
+    >
+      <div className="flex items-center gap-2">
+        <Lightbulb className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+          {items.length === 1
+            ? "Diagnosis — 1 likely cause found"
+            : `Diagnosis — ${items.length} likely causes found`}
+        </p>
+      </div>
+      <div className="space-y-3">
+        {items.map(item => (
+          <div
+            key={item.sessionId}
+            className="rounded border border-amber-300/60 bg-white dark:bg-amber-950/50 p-3 space-y-2"
+            data-testid={`diagnosis-item-${item.sessionId}`}
+          >
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">{item.sessionLabel}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+              </div>
+              <Link href={item.editLink} className="shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  data-testid={`button-diagnose-open-session-${item.sessionId}`}
+                >
+                  Open Session <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </Link>
+            </div>
+            <ol className="list-decimal list-inside space-y-0.5">
+              {item.steps.map((step, si) => (
+                <li key={si} className="text-xs text-foreground/70">
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DeltaCell({ d }: { d: number | null }) {
   if (d == null) return <span className="text-muted-foreground">—</span>;
   const over = Math.abs(d) > MISMATCH_THRESHOLD_L;
@@ -256,6 +382,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
           )}
         </div>
       )}
+      <MismatchDiagnosisPanel day={day} editSessionLink={editSessionLink} />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
