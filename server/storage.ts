@@ -219,6 +219,8 @@ import {
   type InsertRmcRawMaterialReceipt,
   internalRequisitions,
   internalRequisitionItems,
+  irnAuditLogs,
+  type IrnAuditLog,
   type InternalRequisitionWithItems,
   type CreateIrnRequest,
   type StoresVerifyIrnRequest,
@@ -954,7 +956,9 @@ export interface IStorage {
   storesVerifyIrn(id: number, data: StoresVerifyIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   approveIrn(id: number, data: ApproveIrnRequest): Promise<InternalRequisitionWithItems | undefined>;
   closeIrn(id: number, closedBy: string): Promise<InternalRequisitionWithItems | undefined>;
-  reopenIrn(id: number): Promise<InternalRequisitionWithItems | undefined>;
+  reopenIrn(id: number, reopenedBy: string): Promise<InternalRequisitionWithItems | undefined>;
+  createIrnAuditLog(irnId: number, event: string, actorName: string, notes?: string): Promise<IrnAuditLog>;
+  getIrnAuditLogs(irnId: number): Promise<IrnAuditLog[]>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -18593,6 +18597,12 @@ export class DatabaseStorage implements IStorage {
         )
         .returning();
 
+      await tx.insert(irnAuditLogs).values({
+        irnId: irn.id,
+        event: "opened",
+        actorName: data.raisedBy.toUpperCase(),
+      });
+
       return { ...irn, items };
     });
   }
@@ -18637,6 +18647,13 @@ export class DatabaseStorage implements IStorage {
         .where(eq(internalRequisitions.id, id))
         .returning();
 
+      await tx.insert(irnAuditLogs).values({
+        irnId: id,
+        event: "stores_verified",
+        actorName: data.verifiedBy.toUpperCase(),
+        notes: data.storesRemarks ? data.storesRemarks.toUpperCase() : null,
+      });
+
       const items = await tx
         .select()
         .from(internalRequisitionItems)
@@ -18669,62 +18686,103 @@ export class DatabaseStorage implements IStorage {
             rejectionReason: data.remarks?.toUpperCase() ?? null,
           };
 
-    const [updated] = await db
-      .update(internalRequisitions)
-      .set(updateFields)
-      .where(eq(internalRequisitions.id, id))
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(internalRequisitions)
+        .set(updateFields)
+        .where(eq(internalRequisitions.id, id))
+        .returning();
 
-    const items = await db
-      .select()
-      .from(internalRequisitionItems)
-      .where(eq(internalRequisitionItems.irnId, id));
+      await tx.insert(irnAuditLogs).values({
+        irnId: id,
+        event: data.action === "approve" ? "approved" : "rejected",
+        actorName: data.actionBy.toUpperCase(),
+        notes: data.remarks ? data.remarks.toUpperCase() : null,
+      });
 
-    return { ...updated, items };
+      const items = await tx
+        .select()
+        .from(internalRequisitionItems)
+        .where(eq(internalRequisitionItems.irnId, id));
+
+      return { ...updated, items };
+    });
   }
 
   async closeIrn(id: number, closedBy: string): Promise<InternalRequisitionWithItems | undefined> {
     const existing = await this.getInternalRequisition(id);
     if (!existing) return undefined;
 
-    const [updated] = await db
-      .update(internalRequisitions)
-      .set({
-        status: "closed",
-        closedBy: closedBy.toUpperCase(),
-        closedAt: new Date(),
-      })
-      .where(eq(internalRequisitions.id, id))
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(internalRequisitions)
+        .set({
+          status: "closed",
+          closedBy: closedBy.toUpperCase(),
+          closedAt: new Date(),
+        })
+        .where(eq(internalRequisitions.id, id))
+        .returning();
 
-    const items = await db
-      .select()
-      .from(internalRequisitionItems)
-      .where(eq(internalRequisitionItems.irnId, id));
+      await tx.insert(irnAuditLogs).values({
+        irnId: id,
+        event: "closed",
+        actorName: closedBy.toUpperCase(),
+      });
 
-    return { ...updated, items };
+      const items = await tx
+        .select()
+        .from(internalRequisitionItems)
+        .where(eq(internalRequisitionItems.irnId, id));
+
+      return { ...updated, items };
+    });
   }
 
-  async reopenIrn(id: number): Promise<InternalRequisitionWithItems | undefined> {
+  async reopenIrn(id: number, reopenedBy: string): Promise<InternalRequisitionWithItems | undefined> {
     const existing = await this.getInternalRequisition(id);
     if (!existing) return undefined;
 
-    const [updated] = await db
-      .update(internalRequisitions)
-      .set({
-        status: "approved",
-        closedBy: null,
-        closedAt: null,
-      })
-      .where(eq(internalRequisitions.id, id))
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(internalRequisitions)
+        .set({
+          status: "approved",
+          closedBy: null,
+          closedAt: null,
+        })
+        .where(eq(internalRequisitions.id, id))
+        .returning();
+
+      await tx.insert(irnAuditLogs).values({
+        irnId: id,
+        event: "reopened",
+        actorName: reopenedBy.toUpperCase(),
+      });
+
+      const items = await tx
+        .select()
+        .from(internalRequisitionItems)
+        .where(eq(internalRequisitionItems.irnId, id));
+
+      return { ...updated, items };
+    });
+  }
+
+  async createIrnAuditLog(irnId: number, event: string, actorName: string, notes?: string): Promise<IrnAuditLog> {
+    const [log] = await db
+      .insert(irnAuditLogs)
+      .values({ irnId, event, actorName: actorName.toUpperCase(), notes: notes ?? null })
       .returning();
+    return log;
+  }
 
-    const items = await db
+  async getIrnAuditLogs(irnId: number): Promise<IrnAuditLog[]> {
+    return await db
       .select()
-      .from(internalRequisitionItems)
-      .where(eq(internalRequisitionItems.irnId, id));
-
-    return { ...updated, items };
+      .from(irnAuditLogs)
+      .where(eq(irnAuditLogs.irnId, irnId))
+      .orderBy(irnAuditLogs.timestamp);
   }
 }
 

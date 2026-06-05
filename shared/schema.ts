@@ -1518,6 +1518,18 @@ export type InternalRequisitionWithItems = InternalRequisition & {
   linkedPi?: { id: number; indentNo: string; raisedBy: string; createdAt: Date | string | null } | null;
 };
 
+export const irnAuditLogs = pgTable("irn_audit_logs", {
+  id: serial("id").primaryKey(),
+  irnId: integer("irn_id").notNull().references(() => internalRequisitions.id, { onDelete: "cascade" }),
+  event: text("event").notNull(), // opened | stores_verified | approved | rejected | closed | reopened
+  actorName: text("actor_name").notNull(),
+  notes: text("notes"),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+export type IrnAuditLog = typeof irnAuditLogs.$inferSelect;
+export type InsertIrnAuditLog = typeof irnAuditLogs.$inferInsert;
+
 export const createIrnRequestSchema = z.object({
   date: z.string(),
   raisedFrom: z.string().min(1, "Section is required"),

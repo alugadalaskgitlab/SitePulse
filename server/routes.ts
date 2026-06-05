@@ -5328,12 +5328,25 @@ export async function registerRoutes(
       if (existing.status !== "closed") {
         return res.status(400).json({ message: "Only closed IRNs can be reopened" });
       }
-      const irn = await storage.reopenIrn(id);
+      const irn = await storage.reopenIrn(id, currentUserName(req));
       if (!irn) return res.status(404).json({ message: "IRN not found" });
       res.json(irn);
     } catch (err) {
       console.error("Error reopening IRN:", err);
       res.status(500).json({ message: "Failed to reopen IRN" });
+    }
+  });
+
+  app.get("/api/irn/:id/audit-logs", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const logs = await storage.getIrnAuditLogs(id);
+      res.json(logs);
+    } catch (err) {
+      console.error("Error fetching IRN audit logs:", err);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
     }
   });
 

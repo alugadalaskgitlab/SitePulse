@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { InternalRequisitionWithItems, InternalRequisitionItem } from "@shared/schema";
+import type { InternalRequisitionWithItems, InternalRequisitionItem, IrnAuditLog } from "@shared/schema";
 
 type StoresAction = "issue" | "procure" | "split";
 
@@ -90,6 +90,17 @@ export default function IrnDetailPage() {
   const { data: stockLookupRows } = useQuery<{ materialName: string; balance: number; uom: string | null; partyId: number | null }[]>({
     queryKey: ["/api/irn/stock-lookup"],
     enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
+  });
+
+  // Fetch audit log for approved / closed / rejected IRNs
+  const { data: auditLogs } = useQuery<IrnAuditLog[]>({
+    queryKey: ["/api/irn", id, "audit-logs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/irn/${id}/audit-logs`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!irn && ["approved", "closed", "rejected", "stores_verified"].includes(irn.status ?? ""),
   });
 
   // Build a map: UPPER(materialName) → total balance across all parties + sorted list for partial matching
@@ -243,6 +254,7 @@ export default function IrnDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
       queryClient.invalidateQueries({ queryKey: ["/api/irn", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/irn", id, "audit-logs"] });
       toast({ title: "IRN Closed", description: "Requisition marked as fulfilled and closed." });
     },
     onError: (err: any) => {
@@ -262,6 +274,7 @@ export default function IrnDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
       queryClient.invalidateQueries({ queryKey: ["/api/irn", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/irn", id, "audit-logs"] });
       toast({ title: "IRN Reopened", description: "Requisition has been returned to Approved status." });
     },
     onError: (err: any) => {
@@ -787,7 +800,42 @@ export default function IrnDetailPage() {
             </div>
           )}
 
-          {/* ── 8. Actions (approved but not yet closed) ── */}
+          {/* ── 8. History Log ── */}
+          {auditLogs && auditLogs.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-gray-400" /> Activity History
+              </h3>
+              <ol className="relative border-l border-gray-200 space-y-3 ml-2">
+                {auditLogs.map((log) => {
+                  const eventMeta: Record<string, { label: string; color: string }> = {
+                    opened: { label: "Raised", color: "bg-blue-100 text-blue-700" },
+                    stores_verified: { label: "Stores Verified", color: "bg-purple-100 text-purple-700" },
+                    approved: { label: "Approved", color: "bg-green-100 text-green-700" },
+                    rejected: { label: "Rejected", color: "bg-red-100 text-red-700" },
+                    closed: { label: "Closed / Fulfilled", color: "bg-gray-100 text-gray-600" },
+                    reopened: { label: "Reopened", color: "bg-amber-100 text-amber-700" },
+                  };
+                  const meta = eventMeta[log.event] ?? { label: log.event, color: "bg-gray-100 text-gray-600" };
+                  return (
+                    <li key={log.id} className="ml-4 pb-1" data-testid={`audit-log-entry-${log.id}`}>
+                      <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-gray-300" />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
+                        <span className="text-xs text-gray-500 font-medium">{log.actorName}</span>
+                        <span className="text-xs text-gray-400">&middot; {format(new Date(log.timestamp), "dd MMM yyyy, h:mm a")}</span>
+                      </div>
+                      {log.notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">"{log.notes}"</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
+
+          {/* ── 9. Actions (approved but not yet closed) ── */}
           {isApproved && (
             <div className="flex items-center gap-3 flex-wrap">
               {canClose && allItemsIssued && (
