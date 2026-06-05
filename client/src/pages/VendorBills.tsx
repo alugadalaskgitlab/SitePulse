@@ -14,6 +14,7 @@ import { ChevronLeft, Plus, Loader2, Trash2, FileText, Printer, ArrowRight, Chec
 import { queryClient, apiRequest, isForbiddenError, NO_PERMISSION_DESCRIPTION } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { VendorBillWithItems, VendorAlias } from "@shared/schema";
 import { aggregateGstBreakdown } from "@shared/vendor-bill-gst";
@@ -243,6 +244,7 @@ export default function VendorBills() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   const { sectionCan, sectionVisible, isAdmin } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("vendor_bills", "create");
   const canEdit = sectionCan("vendor_bills", "edit");
   const canViewBills = sectionVisible("vendor_bills");
@@ -1274,8 +1276,8 @@ export default function VendorBills() {
         @media print { body { padding: 12px; } .signatures { page-break-inside: avoid; } }
       </style></head><body>
       <div class="header">
-        <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 6px;" onerror="this.style.display='none'" />
-        <h1>HIGH LANE CONSTRUCTIONS</h1>
+        <img src="${window.location.origin}/${logoFile}" style="height: 50px; margin-bottom: 6px;" onerror="this.style.display='none'" />
+        <h1>${companyName.toUpperCase()}</h1>
         <div class="subtitle">Vendor Bill</div>
       </div>
       <div class="meta-grid">
@@ -1341,11 +1343,11 @@ export default function VendorBills() {
           <div class="sig-line">${escHtml(bill.vendorName)}</div>
         </div>
         <div class="sig-block">
-          <div class="sig-label">For HIGH LANE CONSTRUCTIONS</div>
+          <div class="sig-label">For ${companyName.toUpperCase()}</div>
           <div class="sig-line">Authorized Signatory</div>
         </div>
       </div>
-      <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | HIGH LANE CONSTRUCTIONS</div>
+      <div class="footer">Generated on ${new Date().toLocaleString("en-IN")} | ${companyName.toUpperCase()}</div>
       <script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
       </body></html>
     `;

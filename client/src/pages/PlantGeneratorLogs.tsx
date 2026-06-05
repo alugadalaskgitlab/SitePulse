@@ -15,6 +15,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { GeneratorLog } from "@shared/schema";
 
@@ -22,6 +23,7 @@ export default function PlantGeneratorLogs() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { sectionCan } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
   const canExport = sectionCan("plant_equipment", "view_reports");
   const backLink = getPlantBackLink({ defaultTab: "operations" });
@@ -258,8 +260,8 @@ export default function PlantGeneratorLogs() {
         </head>
         <body>
           <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
             <h1>Generator Diesel Tracking Report</h1>

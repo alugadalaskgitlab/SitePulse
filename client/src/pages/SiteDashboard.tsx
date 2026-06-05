@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
@@ -64,6 +65,7 @@ function getBaseSiteName(site: string): string {
 export default function SiteDashboard() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("site_dprs", "create");
   const canExport = sectionCan("site_dprs", "view_reports");
   const [expandedReports, setExpandedReports] = useState<Set<number>>(new Set());
@@ -488,7 +490,7 @@ export default function SiteDashboard() {
     
     // Header
     doc.setFontSize(16);
-    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, yPos, { align: "center" });
+    doc.text(companyName, pageWidth / 2, yPos, { align: "center" });
     yPos += 7;
     doc.setFontSize(12);
     doc.text("Daily Progress Reports - Detailed", pageWidth / 2, yPos, { align: "center" });
@@ -877,13 +879,13 @@ export default function SiteDashboard() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Site Reports - High Lane Constructions Pvt Ltd</title>
+          <title>Site Reports - ${companyName}</title>
           ${styles}
         </head>
         <body>
           <div class="company-header">
-            <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
-            <h2>High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" onerror="this.style.display='none'" />
+            <h2>${companyName}</h2>
           </div>
           <div class="header">
             <h1>Daily Progress Reports - Detailed</h1>

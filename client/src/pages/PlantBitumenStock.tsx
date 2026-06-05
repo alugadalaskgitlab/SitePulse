@@ -16,6 +16,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBanner } from "@/components/NegativeBalanceBanner";
 import { format, parseISO } from "date-fns";
 import type { BitumenDipReading, Party, MixTemplate, TruckDispatch } from "@shared/schema";
@@ -48,6 +49,7 @@ function classifyReadingSource(r: { sourceShiftLogId?: number | null; sourceHeat
 export default function PlantBitumenStock() {
   const { toast } = useToast();
   const { sectionCan, isAdmin: isAdminUser } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canDelete = isAdminUser;
@@ -679,7 +681,7 @@ export default function PlantBitumenStock() {
     let logoDataUrl: string | null = null;
     let logoAspect = 1.5;
     try {
-      const resp = await fetch(`${window.location.origin}/hlc-logo.jpg`);
+      const resp = await fetch(`${window.location.origin}/${logoFile}`);
       if (resp.ok) {
         const blob = await resp.blob();
         logoDataUrl = await new Promise<string>((resolve, reject) => {
@@ -709,7 +711,7 @@ export default function PlantBitumenStock() {
     }
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, curY + 5, { align: "center" });
+    doc.text(companyName, pageWidth / 2, curY + 5, { align: "center" });
     curY += 9;
     doc.setDrawColor(50, 50, 50);
     doc.setLineWidth(0.5);

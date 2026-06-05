@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,7 @@ interface DateGroupedData {
 
 export default function AdminReports() {
   const { toast } = useToast();
+  const { companyName } = useFeatureFlags();
   const [, setLocation] = useLocation();
   // Page-level access enforced via <RequireAuth section="reports"> in App.tsx.
   const authenticated = true;
@@ -492,7 +494,7 @@ export default function AdminReports() {
       {false && (<div className="space-y-6">
 
       <div className="hidden print:block mb-6 border-b pb-4">
-        <h1 className="text-2xl font-bold mb-2">High Lane Constructions Pvt Ltd - Admin Report</h1>
+        <h1 className="text-2xl font-bold mb-2">{companyName} - Admin Report</h1>
         <p className="text-sm text-muted-foreground">Generated: {format(new Date(), "dd MMMM yyyy, hh:mm a")}</p>
         <p className="text-sm mt-2"><strong>Filters:</strong> {getActiveFiltersText()}</p>
         <p className="text-sm mt-1">
@@ -613,7 +615,7 @@ export default function AdminReports() {
       ) : (
         <div ref={printRef}>
           <div className="print:block hidden mb-6">
-            <h1 className="text-2xl font-bold text-center">High Lane Constructions Pvt Ltd - Admin Report</h1>
+            <h1 className="text-2xl font-bold text-center">{companyName} - Admin Report</h1>
             <p className="text-center text-muted-foreground">
               {dateFrom && dateTo 
                 ? `Period: ${format(parseISO(dateFrom), "dd MMM yyyy")} to ${format(parseISO(dateTo), "dd MMM yyyy")}`

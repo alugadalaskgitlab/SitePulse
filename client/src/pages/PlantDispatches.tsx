@@ -23,6 +23,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Party, MixTemplate, TruckDispatch, MixType, Site, EquipmentMasterType, PlantSettings } from "@shared/schema";
@@ -31,6 +32,7 @@ export default function PlantDispatches() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { sectionCan, isAdmin } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_production", "create");
   const canEdit = sectionCan("plant_production", "edit");
   const canExport = sectionCan("plant_production", "view_reports");
@@ -782,8 +784,8 @@ export default function PlantDispatches() {
         </head>
         <body>
           <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 12px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" style="height: 50px; margin-bottom: 5px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 14px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
             <h1>Plant Production and Dispatches Report</h1>

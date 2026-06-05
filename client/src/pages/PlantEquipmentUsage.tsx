@@ -18,6 +18,7 @@ import { ChevronLeft, ChevronRight, Plus, Gauge, Loader2, Edit, Trash2, Download
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -28,6 +29,7 @@ import { METER_TYPES } from "@shared/schema";
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_equipment", "create");
   const canEdit = sectionCan("plant_equipment", "edit");
   const canDelete = isAdmin;
@@ -899,8 +901,8 @@ export default function PlantEquipmentUsage() {
         </head>
         <body>
           <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 45px; margin-bottom: 4px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 13px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" style="height: 45px; margin-bottom: 4px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 13px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
             <h1>Equipment Usage Report</h1>

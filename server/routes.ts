@@ -105,15 +105,62 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  async function getCompanyConfig() {
+    const companyName = process.env.COMPANY_NAME
+      ?? (await storage.getSetting("company_name"))
+      ?? "High Lane Constructions Pvt Ltd";
+    const companyShortName = process.env.COMPANY_SHORT_NAME
+      ?? (await storage.getSetting("company_short_name"))
+      ?? companyName.split(/\s+/).filter(Boolean).map((w: string) => w[0]).join("").toUpperCase().slice(0, 5);
+    const appTagline = process.env.APP_TAGLINE
+      ?? (await storage.getSetting("app_tagline"))
+      ?? "Live Ops. Not Just Logs.";
+    const logoFile = process.env.COMPANY_LOGO_FILE
+      ?? (await storage.getSetting("company_logo_file"))
+      ?? "hlc-logo.jpg";
+    return { companyName, companyShortName, appTagline, logoFile };
+  }
+
+  function getCompanyLogoPath(logoFile: string): string {
+    const p = path.join(process.cwd(), "client", "public", logoFile);
+    return fs.existsSync(p) ? p : "";
+  }
+
   // ============================================
   // FEATURE CONFIG — returns runtime feature flags to the frontend
   // ============================================
   app.get("/api/config", async (_req, res) => {
     try {
-      const companyName = await storage.getSetting("company_name") ?? "High Lane Constructions Pvt Ltd";
-      res.json({ rmcEnabled: RMC_ENABLED, companyName });
+      const cfg = await getCompanyConfig();
+      res.json({ rmcEnabled: RMC_ENABLED, ...cfg });
     } catch {
-      res.json({ rmcEnabled: RMC_ENABLED, companyName: "High Lane Constructions Pvt Ltd" });
+      res.json({ rmcEnabled: RMC_ENABLED, companyName: "High Lane Constructions Pvt Ltd", companyShortName: "HLC", appTagline: "Live Ops. Not Just Logs.", logoFile: "hlc-logo.jpg" });
+    }
+  });
+
+  app.get("/api/admin/branding", requireAuth, async (_req, res) => {
+    try {
+      const cfg = await getCompanyConfig();
+      res.json(cfg);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to load branding config" });
+    }
+  });
+
+  app.post("/api/admin/branding", requireAuth, async (req, res) => {
+    try {
+      const { companyName, companyShortName, appTagline, logoFile } = req.body;
+      if (typeof companyName === "string" && companyName.trim())
+        await storage.setSetting("company_name", companyName.trim());
+      if (typeof companyShortName === "string" && companyShortName.trim())
+        await storage.setSetting("company_short_name", companyShortName.trim().toUpperCase());
+      if (typeof appTagline === "string")
+        await storage.setSetting("app_tagline", appTagline.trim());
+      if (typeof logoFile === "string" && logoFile.trim())
+        await storage.setSetting("company_logo_file", logoFile.trim());
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to save branding config" });
     }
   });
 
@@ -853,7 +900,8 @@ export async function registerRoutes(
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="plant-operator-guide.pdf"');
     try {
-      await pipeOperatorManualPdf(res, plantName);
+      const _omCfg = await getCompanyConfig();
+      await pipeOperatorManualPdf(res, plantName || _omCfg.companyName, _omCfg.logoFile);
     } catch (err) {
       console.error('Operator manual PDF generation failed:', err);
       if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
@@ -873,7 +921,8 @@ export async function registerRoutes(
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="estimator-portal-guide.pdf"');
     try {
-      await pipeEstimatorGuidePdf(res, plantName);
+      const _egCfg = await getCompanyConfig();
+      await pipeEstimatorGuidePdf(res, plantName || _egCfg.companyName, _egCfg.logoFile);
     } catch (err) {
       console.error('Estimator guide PDF generation failed:', err);
       if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
@@ -889,7 +938,8 @@ export async function registerRoutes(
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="plant-admin-guide.pdf"');
     try {
-      await pipeAdminGuidePdf(res, plantName);
+      const _agCfg = await getCompanyConfig();
+      await pipeAdminGuidePdf(res, plantName || _agCfg.companyName, _agCfg.logoFile);
     } catch (err) {
       console.error('Admin guide PDF generation failed:', err);
       if (!res.headersSent) res.status(500).json({ message: 'Failed to generate PDF' });
@@ -3661,14 +3711,15 @@ export async function registerRoutes(
   // Render the Daily Plant Report into a given PDFDocument (shared by single + bulk endpoints).
   const renderDailyPlantPdfBody = async (doc: PDFKit.PDFDocument, date: string, summary: any) => {
       // Header with company logo (matches DPR/bill print style)
-      const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
+      const _dprCfg = await getCompanyConfig();
+      const _dprLogoPath = getCompanyLogoPath(_dprCfg.logoFile);
       try {
-        if (fs.existsSync(logoPath)) {
-          doc.image(logoPath, 40, 35, { width: 50, height: 50 });
+        if (_dprLogoPath) {
+          doc.image(_dprLogoPath, 40, 35, { width: 50, height: 50 });
         }
       } catch {}
       doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Report", 100, 40);
-      doc.fontSize(11).font("Helvetica").text("High Lane Constructions Pvt Ltd", 100, 60);
+      doc.fontSize(11).font("Helvetica").text(_dprCfg.companyName, 100, 60);
       doc.fontSize(10).text(`Date: ${date}    Shift: ${summary.shift?.shiftCode || "DAY"}    Status: ${summary.shift?.isFinalized ? "Finalized" : (summary.shift ? "Draft" : "No log")}`, 100, 75);
       doc.moveTo(40, 95).lineTo(555, 95).stroke();
       doc.y = 105;
@@ -4020,6 +4071,8 @@ export async function registerRoutes(
     fromD: string,
     toD: string,
   ): Promise<Buffer> => {
+    const _coverCfg = await getCompanyConfig();
+    const _coverLogoPath = getCompanyLogoPath(_coverCfg.logoFile);
     return await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ size: "A4", margin: 36 });
       const chunks: Buffer[] = [];
@@ -4027,10 +4080,9 @@ export async function registerRoutes(
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
       try {
-        const logoPath = path.join(process.cwd(), "attached_assets", "1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg");
-        try { if (fs.existsSync(logoPath)) doc.image(logoPath, 36, 32, { width: 46, height: 46 }); } catch {}
+        try { if (_coverLogoPath) doc.image(_coverLogoPath, 36, 32, { width: 46, height: 46 }); } catch {}
         doc.fontSize(16).font("Helvetica-Bold").text("Daily Plant Reports — Cover Sheet", 92, 36);
-        doc.fontSize(10).font("Helvetica").text("High Lane Constructions Pvt Ltd", 92, 56);
+        doc.fontSize(10).font("Helvetica").text(_coverCfg.companyName, 92, 56);
         const rangeLabel = fromD === toD ? fromD : `${fromD} → ${toD}`;
         doc.fontSize(10).text(`Range: ${rangeLabel}    Entries: ${entries.length}    Generated: ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`, 92, 70);
         doc.moveTo(36, 90).lineTo(559, 90).stroke();
@@ -4249,10 +4301,11 @@ export async function registerRoutes(
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
         const toLine = (cells: any[]) => cells.map(escape).join(",");
+        const _csvCfg = await getCompanyConfig();
         const lines: string[] = [];
         // Cover header — mirrors the cover-sheet PDF top strip.
         lines.push(toLine(["Daily Plant Reports — Cover Sheet"]));
-        lines.push(toLine(["High Lane Constructions Pvt Ltd"]));
+        lines.push(toLine([_csvCfg.companyName]));
         lines.push(toLine([`Range: ${rangeLabel}`]));
         lines.push(toLine([`Entries: ${sorted.length} (${daysWithData} with data)`]));
         lines.push(toLine([`Totals: ${grandLoads || "—"} loads / ${grandMt ? grandMt.toFixed(2) : "—"} MT / ${grandSessions || "—"} heat sessions`]));
@@ -4278,10 +4331,11 @@ export async function registerRoutes(
       }
 
       // xlsx — Summary sheet (with cover header rows) + Detail sheet.
+      const _xlsxCfg = await getCompanyConfig();
       const wb = xlsx.utils.book_new();
       const summaryAoa: any[][] = [
         ["Daily Plant Reports — Cover Sheet"],
-        ["High Lane Constructions Pvt Ltd"],
+        [_xlsxCfg.companyName],
         [`Range: ${rangeLabel}`],
         [`Entries: ${sorted.length} (${daysWithData} with data)`],
         [`Totals: ${grandLoads || "—"} loads / ${grandMt ? grandMt.toFixed(2) : "—"} MT / ${grandSessions || "—"} heat sessions`],
@@ -5427,18 +5481,19 @@ export async function registerRoutes(
       const amber = "#d97706";
       const tableX = 40;
 
+      const _irnCfg = await getCompanyConfig();
+      const _irnLogoPath = getCompanyLogoPath(_irnCfg.logoFile);
       try {
-        const logoPath = path.join(process.cwd(), "client", "public", "hlc-logo.jpg");
-        if (fs.existsSync(logoPath)) {
+        if (_irnLogoPath) {
           const logoWidth = 60;
           const logoX = (pageW - logoWidth) / 2 + tableX;
           const logoY = doc.y;
-          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          doc.image(_irnLogoPath, logoX, logoY, { width: logoWidth });
           doc.y = logoY + 65;
         }
       } catch {}
 
-      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text(_irnCfg.companyName.toUpperCase(), { align: "center" });
       doc.moveDown(0.2);
       doc.fontSize(11).font("Helvetica").fillColor("#333").text("ISSUE VOUCHER", { align: "center" });
       doc.moveDown(0.5);
@@ -6230,8 +6285,9 @@ export async function registerRoutes(
         };
         const toLine = (cells: any[]) => cells.map(escape).join(",");
         const lines: string[] = [];
+        const _vbCsvCfg = await getCompanyConfig();
         lines.push(toLine([`${reportLabel} — Cover Sheet`]));
-        lines.push(toLine(["High Lane Constructions Pvt Ltd"]));
+        lines.push(toLine([_vbCsvCfg.companyName]));
         lines.push(toLine([`Range: ${rangeLabel}`]));
         lines.push(toLine([`Vendor: ${vendorScope}`]));
         lines.push(toLine([`Status filter: ${status && status !== "all" ? status : "all"}`]));
@@ -6275,9 +6331,10 @@ export async function registerRoutes(
 
       // xlsx — Summary sheet (cover + category + vendor) and Detail sheet.
       const wb = xlsx.utils.book_new();
+      const _vbXlsxCfg = await getCompanyConfig();
       const summaryAoa: any[][] = [
         [`${reportLabel} — Cover Sheet`],
-        ["High Lane Constructions Pvt Ltd"],
+        [_vbXlsxCfg.companyName],
         [`Range: ${rangeLabel}`],
         [`Vendor: ${vendorScope}`],
         [`Status filter: ${status && status !== "all" ? status : "all"}`],
@@ -6625,17 +6682,18 @@ export async function registerRoutes(
       const amber = "#d97706";
       const tableX = 40;
 
+      const _vbCfg = await getCompanyConfig();
+      const _vbLogoPath = getCompanyLogoPath(_vbCfg.logoFile);
       try {
-        const logoPath = path.join(process.cwd(), "client", "public", "hlc-logo.jpg");
-        if (fs.existsSync(logoPath)) {
+        if (_vbLogoPath) {
           const logoWidth = 60;
           const logoX = (pageW - logoWidth) / 2 + tableX;
           const logoY = doc.y;
-          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          doc.image(_vbLogoPath, logoX, logoY, { width: logoWidth });
           doc.y = logoY + 65;
         }
       } catch {}
-      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text("HIGH LANE CONSTRUCTIONS", { align: "center" });
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#000").text(_vbCfg.companyName.toUpperCase(), { align: "center" });
       doc.moveDown(0.2);
       doc.fontSize(11).font("Helvetica").fillColor("#333").text("VENDOR BILL", { align: "center" });
       doc.moveDown(0.5);

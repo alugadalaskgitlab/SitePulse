@@ -151,7 +151,7 @@ function table(doc: Doc, cols: Array<{ label: string; width: number; align?: 'le
   doc.fillColor(C_DARK);
 }
 
-export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?: string): Promise<void> {
+export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?: string, logoFile?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: M, bufferPages: true, info: {
       Title: 'SiteLog Plant Operator Guide',
@@ -166,9 +166,11 @@ export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?:
 
     // ── TITLE PAGE ─────────────────────────────────────────────────────────
     try {
-      const logoPath = path.join(process.cwd(), 'attached_assets', '1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg');
-      if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, PAGE_W / 2 - 36, 90, { width: 72, height: 72 });
+      const _logoCandidate = logoFile
+        ? path.join(process.cwd(), 'client', 'public', logoFile)
+        : path.join(process.cwd(), 'attached_assets', '1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg');
+      if (fs.existsSync(_logoCandidate)) {
+        doc.image(_logoCandidate, PAGE_W / 2 - 36, 90, { width: 72, height: 72 });
       }
     } catch { /* ignore if logo missing */ }
 
@@ -182,7 +184,7 @@ export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?:
     doc.moveDown(1.5);
 
     doc.fontSize(12).font('Helvetica').fillColor('#555555')
-      .text(plantName ? plantName : 'High Lane Constructions Pvt Ltd', M, doc.y, { width: CONTENT_W, align: 'center' });
+      .text(plantName || 'SitePulse', M, doc.y, { width: CONTENT_W, align: 'center' });
     doc.moveDown(0.6);
     doc.fontSize(11).fillColor('#777777')
       .text('For use by plant operators and supervisors', M, doc.y, { width: CONTENT_W, align: 'center' });
@@ -545,7 +547,7 @@ export function pipeOperatorManualPdf(stream: NodeJS.WritableStream, plantName?:
 
     doc.moveDown(0.8);
     doc.fontSize(9).font('Helvetica').fillColor('#888888')
-      .text('SiteLog Plant Operator Guide — High Lane Constructions Pvt Ltd', M, doc.y, { width: CONTENT_W, align: 'center' });
+      .text(`SiteLog Plant Operator Guide — ${plantName || 'SitePulse'}`, M, doc.y, { width: CONTENT_W, align: 'center' });
     doc.fontSize(9).fillColor('#aaaaaa')
       .text(`Generated ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`, M, doc.y + 2, { width: CONTENT_W, align: 'center' });
 

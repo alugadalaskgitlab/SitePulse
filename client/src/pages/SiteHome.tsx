@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import {
   FileText, Package, ShoppingCart, Fuel,
   Plus, ChevronRight, Clock, CheckCircle,
@@ -39,6 +40,7 @@ function getStatus(s: string) {
 
 export default function SiteHome() {
   const { sectionVisible, user } = useAuth();
+  const { companyName } = useFeatureFlags();
   const canDprs       = sectionVisible("site_dprs");
   const canMaterials  = sectionVisible("site_materials");
   const canProcure    = sectionVisible("site_procurement");
@@ -126,7 +128,7 @@ export default function SiteHome() {
           <img src={companyLogo} alt="HLC" className="h-7 w-7 rounded object-cover" />
           <div>
             <span className="font-bold text-sm md:text-base tracking-tight">SiteLog</span>
-            <span className="ml-2 text-slate-400 text-xs hidden sm:inline">High Lane Constructions</span>
+            <span className="ml-2 text-slate-400 text-xs hidden sm:inline">{companyName}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

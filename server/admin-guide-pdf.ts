@@ -225,7 +225,7 @@ function flowChart(doc: Doc, steps: Array<{ label: string; sub?: string; decisio
 
 // ── MAIN EXPORT ────────────────────────────────────────────────────────────
 
-export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: string): Promise<void> {
+export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: string, logoFile?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4', margin: M, bufferPages: true, info: {
@@ -240,16 +240,18 @@ export function pipeAdminGuidePdf(stream: NodeJS.WritableStream, plantName?: str
     stream.on('error', reject);
     stream.on('finish', resolve);
 
-    const plant = plantName || 'High Lane Constructions Pvt Ltd';
+    const plant = plantName || 'SitePulse';
     const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
     // ════════════════════════════════════════════════════════════════════════
     // COVER PAGE
     // ════════════════════════════════════════════════════════════════════════
     try {
-      const logoPath = path.join(process.cwd(), 'attached_assets', '1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg');
-      if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, PAGE_W / 2 - 36, 80, { width: 72, height: 72 });
+      const _logoCandidate = logoFile
+        ? path.join(process.cwd(), 'client', 'public', logoFile)
+        : path.join(process.cwd(), 'attached_assets', '1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg');
+      if (fs.existsSync(_logoCandidate)) {
+        doc.image(_logoCandidate, PAGE_W / 2 - 36, 80, { width: 72, height: 72 });
       }
     } catch { /* ignore */ }
 

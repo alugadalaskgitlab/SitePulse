@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Flame, Building2, LogOut, Home, ChevronRight, BarChart3, Plus, GitCompare, FileDown } from "lucide-react";
 import { readEstimatorRole, signOutEstimator } from "@/lib/estimatorAuth";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 export default function EstimatorHub() {
   const [, setLocation] = useLocation();
   const role = readEstimatorRole();
+  const { companyName } = useFeatureFlags();
 
   useEffect(() => {
     if (!role) setLocation("/estimator-login");
@@ -31,9 +32,9 @@ export default function EstimatorHub() {
       <div className="w-full max-w-3xl">
         {/* Header */}
         <div className="text-center mb-12">
-          <img src={companyLogo} alt="HLC" className="h-20 w-20 rounded-xl object-cover mx-auto mb-5" />
+          <img src="/sitepulse-logo.png" alt="SitePulse" className="h-20 w-20 object-contain mx-auto mb-5" />
           <h1 className="text-4xl font-bold text-foreground mb-2">Estimate Manager</h1>
-          <p className="text-muted-foreground text-lg">High Lane Constructions Pvt Ltd</p>
+          <p className="text-muted-foreground text-lg">{companyName}</p>
         </div>
 
         {/* Calculator tiles */}

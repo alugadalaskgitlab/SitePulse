@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { SiteMaterialTrip, Site } from "@shared/schema";
-import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
+import { useFeatureFlags } from "@/lib/featureFlags";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -21,6 +21,7 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
+  const { companyName, logoFile } = useFeatureFlags();
   const searchString = useSearch();
   const returnTo = (() => {
     try {
@@ -146,9 +147,9 @@ export default function SiteMaterialTrips() {
       <header className="bg-card border-b sticky top-0 z-10">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
-            <img src={companyLogo} alt="HLC" className="h-10 w-10 rounded-lg object-cover" />
+            <img src={`/${logoFile}`} alt={companyName} className="h-10 w-10 rounded-lg object-cover" />
             <div>
-              <h1 className="text-lg font-bold">High Lane Constructions Pvt Ltd</h1>
+              <h1 className="text-lg font-bold">{companyName}</h1>
               <p className="text-xs text-muted-foreground">Quick Materials Entry</p>
             </div>
           </div>

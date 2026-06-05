@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useRoute, useLocation, useSearch } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -691,6 +692,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
 export default function PlantLdoMismatch() {
   const { appendPlantContext, getPlantBackLink } = useOrigin();
   const { user } = useAuth();
+  const { companyName: reportCompanyName, logoFile: reportLogoFile } = useFeatureFlags();
   const isAdmin = user?.role === "admin";
   const { toast } = useToast();
   const [, params] = useRoute("/plant/ldo-mismatch/:date");
@@ -1131,7 +1133,7 @@ export default function PlantLdoMismatch() {
     let logoDataUrl: string | null = null;
     let logoAspect = 1.5;
     try {
-      const resp = await fetch(`${window.location.origin}/hlc-logo.jpg`);
+      const resp = await fetch(`${window.location.origin}/${reportLogoFile}`);
       if (resp.ok) {
         const blob = await resp.blob();
         logoDataUrl = await new Promise<string>((resolve, reject) => {
@@ -1164,7 +1166,7 @@ export default function PlantLdoMismatch() {
     }
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("High Lane Constructions Pvt Ltd", pageWidth / 2, curY + 5, { align: "center" });
+    doc.text(reportCompanyName, pageWidth / 2, curY + 5, { align: "center" });
     curY += 9;
     doc.setDrawColor(50, 50, 50);
     doc.setLineWidth(0.5);

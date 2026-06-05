@@ -18,6 +18,7 @@ import autoTable from "jspdf-autotable";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { NegativeBalanceBannerMulti } from "@/components/NegativeBalanceBanner";
 import type { Party, PlantMaterial, StockLedgerEntry } from "@shared/schema";
 
@@ -46,6 +47,7 @@ type ProcessedLedgerEntry = StockLedgerEntry & {
 export default function PlantStock() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canExport = sectionCan("plant_stock", "view_reports");
   const canReconcile = isAdmin;
   const { getPlantBackLink, appendPlantContext } = useOrigin();
@@ -1185,8 +1187,8 @@ export default function PlantStock() {
         </head>
         <body>
           <div class="company-header" style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 8px;">
-            <img src="${window.location.origin}/hlc-logo.jpg" style="height: 40px; margin-bottom: 3px;" onerror="this.style.display='none'" />
-            <h2 style="margin: 0; font-size: 12px; font-weight: bold;">High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" style="height: 40px; margin-bottom: 3px;" onerror="this.style.display='none'" />
+            <h2 style="margin: 0; font-size: 12px; font-weight: bold;">${companyName}</h2>
           </div>
           <div class="header">
             <h1>Stock Balances & Ledger Report</h1>
@@ -2260,7 +2262,7 @@ export default function PlantStock() {
                 const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';
                 const hasMismatches = rows.some(r => r.delta != null && Math.abs(r.delta) > 0.001);
                 const hasLegacy = rows.some(r => r.isLegacy);
-                const PROJECT_NAME = "High Lane Constructions Pvt Ltd";
+                const PROJECT_NAME = companyName;
 
                 const escapeHtml = (s: string) =>
                   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -2587,7 +2589,7 @@ export default function PlantStock() {
                   }
                 };
 
-                const PROJECT_NAME = "High Lane Constructions Pvt Ltd";
+                const PROJECT_NAME = companyName;
 
                 const handlePrintStmt = () => {
                   const dateRange = [stmtDateFrom, stmtDateTo].filter(Boolean).join(' to ') || 'All Dates';

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -878,6 +879,7 @@ function RateAnalysisPill({
 
 export default function ConcreteCalculator() {
   const { toast } = useToast();
+  const { companyName } = useFeatureFlags();
   const role = readEstimatorRole();
   const canEdit = role === "admin";
 
@@ -4404,7 +4406,7 @@ export default function ConcreteCalculator() {
                   <CardContent className="px-4 pb-4 overflow-x-auto">
                     {/* Print-only quotation header — hidden on screen, visible when printing */}
                     <div className="hidden print:block mb-6 pb-4 border-b-2 border-slate-800">
-                      <p className="text-lg font-bold text-slate-900 uppercase tracking-widest">High Lane Constructions</p>
+                      <p className="text-lg font-bold text-slate-900 uppercase tracking-widest">{companyName}</p>
                       <p className="text-sm font-semibold text-slate-700 mt-1">QUOTATION</p>
                       <div className="flex gap-8 mt-2 text-xs text-slate-600">
                         <div><span className="font-semibold">Estimate: </span>{s.estimateName || "—"}</div>

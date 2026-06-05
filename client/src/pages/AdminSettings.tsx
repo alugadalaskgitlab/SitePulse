@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, Fuel } from "lucide-react";
+import { ChevronLeft, Lock, Save, Loader2, Shield, Fuel, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -26,14 +26,32 @@ export default function AdminSettings() {
   const [newManagerPin, setNewManagerPin] = useState("");
   const [confirmManagerPin, setConfirmManagerPin] = useState("");
 
+  // Branding state
+  const [brandingName, setBrandingName] = useState("");
+  const [brandingShortName, setBrandingShortName] = useState("");
+  const [brandingTagline, setBrandingTagline] = useState("");
+
   // LDO Received By defaults
   const [ldoTank1ReceivedBy, setLdoTank1ReceivedBy] = useState("");
   const [ldoTank2ReceivedBy, setLdoTank2ReceivedBy] = useState("");
+
+  const { data: brandingData } = useQuery<{ companyName: string; companyShortName: string; appTagline: string; logoFile: string }>({
+    queryKey: ["/api/admin/branding"],
+    enabled: authenticated,
+  });
 
   const { data: ldoReceivedByData } = useQuery<{ tank1: string | null; tank2: string | null }>({
     queryKey: ["/api/admin/ldo-received-by"],
     enabled: authenticated,
   });
+
+  useEffect(() => {
+    if (brandingData) {
+      setBrandingName(brandingData.companyName ?? "");
+      setBrandingShortName(brandingData.companyShortName ?? "");
+      setBrandingTagline(brandingData.appTagline ?? "");
+    }
+  }, [brandingData]);
 
   useEffect(() => {
     if (ldoReceivedByData) {
@@ -56,6 +74,24 @@ export default function AdminSettings() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to save defaults", variant: "destructive" });
+    },
+  });
+
+  const saveBrandingMutation = useMutation({
+    mutationFn: async (data: { companyName: string; companyShortName: string; appTagline: string }) => {
+      const response = await apiRequest("POST", "/api/admin/branding", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to save");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/branding"] });
+      toast({ title: "Branding Saved", description: "Company branding has been updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save branding", variant: "destructive" });
     },
   });
 
@@ -170,6 +206,67 @@ export default function AdminSettings() {
           <p className="text-muted-foreground text-sm">Manage system security settings</p>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <CardTitle>Company Branding</CardTitle>
+              <CardDescription>Configure the name and tagline shown throughout the app and on reports</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="brandingName">Company Name</Label>
+              <Input
+                id="brandingName"
+                value={brandingName}
+                onChange={(e) => setBrandingName(e.target.value)}
+                placeholder="e.g. High Lane Constructions Pvt Ltd"
+                data-testid="input-branding-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="brandingShortName">Short Name / Abbreviation</Label>
+              <Input
+                id="brandingShortName"
+                value={brandingShortName}
+                onChange={(e) => setBrandingShortName(e.target.value.toUpperCase())}
+                placeholder="e.g. HLC"
+                maxLength={10}
+                data-testid="input-branding-short-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="brandingTagline">App Tagline</Label>
+              <Input
+                id="brandingTagline"
+                value={brandingTagline}
+                onChange={(e) => setBrandingTagline(e.target.value)}
+                placeholder="e.g. Live Ops. Not Just Logs."
+                data-testid="input-branding-tagline"
+              />
+            </div>
+            <Button
+              onClick={() => saveBrandingMutation.mutate({ companyName: brandingName, companyShortName: brandingShortName, appTagline: brandingTagline })}
+              disabled={saveBrandingMutation.isPending || !brandingName.trim()}
+              className="w-full gap-2"
+              data-testid="button-save-branding"
+            >
+              {saveBrandingMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
+              ) : (
+                <><Save className="w-4 h-4" />Save Branding</>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

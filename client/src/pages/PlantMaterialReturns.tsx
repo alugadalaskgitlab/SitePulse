@@ -16,6 +16,7 @@ import autoTable from "jspdf-autotable";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { useFeatureFlags } from "@/lib/featureFlags";
 import { format } from "date-fns";
 import type { Party, PlantMaterial, MaterialIssue, MaterialReturn } from "@shared/schema";
 
@@ -23,6 +24,7 @@ export default function PlantMaterialReturns() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
   const { sectionCan } = useAuth();
+  const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
   const canExport = sectionCan("plant_stock", "view_reports");
@@ -386,8 +388,8 @@ export default function PlantMaterialReturns() {
         </head>
         <body>
           <div class="company-header">
-            <img src="${window.location.origin}/hlc-logo.jpg" onerror="this.style.display='none'" />
-            <h2>High Lane Constructions Pvt Ltd</h2>
+            <img src="${window.location.origin}/${logoFile}" onerror="this.style.display='none'" />
+            <h2>${companyName}</h2>
           </div>
           <h1>Material Returns Report</h1>
           <p class="date">Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p>
