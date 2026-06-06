@@ -1,0 +1,96 @@
+Good progress. Now please do not add any more UI for the moment. Wire the JavaScript logic for the newly added controls and make the calculator functionally correct.
+
+Please implement the following:
+
+1. Add and persist state variables:
+
+   * quoteMode
+   * aggReturnTrip
+   * transReturnTrip
+   * ldoMode
+   * plantCostMode
+   * aggregateWastagePct
+   * bitumenWastagePct
+
+2. Implement:
+
+   * setQuoteMode(mode)
+   * setLdoMode(mode)
+   * setPlantCostMode(mode)
+
+3. Modify recalc() so Quote Mode actually controls the calculation:
+
+   * Supply Only – Ex-Plant: include only materials, inbound freight, plant fuel, plant crew, plant running cost, overhead, margin. Exclude finished mix transport, paving, rolling, PTR, laying crew, prime, tack.
+   * Supply + Transport: include Supply Only + plant-to-site transport. Exclude laying, prime, tack.
+   * Supply + Laying: include supply + transport + laying equipment and laying crew. Prime/tack only if selected.
+   * Full Road Work: include all applicable costs.
+
+4. Modify aggregate freight formula:
+
+   * If return trip included: distance × rate / payload
+   * If return trip not included: distance × 2 × rate / payload
+
+5. Modify finished mix transport formula with the same return-trip logic.
+
+6. Modify bitumen formula:
+
+   * Theoretical bitumen kg/MT = binder% × 10
+   * Bitumen kg/MT after wastage = theoretical kg/MT × (1 + bitumenWastagePct/100)
+   * Bitumen cost ₹/MT = bitumen kg/MT after wastage × bitumen price ₹/kg
+
+7. Modify aggregate consumption:
+
+   * Aggregate cost should be uplifted by aggregateWastagePct.
+   * Use: aggregate quantity factor × (1 + aggregateWastagePct/100)
+
+8. Implement LDO modes:
+
+   * Norm Mode: use existing LDO L/MT input.
+   * Actual Mode: LDO L/MT = (Closing meter - Opening meter) / Production MT.
+   * Use computed actual L/MT in all fuel calculations.
+
+9. Implement Plant Cost Mode:
+
+   * Full Cost Mode: existing logic, include owned equipment depreciation/hire equivalent.
+   * Marginal Only Mode: exclude owned equipment depreciation/hire cost, but keep fuel, crew, maintenance/running cost and hired equipment if any.
+
+10. Implement renderRecommendedQuote(mixRates):
+    For each mix type show:
+
+* Actual Cost ₹/MT
+* Aggressive Quote = Actual Cost × 1.08
+* Minimum Safe Quote = Actual Cost × 1.05
+* Target Quote = Actual Cost × 1.12
+* Profit at Target ₹/MT
+* Profit at Target %
+
+11. Implement Market Sensitivity presets using existing what-if mechanism:
+
+* Bitumen + ₹1000/MT
+* Bitumen + ₹2000/MT
+* Bitumen + ₹5000/MT
+* Diesel + ₹5/L
+* Diesel + ₹10/L
+* Aggregate + ₹50/MT
+* Aggregate + ₹100/MT
+
+Show revised DBM/BC cost, revised recommended quote and profit impact.
+
+12. Update Live Rate Summary title based on quoteMode:
+
+* Supply Only: Supply Cost Summary
+* Supply + Transport: Delivered Mix Summary
+* Supply + Laying: Supply + Laying Summary
+* Full Road Work: Final Laid Rate Summary
+
+13. Save/load all new fields in DB state and localStorage so estimates reopen correctly.
+
+14. After implementation, please test with this sample:
+
+* BC binder: 5.2%
+* Bitumen: ₹48/kg
+* Bitumen wastage: 0%
+  Expected bitumen cost: ₹2,496/MT.
+  If wastage is 0.5%, expected cost: ₹2,508.48/MT.
+
+Please complete this JS wiring first before making any further layout changes.

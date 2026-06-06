@@ -432,7 +432,7 @@ body{font-size:11px;background:#fff}
     </div>
     <div class="form-grid">
       <div class="form-group" id="ldoNormRow"><label>LDO Consumption (L/MT)</label><input id="ldoConsump" type="number" value="4.5" step="0.1" oninput="recalc()"></div>
-      <div id="ldoActualGroup" style="display:none;grid-column:span 3;display:none">
+      <div id="ldoActualGroup" style="display:none;grid-column:span 3">
         <div class="form-grid" style="margin:0">
           <div class="form-group"><label>Opening Meter Reading (L)</label><input id="ldoOpenMeter" type="number" value="" placeholder="e.g. 12450" oninput="recalc()"></div>
           <div class="form-group"><label>Closing Meter Reading (L)</label><input id="ldoCloseMeter" type="number" value="" placeholder="e.g. 14850" oninput="recalc()"></div>
@@ -570,7 +570,7 @@ body{font-size:11px;background:#fff}
 <!-- RIGHT SIDE — Rate Summary Panel -->
 <div class="right-col" id="rightCol">
   <div class="rate-panel">
-    <h2>Live Rate Summary</h2>
+    <h2 id="rateSummaryTitle">📦 Supply Cost Summary</h2>
     <div id="rateSummaryTable"></div>
     <div style="margin-top:16px">
       <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
@@ -579,6 +579,12 @@ body{font-size:11px;background:#fff}
     <div class="breakdown-toggle no-print" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
     <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
   </div>
+
+  <!-- Recommended Quote Box -->
+  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none"></div>
+
+  <!-- Market Sensitivity -->
+  <div id="mktSensPanel" class="mkt-sens-card no-print" style="display:none"></div>
 </div>
 
 </div><!-- end main-layout -->
@@ -751,6 +757,14 @@ var activeMixIdx = 0;
 var breakdownOpen = false;
 var _scopeAutoRates = {}; // keyed by sanitized mix name; updated by updateScopeAutoRatesCache()
 
+// ====== QUOTE MODE & NEW FEATURE STATE ======
+var quoteMode = 'supply_only';      // 'supply_only' | 'supply_transport' | 'supply_laying' | 'full_road'
+var aggReturnTrip = false;          // true = rate×dist×1÷payload, false = ×2 (default: one-way fare billed twice)
+var transReturnTrip = false;        // same for finished mix transport
+var ldoMode = 'norm';               // 'norm' | 'actual'
+var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
+var _activeMktPreset = null;        // key of the currently active market sensitivity preset
+
 var mixTypes = [
   { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
   { name:'DBM', binderPct:4.5, density:2.30, fractions:{f20mm:30,f10mm:22,f6mm:12,fDust:27,fFiller:4.5} }
@@ -918,10 +932,10 @@ function resetRevisedRates(){
 // ====== PERSISTENCE ======
 var PERSIST_INPUTS = [
   'projName','projBy','projDate',
-  'aggRate','aggDensity','aggDist','aggFreightRate','aggPayload','bitPrice',
+  'aggRate','aggDensity','aggDist','aggFreightRate','aggPayload','aggWastage','bitPrice','bitWastage',
   'tph','plantHrsMonth',
   'hsdPrice',
-  'ldoConsump','ldoRate',
+  'ldoConsump','ldoRate','ldoOpenMeter','ldoCloseMeter','ldoProdMT',
   'boilerProdLhr','boilerPreheatLhr','boilerProdHrs','boilerPreheatHrs','boilerCampaignMt',
   'crewMonthly','crewDays','crewHrs','marginPct','mobCost','demobCost',
   'layCrew','layProductivity',
@@ -969,6 +983,12 @@ function migrateState(state){
   }
   // Initialize contractRates if missing
   if(!state.contractRates) state.contractRates = {};
+  // Initialize new quote-mode state if missing (backward compat)
+  if(!state.quoteMode) state.quoteMode = 'supply_only';
+  if(state.aggReturnTrip === undefined) state.aggReturnTrip = false;
+  if(state.transReturnTrip === undefined) state.transReturnTrip = false;
+  if(!state.ldoMode) state.ldoMode = 'norm';
+  if(!state.plantCostMode) state.plantCostMode = 'full';
   return state;
 }
 
@@ -1039,6 +1059,8 @@ function saveState(){
       activeMixIdx: activeMixIdx, aggBasis: aggBasis,
       contractRates: contractRates,
       scopeState: scopeState, scopeMarginPct: scopeMargin,
+      quoteMode: quoteMode, aggReturnTrip: aggReturnTrip,
+      transReturnTrip: transReturnTrip, ldoMode: ldoMode, plantCostMode: plantCostMode,
       _savedAt: Date.now()
     }));
     _showDraftSavedBadge();
@@ -1094,6 +1116,20 @@ function loadState(){
       if(smEl) smEl.value = state.scopeMarginPct;
     }
     restoreScopeUI();
+    // Restore new quote-mode state
+    if(state.quoteMode) setQuoteMode(state.quoteMode, true);
+    if(state.aggReturnTrip !== undefined){
+      aggReturnTrip = !!state.aggReturnTrip;
+      var _artEl = document.getElementById('aggReturnTripChk');
+      if(_artEl) _artEl.checked = aggReturnTrip;
+    }
+    if(state.transReturnTrip !== undefined){
+      transReturnTrip = !!state.transReturnTrip;
+      var _trtEl = document.getElementById('transReturnTripChk');
+      if(_trtEl) _trtEl.checked = transReturnTrip;
+    }
+    if(state.ldoMode) setLdoMode(state.ldoMode, true);
+    if(state.plantCostMode) setPlantCostMode(state.plantCostMode, true);
     if(state._savedAt){
       _draftSavedAt = new Date(state._savedAt);
       var badge = document.getElementById('draftSavedBadge');
@@ -1151,7 +1187,9 @@ function getDbState(){
     sites: sitesClean, siteCounter: siteCounter, jobCounter: jobCounter,
     activeMixIdx: activeMixIdx, aggBasis: aggBasis,
     contractRates: contractRates,
-    scopeState: scopeState, scopeMarginPct: scopeMargin
+    scopeState: scopeState, scopeMarginPct: scopeMargin,
+    quoteMode: quoteMode, aggReturnTrip: aggReturnTrip,
+    transReturnTrip: transReturnTrip, ldoMode: ldoMode, plantCostMode: plantCostMode
   });
 }
 
@@ -1802,11 +1840,27 @@ function recalc(){
   var aggDist = n('aggDist');
   var aggFreightRate = n('aggFreightRate');
   var aggPayload = n('aggPayload');
-  var aggFreight = aggPayload>0?(aggDist*2*aggFreightRate/aggPayload):0;
+  var _aggTripMul = aggReturnTrip ? 1 : 2;
+  var aggFreight = aggPayload>0?(aggDist*_aggTripMul*aggFreightRate/aggPayload):0;
   var aggRateMT = (aggBasis==='CFT'&&aggDensity>0)?(aggRateInput/aggDensity*35.3147):aggRateInput;
   var aggLanded = aggRateMT + aggFreight;
   document.getElementById('aggFreight').value = fmt(aggFreight);
   document.getElementById('aggLanded').value = fmt(aggLanded);
+
+  // Bitumen verification display
+  var _bitVerifyPct = n('bitWastage');
+  var _activeMix = mixTypes[activeMixIdx]||mixTypes[0];
+  var _vEl = document.getElementById('bitumenVerifyDisplay');
+  if(_vEl && _activeMix){
+    var _vBinder = _activeMix.binderPct;
+    var _vKgBase = _vBinder*10;
+    var _vKgW = _vKgBase*(1+_bitVerifyPct/100);
+    var _vCost = _vKgW*n('bitPrice');
+    _vEl.innerHTML = '<span style="font-weight:700;color:#92400e">Bitumen Check ('+esc(_activeMix.name)+'):</span> '
+      +_vBinder+'% × 10 = <strong>'+fmtR(_vKgBase)+' kg/MT</strong> base'
+      +(_bitVerifyPct>0?' → ×(1+'+_bitVerifyPct+'%) = <strong>'+fmtR(_vKgW)+' kg/MT</strong>':'')
+      +' × ₹'+n('bitPrice')+'/kg = <strong style="color:#92400e">₹'+fmtR(_vCost)+'/MT</strong>';
+  }
 
   var bitPrice = n('bitPrice');
   var hsdPrice = n('hsdPrice');
@@ -1827,7 +1881,16 @@ function recalc(){
   document.getElementById('layPtrCost').value = fmtI(getEquipDailyCost(ptrEq));
 
   // LDO / Boiler fuel
-  var ldoConsump = n('ldoConsump');
+  var ldoConsump;
+  if(ldoMode === 'actual'){
+    var _ldoOpen = n('ldoOpenMeter'), _ldoClose = n('ldoCloseMeter'), _ldoProd = n('ldoProdMT');
+    var _ldoActualLpm = (_ldoProd>0 && _ldoClose>_ldoOpen) ? (_ldoClose-_ldoOpen)/_ldoProd : 0;
+    ldoConsump = _ldoActualLpm > 0 ? _ldoActualLpm : n('ldoConsump');
+    var _ldoActEl = document.getElementById('ldoActualResult');
+    if(_ldoActEl) _ldoActEl.value = _ldoActualLpm>0 ? fmtR(_ldoActualLpm) : '—';
+  } else {
+    ldoConsump = n('ldoConsump');
+  }
   var ldoRate = n('ldoRate');
   var ldoPerMT = ldoConsump * ldoRate;
   document.getElementById('ldoDerived').value = fmt(ldoPerMT);
@@ -1867,7 +1930,8 @@ function recalc(){
   var transDist = n('transDist');
   var transRate = n('transRate');
   var transPayload = n('transPayload');
-  var transPerMT = transPayload>0?(transDist*2*transRate/transPayload):0;
+  var _transTripMul = transReturnTrip ? 1 : 2;
+  var transPerMT = transPayload>0?(transDist*_transTripMul*transRate/transPayload):0;
   document.getElementById('transDerived').value = fmt(transPerMT);
 
   // Prime & Tack
@@ -1895,7 +1959,7 @@ function recalc(){
     var preTotalTransCost = 0;
     sites.forEach(function(s){
       var _siteLead = (s.transLead!=null&&s.transLead>0) ? s.transLead : transDist;
-      var _sTransPMT = transPayload>0 ? (_siteLead*2*transRate/transPayload) : 0;
+      var _sTransPMT = transPayload>0 ? (_siteLead*_transTripMul*transRate/transPayload) : 0;
       s.jobs.forEach(function(j){
         var isGeo = j.basis==='GEOMETRY';
         var jCum;
@@ -1941,11 +2005,18 @@ function recalc(){
   }
 
   // ====== PER-MIX-TYPE RATE CALCULATION ======
+  // Quote-mode visibility flags (computed once, reused in renderRateSummary and per-mix calc)
+  var _qShowTrans  = (quoteMode !== 'supply_only');
+  var _qShowLaying = (quoteMode === 'supply_laying' || quoteMode === 'full_road');
+
   var eqCosts = {};
   var plantEquipPerMT = 0;
   var plantHsdPerMT = 0;
   equipDefs.forEach(function(eq){
-    var hire = getEquipHireCostPerMT(eq);
+    // In marginal mode: skip depreciation cost for plant-owned equipment (fuel/running still included)
+    var hire = (plantCostMode === 'marginal' && !eq.isLaying && eq.mode === 'owned')
+      ? 0
+      : getEquipHireCostPerMT(eq);
     var fuel = getEquipFuelPerMT(eq);
     eqCosts[eq.id] = {hire:hire, fuel:fuel, total:hire+fuel};
     if(!eq.isLaying){
@@ -1955,23 +2026,32 @@ function recalc(){
   });
   var fuelTotal = plantHsdPerMT + ldoPerMT + boilerProdPerMT + boilerPreheatPerMT;
 
+  var _aggWastePct = n('aggWastage');
+  var _bitWastePct = n('bitWastage');
+
   var mixRates = mixTypes.map(function(m){
     var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
     var bitFrac = m.binderPct/100;
-    var aggCostPerMT = aggFrac*aggLanded;
-    var bitCostPerMT = bitFrac*1000*bitPrice;
+    // Apply aggregate wastage uplift
+    var aggCostPerMT = aggFrac*(1+_aggWastePct/100)*aggLanded;
+    // Bitumen: theoretical kg/MT = binder% × 10, then apply wastage
+    var bitKgPerMT = bitFrac*1000*(1+_bitWastePct/100);
+    var bitCostPerMT = bitKgPerMT*bitPrice;
     var plantSubtotal = aggCostPerMT+bitCostPerMT+plantEquipPerMT+fuelTotal+crewPerMT;
-    var allCostBeforeMargin = plantSubtotal+_wTransPerMT+layPerMT+overheadPerMT;
-    var marginAmt = allCostBeforeMargin*marginPct/100;
+    // Quote-mode controls which items are included in the quoted cost
+    var quotedBase = plantSubtotal+(_qShowTrans?_wTransPerMT:0)+(_qShowLaying?layPerMT:0)+overheadPerMT;
+    var allCostBeforeMargin = plantSubtotal+_wTransPerMT+layPerMT+overheadPerMT; // full cost (for breakdown display)
+    var marginAmt = quotedBase*marginPct/100;
     var exPlant = plantSubtotal;
-    var finalLaid = allCostBeforeMargin+marginAmt;
+    var finalLaid = quotedBase+marginAmt;
     return {
       name:m.name, density:m.density,
-      aggregate:aggCostPerMT, bitumen:bitCostPerMT,
+      aggregate:aggCostPerMT, bitumen:bitCostPerMT, bitKgPerMT:bitKgPerMT,
       equipment:plantEquipPerMT, plantHsd:plantHsdPerMT,
       ldo:ldoPerMT, boilerProd:boilerProdPerMT, boilerPreheat:boilerPreheatPerMT,
       fuel:fuelTotal, crew:crewPerMT, overhead:overheadPerMT, margin:marginAmt,
       exPlant:exPlant, transport:_wTransPerMT, laying:layPerMT, finalLaid:finalLaid,
+      quotedCost:quotedBase,
       perCum:finalLaid*m.density,
       hotmix:(eqCosts.hotmix||{}).hire||0,
       dg:(eqCosts.dg||{}).hire||0,
@@ -1997,7 +2077,7 @@ function recalc(){
     var revAggBasis = sc ? sc.aggBasis : aggBasis;
     var revAggDensity = sc ? sc.aggDensity : aggDensity;
     var revAggRateMT2 = (revAggBasis==='CFT'&&revAggDensity>0)?(revAggInput/revAggDensity*35.3147):revAggInput;
-    var revAggFreight = sc ? (sc.aggPayload>0?(sc.aggDist*2*sc.aggFreightRate/sc.aggPayload):aggFreight) : aggFreight;
+    var revAggFreight = sc ? (sc.aggPayload>0?(sc.aggDist*_aggTripMul*sc.aggFreightRate/sc.aggPayload):aggFreight) : aggFreight;
     var revAggLanded = revAggRateMT2 + revAggFreight;
     var revBitPrice = revBitOvr!=null ? revBitOvr : (sc ? sc.bitPrice : bitPrice);
     var revHsdPrice = revHsdOvr!=null ? revHsdOvr : (sc ? sc.hsdPrice : hsdPrice);
@@ -2020,11 +2100,11 @@ function recalc(){
     revisedMixRates = mixTypes.map(function(m){
       var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
       var bitFrac = m.binderPct/100;
-      var revBitCostPerMT = bitFrac*1000*revBitPrice;
-      var ps = aggFrac*revAggLanded + revBitCostPerMT + plantEquipPerMT + revFuelTotal + crewPerMT;
-      var allBM = ps+_wTransPerMT+revLayPerMT+overheadPerMT;
+      var revBitCostPerMT = bitFrac*1000*(1+_bitWastePct/100)*revBitPrice;
+      var ps = aggFrac*(1+_aggWastePct/100)*revAggLanded + revBitCostPerMT + plantEquipPerMT + revFuelTotal + crewPerMT;
+      var revQuotedBase = ps+(_qShowTrans?_wTransPerMT:0)+(_qShowLaying?revLayPerMT:0)+overheadPerMT;
       var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:_wTransPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:allBM*(1+marginPct/100), bitumen:revBitCostPerMT};
+      return {name:m.name, density:m.density, exPlant:exP, transport:_wTransPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:revQuotedBase*(1+marginPct/100), bitumen:revBitCostPerMT, quotedCost:revQuotedBase};
     });
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
   }
@@ -2093,6 +2173,8 @@ function recalc(){
   var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
 
   renderRateSummary(displayMixRates);
+  renderRecommendedQuote(displayMixRates);
+  renderMarketSensitivity(displayMixRates, revisedMixRates);
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(displayMixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
@@ -2105,6 +2187,20 @@ function recalc(){
 }
 
 function renderRateSummary(mixRates){
+  // Update title based on quoteMode
+  var _titleMap = {
+    'supply_only':     '📦 Supply Cost Summary',
+    'supply_transport':'🚛 Delivered Mix Summary',
+    'supply_laying':   '🛣️ Supply + Laying Summary',
+    'full_road':       '🏗️ Final Laid Rate Summary'
+  };
+  var _titleEl = document.getElementById('rateSummaryTitle');
+  if(_titleEl) _titleEl.textContent = _titleMap[quoteMode] || 'Live Rate Summary';
+
+  // Quote mode drives which rows are shown (overrides scopeState for the summary panel)
+  var _showTrans = (quoteMode !== 'supply_only');
+  var _showPav   = (quoteMode === 'supply_laying' || quoteMode === 'full_road');
+
   var nc = mixRates.length;
   var html = '<table class="rate-table"><thead><tr><th></th>';
   mixRates.forEach(function(r){ html+='<th colspan="2" style="text-align:center">'+r.name+'</th>'; });
@@ -2126,12 +2222,12 @@ function renderRateSummary(mixRates){
   html+='<tr style="font-weight:700"><td>Plant Subtotal</td>';
   mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(r.exPlant)+'</td><td style="color:var(--blue)">'+fmtR(r.exPlant*r.density)+'</td>'; });
   html+='</tr>';
-  if(scopeState.groups.transport){
+  if(_showTrans){
     html+='<tr><td>Transport</td>';
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r.transport)+'</td><td style="color:var(--blue)">'+fmtR(r.transport*r.density)+'</td>'; });
     html+='</tr>';
   }
-  if(scopeState.groups.paving){
+  if(_showPav){
     html+='<tr><td>Laying</td>';
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r.laying)+'</td><td style="color:var(--blue)">'+fmtR(r.laying*r.density)+'</td>'; });
     html+='</tr>';
@@ -2142,8 +2238,6 @@ function renderRateSummary(mixRates){
     html+='</tr>';
   }
   var _mPct = n('marginPct')/100;
-  var _showTrans = scopeState.groups.transport;
-  var _showPav   = scopeState.groups.paving;
   if(mixRates[0]&&_mPct>0){
     html+='<tr><td>Margin / Profit</td>';
     mixRates.forEach(function(r){
@@ -2153,7 +2247,11 @@ function renderRateSummary(mixRates){
     });
     html+='</tr>';
   }
-  var _finalLabel = (!_showTrans&&!_showPav)?'Ex-Plant (Final)':'Final Laid';
+  var _finalLabels = {
+    'supply_only':'Ex-Plant Rate','supply_transport':'Delivered Rate',
+    'supply_laying':'Laid Rate (ex-coat)','full_road':'Final Laid Rate'
+  };
+  var _finalLabel = _finalLabels[quoteMode] || 'Final Rate';
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
     var inScopeBase = r.exPlant+(_showTrans?r.transport:0)+(_showPav?r.laying:0)+(r.overhead||0);
@@ -2163,6 +2261,171 @@ function renderRateSummary(mixRates){
   html+='</tr>';
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
+}
+
+// ====== QUOTE MODE / LDO MODE / PLANT COST MODE SETTERS ======
+function setQuoteMode(mode, noRecalc){
+  quoteMode = mode;
+  var desc = {
+    'supply_only':     'Ex-plant rate — transport, laying & coat excluded',
+    'supply_transport':'Delivered to site — laying & coat excluded',
+    'supply_laying':   'Supply + transport + laying — prime/tack optional',
+    'full_road':       'Complete road work — all components included'
+  };
+  ['supply_only','supply_transport','supply_laying','full_road'].forEach(function(m){
+    var btn = document.getElementById('qm_'+m);
+    if(btn) btn.classList.toggle('qm-active', m===mode);
+  });
+  var descEl = document.getElementById('quoteModeDesc');
+  if(descEl) descEl.textContent = desc[mode] || '';
+  // Visually dim cards that are excluded from the current scope
+  var showTrans  = (mode !== 'supply_only');
+  var showLaying = (mode === 'supply_laying' || mode === 'full_road');
+  var ctrans  = document.getElementById('cardTransport');
+  var claying = document.getElementById('cardLaying');
+  var ccoat   = document.getElementById('cardCoat');
+  if(ctrans)  ctrans.style.opacity  = showTrans  ? '1' : '0.4';
+  if(claying) claying.style.opacity = showLaying ? '1' : '0.4';
+  if(ccoat)   ccoat.style.opacity   = (mode==='full_road') ? '1' : '0.4';
+  if(!noRecalc) recalc();
+}
+
+function setLdoMode(mode, noRecalc){
+  ldoMode = mode;
+  var normBtn = document.getElementById('ldoMode_norm');
+  var actBtn  = document.getElementById('ldoMode_actual');
+  if(normBtn) normBtn.classList.toggle('active', mode==='norm');
+  if(actBtn)  actBtn.classList.toggle('active', mode==='actual');
+  var normRow   = document.getElementById('ldoNormRow');
+  var actualGrp = document.getElementById('ldoActualGroup');
+  if(normRow)   normRow.style.display   = (mode==='norm')   ? '' : 'none';
+  if(actualGrp) actualGrp.style.display = (mode==='actual') ? 'block' : 'none';
+  if(!noRecalc) recalc();
+}
+
+function setPlantCostMode(mode, noRecalc){
+  plantCostMode = mode;
+  var fullBtn = document.getElementById('pm_full');
+  var margBtn = document.getElementById('pm_marginal');
+  if(fullBtn) fullBtn.classList.toggle('active', mode==='full');
+  if(margBtn) margBtn.classList.toggle('active', mode==='marginal');
+  if(!noRecalc) recalc();
+}
+
+// ====== RECOMMENDED QUOTE PANEL ======
+function renderRecommendedQuote(mixRates){
+  var el = document.getElementById('recQuotePanel');
+  if(!el) return;
+  if(!mixRates.length){ el.style.display='none'; return; }
+  el.style.display='';
+  var html = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f59e0b">💡 Recommended Quote</div>';
+  mixRates.forEach(function(r){
+    var cost = (r.quotedCost !== undefined) ? r.quotedCost : r.exPlant;
+    var aggressive = cost*1.08;
+    var minSafe    = cost*1.05;
+    var target     = cost*1.12;
+    var profitRs   = target - cost;
+    var profitPct  = cost > 0 ? (profitRs/cost*100) : 0;
+    html += '<div style="margin-bottom:12px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12px">';
+    html += '<span style="color:#6b7280">Actual cost (base)</span><span style="font-weight:600;color:#374151">₹'+fmtR(cost)+'/MT</span>';
+    html += '<span style="color:#b45309">Aggressive (×1.08)</span><span style="font-weight:600;color:#b45309">₹'+fmtR(aggressive)+'/MT</span>';
+    html += '<span style="color:#16a34a">Minimum safe (×1.05)</span><span style="font-weight:600;color:#16a34a">₹'+fmtR(minSafe)+'/MT</span>';
+    html += '</div>';
+    html += '<div style="margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center">';
+    html += '<span style="font-size:12px;font-weight:700;color:#1d4ed8">Target (×1.12)</span>';
+    html += '<span style="font-size:14px;font-weight:700;color:#1d4ed8">₹'+fmtR(target)+'/MT</span>';
+    html += '</div>';
+    html += '<div style="margin-top:4px;font-size:11px;color:#16a34a;text-align:right">Profit at target: <strong>₹'+fmtR(profitRs)+'/MT ('+fmtR(profitPct)+'%)</strong></div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// ====== MARKET SENSITIVITY PRESETS ======
+var _MKT_PRESETS = [
+  {key:'bit1000', type:'bit',  sign:1, amt:1000, label:'Bitumen +₹1,000/MT'},
+  {key:'bit2000', type:'bit',  sign:1, amt:2000, label:'Bitumen +₹2,000/MT'},
+  {key:'bit5000', type:'bit',  sign:1, amt:5000, label:'Bitumen +₹5,000/MT'},
+  {key:'hsd5',    type:'hsd',  sign:1, amt:5,    label:'Diesel +₹5/L'},
+  {key:'hsd10',   type:'hsd',  sign:1, amt:10,   label:'Diesel +₹10/L'},
+  {key:'agg50',   type:'agg',  sign:1, amt:50,   label:'Aggregate +₹50/MT'},
+  {key:'agg100',  type:'agg',  sign:1, amt:100,  label:'Aggregate +₹100/MT'}
+];
+
+function applyMarketPreset(presetKey, type, deltaSign, deltaAmt){
+  var isClear     = (presetKey === '__clear');
+  var isToggleOff = (!isClear && _activeMktPreset === presetKey);
+  _activeMktPreset = (isClear || isToggleOff) ? null : presetKey;
+  // Clear all existing manual overrides
+  delete contractRates['__REV_BIT'];
+  delete contractRates['__REV_HSD'];
+  delete contractRates['__REV_AGG'];
+  if(_activeMktPreset){
+    if(type === 'bit'){
+      contractRates['__REV_BIT'] = n('bitPrice') + deltaSign*deltaAmt/1000;
+    } else if(type === 'hsd'){
+      contractRates['__REV_HSD'] = n('hsdPrice') + deltaSign*deltaAmt;
+    } else if(type === 'agg'){
+      var curAggLanded = parseFloat((document.getElementById('aggLanded')||{}).value)||n('aggRate');
+      contractRates['__REV_AGG'] = curAggLanded + deltaSign*deltaAmt;
+    }
+  }
+  recalc();
+}
+
+function renderMarketSensitivity(mixRates, revisedMixRates){
+  var el = document.getElementById('mktSensPanel');
+  if(!el) return;
+  if(!mixRates.length){ el.style.display='none'; return; }
+  el.style.display='';
+
+  var html = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #f59e0b">📊 Market Sensitivity</div>';
+  html += '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">Tap a scenario to see cost impact. Tap again to clear.</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">';
+  _MKT_PRESETS.forEach(function(p){
+    var isActive = (_activeMktPreset === p.key);
+    html += '<button class="mkt-preset-btn'+(isActive?' active':'')+'" data-preset="'+p.key+'"'
+      +' onclick="applyMarketPreset(\''+p.key+'\',\''+p.type+'\','+p.sign+','+p.amt+')">'+p.label+'</button>';
+  });
+  if(_activeMktPreset){
+    html += '<button onclick="applyMarketPreset(\'__clear\',\'none\',0,0)" style="padding:4px 10px;font-size:11px;border:1px solid #ef4444;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;margin-top:2px">✕ Clear</button>';
+  }
+  html += '</div>';
+
+  // Impact table when a preset is active and we have revised rates
+  if(_activeMktPreset && revisedMixRates && revisedMixRates.length){
+    var _mPct = n('marginPct')/100;
+    var preset = _MKT_PRESETS.find(function(p){return p.key===_activeMktPreset;});
+    html += '<div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:6px">Impact: '+esc(preset?preset.label:'')+'</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<thead><tr style="background:#f3f4f6">'
+      +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb">Mix</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Base Cost</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Revised Cost</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Δ/MT</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Rev. Quote (×1.12)</th>'
+      +'</tr></thead><tbody>';
+    mixRates.forEach(function(r, i){
+      var rev = revisedMixRates[i] || revisedMixRates[0];
+      var baseCost = r.quotedCost !== undefined ? r.quotedCost : r.exPlant;
+      var revCost  = rev.quotedCost !== undefined ? rev.quotedCost : rev.exPlant;
+      var delta = revCost - baseCost;
+      var deltaColor = delta>0?'#dc2626':'#16a34a';
+      var revQuote = revCost*1.12;
+      html += '<tr>'
+        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;font-weight:600">'+esc(r.name)+'</td>'
+        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right">₹'+fmtR(baseCost)+'</td>'
+        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right">₹'+fmtR(revCost)+'</td>'
+        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:'+deltaColor+';font-weight:700">'+(delta>0?'+':'')+'₹'+fmtR(delta)+'</td>'
+        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8">₹'+fmtR(revQuote)+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  el.innerHTML = html;
 }
 
 function renderCostBar(mixRates){
@@ -4101,6 +4364,20 @@ function loadScenarioState(state){
     if(smEl) smEl.value = state.scopeMarginPct;
   }
   restoreScopeUI();
+  // Restore quote-mode state for scenario mode
+  if(state.quoteMode) setQuoteMode(state.quoteMode, true);
+  if(state.aggReturnTrip !== undefined){
+    aggReturnTrip = !!state.aggReturnTrip;
+    var _artEl2 = document.getElementById('aggReturnTripChk');
+    if(_artEl2) _artEl2.checked = aggReturnTrip;
+  }
+  if(state.transReturnTrip !== undefined){
+    transReturnTrip = !!state.transReturnTrip;
+    var _trtEl2 = document.getElementById('transReturnTripChk');
+    if(_trtEl2) _trtEl2.checked = transReturnTrip;
+  }
+  if(state.ldoMode) setLdoMode(state.ldoMode, true);
+  if(state.plantCostMode) setPlantCostMode(state.plantCostMode, true);
 }
 
 var scenarioBaseSnapshot = null;
