@@ -821,9 +821,6 @@ body{font-size:11px;background:#fff}
     <div id="scopePanelBreakdown" style="display:none;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:12px"></div>
   </div>
 
-  <!-- Recommended Quote — always visible when rates are available -->
-  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none;margin-top:12px"></div>
-
   <!-- Material Procurement Budget -->
   <div id="procurementPanel" style="display:none;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-top:12px"></div>
 
@@ -2305,7 +2302,6 @@ function recalc(){
 
   renderRateSummary(displayMixRates);
   _lastMixRates = displayMixRates;
-  renderRecommendedQuote(displayMixRates);
   renderProcurementPanel();
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(displayMixRates);
@@ -2882,12 +2878,12 @@ function _renderRecQuoteSection(){
     +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#7c3aed">Premium ₹/MT</th>'
     +'</tr></thead><tbody>';
   _lastMixRates.forEach(function(r,i){
-    var base = r.total;
+    var base = (r.finalLaid!==undefined)?r.finalLaid:((r.quotedCost!==undefined)?r.quotedCost:r.exPlant);
     var minR = Math.ceil((base + qMin)/10)*10;
     var tgtR = Math.ceil((base + qTgt)/10)*10;
     var prmR = Math.ceil((base + qPrm)/10)*10;
     html += '<tr style="border-bottom:1px solid var(--gray-100)">'
-      +'<td style="padding:9px 10px;font-weight:700;color:var(--gray-800)">'+esc(mixTypes[i]?mixTypes[i].name:'Mix '+(i+1))+'</td>'
+      +'<td style="padding:9px 10px;font-weight:700;color:var(--gray-800)">'+esc(r.name||'Mix '+(i+1))+'</td>'
       +'<td style="padding:9px 10px;text-align:right;font-weight:600;color:var(--gray-600)">₹'+fmtR(base)+'</td>'
       +'<td style="padding:9px 10px;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minR)+'</td>'
       +'<td style="padding:9px 10px;text-align:right;font-weight:700;color:#1d4ed8;font-size:14px">₹'+fmtR(tgtR)+'</td>'
