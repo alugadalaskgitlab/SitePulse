@@ -750,6 +750,9 @@ var transReturnTrip = false;        // same for finished mix transport
 var ldoMode = 'norm';               // 'norm' | 'actual'
 var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
 var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
+var _quoteProfitMin     = 150;      // JS-level profit state — survives innerHTML rebuilds
+var _quoteProfitTarget  = 300;
+var _quoteProfitPremium = 500;
 
 var mixTypes = [
   { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
@@ -2299,84 +2302,111 @@ function setPlantCostMode(mode, noRecalc){
 }
 
 // ====== RECOMMENDED QUOTE PANEL ======
+// Inner helper — renders only the per-mix rows into #recQuoteTable (no inputs touched)
+function _buildRecQuoteRows(mixRates, minPft, tgtPft, prmPft, mPct){
+  var tbl = document.getElementById('recQuoteTable');
+  if(!tbl) return;
+  if(!mixRates||!mixRates.length){ tbl.innerHTML=''; return; }
+  var mPctLabel = mPct>0 ? ' (incl. '+fmtR(mPct)+'% overhead margin)' : '';
+  var html = '';
+  mixRates.forEach(function(r){
+    // Base = finalLaid = full cost including the overhead margin % set in Overhead section
+    var base = (r.finalLaid !== undefined) ? r.finalLaid : ((r.quotedCost !== undefined) ? r.quotedCost : r.exPlant);
+    var minRate = base + minPft;
+    var tgtRate = base + tgtPft;
+    var prmRate = base + prmPft;
+    var minPct  = base > 0 ? (minPft/base*100) : 0;
+    var tgtPct  = base > 0 ? (tgtPft/base*100) : 0;
+    var prmPct  = base > 0 ? (prmPft/base*100) : 0;
+
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
+    // Base cost callout — always visible so user knows what we're adding to
+    html += '<div style="font-size:11px;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:6px">'
+      +'<span style="color:#6b7280">Full cost base: </span>'
+      +'<strong style="color:#111827">₹'+fmtR(base)+'/MT</strong>'
+      +(mPct>0?'<span style="font-size:10px;color:#9ca3af">'+mPctLabel+'</span>':'')
+      +'</div>';
+
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<thead><tr style="background:#f3f4f6">'
+      +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;font-weight:600">Level</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">Cost + Profit</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">Quote ₹/MT</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Margin %</th>'
+      +'</tr></thead><tbody>';
+
+    // Break-Even
+    html += '<tr>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#6b7280;font-weight:600">Break-Even</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#9ca3af">₹'+fmtR(base)+' + ₹0</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#374151">₹'+fmtR(base)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#9ca3af">0%</td></tr>';
+
+    // Min Acceptable
+    html += '<tr style="background:#fefce8">'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#92400e;font-weight:600">Min Acceptable</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#b45309">₹'+fmtR(base)+' + ₹'+fmtR(minPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e">'+fmtR(minPct)+'%</td></tr>';
+
+    // Target Quote
+    html += '<tr style="background:#eff6ff">'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#1d4ed8;font-weight:700">Target Quote ⭐</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#3b82f6">₹'+fmtR(base)+' + ₹'+fmtR(tgtPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8;font-size:12px">₹'+fmtR(tgtRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:600">'+fmtR(tgtPct)+'%</td></tr>';
+
+    // Premium Quote
+    html += '<tr style="background:#f5f3ff">'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#7c3aed;font-weight:700">Premium Quote</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#8b5cf6">₹'+fmtR(base)+' + ₹'+fmtR(prmPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#7c3aed">₹'+fmtR(prmRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed">'+fmtR(prmPct)+'%</td></tr>';
+
+    html += '</tbody></table></div>';
+  });
+  tbl.innerHTML = html;
+}
+
+// Called by oninput on profit inputs — updates only the table, leaves inputs untouched (cursor stays)
+function updateRecQuoteTable(){
+  var vMin = parseFloat((document.getElementById('quoteProfitMin')||{}).value);
+  var vTgt = parseFloat((document.getElementById('quoteProfitTarget')||{}).value);
+  var vPrm = parseFloat((document.getElementById('quoteProfitPremium')||{}).value);
+  if(!isNaN(vMin)) _quoteProfitMin = vMin;
+  if(!isNaN(vTgt)) _quoteProfitTarget = vTgt;
+  if(!isNaN(vPrm)) _quoteProfitPremium = vPrm;
+  _buildRecQuoteRows(_lastMixRates, _quoteProfitMin, _quoteProfitTarget, _quoteProfitPremium, n('marginPct'));
+}
+
 function renderRecommendedQuote(mixRates){
   var el = document.getElementById('recQuotePanel');
   if(!el) return;
   if(!mixRates||!mixRates.length){ el.style.display='none'; return; }
   el.style.display='';
 
-  // Read user-defined profit margins from the panel's own inputs (persist across re-renders)
-  var minPft = parseFloat((document.getElementById('quoteProfitMin')||{}).value);
-  var tgtPft = parseFloat((document.getElementById('quoteProfitTarget')||{}).value);
-  var prmPft = parseFloat((document.getElementById('quoteProfitPremium')||{}).value);
-  if(isNaN(minPft)) minPft = 150;
-  if(isNaN(tgtPft)) tgtPft = 300;
-  if(isNaN(prmPft)) prmPft = 500;
+  // Build the outer shell (header + inputs + table container) only once
+  // Subsequent recalc calls skip this block — inputs keep their values and focus
+  if(!document.getElementById('quoteProfitMin')){
+    var shell = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f59e0b">💡 Recommended Quote</div>';
+    shell += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px">';
+    shell += '<div><div style="font-size:10px;color:#92400e;font-weight:600;margin-bottom:3px">Min Profit (₹/MT)</div>'
+      +'<input id="quoteProfitMin" type="number" step="10" value="'+_quoteProfitMin+'" oninput="updateRecQuoteTable()"'
+      +' style="width:100%;border:1px solid #fcd34d;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#92400e;background:#fffbeb"></div>';
+    shell += '<div><div style="font-size:10px;color:#1d4ed8;font-weight:600;margin-bottom:3px">Target Profit (₹/MT)</div>'
+      +'<input id="quoteProfitTarget" type="number" step="10" value="'+_quoteProfitTarget+'" oninput="updateRecQuoteTable()"'
+      +' style="width:100%;border:1px solid #93c5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#1d4ed8;background:#eff6ff"></div>';
+    shell += '<div><div style="font-size:10px;color:#7c3aed;font-weight:600;margin-bottom:3px">Premium Profit (₹/MT)</div>'
+      +'<input id="quoteProfitPremium" type="number" step="10" value="'+_quoteProfitPremium+'" oninput="updateRecQuoteTable()"'
+      +' style="width:100%;border:1px solid #c4b5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#7c3aed;background:#f5f3ff"></div>';
+    shell += '</div>';
+    shell += '<div id="recQuoteTable"></div>';
+    el.innerHTML = shell;
+  }
 
-  var html = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f59e0b">💡 Recommended Quote</div>';
-
-  // Profit margin inputs (editable inline)
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px">';
-  html += '<div><div style="font-size:10px;color:#92400e;font-weight:600;margin-bottom:3px">Min Profit (₹/MT)</div>'
-    +'<input id="quoteProfitMin" type="number" step="10" value="'+minPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
-    +' style="width:100%;border:1px solid #fcd34d;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#92400e;background:#fffbeb"></div>';
-  html += '<div><div style="font-size:10px;color:#1d4ed8;font-weight:600;margin-bottom:3px">Target Profit (₹/MT)</div>'
-    +'<input id="quoteProfitTarget" type="number" step="10" value="'+tgtPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
-    +' style="width:100%;border:1px solid #93c5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#1d4ed8;background:#eff6ff"></div>';
-  html += '<div><div style="font-size:10px;color:#7c3aed;font-weight:600;margin-bottom:3px">Premium Profit (₹/MT)</div>'
-    +'<input id="quoteProfitPremium" type="number" step="10" value="'+prmPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
-    +' style="width:100%;border:1px solid #c4b5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#7c3aed;background:#f5f3ff"></div>';
-  html += '</div>';
-
-  mixRates.forEach(function(r){
-    var cost = (r.quotedCost !== undefined) ? r.quotedCost : r.exPlant;
-    var minRate = cost + minPft;
-    var tgtRate = cost + tgtPft;
-    var prmRate = cost + prmPft;
-    var minPct  = cost > 0 ? (minPft/cost*100) : 0;
-    var tgtPct  = cost > 0 ? (tgtPft/cost*100) : 0;
-    var prmPct  = cost > 0 ? (prmPft/cost*100) : 0;
-
-    html += '<div style="margin-bottom:14px">';
-    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
-    html += '<thead><tr style="background:#f3f4f6">'
-      +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;font-weight:600">Level</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Rate (₹/MT)</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Profit ₹</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Profit %</th>'
-      +'</tr></thead><tbody>';
-
-    // Break-Even
-    html += '<tr><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#6b7280;font-weight:600">Break-Even</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#374151">₹'+fmtR(cost)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#9ca3af">₹0</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#9ca3af">0.0%</td></tr>';
-
-    // Minimum Acceptable
-    html += '<tr style="background:#fefce8"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#92400e;font-weight:600">Min Acceptable</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minRate)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e;font-weight:600">₹'+fmtR(minPft)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e">'+fmtR(minPct)+'%</td></tr>';
-
-    // Target Quote (highlighted)
-    html += '<tr style="background:#eff6ff"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#1d4ed8;font-weight:700">Target Quote ⭐</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8;font-size:12px">₹'+fmtR(tgtRate)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:700">₹'+fmtR(tgtPft)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:600">'+fmtR(tgtPct)+'%</td></tr>';
-
-    // Premium Quote
-    html += '<tr style="background:#f5f3ff"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#7c3aed;font-weight:700">Premium Quote</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#7c3aed">₹'+fmtR(prmRate)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed;font-weight:600">₹'+fmtR(prmPft)+'</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed">'+fmtR(prmPct)+'%</td></tr>';
-
-    html += '</tbody></table>';
-    html += '<div style="margin-top:3px;font-size:10px;color:#9ca3af">Actual cost: ₹'+fmtR(cost)+'/MT ('+esc(quoteMode.replace(/_/g,' '))+')</div>';
-    html += '</div>';
-  });
-
-  el.innerHTML = html;
+  // Always refresh only the rows (inputs stay, cursor stays)
+  _buildRecQuoteRows(mixRates, _quoteProfitMin, _quoteProfitTarget, _quoteProfitPremium, n('marginPct'));
 }
 
 function renderCostBar(mixRates){
