@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -61,12 +62,26 @@ export default function PlantMaterialReceipts() {
       setExpandedIds(prev => { const s = new Set(prev); s.add(highlightId); return s; });
     }
   }, [highlightId]);
-  // Filter state
+  // Filter state — date filters are session-only (not persisted) to avoid
+  // hiding historical data on the next plain visit. Non-date filters are
+  // persisted via usePersistedFilters so the page re-opens with the last-used set.
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterPartyId, setFilterPartyId] = useState("all");
-  const [filterMaterialId, setFilterMaterialId] = useState("all");
-  const [filterUnapprovedIndent, setFilterUnapprovedIndent] = useState(false);
+
+  const [receiptPersistedFilters, setReceiptPersistedFilters, resetReceiptPersistedFilters] = usePersistedFilters(
+    "plant-material-receipts:filters:v1",
+    {
+      filterPartyId: "all",
+      filterMaterialId: "all",
+      filterUnapprovedIndent: false,
+    },
+  );
+  const filterPartyId = receiptPersistedFilters.filterPartyId;
+  const filterMaterialId = receiptPersistedFilters.filterMaterialId;
+  const filterUnapprovedIndent = receiptPersistedFilters.filterUnapprovedIndent as boolean;
+  const setFilterPartyId = (v: string) => setReceiptPersistedFilters((f) => ({ ...f, filterPartyId: v }));
+  const setFilterMaterialId = (v: string) => setReceiptPersistedFilters((f) => ({ ...f, filterMaterialId: v }));
+  const setFilterUnapprovedIndent = (v: boolean) => setReceiptPersistedFilters((f) => ({ ...f, filterUnapprovedIndent: v }));
   
   // Form state
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -1063,7 +1078,7 @@ export default function PlantMaterialReceipts() {
               size="sm"
               variant={filterUnapprovedIndent ? "default" : "outline"}
               className={filterUnapprovedIndent ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600" : ""}
-              onClick={() => setFilterUnapprovedIndent(v => !v)}
+              onClick={() => setFilterUnapprovedIndent(!filterUnapprovedIndent)}
               data-testid="btn-filter-unapproved-indent"
             >
               <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />

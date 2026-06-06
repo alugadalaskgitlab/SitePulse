@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -258,21 +259,44 @@ export default function VendorBills() {
   const _vbSp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const mgmtReportSite = _vbSp?.get("from") === "management-report" ? (_vbSp?.get("site") || null) : null;
 
-  const VENDOR_BILLS_FILTER_KEY = "vendor-bills-filter";
-  const _vbStoredFilters = (() => {
-    try {
-      const stored = sessionStorage.getItem(VENDOR_BILLS_FILTER_KEY);
-      return stored ? JSON.parse(stored) : {};
-    } catch { return {}; }
-  })();
+  const VB_FILTER_URL_KEYS = ["dateFrom", "dateTo", "site"];
+  const vbUrlHasFilterParams = VB_FILTER_URL_KEYS.some((k) => _vbSp?.has(k));
+  const vbUrlFilterDefaults = vbUrlHasFilterParams ? {
+    dateFrom: _vbSp?.get("dateFrom") ?? "",
+    dateTo: _vbSp?.get("dateTo") ?? "",
+    site: _vbSp?.get("site") ?? "",
+  } : {};
 
-  const [filterDateFrom, setFilterDateFrom] = useState(_vbSp?.get("dateFrom") ?? _vbStoredFilters.dateFrom ?? "");
-  const [filterDateTo, setFilterDateTo] = useState(_vbSp?.get("dateTo") ?? _vbStoredFilters.dateTo ?? "");
-  const [filterVendor, setFilterVendor] = useState(_vbStoredFilters.vendor ?? "all");
-  const [filterStatus, setFilterStatus] = useState(_vbStoredFilters.status ?? "all");
-  const [filterCategory, setFilterCategory] = useState(_vbStoredFilters.category ?? "all");
-  const [filterParty, setFilterParty] = useState(_vbStoredFilters.party ?? "all");
-  const [filterSite, setFilterSite] = useState(_vbSp?.get("site") ?? _vbStoredFilters.site ?? "");
+  const [vbFilters, setVbFilters, resetVbFilters] = usePersistedFilters(
+    "vendor-bills:filters:v1",
+    {
+      dateFrom: "",
+      dateTo: "",
+      vendor: "all",
+      status: "all",
+      category: "all",
+      party: "all",
+      site: "",
+      ...vbUrlFilterDefaults,
+    },
+    { shouldHydrate: !vbUrlHasFilterParams },
+  );
+
+  const filterDateFrom = vbFilters.dateFrom;
+  const filterDateTo = vbFilters.dateTo;
+  const filterVendor = vbFilters.vendor;
+  const filterStatus = vbFilters.status;
+  const filterCategory = vbFilters.category;
+  const filterParty = vbFilters.party;
+  const filterSite = vbFilters.site;
+
+  const setFilterDateFrom = (v: string) => setVbFilters((f) => ({ ...f, dateFrom: v }));
+  const setFilterDateTo = (v: string) => setVbFilters((f) => ({ ...f, dateTo: v }));
+  const setFilterVendor = (v: string) => setVbFilters((f) => ({ ...f, vendor: v }));
+  const setFilterStatus = (v: string) => setVbFilters((f) => ({ ...f, status: v }));
+  const setFilterCategory = (v: string) => setVbFilters((f) => ({ ...f, category: v }));
+  const setFilterParty = (v: string) => setVbFilters((f) => ({ ...f, party: v }));
+  const setFilterSite = (v: string) => setVbFilters((f) => ({ ...f, site: v }));
 
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [billNo, setBillNo] = useState("");
@@ -292,17 +316,6 @@ export default function VendorBills() {
   const [tdsRate, setTdsRate] = useState<number>(0);
   const [labourFilter, setLabourFilter] = useState<"all" | "site" | "plant">("all");
 
-  useEffect(() => {
-    sessionStorage.setItem(VENDOR_BILLS_FILTER_KEY, JSON.stringify({
-      dateFrom: filterDateFrom,
-      dateTo: filterDateTo,
-      vendor: filterVendor,
-      status: filterStatus,
-      category: filterCategory,
-      party: filterParty,
-      site: filterSite,
-    }));
-  }, [filterDateFrom, filterDateTo, filterVendor, filterStatus, filterCategory, filterParty, filterSite]);
 
   useEffect(() => {
     setLabourFilter("all");

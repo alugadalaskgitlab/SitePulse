@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, type ComponentType } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -615,21 +616,28 @@ export default function PurchaseIndents() {
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
 
-  const PI_FILTER_KEY = "purchase-indents-filter";
+  const [piFilters, setPiFilters, resetPiFilters] = usePersistedFilters(
+    "purchase-indents:filters:v1",
+    {
+      dateFrom: "",
+      dateTo: "",
+      status: "all",
+      priority: "all",
+      location: "all",
+    },
+  );
 
-  const _piStoredFilters = (() => {
-    try {
-      const stored = sessionStorage.getItem(PI_FILTER_KEY);
-      if (stored) return JSON.parse(stored) as { location?: string; dateFrom?: string; dateTo?: string; status?: string; priority?: string };
-    } catch { /* ignore */ }
-    return {};
-  })();
+  const filterDateFrom = piFilters.dateFrom;
+  const filterDateTo = piFilters.dateTo;
+  const filterStatus = piFilters.status;
+  const filterPriority = piFilters.priority;
+  const filterLocation = piFilters.location as string;
 
-  const [filterDateFrom, setFilterDateFrom] = useState(_piStoredFilters.dateFrom ?? "");
-  const [filterDateTo, setFilterDateTo] = useState(_piStoredFilters.dateTo ?? "");
-  const [filterStatus, setFilterStatus] = useState(_piStoredFilters.status ?? "all");
-  const [filterPriority, setFilterPriority] = useState(_piStoredFilters.priority ?? "all");
-  const [filterLocation, setFilterLocation] = useState<string>(_piStoredFilters.location ?? "all");
+  const setFilterDateFrom = (v: string) => setPiFilters((f) => ({ ...f, dateFrom: v }));
+  const setFilterDateTo = (v: string) => setPiFilters((f) => ({ ...f, dateTo: v }));
+  const setFilterStatus = (v: string) => setPiFilters((f) => ({ ...f, status: v }));
+  const setFilterPriority = (v: string) => setPiFilters((f) => ({ ...f, priority: v }));
+  const setFilterLocation = (v: string) => setPiFilters((f) => ({ ...f, location: v }));
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formProposedBy, setFormProposedBy] = useState("");
@@ -641,11 +649,6 @@ export default function PurchaseIndents() {
     { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null },
   ]);
 
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(PI_FILTER_KEY, JSON.stringify({ location: filterLocation, dateFrom: filterDateFrom, dateTo: filterDateTo, status: filterStatus, priority: filterPriority }));
-    } catch { /* ignore */ }
-  }, [filterLocation, filterDateFrom, filterDateTo, filterStatus, filterPriority]);
 
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

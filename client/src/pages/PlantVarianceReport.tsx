@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,11 +17,24 @@ export default function PlantVarianceReport() {
   const { getPlantBackLink } = useOrigin();
   const backLink = getPlantBackLink({ defaultTab: "stock" });
 
+  // Date filters are session-only (not persisted) — saving absolute date ranges
+  // causes historical data to disappear on the next visit if the range no longer
+  // covers any records. Non-date filters are persisted via usePersistedFilters.
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterDeliveredTo, setFilterDeliveredTo] = useState("all");
-  const [filterTemplateId, setFilterTemplateId] = useState("all");
-  const [filterPartyId, setFilterPartyId] = useState("all");
+
+  const [persistedFilters, setPersistedFilters, resetPersistedFilters] = usePersistedFilters(
+    "plant-variance-report:filters:v1",
+    {
+      filterDeliveredTo: "all",
+      filterTemplateId: "all",
+      filterPartyId: "all",
+    },
+  );
+  const { filterDeliveredTo, filterTemplateId, filterPartyId } = persistedFilters;
+  const setFilterDeliveredTo = (v: string) => setPersistedFilters((f) => ({ ...f, filterDeliveredTo: v }));
+  const setFilterTemplateId = (v: string) => setPersistedFilters((f) => ({ ...f, filterTemplateId: v }));
+  const setFilterPartyId = (v: string) => setPersistedFilters((f) => ({ ...f, filterPartyId: v }));
 
   const { data: dispatches, isLoading } = useQuery<TruckDispatch[]>({
     queryKey: ["/api/plant-module/dispatches/variance-report", filterDateFrom, filterDateTo],

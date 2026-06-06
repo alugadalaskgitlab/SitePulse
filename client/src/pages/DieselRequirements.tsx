@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,20 +98,25 @@ export default function DieselRequirements() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const DR_FILTER_KEY = "diesel-requirements-filter";
+  const [drFilters, setDrFilters, resetDrFilters] = usePersistedFilters(
+    "diesel-requirements:filters:v1",
+    {
+      dateFrom: "",
+      dateTo: "",
+      status: "all",
+      location: "all",
+    },
+  );
 
-  const _drStoredFilters = (() => {
-    try {
-      const stored = sessionStorage.getItem(DR_FILTER_KEY);
-      if (stored) return JSON.parse(stored) as { location?: string; dateFrom?: string; dateTo?: string; status?: string };
-    } catch { /* ignore */ }
-    return {};
-  })();
+  const filterDateFrom = drFilters.dateFrom;
+  const filterDateTo = drFilters.dateTo;
+  const filterStatus = drFilters.status;
+  const filterLocation = drFilters.location as string;
 
-  const [filterDateFrom, setFilterDateFrom] = useState(_drStoredFilters.dateFrom ?? "");
-  const [filterDateTo, setFilterDateTo] = useState(_drStoredFilters.dateTo ?? "");
-  const [filterStatus, setFilterStatus] = useState(_drStoredFilters.status ?? "all");
-  const [filterLocation, setFilterLocation] = useState<string>(_drStoredFilters.location ?? "all");
+  const setFilterDateFrom = (v: string) => setDrFilters((f) => ({ ...f, dateFrom: v }));
+  const setFilterDateTo = (v: string) => setDrFilters((f) => ({ ...f, dateTo: v }));
+  const setFilterStatus = (v: string) => setDrFilters((f) => ({ ...f, status: v }));
+  const setFilterLocation = (v: string) => setDrFilters((f) => ({ ...f, location: v }));
 
   const [formDate, setFormDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [formRaisedBy, setFormRaisedBy] = useState("");
@@ -121,11 +127,6 @@ export default function DieselRequirements() {
     { equipmentId: null, equipmentName: "", purpose: "", estHours: "", norm: "", normType: "hourly", plannedQty: "", manualQty: false },
   ]);
 
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(DR_FILTER_KEY, JSON.stringify({ location: filterLocation, dateFrom: filterDateFrom, dateTo: filterDateTo, status: filterStatus }));
-    } catch { /* ignore */ }
-  }, [filterLocation, filterDateFrom, filterDateTo, filterStatus]);
 
   const [editId, setEditId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
