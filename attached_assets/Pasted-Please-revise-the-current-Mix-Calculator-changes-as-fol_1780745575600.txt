@@ -1,0 +1,88 @@
+Please revise the current Mix Calculator changes as follows:
+
+1. Remove Rate Sensitivity / Market Sensitivity
+
+Please remove the newly proposed/added separate Rate Sensitivity or Market Sensitivity section completely.
+
+We are already comfortable with the existing Price Impact / What-If mode, and that is sufficient for checking bitumen, diesel, aggregate and other price changes.
+
+Do not duplicate this functionality elsewhere.
+
+2. Equipment Cost Carry-Forward Verification
+
+Please check and confirm whether all equipment costs entered in the Equipment & Labour section are correctly carried forward into the final cost summary.
+
+Specifically verify equipment entered as:
+
+* Daily hire/cost
+* Hourly hire/cost
+* Monthly hire/cost
+* Owned equipment/depreciation
+* Fuel consumption
+* Crew cost
+
+For each equipment item, please confirm that the cost is correctly converted into ₹/MT before being added to the DBM/BC mix cost.
+
+Please provide or add a simple verification/debug table showing:
+
+* Equipment name
+* Input basis
+* Input rate
+* Productivity/output basis used
+* Calculated ₹/MT
+* Whether it is included in Full Cost Mode
+* Whether it is included/excluded in Marginal Mode
+* Final value carried into the Live Rate Summary
+
+This is important because the final quotation is in ₹/MT, so every equipment cost must be traceable.
+
+3. Recommended Quote Section
+
+Please correct the Recommended Quote section.
+
+Do not hardcode only percentage-based quote levels like 5%, 8%, 12%.
+
+Instead, use the following quote types:
+
+* Break-Even Rate
+* Minimum Acceptable Rate
+* Target Quote Rate
+* Premium Quote Rate
+
+The logic should be:
+
+Break-Even Rate = Actual Cost ₹/MT
+
+Minimum Acceptable Rate = Actual Cost ₹/MT + user-defined minimum profit ₹/MT
+
+Target Quote Rate = Actual Cost ₹/MT + user-defined target profit ₹/MT
+
+Premium Quote Rate = Actual Cost ₹/MT + user-defined premium profit ₹/MT
+
+Please add editable inputs for profit per MT, with defaults such as:
+
+* Minimum Profit: ₹150/MT
+* Target Profit: ₹300/MT
+* Premium Profit: ₹500/MT
+
+For each mix type, show:
+
+* Actual Cost ₹/MT
+* Break-Even Rate ₹/MT
+* Minimum Acceptable Rate ₹/MT
+* Target Quote Rate ₹/MT
+* Premium Quote Rate ₹/MT
+* Profit ₹/MT for each level
+* Profit %
+
+This is more practical for DBM/BC supply quotation than fixed percentage markups.
+
+4. Keep Existing Price Impact
+
+Please keep the existing Price Impact / What-If module as it is. We will use that for market changes.
+
+The main priority now is:
+
+* remove duplicate sensitivity section,
+* verify equipment cost conversion and carry-forward,
+* correct the Recommended Quote section with profit-per-MT based quote levels.

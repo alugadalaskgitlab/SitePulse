@@ -185,7 +185,6 @@ body{font-size:11px;background:#fff}
 #fullBreakdown{display:block!important}
 #quoteModeBar{display:none!important}
 .rec-quote-card{display:none!important}
-.mkt-sens-card{display:none!important}
 .site-card,.job-card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
 .site-header{padding:6px 10px;font-size:11px}
 .job-card-header{padding:6px 10px;font-size:11px}
@@ -210,17 +209,6 @@ body{font-size:11px;background:#fff}
 .rec-quote-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(3,105,161,.1)}
 .rec-quote-row:last-child{border-bottom:none;padding-top:6px}
 .rec-quote-val{font-weight:700;color:#0369a1}
-.mkt-sens-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-top:16px}
-.mkt-sens-card h3{font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:10px;text-transform:uppercase;border-bottom:2px solid #7c3aed;padding-bottom:6px}
-.mkt-preset-btn{padding:4px 10px;font-size:11px;font-weight:600;border:1px solid #a78bfa;background:#faf5ff;color:#6d28d9;border-radius:6px;cursor:pointer;transition:background .15s;margin:2px}
-.mkt-preset-btn:hover{background:#ede9fe}
-.mkt-preset-btn.active{background:#7c3aed;color:#fff;border-color:#7c3aed}
-.mkt-impact-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
-.mkt-impact-table th{text-align:left;padding:5px 8px;background:#f5f3ff;border:1px solid #e9d5ff;color:#6d28d9;font-weight:700;font-size:11px}
-.mkt-impact-table td{padding:5px 8px;border:1px solid #e9d5ff;text-align:right}
-.mkt-impact-table td:first-child{text-align:left;font-weight:600;color:#374151}
-.mkt-delta-pos{color:#ef4444;font-weight:700}
-.mkt-delta-neg{color:#16a34a;font-weight:700}
 .ldo-mode-toggle{display:flex;gap:6px;margin-bottom:8px}
 .ldo-mode-btn{padding:4px 12px;font-size:12px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;border-radius:16px;cursor:pointer;font-weight:600}
 .ldo-mode-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
@@ -583,8 +571,6 @@ body{font-size:11px;background:#fff}
   <!-- Recommended Quote Box -->
   <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none"></div>
 
-  <!-- Market Sensitivity -->
-  <div id="mktSensPanel" class="mkt-sens-card no-print" style="display:none"></div>
 </div>
 
 </div><!-- end main-layout -->
@@ -763,7 +749,7 @@ var aggReturnTrip = false;          // true = rate×dist×1÷payload, false = ×
 var transReturnTrip = false;        // same for finished mix transport
 var ldoMode = 'norm';               // 'norm' | 'actual'
 var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
-var _activeMktPreset = null;        // key of the currently active market sensitivity preset
+var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
 
 var mixTypes = [
   { name:'BC', binderPct:5.4, density:2.35, fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6} },
@@ -2173,8 +2159,8 @@ function recalc(){
   var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
 
   renderRateSummary(displayMixRates);
+  _lastMixRates = displayMixRates;
   renderRecommendedQuote(displayMixRates);
-  renderMarketSensitivity(displayMixRates, revisedMixRates);
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(displayMixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
@@ -2316,114 +2302,79 @@ function setPlantCostMode(mode, noRecalc){
 function renderRecommendedQuote(mixRates){
   var el = document.getElementById('recQuotePanel');
   if(!el) return;
-  if(!mixRates.length){ el.style.display='none'; return; }
+  if(!mixRates||!mixRates.length){ el.style.display='none'; return; }
   el.style.display='';
+
+  // Read user-defined profit margins from the panel's own inputs (persist across re-renders)
+  var minPft = parseFloat((document.getElementById('quoteProfitMin')||{}).value);
+  var tgtPft = parseFloat((document.getElementById('quoteProfitTarget')||{}).value);
+  var prmPft = parseFloat((document.getElementById('quoteProfitPremium')||{}).value);
+  if(isNaN(minPft)) minPft = 150;
+  if(isNaN(tgtPft)) tgtPft = 300;
+  if(isNaN(prmPft)) prmPft = 500;
+
   var html = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f59e0b">💡 Recommended Quote</div>';
-  mixRates.forEach(function(r){
-    var cost = (r.quotedCost !== undefined) ? r.quotedCost : r.exPlant;
-    var aggressive = cost*1.08;
-    var minSafe    = cost*1.05;
-    var target     = cost*1.12;
-    var profitRs   = target - cost;
-    var profitPct  = cost > 0 ? (profitRs/cost*100) : 0;
-    html += '<div style="margin-bottom:12px">';
-    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12px">';
-    html += '<span style="color:#6b7280">Actual cost (base)</span><span style="font-weight:600;color:#374151">₹'+fmtR(cost)+'/MT</span>';
-    html += '<span style="color:#b45309">Aggressive (×1.08)</span><span style="font-weight:600;color:#b45309">₹'+fmtR(aggressive)+'/MT</span>';
-    html += '<span style="color:#16a34a">Minimum safe (×1.05)</span><span style="font-weight:600;color:#16a34a">₹'+fmtR(minSafe)+'/MT</span>';
-    html += '</div>';
-    html += '<div style="margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center">';
-    html += '<span style="font-size:12px;font-weight:700;color:#1d4ed8">Target (×1.12)</span>';
-    html += '<span style="font-size:14px;font-weight:700;color:#1d4ed8">₹'+fmtR(target)+'/MT</span>';
-    html += '</div>';
-    html += '<div style="margin-top:4px;font-size:11px;color:#16a34a;text-align:right">Profit at target: <strong>₹'+fmtR(profitRs)+'/MT ('+fmtR(profitPct)+'%)</strong></div>';
-    html += '</div>';
-  });
-  el.innerHTML = html;
-}
 
-// ====== MARKET SENSITIVITY PRESETS ======
-var _MKT_PRESETS = [
-  {key:'bit1000', type:'bit',  sign:1, amt:1000, label:'Bitumen +₹1,000/MT'},
-  {key:'bit2000', type:'bit',  sign:1, amt:2000, label:'Bitumen +₹2,000/MT'},
-  {key:'bit5000', type:'bit',  sign:1, amt:5000, label:'Bitumen +₹5,000/MT'},
-  {key:'hsd5',    type:'hsd',  sign:1, amt:5,    label:'Diesel +₹5/L'},
-  {key:'hsd10',   type:'hsd',  sign:1, amt:10,   label:'Diesel +₹10/L'},
-  {key:'agg50',   type:'agg',  sign:1, amt:50,   label:'Aggregate +₹50/MT'},
-  {key:'agg100',  type:'agg',  sign:1, amt:100,  label:'Aggregate +₹100/MT'}
-];
-
-function applyMarketPreset(presetKey, type, deltaSign, deltaAmt){
-  var isClear     = (presetKey === '__clear');
-  var isToggleOff = (!isClear && _activeMktPreset === presetKey);
-  _activeMktPreset = (isClear || isToggleOff) ? null : presetKey;
-  // Clear all existing manual overrides
-  delete contractRates['__REV_BIT'];
-  delete contractRates['__REV_HSD'];
-  delete contractRates['__REV_AGG'];
-  if(_activeMktPreset){
-    if(type === 'bit'){
-      contractRates['__REV_BIT'] = n('bitPrice') + deltaSign*deltaAmt/1000;
-    } else if(type === 'hsd'){
-      contractRates['__REV_HSD'] = n('hsdPrice') + deltaSign*deltaAmt;
-    } else if(type === 'agg'){
-      var curAggLanded = parseFloat((document.getElementById('aggLanded')||{}).value)||n('aggRate');
-      contractRates['__REV_AGG'] = curAggLanded + deltaSign*deltaAmt;
-    }
-  }
-  recalc();
-}
-
-function renderMarketSensitivity(mixRates, revisedMixRates){
-  var el = document.getElementById('mktSensPanel');
-  if(!el) return;
-  if(!mixRates.length){ el.style.display='none'; return; }
-  el.style.display='';
-
-  var html = '<div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #f59e0b">📊 Market Sensitivity</div>';
-  html += '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">Tap a scenario to see cost impact. Tap again to clear.</div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">';
-  _MKT_PRESETS.forEach(function(p){
-    var isActive = (_activeMktPreset === p.key);
-    html += '<button class="mkt-preset-btn'+(isActive?' active':'')+'" data-preset="'+p.key+'"'
-      +' onclick="applyMarketPreset(\''+p.key+'\',\''+p.type+'\','+p.sign+','+p.amt+')">'+p.label+'</button>';
-  });
-  if(_activeMktPreset){
-    html += '<button onclick="applyMarketPreset(\'__clear\',\'none\',0,0)" style="padding:4px 10px;font-size:11px;border:1px solid #ef4444;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;margin-top:2px">✕ Clear</button>';
-  }
+  // Profit margin inputs (editable inline)
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px">';
+  html += '<div><div style="font-size:10px;color:#92400e;font-weight:600;margin-bottom:3px">Min Profit (₹/MT)</div>'
+    +'<input id="quoteProfitMin" type="number" step="10" value="'+minPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
+    +' style="width:100%;border:1px solid #fcd34d;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#92400e;background:#fffbeb"></div>';
+  html += '<div><div style="font-size:10px;color:#1d4ed8;font-weight:600;margin-bottom:3px">Target Profit (₹/MT)</div>'
+    +'<input id="quoteProfitTarget" type="number" step="10" value="'+tgtPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
+    +' style="width:100%;border:1px solid #93c5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#1d4ed8;background:#eff6ff"></div>';
+  html += '<div><div style="font-size:10px;color:#7c3aed;font-weight:600;margin-bottom:3px">Premium Profit (₹/MT)</div>'
+    +'<input id="quoteProfitPremium" type="number" step="10" value="'+prmPft+'" oninput="renderRecommendedQuote(_lastMixRates)"'
+    +' style="width:100%;border:1px solid #c4b5fd;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;color:#7c3aed;background:#f5f3ff"></div>';
   html += '</div>';
 
-  // Impact table when a preset is active and we have revised rates
-  if(_activeMktPreset && revisedMixRates && revisedMixRates.length){
-    var _mPct = n('marginPct')/100;
-    var preset = _MKT_PRESETS.find(function(p){return p.key===_activeMktPreset;});
-    html += '<div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:6px">Impact: '+esc(preset?preset.label:'')+'</div>';
+  mixRates.forEach(function(r){
+    var cost = (r.quotedCost !== undefined) ? r.quotedCost : r.exPlant;
+    var minRate = cost + minPft;
+    var tgtRate = cost + tgtPft;
+    var prmRate = cost + prmPft;
+    var minPct  = cost > 0 ? (minPft/cost*100) : 0;
+    var tgtPct  = cost > 0 ? (tgtPft/cost*100) : 0;
+    var prmPct  = cost > 0 ? (prmPft/cost*100) : 0;
+
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
     html += '<thead><tr style="background:#f3f4f6">'
-      +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb">Mix</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Base Cost</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Revised Cost</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Δ/MT</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb">Rev. Quote (×1.12)</th>'
+      +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;font-weight:600">Level</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Rate (₹/MT)</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Profit ₹</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Profit %</th>'
       +'</tr></thead><tbody>';
-    mixRates.forEach(function(r, i){
-      var rev = revisedMixRates[i] || revisedMixRates[0];
-      var baseCost = r.quotedCost !== undefined ? r.quotedCost : r.exPlant;
-      var revCost  = rev.quotedCost !== undefined ? rev.quotedCost : rev.exPlant;
-      var delta = revCost - baseCost;
-      var deltaColor = delta>0?'#dc2626':'#16a34a';
-      var revQuote = revCost*1.12;
-      html += '<tr>'
-        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;font-weight:600">'+esc(r.name)+'</td>'
-        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right">₹'+fmtR(baseCost)+'</td>'
-        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right">₹'+fmtR(revCost)+'</td>'
-        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:'+deltaColor+';font-weight:700">'+(delta>0?'+':'')+'₹'+fmtR(delta)+'</td>'
-        +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8">₹'+fmtR(revQuote)+'</td>'
-        +'</tr>';
-    });
+
+    // Break-Even
+    html += '<tr><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#6b7280;font-weight:600">Break-Even</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#374151">₹'+fmtR(cost)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#9ca3af">₹0</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#9ca3af">0.0%</td></tr>';
+
+    // Minimum Acceptable
+    html += '<tr style="background:#fefce8"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#92400e;font-weight:600">Min Acceptable</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e;font-weight:600">₹'+fmtR(minPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e">'+fmtR(minPct)+'%</td></tr>';
+
+    // Target Quote (highlighted)
+    html += '<tr style="background:#eff6ff"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#1d4ed8;font-weight:700">Target Quote ⭐</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8;font-size:12px">₹'+fmtR(tgtRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:700">₹'+fmtR(tgtPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:600">'+fmtR(tgtPct)+'%</td></tr>';
+
+    // Premium Quote
+    html += '<tr style="background:#f5f3ff"><td style="padding:4px 6px;border:1px solid #e5e7eb;color:#7c3aed;font-weight:700">Premium Quote</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#7c3aed">₹'+fmtR(prmRate)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed;font-weight:600">₹'+fmtR(prmPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed">'+fmtR(prmPct)+'%</td></tr>';
+
     html += '</tbody></table>';
-  }
+    html += '<div style="margin-top:3px;font-size:10px;color:#9ca3af">Actual cost: ₹'+fmtR(cost)+'/MT ('+esc(quoteMode.replace(/_/g,' '))+')</div>';
+    html += '</div>';
+  });
 
   el.innerHTML = html;
 }
