@@ -586,6 +586,7 @@ export default function MixImpact() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const initEstimateId = parseInt(params.get("estimateId") || "0") || null;
+  const returnUrl = params.get("returnTo") || (initEstimateId ? `/mix-calculator?section=price-impact&estimateId=${initEstimateId}` : "/mix-calculator");
 
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<number | null>(initEstimateId);
@@ -682,9 +683,9 @@ export default function MixImpact() {
       {/* Header */}
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-3">
-          <Link href="/admin/mix-estimates">
+          <Link href={returnUrl}>
             <Button variant="ghost" size="sm">
-              <ChevronLeft className="w-4 h-4 mr-1" /> Estimates
+              <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
           </Link>
           <div>

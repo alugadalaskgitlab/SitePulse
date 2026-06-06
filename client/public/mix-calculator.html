@@ -227,6 +227,10 @@ body{font-size:11px;background:#fff}
 .calc-content{flex:1;min-width:0;padding:16px 16px 48px}
 .nav-group-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.8px;padding:14px 14px 5px}
 .nav-item{display:flex;align-items:center;padding:9px 14px 9px 16px;font-size:13px;font-weight:500;color:rgba(255,255,255,.72);cursor:pointer;border-left:3px solid transparent;transition:background .12s,color .12s;user-select:none;line-height:1.35}
+.calc-nav-header{padding:10px 12px 9px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:2px;flex-shrink:0}
+.calc-nav-est-name{font-size:11px;font-weight:700;color:rgba(255,255,255,.9);word-break:break-word;line-height:1.35;min-height:16px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.calc-nav-util-btn{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.78);font-size:11px;padding:4px 0;border-radius:4px;cursor:pointer;transition:background .12s}
+.calc-nav-util-btn:hover{background:rgba(255,255,255,.18)}
 .nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
 .nav-item.nav-active{background:rgba(245,158,11,.16);color:#f59e0b;border-left-color:#f59e0b;font-weight:700}
 .calc-section{display:none}
@@ -339,16 +343,23 @@ body{font-size:11px;background:#fff}
 <div id="quoteModeBar" class="no-print" style="background:linear-gradient(135deg,#1e3a5f,#1e4080);padding:8px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:52px;z-index:99;box-shadow:0 2px 8px rgba(0,0,0,.3)">
   <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Quote Mode:</span>
   <div style="display:flex;gap:6px;flex-wrap:wrap">
-    <button id="qm_supply_only" class="qm-btn qm-active" onclick="setQuoteMode('supply_only')">📦 Supply Only – Ex-Plant</button>
+    <button id="qm_supply_only" class="qm-btn" onclick="setQuoteMode('supply_only')">📦 Supply Only – Ex-Plant</button>
     <button id="qm_supply_transport" class="qm-btn" onclick="setQuoteMode('supply_transport')">🚛 Supply + Transport</button>
     <button id="qm_supply_laying" class="qm-btn" onclick="setQuoteMode('supply_laying')">🛣️ Supply + Laying</button>
-    <button id="qm_full_road" class="qm-btn" onclick="setQuoteMode('full_road')">🏗️ Full Road Work</button>
+    <button id="qm_full_road" class="qm-btn qm-active" onclick="setQuoteMode('full_road')">🏗️ Full Scope</button>
   </div>
   <div id="quoteModeDesc" style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.65);font-style:italic;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
 </div>
 
 <div class="calc-shell">
 <nav class="calc-nav" id="calcNav">
+  <div class="calc-nav-header">
+    <div class="calc-nav-est-name" id="calcNavEstName">Unsaved Draft</div>
+    <div style="display:flex;gap:5px;margin-top:7px">
+      <button class="calc-nav-util-btn" onclick="openSavedPanel()" title="Load or switch estimate">📂 Open</button>
+      <button class="calc-nav-util-btn" onclick="newEstimateFromNav()" title="Start a new blank estimate">＋ New</button>
+    </div>
+  </div>
   <div class="nav-group-label">Setup</div>
   <div class="nav-item nav-active" id="navitem-quote-setup" onclick="showSection('quote-setup')">① Quote Setup</div>
   <div class="nav-item" id="navitem-mix-types" onclick="showSection('mix-types')">② Mix Types</div>
@@ -850,7 +861,7 @@ var breakdownOpen = false;
 var _scopeAutoRates = {}; // keyed by sanitized mix name; updated by updateScopeAutoRatesCache()
 
 // ====== QUOTE MODE & NEW FEATURE STATE ======
-var quoteMode = 'supply_only';      // 'supply_only' | 'supply_transport' | 'supply_laying' | 'full_road'
+var quoteMode = 'full_road';         // 'supply_only' | 'supply_transport' | 'supply_laying' | 'full_road'
 var aggReturnTrip = false;          // true = rate×dist×1÷payload, false = ×2 (default: one-way fare billed twice)
 var transReturnTrip = false;        // same for finished mix transport
 var ldoMode = 'norm';               // 'norm' | 'actual'
@@ -1079,7 +1090,7 @@ function migrateState(state){
   // Initialize contractRates if missing
   if(!state.contractRates) state.contractRates = {};
   // Initialize new quote-mode state if missing (backward compat)
-  if(!state.quoteMode) state.quoteMode = 'supply_only';
+  if(!state.quoteMode) state.quoteMode = 'full_road';
   if(state.aggReturnTrip === undefined) state.aggReturnTrip = false;
   if(state.transReturnTrip === undefined) state.transReturnTrip = false;
   if(!state.ldoMode) state.ldoMode = 'norm';
@@ -1310,9 +1321,22 @@ function updateBadge(){
   else badge.style.display = 'none';
   var piBtn = document.getElementById('btnPriceImpact');
   if(piBtn){
-    if(currentEstimateId){ piBtn.setAttribute('href','/admin/mix-impact?estimateId='+currentEstimateId); piBtn.style.display=''; }
-    else { piBtn.setAttribute('href','#'); piBtn.style.display='none'; }
+    if(currentEstimateId){
+      var _retTo = encodeURIComponent('/mix-calculator?section=price-impact&estimateId='+currentEstimateId);
+      piBtn.setAttribute('href','/admin/mix-impact?estimateId='+currentEstimateId+'&returnTo='+_retTo);
+      piBtn.style.display='';
+    } else { piBtn.setAttribute('href','#'); piBtn.style.display='none'; }
   }
+  updateCalcNavHeader();
+}
+
+function updateCalcNavHeader(){
+  var el = document.getElementById('calcNavEstName');
+  if(el) el.textContent = currentEstimateName || 'Unsaved Draft';
+}
+
+function newEstimateFromNav(){
+  if(confirm('Start a new estimate? Unsaved changes will be lost.')) resetState();
 }
 
 function autoEstimateName(){
@@ -1369,8 +1393,7 @@ function confirmSaveToDb(){
         localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
         localStorage.setItem(STORAGE_KEY+'_estName', est.name);
         updateBadge();
-        showToast('Saved ✓ — returning to overview…');
-        setTimeout(function(){ window.location.href = '/admin/mix-estimates'; }, 1500);
+        showToast('Saved ✓');
       })
       .catch(function(){ showToast('Save failed — check connection', true); });
   }
@@ -1390,8 +1413,7 @@ function confirmSaveToDb(){
             localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
             localStorage.setItem(STORAGE_KEY+'_estName', est.name);
             updateBadge();
-            showToast('Saved ✓ — returning to overview…');
-            setTimeout(function(){ window.location.href = '/admin/mix-estimates'; }, 1500);
+            showToast('Saved ✓');
           });
         }
       })
@@ -2370,8 +2392,8 @@ function setQuoteMode(mode, noRecalc){
   var desc = {
     'supply_only':     'Ex-plant rate — transport, laying & coat excluded',
     'supply_transport':'Delivered to site — laying & coat excluded',
-    'supply_laying':   'Supply + transport + laying — prime/tack optional',
-    'full_road':       'Complete road work — all components included'
+    'supply_laying':   'Supply + transport + laying — spraying shown, uncheck emulsion if contractor supplies',
+    'full_road':       'Full scope — all components included'
   };
   ['supply_only','supply_transport','supply_laying','full_road'].forEach(function(m){
     var btn = document.getElementById('qm_'+m);
@@ -2387,7 +2409,20 @@ function setQuoteMode(mode, noRecalc){
   var ccoat   = document.getElementById('cardCoat');
   if(ctrans)  ctrans.style.opacity  = showTrans  ? '1' : '0.4';
   if(claying) claying.style.opacity = showLaying ? '1' : '0.4';
-  if(ccoat)   ccoat.style.opacity   = (mode==='full_road') ? '1' : '0.4';
+  if(ccoat)   ccoat.style.opacity   = (mode==='full_road'||mode==='supply_laying') ? '1' : '0.4';
+  // Auto-drive scope quotation groups based on quote mode
+  var _modeGroups = {
+    'supply_only':     {mixing:true, transport:false, spraying:false, paving:false},
+    'supply_transport':{mixing:true, transport:true,  spraying:false, paving:false},
+    'supply_laying':   {mixing:true, transport:true,  spraying:true,  paving:true},
+    'full_road':       {mixing:true, transport:true,  spraying:true,  paving:true}
+  };
+  var _ng = _modeGroups[mode];
+  if(_ng && typeof scopeState !== 'undefined'){
+    Object.keys(_ng).forEach(function(k){ scopeState.groups[k] = _ng[k]; });
+    if(typeof restoreScopeUI === 'function') restoreScopeUI();
+    if(!noRecalc && typeof renderScopeQuotation === 'function') renderScopeQuotation();
+  }
   if(!noRecalc) recalc();
 }
 
@@ -5330,6 +5365,14 @@ function init(){
   renderSites();
   recalc();
   showSection('quote-setup');
+  // Navigate to section from URL param (e.g. returning from Price Impact page)
+  (function(){
+    try{
+      var _sp = new URLSearchParams(window.location.search);
+      var _sec = _sp.get('section');
+      if(_sec) showSection(_sec);
+    }catch(e){}
+  })();
 
   // Apply preset contractor to first job after render
   var presetContractor = localStorage.getItem(STORAGE_KEY+'_presetContractor');
