@@ -2029,12 +2029,16 @@ function renderRateSummary(mixRates){
   html+='<tr style="font-weight:700"><td>Plant Subtotal</td>';
   mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(r.exPlant)+'</td><td style="color:var(--blue)">'+fmtR(r.exPlant*r.density)+'</td>'; });
   html+='</tr>';
-  html+='<tr><td>Transport</td>';
-  mixRates.forEach(function(r){ html+='<td>'+fmtR(r.transport)+'</td><td style="color:var(--blue)">'+fmtR(r.transport*r.density)+'</td>'; });
-  html+='</tr>';
-  html+='<tr><td>Laying</td>';
-  mixRates.forEach(function(r){ html+='<td>'+fmtR(r.laying)+'</td><td style="color:var(--blue)">'+fmtR(r.laying*r.density)+'</td>'; });
-  html+='</tr>';
+  if(scopeState.groups.transport){
+    html+='<tr><td>Transport</td>';
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.transport)+'</td><td style="color:var(--blue)">'+fmtR(r.transport*r.density)+'</td>'; });
+    html+='</tr>';
+  }
+  if(scopeState.groups.paving){
+    html+='<tr><td>Laying</td>';
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.laying)+'</td><td style="color:var(--blue)">'+fmtR(r.laying*r.density)+'</td>'; });
+    html+='</tr>';
+  }
   if(mixRates[0]&&(mixRates[0].overhead||0)>0){
     html+='<tr><td>Mob/Demob</td>';
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r.overhead||0)+'</td><td style="color:var(--blue)">'+fmtR((r.overhead||0)*r.density)+'</td>'; });
@@ -2483,8 +2487,13 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
     html+='<span><span class="jt-label">Tack</span> <span class="jt-value">₹'+fmtI(Math.round(grandTack))+'</span></span>';
     var _combinedMixPerMT  = grandMT>0 ? (grandTotal-grandPrime-grandTack)/grandMT : 0;
       var _combinedFullPerMT = grandMT>0 ? grandTotal/grandMT : 0;
-      html+='<span><span class="jt-label">Mix ₹/MT</span> <span class="jt-value" title="Weighted avg (plant+trans+pav incl margin) across all mixes">₹'+fmtI(Math.round(_combinedMixPerMT))+'</span></span>';
-      html+='<span><span class="jt-label">Full ₹/MT</span> <span class="jt-value" title="Total incl prime+tack amortised per MT">₹'+fmtI(Math.round(_combinedFullPerMT))+'</span></span>';
+      var _distinctMixIdxs = {};
+      allJobs.forEach(function(j){ (j.mixes||[]).forEach(function(mx){ _distinctMixIdxs[mx.mixIdx]=true; }); });
+      var _multiMix = Object.keys(_distinctMixIdxs).length > 1;
+      if(_multiMix){
+        html+='<span><span class="jt-label">Mix ₹/MT</span> <span class="jt-value" title="Weighted avg (plant+trans+pav incl margin) across all mixes">₹'+fmtI(Math.round(_combinedMixPerMT))+'</span></span>';
+        html+='<span><span class="jt-label">Full ₹/MT</span> <span class="jt-value" title="Total incl prime+tack amortised per MT">₹'+fmtI(Math.round(_combinedFullPerMT))+'</span></span>';
+      }
       html+='<span style="margin-left:auto;font-size:15px;color:var(--amber)">Total: ₹'+fmtI(Math.round(grandTotal))+'</span>';
     html+='</div>';
     totalsDiv.innerHTML=html;
