@@ -183,6 +183,9 @@ body{font-size:11px;background:#fff}
 .rate-panel{box-shadow:none;border:1px solid #ddd}
 .rate-panel h2{font-size:14px}
 #fullBreakdown{display:block!important}
+#quoteModeBar{display:none!important}
+.rec-quote-card{display:none!important}
+.mkt-sens-card{display:none!important}
 .site-card,.job-card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
 .site-header{padding:6px 10px;font-size:11px}
 .job-card-header{padding:6px 10px;font-size:11px}
@@ -197,6 +200,33 @@ body{font-size:11px;background:#fff}
 .contractor-summary{display:none}
 @page{margin:10mm 8mm;size:A4}
 }
+.qm-btn{padding:5px 13px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border-radius:20px;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap}
+.qm-btn:hover{background:rgba(255,255,255,.2);color:#fff}
+.qm-btn.qm-active{background:#f59e0b;border-color:#f59e0b;color:#1f2937}
+.rec-quote-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-top:16px}
+.rec-quote-card h3{font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:12px;text-transform:uppercase;border-bottom:2px solid #1e3a5f;padding-bottom:6px}
+.rec-quote-mix{background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.rec-quote-mix h4{font-size:13px;font-weight:700;color:#0369a1;margin-bottom:10px}
+.rec-quote-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(3,105,161,.1)}
+.rec-quote-row:last-child{border-bottom:none;padding-top:6px}
+.rec-quote-val{font-weight:700;color:#0369a1}
+.mkt-sens-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-top:16px}
+.mkt-sens-card h3{font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:10px;text-transform:uppercase;border-bottom:2px solid #7c3aed;padding-bottom:6px}
+.mkt-preset-btn{padding:4px 10px;font-size:11px;font-weight:600;border:1px solid #a78bfa;background:#faf5ff;color:#6d28d9;border-radius:6px;cursor:pointer;transition:background .15s;margin:2px}
+.mkt-preset-btn:hover{background:#ede9fe}
+.mkt-preset-btn.active{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.mkt-impact-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.mkt-impact-table th{text-align:left;padding:5px 8px;background:#f5f3ff;border:1px solid #e9d5ff;color:#6d28d9;font-weight:700;font-size:11px}
+.mkt-impact-table td{padding:5px 8px;border:1px solid #e9d5ff;text-align:right}
+.mkt-impact-table td:first-child{text-align:left;font-weight:600;color:#374151}
+.mkt-delta-pos{color:#ef4444;font-weight:700}
+.mkt-delta-neg{color:#16a34a;font-weight:700}
+.ldo-mode-toggle{display:flex;gap:6px;margin-bottom:8px}
+.ldo-mode-btn{padding:4px 12px;font-size:12px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;border-radius:16px;cursor:pointer;font-weight:600}
+.ldo-mode-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.plant-mode-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:10px}
+.plant-mode-btn{padding:4px 12px;font-size:12px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:16px;cursor:pointer;font-weight:600}
+.plant-mode-btn.active{background:#16a34a;border-color:#16a34a;color:#fff}
 </style>
 </head>
 <body>
@@ -269,6 +299,18 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+<!-- ====== Quote Mode Selector ====== -->
+<div id="quoteModeBar" class="no-print" style="background:linear-gradient(135deg,#1e3a5f,#1e4080);padding:8px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:52px;z-index:99;box-shadow:0 2px 8px rgba(0,0,0,.3)">
+  <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Quote Mode:</span>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button id="qm_supply_only" class="qm-btn qm-active" onclick="setQuoteMode('supply_only')">📦 Supply Only – Ex-Plant</button>
+    <button id="qm_supply_transport" class="qm-btn" onclick="setQuoteMode('supply_transport')">🚛 Supply + Transport</button>
+    <button id="qm_supply_laying" class="qm-btn" onclick="setQuoteMode('supply_laying')">🛣️ Supply + Laying</button>
+    <button id="qm_full_road" class="qm-btn" onclick="setQuoteMode('full_road')">🏗️ Full Road Work</button>
+  </div>
+  <div id="quoteModeDesc" style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.65);font-style:italic;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
+</div>
+
 <div class="main-layout">
 <div class="left-col" id="leftCol">
 
@@ -318,10 +360,31 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Loose Bulk Density (MT/CUM)</label><input id="aggDensity" type="number" value="1.5" step="0.01" oninput="recalc()"></div>
       <div class="form-group"><label>Crusher → Plant Distance (km, one way)</label><input id="aggDist" type="number" value="25" oninput="recalc()"></div>
       <div class="form-group"><label>Freight Rate (₹/km/load)</label><input id="aggFreightRate" type="number" value="9" oninput="recalc()"></div>
-      <div class="form-group"><label>Freight Payload (MT)</label><input id="aggPayload" type="number" value="16" oninput="recalc()"></div>
+      <div class="form-group">
+        <label>Freight Payload (MT)</label>
+        <select id="aggPayloadSel" onchange="(function(){var v=this.value;document.getElementById('aggPayload').value=v==='custom'?'':v;if(v!=='custom')recalc();}).call(this)" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+          <option value="16">16 MT</option><option value="22">22 MT</option><option value="28">28 MT</option>
+          <option value="32">32 MT</option><option value="34">34 MT</option><option value="custom">Custom</option>
+        </select>
+        <input id="aggPayload" type="number" value="16" oninput="recalc()" style="width:60px;margin-left:4px;display:none">
+      </div>
+      <div class="form-group" style="align-items:center;gap:8px">
+        <label>Return Trip Included?</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--blue)">
+          <input type="checkbox" id="aggReturnTripChk" onchange="aggReturnTrip=this.checked;recalc()">
+          <span>Yes (÷1 instead of ÷2)</span>
+        </label>
+      </div>
+      <div class="form-group"><label>Aggregate Wastage / Moisture %</label><input id="aggWastage" type="number" value="1" step="0.1" oninput="recalc()"></div>
       <div class="form-group"><label>Freight ₹/MT</label><input class="derived" id="aggFreight" readonly></div>
       <div class="form-group"><label>Landed Aggregate Rate ₹/MT</label><input class="derived" id="aggLanded" readonly></div>
       <div class="form-group"><label>Bitumen Price (₹/kg)</label><input id="bitPrice" type="number" value="48" oninput="recalc()"></div>
+      <div class="form-group"><label>Bitumen Wastage / Loss %</label><input id="bitWastage" type="number" value="0.5" step="0.1" oninput="recalc()"></div>
+      <div class="form-group" style="grid-column:span 2;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:8px 12px">
+        <div id="bitumenVerifyDisplay" style="font-size:12px;color:#713f12;line-height:1.7">
+          <span style="font-weight:700;color:#92400e">Bitumen Check:</span> Enter values above to verify formula
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -332,6 +395,12 @@ body{font-size:11px;background:#fff}
     <h2>④ Equipment & Labour</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
+    <div class="plant-mode-row no-print">
+      <span style="font-size:12px;font-weight:700;color:#15803d">Plant Cost Mode:</span>
+      <button id="pm_full" class="plant-mode-btn active" onclick="setPlantCostMode('full')">Full Cost (incl. depreciation)</button>
+      <button id="pm_marginal" class="plant-mode-btn" onclick="setPlantCostMode('marginal')">Marginal Only (running cost)</button>
+      <span style="font-size:11px;color:#6b7280;font-style:italic">Marginal excludes owned equipment depreciation — use for incremental quotes</span>
+    </div>
     <div class="form-grid" style="margin-bottom:12px">
       <div class="form-group"><label>Production Rate (TPH)</label><input id="tph" type="number" value="60" oninput="recalc()"></div>
       <div class="form-group"><label>Plant Hours / Month</label><input id="plantHrsMonth" type="number" value="200" oninput="recalc()"></div>
@@ -356,8 +425,21 @@ body{font-size:11px;background:#fff}
     <div class="derived-label" id="hsdDerived" style="margin:8px 0"></div>
     <hr style="margin:12px 0;border:none;border-top:1px solid var(--gray-200)">
     <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Dryer (LDO)</h3>
+    <div class="ldo-mode-toggle no-print">
+      <button id="ldoMode_norm" class="ldo-mode-btn active" onclick="setLdoMode('norm')">📊 Norm Mode (L/MT)</button>
+      <button id="ldoMode_actual" class="ldo-mode-btn" onclick="setLdoMode('actual')">🔢 Actual (Flow Meter)</button>
+      <span style="font-size:11px;color:#6b7280;font-style:italic">Actual mode: compute L/MT from open/close meter readings</span>
+    </div>
     <div class="form-grid">
-      <div class="form-group"><label>LDO Consumption (L/MT)</label><input id="ldoConsump" type="number" value="4.5" step="0.1" oninput="recalc()"></div>
+      <div class="form-group" id="ldoNormRow"><label>LDO Consumption (L/MT)</label><input id="ldoConsump" type="number" value="4.5" step="0.1" oninput="recalc()"></div>
+      <div id="ldoActualGroup" style="display:none;grid-column:span 3;display:none">
+        <div class="form-grid" style="margin:0">
+          <div class="form-group"><label>Opening Meter Reading (L)</label><input id="ldoOpenMeter" type="number" value="" placeholder="e.g. 12450" oninput="recalc()"></div>
+          <div class="form-group"><label>Closing Meter Reading (L)</label><input id="ldoCloseMeter" type="number" value="" placeholder="e.g. 14850" oninput="recalc()"></div>
+          <div class="form-group"><label>Production this shift (MT)</label><input id="ldoProdMT" type="number" value="" placeholder="e.g. 500" oninput="recalc()"></div>
+          <div class="form-group"><label>Actual LDO L/MT</label><input class="derived" id="ldoActualResult" readonly></div>
+        </div>
+      </div>
       <div class="form-group"><label>LDO Rate (₹/L)</label><input id="ldoRate" type="number" value="72" oninput="recalc()"></div>
       <div class="form-group"><label>Dryer LDO ₹/MT</label><input class="derived" id="ldoDerived" readonly></div>
     </div>
@@ -405,7 +487,7 @@ body{font-size:11px;background:#fff}
 </div>
 
 <!-- ⑦ Laying & Compaction -->
-<div class="card">
+<div class="card" id="cardLaying">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑦ Laying & Compaction</h2><span class="chevron">▼</span>
   </div>
@@ -423,22 +505,37 @@ body{font-size:11px;background:#fff}
 </div>
 
 <!-- ⑧ Transport to Site -->
-<div class="card">
+<div class="card" id="cardTransport">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑧ Transport to Site</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div class="form-grid">
-      <div class="form-group"><label>Reference Distance (km, rate card)</label><input id="transDist" type="number" value="30" oninput="recalc()"></div>
+      <div class="form-group"><label>Reference Distance (km, one way)</label><input id="transDist" type="number" value="30" oninput="recalc()"></div>
       <div class="form-group"><label>Rate (₹/km/load)</label><input id="transRate" type="number" value="9" oninput="recalc()"></div>
-      <div class="form-group"><label>Payload (MT)</label><input id="transPayload" type="number" value="16" oninput="recalc()"></div>
+      <div class="form-group">
+        <label>Payload (MT)</label>
+        <select id="transPayloadSel" onchange="(function(){var v=this.value;document.getElementById('transPayload').value=v==='custom'?'':v;document.getElementById('transPayloadCustom').style.display=v==='custom'?'':'none';if(v!=='custom')recalc();}).call(this)" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+          <option value="16">16 MT</option><option value="22">22 MT</option><option value="28">28 MT</option>
+          <option value="32">32 MT</option><option value="34">34 MT</option><option value="custom">Custom</option>
+        </select>
+        <input id="transPayloadCustom" type="number" style="width:60px;margin-left:4px;display:none" placeholder="MT" oninput="document.getElementById('transPayload').value=this.value;recalc()">
+        <input id="transPayload" type="number" value="16" style="display:none">
+      </div>
+      <div class="form-group" style="align-items:center;gap:8px">
+        <label>Return Trip Included?</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--blue)">
+          <input type="checkbox" id="transReturnTripChk" onchange="transReturnTrip=this.checked;recalc()">
+          <span>Yes (fare × 1, not × 2)</span>
+        </label>
+      </div>
       <div class="form-group"><label>Transport ₹/MT</label><input class="derived" id="transDerived" readonly></div>
     </div>
   </div>
 </div>
 
 <!-- ⑨ Prime & Tack Coat -->
-<div class="card">
+<div class="card" id="cardCoat">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑨ Prime & Tack Coat</h2><span class="chevron">▼</span>
   </div>

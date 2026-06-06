@@ -1,0 +1,155 @@
+We will create/use a separate fork for this module as an internal HLC estimating tool. Please do not disturb the existing commercial SitePulse flow.
+
+Objective:
+Refine the existing Mix Rate Calculator into an internal **HLC Bituminous Mix Quotation Tool** mainly for quoting contractors for DBM and BC bituminous mix supply.
+
+Please do not rebuild from scratch. Keep most of the existing calculator, but restructure the workflow so that contractor quotation becomes faster and clearer.
+
+Required changes:
+
+1. Add top-level **Estimate Type / Quote Mode**
+
+   * Supply Only – Ex-Plant
+   * Supply + Transport – Delivered
+   * Supply + Laying
+   * Full Road Work
+
+2. Default mode should be **Supply Only – Ex-Plant**
+   In this mode, hide or exclude:
+
+   * Paver
+   * Roller
+   * PTR
+   * Laying crew
+   * Prime coat
+   * Tack coat
+   * Spray crew
+   * Any laying-related cost
+
+3. In Supply Only mode, final output should clearly show:
+
+   * DBM Ex-Plant Cost ₹/MT
+   * BC Ex-Plant Cost ₹/MT
+   * DBM Quote Rate ₹/MT
+   * BC Quote Rate ₹/MT
+   * Profit ₹/MT
+   * Profit %
+   * GST extra / inclusive option
+
+4. Please urgently verify the bitumen formula and display.
+   Correct formula:
+
+   * Bitumen kg/MT = Binder % × 10
+   * Bitumen cost ₹/MT = Binder % × 10 × Bitumen ₹/kg
+
+   Example:
+   BC binder 5.2%, bitumen ₹48/kg:
+   5.2 × 10 × 48 = ₹2,496/MT.
+   It should not show ₹249.60/MT.
+
+5. Improve aggregate costing.
+   Instead of one common aggregate rate, allow separate rates for:
+
+   * 20mm
+   * 10mm
+   * 6mm
+   * Dust
+   * Filler
+
+   For each fraction allow:
+
+   * Basic purchase rate
+   * Crusher-to-plant lead
+   * Freight ₹/km/load
+   * Payload MT/load
+   * Return trip included / not included toggle
+   * Loading/unloading if any
+   * Wastage/moisture %
+
+6. Freight formula should support both:
+
+   * If return trip included: lead × rate / payload
+   * If return trip not included: lead × 2 × rate / payload
+
+   Apply this logic to both:
+
+   * Crusher-to-plant aggregate transport
+   * Plant-to-site finished mix transport
+
+7. Add practical payload options:
+
+   * 16 MT
+   * 22 MT
+   * 28 MT
+   * 32 MT
+   * 34 MT
+   * Custom
+
+8. Add bitumen wastage/loss input:
+
+   * Default 0.5%
+   * Editable
+
+   Final bitumen quantity should be:
+   theoretical bitumen × (1 + bitumen wastage %)
+
+9. Add aggregate wastage/moisture factor:
+
+   * Default 1%
+   * Editable fraction-wise or common factor
+
+10. LDO calculation should have two modes:
+
+* Norm mode: LDO litres/MT
+* Actual mode: opening flow meter, closing flow meter, production MT → actual LDO/MT
+
+11. Plant cost should have two quote modes:
+
+* Full Cost Mode: includes plant ownership/depreciation
+* Marginal Quote Mode: excludes ownership/depreciation and uses only running cost, fuel, crew, maintenance and margin
+
+12. Keep the existing **Price Impact / What-If** feature. It is useful and should not be removed.
+
+Improve it as **Market Sensitivity** with ready scenarios:
+
+* Bitumen + ₹1000/MT
+* Bitumen + ₹2000/MT
+* Bitumen + ₹5000/MT
+* Diesel + ₹5/L
+* Diesel + ₹10/L
+* Aggregate + ₹50/MT
+* Aggregate + ₹100/MT
+
+Show impact on:
+
+* DBM cost ₹/MT
+* BC cost ₹/MT
+* Recommended quote rate
+* Profit ₹/MT
+
+13. Add a new **Recommended Quote** box:
+    For each mix type show:
+
+* Actual Cost ₹/MT
+* Minimum Safe Quote ₹/MT
+* Target Quote ₹/MT
+* Aggressive Quote ₹/MT
+* Profit at Target ₹/MT
+* Profit at Target %
+
+14. Rename right-side summary depending on mode:
+
+* Supply Only: “Supply Cost Summary”
+* Delivered: “Delivered Mix Summary”
+* Laying: “Supply + Laying Summary”
+* Full Road Work: “Final Laid Rate Summary”
+
+15. Keep the existing save/load estimate, contractor summary, procurement summary, profitability check and price impact features.
+
+Final goal:
+I should be able to open the calculator, select DBM or BC, enter current aggregate/bitumen/fuel/transport values, and within 15 seconds get a realistic rate to quote a contractor for:
+
+* Ex-plant supply rate
+* Delivered supply rate
+* Profitability at different quote rates
+* Impact of bitumen/diesel/aggregate price changes
