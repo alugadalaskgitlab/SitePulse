@@ -38,7 +38,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .btn-blue{background:var(--blue);color:#fff}.btn-blue:hover{background:#1d4ed8}
 .main-layout{display:flex;gap:0;max-width:1600px;margin:0 auto;padding:16px}
 .left-col{flex:0 0 65%;max-width:65%;padding-right:16px;overflow-y:auto}
-.right-col{flex:0 0 35%;max-width:35%;position:sticky;top:60px;align-self:flex-start;height:calc(100vh - 80px);overflow-y:auto}
+.right-col{width:300px;flex-shrink:0;position:sticky;top:96px;height:calc(100vh - 96px);overflow-y:auto;background:var(--gray-50);border-left:1px solid var(--gray-200);padding:16px}
 .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
 .card-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;border-left:4px solid var(--amber);background:var(--gray-50)}
 .card-header h2{font-size:15px;font-weight:700;text-transform:uppercase;color:var(--gray-700);letter-spacing:.5px}
@@ -166,18 +166,24 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .sc-back-link{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none;white-space:nowrap}
 .sc-back-link:hover{color:#fff;text-decoration:underline}
 @media(max-width:900px){
-.main-layout{flex-direction:column}
-.left-col,.right-col{flex:1;max-width:100%;padding-right:0}
-.right-col{position:static;height:auto}
+.calc-shell{flex-direction:column}
+.calc-nav{width:100%;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 6px;position:static;height:auto;-webkit-overflow-scrolling:touch}
+.nav-group-label{display:none}
+.nav-item{padding:6px 10px;font-size:11px;border-left:none;border-bottom:2px solid transparent;flex-shrink:0;white-space:nowrap}
+.nav-item.nav-active{border-bottom-color:#f59e0b;border-left-color:transparent;background:rgba(245,158,11,.16)}
+.calc-content{padding:10px 10px 32px}
+.right-col{width:100%;position:static;height:auto;border-left:none;border-top:2px solid var(--gray-200)}
 .form-grid,.form-grid-3{grid-template-columns:1fr}
 .procurement-grid{grid-template-columns:1fr}
 }
 @media print{
 .top-bar .btn,.toggle-group,.breakdown-toggle,.no-print,.equip-card,.validation-bar,.mix-tab-bar{display:none!important}
 .card-body{display:block!important}
-.main-layout{display:block}
-.left-col{display:none!important}
-.right-col{display:block!important;max-width:100%;position:static;height:auto}
+.calc-nav{display:none!important}
+.calc-shell{display:block!important}
+.calc-content{padding:0!important}
+.calc-section{display:block!important}
+.right-col{display:block!important;position:static!important;height:auto!important;width:100%!important;border:none!important;background:#fff!important;padding:0!important}
 .card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
 body{font-size:11px;background:#fff}
 .rate-panel{box-shadow:none;border:1px solid #ddd}
@@ -215,6 +221,48 @@ body{font-size:11px;background:#fff}
 .plant-mode-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:10px}
 .plant-mode-btn{padding:4px 12px;font-size:12px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:16px;cursor:pointer;font-weight:600}
 .plant-mode-btn.active{background:#16a34a;border-color:#16a34a;color:#fff}
+/* ====== SECTION-NAV LAYOUT ====== */
+.calc-shell{display:flex;max-width:1600px;margin:0 auto;align-items:flex-start}
+.calc-nav{width:196px;flex-shrink:0;background:#1e3a5f;position:sticky;top:96px;height:calc(100vh - 96px);overflow-y:auto;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.08)}
+.calc-content{flex:1;min-width:0;padding:16px 16px 48px}
+.nav-group-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.8px;padding:14px 14px 5px}
+.nav-item{display:flex;align-items:center;padding:9px 14px 9px 16px;font-size:13px;font-weight:500;color:rgba(255,255,255,.72);cursor:pointer;border-left:3px solid transparent;transition:background .12s,color .12s;user-select:none;line-height:1.35}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.nav-active{background:rgba(245,158,11,.16);color:#f59e0b;border-left-color:#f59e0b;font-weight:700}
+.calc-section{display:none}
+.calc-section.nav-visible{display:block}
+/* Profitability table styles */
+.profit-summary-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+.profit-summary-table th{background:var(--gray-50);padding:7px 8px;font-size:11px;text-transform:uppercase;color:var(--gray-500);font-weight:700;border-bottom:2px solid var(--gray-200);white-space:nowrap}
+.profit-summary-table th:not(:first-child){text-align:right}
+.profit-summary-table td{padding:7px 8px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+.profit-summary-table td:not(:first-child){text-align:right}
+.profit-summary-table tr.group-header td{background:var(--blue-bg);font-weight:700;font-size:12px;color:var(--blue);text-transform:uppercase;letter-spacing:.3px;padding:5px 8px;border-top:2px solid var(--blue-border)}
+.profit-summary-table tr.total-summary td{background:var(--amber-bg);font-weight:700;font-size:13px;border-top:2px solid var(--amber)}
+.status-pill{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
+.status-profit{background:#dcfce7;color:#15803d}
+.status-low{background:#fef9c3;color:#92400e}
+.status-loss{background:#fee2e2;color:#b91c1c}
+.pi-comparison-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.pi-card{background:#fff;border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px}
+.pi-card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500);margin-bottom:8px}
+.pi-mix-block{background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;margin-bottom:12px;overflow:hidden}
+.pi-mix-title{font-size:13px;font-weight:700;color:var(--gray-800);padding:9px 12px;background:var(--gray-50);border-bottom:1px solid var(--gray-200)}
+.pi-row{display:grid;grid-template-columns:1fr 100px 100px 90px;gap:0;border-bottom:1px solid var(--gray-100)}
+.pi-row:last-child{border-bottom:none}
+.pi-row-label{padding:6px 12px;font-size:12px;color:var(--gray-600);font-weight:500}
+.pi-row-val{padding:6px 8px;font-size:13px;font-weight:600;text-align:right}
+.pi-row-delta{padding:6px 8px;font-size:12px;font-weight:700;text-align:right}
+.pi-row-delta.pos{color:#dc2626}
+.pi-row-delta.neg{color:#16a34a}
+.pi-row-delta.zero{color:var(--gray-400)}
+.pi-table-header .pi-row-val,.pi-table-header .pi-row-delta{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-500);padding-top:5px;padding-bottom:5px}
+.pi-summary-bar{background:var(--amber-bg);border:2px solid var(--amber);border-radius:8px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;align-items:center}
+.pi-summary-item{display:flex;flex-direction:column;gap:2px}
+.pi-summary-label{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--amber);letter-spacing:.4px}
+.pi-summary-val{font-size:18px;font-weight:700;color:var(--gray-900)}
+.pi-summary-val.neg{color:#dc2626}
+.pi-summary-val.pos{color:#16a34a}
 </style>
 </head>
 <body>
@@ -299,9 +347,27 @@ body{font-size:11px;background:#fff}
   <div id="quoteModeDesc" style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.65);font-style:italic;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
 </div>
 
-<div class="main-layout">
-<div class="left-col" id="leftCol">
+<div class="calc-shell">
+<nav class="calc-nav" id="calcNav">
+  <div class="nav-group-label">Setup</div>
+  <div class="nav-item nav-active" id="navitem-quote-setup" onclick="showSection('quote-setup')">① Quote Setup</div>
+  <div class="nav-item" id="navitem-mix-types" onclick="showSection('mix-types')">② Mix Types</div>
+  <div class="nav-item" id="navitem-raw-materials" onclick="showSection('raw-materials')">③ Raw Materials</div>
+  <div class="nav-item" id="navitem-plant-equip" onclick="showSection('plant-equip')">④ Plant Equipment</div>
+  <div class="nav-item" id="navitem-fuel-energy" onclick="showSection('fuel-energy')">⑤ Fuel / LDO / HSD</div>
+  <div class="nav-item" id="navitem-labour-overhead" onclick="showSection('labour-overhead')">⑥ Labour &amp; Overhead</div>
+  <div class="nav-item" id="navitem-transport" onclick="showSection('transport')">⑦ Transport &amp; Coat</div>
+  <div class="nav-group-label">Estimation</div>
+  <div class="nav-item" id="navitem-job-estimator" onclick="showSection('job-estimator')">⑧ Job Estimator</div>
+  <div class="nav-group-label">Analysis</div>
+  <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑨ Recommended Quote</div>
+  <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑩ Price Impact</div>
+  <div class="nav-item" id="navitem-profitability" onclick="showSection('profitability')">⑪ Profitability</div>
+  <div class="nav-item" id="navitem-final-summary" onclick="showSection('final-summary')">⑫ Summary &amp; Print</div>
+</nav>
+<div class="calc-content" id="calcContent">
 
+<div class="calc-section nav-visible" id="sec-quote-setup">
 <!-- ① Project Info -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -316,6 +382,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-quote-setup -->
+<div class="calc-section" id="sec-mix-types">
 <!-- ② Mix Types & Proportions -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -330,6 +398,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-mix-types -->
+<div class="calc-section" id="sec-raw-materials">
 <!-- ③ Raw Materials -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -377,6 +447,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-raw-materials -->
+<div class="calc-section" id="sec-plant-equip">
 <!-- ④ Equipment & Labour -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -401,6 +473,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-plant-equip -->
+<div class="calc-section" id="sec-fuel-energy">
 <!-- ⑤ Fuel & Energy -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -446,6 +520,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-fuel-energy -->
+<div class="calc-section" id="sec-labour-overhead">
 <!-- ⑥ Overhead & Margin -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -492,6 +568,8 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+</div><!-- /sec-labour-overhead -->
+<div class="calc-section" id="sec-transport">
 <!-- ⑧ Transport to Site -->
 <div class="card" id="cardTransport">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -553,30 +631,10 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-</div><!-- end left-col -->
+</div><!-- /sec-transport -->
 
-<!-- RIGHT SIDE — Rate Summary Panel -->
-<div class="right-col" id="rightCol">
-  <div class="rate-panel">
-    <h2 id="rateSummaryTitle">📦 Supply Cost Summary</h2>
-    <div id="rateSummaryTable"></div>
-    <div style="margin-top:16px">
-      <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
-      <div id="costBarContainer"></div>
-    </div>
-    <div class="breakdown-toggle no-print" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
-    <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
-  </div>
-
-  <!-- Recommended Quote Box -->
-  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none"></div>
-
-</div>
-
-</div><!-- end main-layout -->
-
-<!-- Full-Width Bottom Sections -->
-<div class="full-width">
+<!-- Section 8: Job Estimator -->
+<div class="calc-section" id="sec-job-estimator">
 
 <hr class="section-sep">
 
@@ -656,8 +714,15 @@ body{font-size:11px;background:#fff}
 
 <div id="contractorSummary"></div>
 
-<hr class="section-sep">
+</div><!-- /sec-job-estimator -->
 
+<!-- Section 9: Recommended Quote -->
+<div class="calc-section" id="sec-rec-quote">
+<div id="recQuoteSectionContent" style="padding:8px 0 16px"></div>
+</div><!-- /sec-rec-quote -->
+
+<!-- Section 10: Price Impact -->
+<div class="calc-section" id="sec-price-impact">
 <!-- ⑪ Procurement & Cost Summary -->
 <div class="card" id="cardProcurement">
   <div class="card-header open" onclick="toggleCard(this)">
@@ -693,20 +758,61 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
+
+</div><!-- /sec-price-impact -->
+
+<!-- Section 11: Profitability -->
+<div class="calc-section" id="sec-profitability">
 <!-- ⑫ Contract Profitability -->
 <div class="card" id="cardProfitability">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>⑫ Profitability</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
+    <div id="profGlance" style="margin-bottom:16px"></div>
     <div id="profitabilityContainer">
       <p style="color:var(--gray-400);text-align:center;padding:20px">Add sites and jobs to see profitability analysis.</p>
     </div>
   </div>
 </div>
+</div><!-- /sec-profitability -->
 
-
+<!-- Section 12: Summary & Print -->
+<div class="calc-section" id="sec-final-summary">
+<div class="card">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑫ Summary &amp; Print</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <div id="finalSummaryContainer"></div>
+    <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="openPrintSettings()" style="padding:10px 24px;font-size:14px">🖨 Print / Export</button>
+      <button class="btn btn-secondary" onclick="showSection('profitability')" style="padding:10px 24px;font-size:14px">← Back to Profitability</button>
+    </div>
+  </div>
 </div>
+</div><!-- /sec-final-summary -->
+
+</div><!-- /calc-content -->
+
+<!-- RIGHT SIDE — Rate Summary Panel (always visible) -->
+<div class="right-col" id="rightCol">
+  <div class="rate-panel">
+    <h2 id="rateSummaryTitle">📦 Supply Cost Summary</h2>
+    <div id="rateSummaryTable"></div>
+    <div style="margin-top:16px">
+      <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
+      <div id="costBarContainer"></div>
+    </div>
+    <div class="breakdown-toggle no-print" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
+    <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Recommended Quote Box -->
+  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none"></div>
+</div>
+
+</div><!-- /calc-shell -->
 
 <!-- Print Settings Modal -->
 <div id="printSettingsOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)" onclick="closePrintSettings(event)">
@@ -2172,7 +2278,13 @@ function recalc(){
   updateScopeAutoRatesCache();
   renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates, scenarioBaseVals);
   renderScopeQuotation();
+  renderProfGlance(mixRates);
   saveState();
+  // refresh lazy-rendered analysis sections
+  if(typeof _activeSection !== 'undefined'){
+    if(_activeSection==='rec-quote') _renderRecQuoteSection();
+    if(_activeSection==='final-summary') _renderFinalSummary();
+  }
 }
 
 function renderRateSummary(mixRates){
@@ -2409,6 +2521,91 @@ function renderRecommendedQuote(mixRates){
   _buildRecQuoteRows(mixRates, _quoteProfitMin, _quoteProfitTarget, _quoteProfitPremium, n('marginPct'));
 }
 
+function renderProfGlance(mixRates){
+  var el = document.getElementById('profGlance');
+  if(!el) return;
+  if(!mixRates||!mixRates.length){ el.innerHTML=''; return; }
+  var allJobs = getAllJobs();
+  if(!allJobs.length){ el.innerHTML=''; return; }
+  var html = '<div style="margin-bottom:6px"><table class="profit-summary-table">';
+  html += '<thead><tr>'
+    +'<th style="text-align:left">Job / Mix</th>'
+    +'<th>MT</th>'
+    +'<th>Cost ₹/MT</th>'
+    +'<th>Contract ₹/MT</th>'
+    +'<th>P/L ₹/MT</th>'
+    +'<th>P/L %</th>'
+    +'<th>Status</th>'
+    +'</tr></thead><tbody>';
+  var grandTotalMT=0, grandCostAmt=0, grandRevAmt=0;
+  var hasAnyContract=false;
+  sites.forEach(function(site){
+    if(!site.jobs||!site.jobs.length) return;
+    var siteHtml='<tr class="group-header"><td colspan="7">📍 '+esc(site.name||site.id)+'</td></tr>';
+    var siteHasData=false;
+    site.jobs.forEach(function(job){
+      if(!job.mixes||!job.mixes.length) return;
+      job.mixes.forEach(function(mx){
+        var mixObj = mixTypes[mx.mixIdx]||mixTypes[0];
+        var mt = mx._mt||0;
+        if(mt<=0) return;
+        var mr = mixRates[mx.mixIdx]||mixRates[0];
+        if(!mr) return;
+        var costPerMT = mr.total||0;
+        // contract rate lookup (manual or auto)
+        var mn = mixObj.name.toUpperCase().replace(/[\s-]+/g,'_');
+        var ck = site.id+'_'+mn;
+        var contractRate = contractRates[ck]!=null?contractRates[ck]:null;
+        var plPerMT = contractRate!=null ? contractRate - costPerMT : null;
+        var plPct = (contractRate!=null&&costPerMT>0) ? (plPerMT/costPerMT*100) : null;
+        var statusHtml='<span class="status-pill status-low">No Rate</span>';
+        if(plPerMT!=null){
+          hasAnyContract=true;
+          if(plPct>=8) statusHtml='<span class="status-pill status-profit">Profitable</span>';
+          else if(plPct>=0) statusHtml='<span class="status-pill status-low">Low Margin</span>';
+          else statusHtml='<span class="status-pill status-loss">Loss</span>';
+          grandRevAmt+=(contractRate*mt);
+        }
+        grandTotalMT+=mt; grandCostAmt+=(costPerMT*mt);
+        var plColor = plPerMT!=null ? (plPerMT>0?'#15803d':plPerMT<0?'#b91c1c':'var(--gray-600)') : 'var(--gray-400)';
+        siteHtml+='<tr>'
+          +'<td style="padding-left:16px">'+esc(job.contractor||job.id||'Job')+' — <span style="font-weight:400;color:var(--gray-500)">'+esc(mixObj.name)+'</span></td>'
+          +'<td>'+fmtI(Math.round(mt))+'</td>'
+          +'<td>₹'+fmtR(costPerMT)+'</td>'
+          +'<td>'+(contractRate!=null?'₹'+fmtR(contractRate):'<span style="color:var(--gray-400)">—</span>')+'</td>'
+          +'<td style="color:'+plColor+';font-weight:700">'+(plPerMT!=null?(plPerMT>=0?'+':'')+fmtR(plPerMT):'—')+'</td>'
+          +'<td style="color:'+plColor+'">'+(plPct!=null?(plPct>=0?'+':'')+plPct.toFixed(1)+'%':'—')+'</td>'
+          +'<td>'+statusHtml+'</td>'
+          +'</tr>';
+        siteHasData=true;
+      });
+    });
+    if(siteHasData) html+=siteHtml;
+  });
+  // Grand totals
+  if(grandTotalMT>0){
+    var avgCost = grandTotalMT>0?grandCostAmt/grandTotalMT:0;
+    var avgRev  = (hasAnyContract&&grandTotalMT>0)?grandRevAmt/grandTotalMT:null;
+    var totalPL = hasAnyContract?grandRevAmt-grandCostAmt:null;
+    var totalPLPct = (totalPL!=null&&grandCostAmt>0)?totalPL/grandCostAmt*100:null;
+    var plC = totalPL!=null?(totalPL>=0?'#15803d':'#b91c1c'):'var(--gray-500)';
+    html+='<tr class="total-summary">'
+      +'<td>Grand Total</td>'
+      +'<td>'+fmtI(Math.round(grandTotalMT))+' MT</td>'
+      +'<td>₹'+fmtR(avgCost)+'/MT</td>'
+      +'<td>'+(avgRev!=null?'₹'+fmtR(avgRev)+'/MT':'—')+'</td>'
+      +'<td style="color:'+plC+'">'+(totalPL!=null?'₹'+fmtI(Math.round(Math.abs(totalPL)))+(totalPL>=0?' profit':' loss'):'—')+'</td>'
+      +'<td style="color:'+plC+'">'+(totalPLPct!=null?(totalPLPct>=0?'+':'')+totalPLPct.toFixed(1)+'%':'—')+'</td>'
+      +'<td>'+(totalPL!=null?(totalPLPct>=8?'<span class="status-pill status-profit">Profitable</span>':totalPLPct>=0?'<span class="status-pill status-low">Low Margin</span>':'<span class="status-pill status-loss">Loss</span>'):'—')+'</td>'
+      +'</tr>';
+    if(!hasAnyContract){
+      html+='<tr><td colspan="7" style="text-align:center;font-size:12px;color:var(--gray-400);padding:8px">Enter contract rates in Job Estimator to see profitability analysis</td></tr>';
+    }
+  }
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+
 function renderCostBar(mixRates){
   var r = mixRates[activeMixIdx]||mixRates[0];
   if(!r) return;
@@ -2444,6 +2641,135 @@ function toggleBreakdown(){
   document.getElementById('fullBreakdown').classList.toggle('hidden',!breakdownOpen);
   document.getElementById('breakdownToggle').textContent=breakdownOpen?'▲ Hide full breakdown':'▼ Show full breakdown';
   if(breakdownOpen) recalc();
+}
+
+// ====== SECTION NAVIGATION ======
+var _activeSection = 'quote-setup';
+var _sectionIds = ['quote-setup','mix-types','raw-materials','plant-equip','fuel-energy','labour-overhead','transport','job-estimator','rec-quote','price-impact','profitability','final-summary'];
+
+function showSection(id){
+  _activeSection = id;
+  _sectionIds.forEach(function(sid){
+    var el = document.getElementById('sec-'+sid);
+    if(el) el.classList.toggle('nav-visible', sid===id);
+    var nav = document.getElementById('navitem-'+sid);
+    if(nav) nav.classList.toggle('nav-active', sid===id);
+  });
+  var content = document.getElementById('calcContent');
+  if(content) content.scrollTop = 0;
+  // scroll the horizontal nav into view on mobile
+  var navItem = document.getElementById('navitem-'+id);
+  if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  // trigger lazy renders for analysis sections
+  if(id==='rec-quote') _renderRecQuoteSection();
+  if(id==='final-summary') _renderFinalSummary();
+}
+
+function _renderRecQuoteSection(){
+  var el = document.getElementById('recQuoteSectionContent');
+  if(!el) return;
+  if(!_lastMixRates||!_lastMixRates.length){
+    el.innerHTML='<div style="text-align:center;padding:40px 0;color:var(--gray-400);font-size:14px">Complete the setup sections to generate quote recommendations.</div>';
+    return;
+  }
+  var mPct = n('marginPct');
+  var html = '<div style="margin-bottom:18px">';
+  html += '<h2 style="font-size:16px;font-weight:700;color:#1e3a5f;margin:0 0 4px">💡 Recommended Quote by Mix</h2>';
+  html += '<p style="font-size:12px;color:var(--gray-500);margin:0">Profit targets set below are shared with the right-side panel. Adjust to explore different quote scenarios.</p>';
+  html += '</div>';
+  // Profit level inputs (larger versions, synced to sidebar)
+  var qMin = _quoteProfitMin, qTgt = _quoteProfitTarget, qPrm = _quoteProfitPremium;
+  html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">';
+  html += '<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;flex:1;min-width:140px">';
+  html += '<div style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;margin-bottom:6px">Min Acceptable Profit (₹/MT)</div>';
+  html += '<input type="number" step="10" value="'+qMin+'" oninput="_syncProfitInput(\'min\',this.value)" style="width:100%;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px;font-size:16px;font-weight:700;color:#92400e;background:#fffbeb"></div>';
+  html += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;flex:1;min-width:140px">';
+  html += '<div style="font-size:11px;color:#1d4ed8;font-weight:700;text-transform:uppercase;margin-bottom:6px">Target Profit ⭐ (₹/MT)</div>';
+  html += '<input type="number" step="10" value="'+qTgt+'" oninput="_syncProfitInput(\'target\',this.value)" style="width:100%;border:1px solid #93c5fd;border-radius:6px;padding:6px 10px;font-size:16px;font-weight:700;color:#1d4ed8;background:#eff6ff"></div>';
+  html += '<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px 16px;flex:1;min-width:140px">';
+  html += '<div style="font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;margin-bottom:6px">Premium Profit (₹/MT)</div>';
+  html += '<input type="number" step="10" value="'+qPrm+'" oninput="_syncProfitInput(\'premium\',this.value)" style="width:100%;border:1px solid #c4b5fd;border-radius:6px;padding:6px 10px;font-size:16px;font-weight:700;color:#7c3aed;background:#f5f3ff"></div>';
+  html += '</div>';
+  // Mix rate table
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+  html += '<thead><tr style="background:var(--gray-50)">'
+    +'<th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-500)">Mix</th>'
+    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:var(--gray-500)">Cost ₹/MT</th>'
+    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#92400e">Min ₹/MT</th>'
+    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#1d4ed8">Target ₹/MT</th>'
+    +'<th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--gray-200);font-size:11px;text-transform:uppercase;color:#7c3aed">Premium ₹/MT</th>'
+    +'</tr></thead><tbody>';
+  _lastMixRates.forEach(function(r,i){
+    var base = r.total;
+    var minR = Math.ceil((base + qMin)/10)*10;
+    var tgtR = Math.ceil((base + qTgt)/10)*10;
+    var prmR = Math.ceil((base + qPrm)/10)*10;
+    html += '<tr style="border-bottom:1px solid var(--gray-100)">'
+      +'<td style="padding:9px 10px;font-weight:700;color:var(--gray-800)">'+esc(mixTypes[i]?mixTypes[i].name:'Mix '+(i+1))+'</td>'
+      +'<td style="padding:9px 10px;text-align:right;font-weight:600;color:var(--gray-600)">₹'+fmtR(base)+'</td>'
+      +'<td style="padding:9px 10px;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minR)+'</td>'
+      +'<td style="padding:9px 10px;text-align:right;font-weight:700;color:#1d4ed8;font-size:14px">₹'+fmtR(tgtR)+'</td>'
+      +'<td style="padding:9px 10px;text-align:right;font-weight:700;color:#7c3aed">₹'+fmtR(prmR)+'</td>'
+      +'</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function _syncProfitInput(which, val){
+  var v = parseFloat(val);
+  if(isNaN(v)) return;
+  if(which==='min') _quoteProfitMin=v;
+  else if(which==='target') _quoteProfitTarget=v;
+  else if(which==='premium') _quoteProfitPremium=v;
+  // sync to sidebar inputs if they exist
+  var sideMap = {min:'quoteProfitMin',target:'quoteProfitTarget',premium:'quoteProfitPremium'};
+  var sid = sideMap[which];
+  if(sid){ var se=document.getElementById(sid); if(se&&document.activeElement!==se) se.value=v; }
+  _buildRecQuoteRows(_lastMixRates, _quoteProfitMin, _quoteProfitTarget, _quoteProfitPremium, n('marginPct'));
+  if(_activeSection==='rec-quote') _renderRecQuoteSection();
+}
+
+function _renderFinalSummary(){
+  var el = document.getElementById('finalSummaryContainer');
+  if(!el) return;
+  var allJobs = getAllJobs();
+  if(!_lastMixRates||!_lastMixRates.length){
+    el.innerHTML='<p style="color:var(--gray-400);text-align:center;padding:24px">Complete setup to see a summary.</p>';
+    return;
+  }
+  var proj = (document.getElementById('projName')||{}).value||'—';
+  var prepBy = (document.getElementById('projBy')||{}).value||'—';
+  var projDate = (document.getElementById('projDate')||{}).value||'—';
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px">';
+  // Project info
+  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
+    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Project</div>'
+    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(proj)+'</div></div>';
+  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
+    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Prepared By</div>'
+    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(prepBy)+'</div></div>';
+  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
+    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Date</div>'
+    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(projDate)+'</div></div>';
+  // Mix rates
+  _lastMixRates.forEach(function(r,i){
+    var mixName = mixTypes[i]?mixTypes[i].name:'Mix '+(i+1);
+    var tgt = Math.ceil((r.total+_quoteProfitTarget)/10)*10;
+    html+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">'
+      +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--blue);margin-bottom:4px">'+esc(mixName)+' (Cost ₹/MT)</div>'
+      +'<div style="font-size:20px;font-weight:700;color:#1e3a5f">₹'+fmtR(r.total)+'</div>'
+      +'<div style="font-size:11px;color:#3b82f6;margin-top:3px">Target Quote: ₹'+fmtR(tgt)+'/MT</div></div>';
+  });
+  // Total MT
+  var totalMT=0; allJobs.forEach(function(j){j.mixes.forEach(function(mx){totalMT+=mx._mt||0;});});
+  if(totalMT>0){
+    html+='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px">'
+      +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#15803d;margin-bottom:4px">Total Estimated MT</div>'
+      +'<div style="font-size:20px;font-weight:700;color:#15803d">'+fmtI(Math.round(totalMT))+' MT</div></div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 function renderFullBreakdown(mixRates){
@@ -5003,6 +5329,7 @@ function init(){
   renderEquipCards();
   renderSites();
   recalc();
+  showSection('quote-setup');
 
   // Apply preset contractor to first job after render
   var presetContractor = localStorage.getItem(STORAGE_KEY+'_presetContractor');
