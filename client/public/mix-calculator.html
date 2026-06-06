@@ -2044,13 +2044,25 @@ function renderRateSummary(mixRates){
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r.overhead||0)+'</td><td style="color:var(--blue)">'+fmtR((r.overhead||0)*r.density)+'</td>'; });
     html+='</tr>';
   }
-  if(mixRates[0]&&mixRates[0].margin>0){
+  var _mPct = n('marginPct')/100;
+  var _showTrans = scopeState.groups.transport;
+  var _showPav   = scopeState.groups.paving;
+  if(mixRates[0]&&_mPct>0){
     html+='<tr><td>Margin / Profit</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.margin)+'</td><td style="color:var(--blue)">'+fmtR(r.margin*r.density)+'</td>'; });
+    mixRates.forEach(function(r){
+      var inScopeBase = r.exPlant+(_showTrans?r.transport:0)+(_showPav?r.laying:0)+(r.overhead||0);
+      var inScopeMgn = inScopeBase*_mPct;
+      html+='<td>'+fmtR(inScopeMgn)+'</td><td style="color:var(--blue)">'+fmtR(inScopeMgn*r.density)+'</td>';
+    });
     html+='</tr>';
   }
-  html+='<tr class="total-row"><td>Final Laid</td>';
-  mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(r.finalLaid)+'</td><td style="color:var(--blue);font-weight:700">'+fmtR(r.perCum)+'</td>'; });
+  var _finalLabel = (!_showTrans&&!_showPav)?'Ex-Plant (Final)':'Final Laid';
+  html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
+  mixRates.forEach(function(r){
+    var inScopeBase = r.exPlant+(_showTrans?r.transport:0)+(_showPav?r.laying:0)+(r.overhead||0);
+    var inScopeFinal = inScopeBase*(1+_mPct);
+    html+='<td style="color:var(--amber)">'+fmtR(inScopeFinal)+'</td><td style="color:var(--blue);font-weight:700">'+fmtR(inScopeFinal*r.density)+'</td>';
+  });
   html+='</tr>';
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
@@ -2094,6 +2106,9 @@ function toggleBreakdown(){
 }
 
 function renderFullBreakdown(mixRates){
+  var _fbMPct = n('marginPct')/100;
+  var _fbTrans = scopeState.groups.transport;
+  var _fbPav   = scopeState.groups.paving;
   var rows=[
     {label:'Aggregate (landed)',key:'aggregate'},
     {label:'Bitumen',key:'bitumen'},
@@ -2109,11 +2124,9 @@ function renderFullBreakdown(mixRates){
     {label:'Boiler Preheat',key:'boilerPreheat'},
     {label:'Crew',key:'crew'},
     {label:'Plant Subtotal',key:'exPlant',bold:true},
-    {label:'Transport to Site',key:'transport'},
-    {label:'Laying & Compaction',key:'laying'},
-    {label:'Mob/Demob Overhead',key:'overhead'},
-    {label:'Margin / Profit',key:'margin'},
-    {label:'Final Laid Rate',key:'finalLaid',bold:true}
+    {label:'Transport to Site',key:'transport',scopeGroup:'transport'},
+    {label:'Laying & Compaction',key:'laying',scopeGroup:'paving'},
+    {label:'Mob/Demob Overhead',key:'overhead'}
   ];
   var html='<table class="rate-table"><thead><tr><th></th>';
   mixRates.forEach(function(r){ html+='<th colspan="2" style="text-align:center;color:var(--amber)">'+r.name+'</th>'; });
@@ -2121,6 +2134,8 @@ function renderFullBreakdown(mixRates){
   mixRates.forEach(function(){ html+='<th>₹/MT</th><th style="color:var(--blue)">₹/CUM</th>'; });
   html+='</tr></thead><tbody>';
   rows.forEach(function(row){
+    if(row.scopeGroup==='transport'&&!_fbTrans) return;
+    if(row.scopeGroup==='paving'&&!_fbPav) return;
     var cls=row.bold?' style="font-weight:700;border-top:2px solid var(--amber)"':'';
     html+='<tr'+cls+'><td>'+row.label+'</td>';
     mixRates.forEach(function(r){
@@ -2129,6 +2144,23 @@ function renderFullBreakdown(mixRates){
     });
     html+='</tr>';
   });
+  if(_fbMPct>0){
+    html+='<tr><td>Margin / Profit</td>';
+    mixRates.forEach(function(r){
+      var inScopeBase=r.exPlant+(_fbTrans?r.transport:0)+(_fbPav?r.laying:0)+(r.overhead||0);
+      var mgn=inScopeBase*_fbMPct;
+      html+='<td>'+fmtR(mgn)+'</td><td style="color:var(--blue)">'+fmtR(mgn*r.density)+'</td>';
+    });
+    html+='</tr>';
+  }
+  var _fbFinalLabel=(!_fbTrans&&!_fbPav)?'Ex-Plant (Final)':'Final Laid Rate';
+  html+='<tr style="font-weight:700;border-top:2px solid var(--amber)"><td>'+_fbFinalLabel+'</td>';
+  mixRates.forEach(function(r){
+    var inScopeBase=r.exPlant+(_fbTrans?r.transport:0)+(_fbPav?r.laying:0)+(r.overhead||0);
+    var final=inScopeBase*(1+_fbMPct);
+    html+='<td style="color:var(--amber)">'+fmtR(final)+'</td><td style="color:var(--blue)">'+fmtR(final*r.density)+'</td>';
+  });
+  html+='</tr>';
   html+='</tbody></table>';
   document.getElementById('fullBreakdown').innerHTML = html;
 }
@@ -4523,12 +4555,19 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
   outHtml += '</div>';
 
     // --- Per-mix rate breakdown ---
-    var _hasAutoRates = mixTypes.some(function(mt){ return _scopeAutoRates[_sanitizeMn(mt.name)]>0; });
+    // Only show mix types that are actually used in at least one job
+    var _usedMixIdxs = {};
+    getAllJobs().forEach(function(j){ (j.mixes||[]).forEach(function(mx){ _usedMixIdxs[mx.mixIdx]=true; }); });
+    var _hasJobs = Object.keys(_usedMixIdxs).length > 0;
+    var _visibleMixTypes = _hasJobs
+      ? mixTypes.filter(function(mt,idx){ return _usedMixIdxs[idx]; })
+      : mixTypes;
+    var _hasAutoRates = _visibleMixTypes.some(function(mt){ return _scopeAutoRates[_sanitizeMn(mt.name)]>0; });
     if(_hasAutoRates){
       outHtml += '<div style="margin-top:10px;padding:8px 12px;background:rgba(255,255,255,0.55);border-radius:6px;border:1px solid rgba(180,130,0,0.25)">';
       outHtml += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:6px">Rate per Mix Type — auto-fills Estimate Manager</div>';
       outHtml += '<div style="display:flex;flex-wrap:wrap;gap:10px">';
-      mixTypes.forEach(function(mType){
+      _visibleMixTypes.forEach(function(mType){
         var san=_sanitizeMn(mType.name);
         var rate=_scopeAutoRates[san];
         if(!rate) return;
