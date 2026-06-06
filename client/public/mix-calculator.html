@@ -21,7 +21,7 @@ body.manager-mode .admin-only { display: none !important; }
 input[type=text], input:not([type]), textarea { text-transform: uppercase; }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--amber:#d97706;--amber-light:#f59e0b;--amber-bg:#fffbeb;--amber-border:#fde68a;--blue:#2563eb;--blue-bg:#eff6ff;--blue-border:#bfdbfe;--green:#16a34a;--red:#dc2626;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06)}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-100);color:var(--gray-800);font-size:16px;line-height:1.5}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-100);color:var(--gray-800);font-size:16px;line-height:1.5;overflow-x:clip}
 input[type=number]{-moz-appearance:textfield}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .top-bar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:3px solid var(--amber);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow)}
@@ -38,7 +38,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .btn-blue{background:var(--blue);color:#fff}.btn-blue:hover{background:#1d4ed8}
 .main-layout{display:flex;gap:0;max-width:1600px;margin:0 auto;padding:16px}
 .left-col{flex:0 0 65%;max-width:65%;padding-right:16px;overflow-y:auto}
-.right-col{width:300px;flex-shrink:0;position:sticky;top:96px;height:calc(100vh - 96px);overflow-y:auto;background:var(--gray-50);border-left:1px solid var(--gray-200);padding:16px}
+.right-col{width:260px;flex-shrink:0;position:sticky;top:96px;height:calc(100vh - 96px);overflow-y:auto;background:var(--gray-50);border-left:1px solid var(--gray-200);padding:12px}
 .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
 .card-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;border-left:4px solid var(--amber);background:var(--gray-50)}
 .card-header h2{font-size:15px;font-weight:700;text-transform:uppercase;color:var(--gray-700);letter-spacing:.5px}
@@ -814,20 +814,26 @@ body{font-size:11px;background:#fff}
 
 <!-- RIGHT SIDE — Rate Summary Panel (always visible) -->
 <div class="right-col" id="rightCol">
+  <!-- Rate / Cost Summary -->
   <div class="rate-panel">
     <h2 id="rateSummaryTitle">📦 Supply Cost Summary</h2>
     <div id="rateSummaryTable"></div>
     <div id="scopePanelBreakdown" style="display:none;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:12px"></div>
-    <div style="margin-top:16px">
-      <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
-      <div id="costBarContainer"></div>
-    </div>
-    <div class="breakdown-toggle no-print" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
-    <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
   </div>
 
-  <!-- Recommended Quote Box -->
-  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none"></div>
+  <!-- Recommended Quote — always visible when rates are available -->
+  <div id="recQuotePanel" class="rec-quote-card no-print" style="display:none;margin-top:12px"></div>
+
+  <!-- Material Procurement Budget -->
+  <div id="procurementPanel" style="display:none;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-top:12px"></div>
+
+  <!-- Cost Breakdown Bar — collapsible, at bottom -->
+  <div class="rate-panel no-print" style="margin-top:12px">
+    <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
+    <div id="costBarContainer"></div>
+    <div class="breakdown-toggle" id="breakdownToggle" onclick="toggleBreakdown()">▼ Show full breakdown</div>
+    <div id="fullBreakdown" class="hidden" style="margin-top:12px"></div>
+  </div>
 </div>
 
 </div><!-- /calc-shell -->
@@ -2300,6 +2306,7 @@ function recalc(){
   renderRateSummary(displayMixRates);
   _lastMixRates = displayMixRates;
   renderRecommendedQuote(displayMixRates);
+  renderProcurementPanel();
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(displayMixRates);
   recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, primeSpray, tackSpray, primeDilution, tackDilution, marginPct);
@@ -2638,6 +2645,62 @@ function renderRecommendedQuote(mixRates){
 
   // Always refresh only the rows (inputs stay, cursor stays)
   _buildRecQuoteRows(mixRates, _quoteProfitMin, _quoteProfitTarget, _quoteProfitPremium, n('marginPct'));
+}
+
+function renderProcurementPanel(){
+  var el = document.getElementById('procurementPanel');
+  if(!el) return;
+  var aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  var bitPrice = n('bitPrice');
+  var aggWastePct = n('aggWastage');
+  var bitWastePct = n('bitWastage');
+  var totalMixMT=0;
+  var perMix={};
+  sites.forEach(function(s){
+    (s.jobs||[]).forEach(function(j){
+      (j.mixes||[]).forEach(function(mx){
+        var idx=mx.mixIdx||0, mt=mx._mt||0;
+        if(mt<=0) return;
+        totalMixMT+=mt;
+        if(!perMix[idx]){
+          var mType=mixTypes[idx]||mixTypes[0];
+          var aggFrac=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100;
+          perMix[idx]={mt:0,name:mType.name,aggFrac:aggFrac,binderPct:mType.binderPct};
+        }
+        perMix[idx].mt+=mt;
+      });
+    });
+  });
+  if(totalMixMT<=0){el.style.display='none';return;}
+  var totalAggMT=0,totalAggCost=0,totalBitKg=0,totalBitCost=0;
+  Object.keys(perMix).forEach(function(idx){
+    var pm=perMix[idx];
+    var aggMT=pm.mt*pm.aggFrac*(1+aggWastePct/100);
+    var bitKg=pm.mt*(pm.binderPct/100)*1000*(1+bitWastePct/100);
+    totalAggMT+=aggMT; totalAggCost+=aggMT*aggLanded;
+    totalBitKg+=bitKg; totalBitCost+=bitKg*bitPrice;
+  });
+  el.style.display='block';
+  var grandTotal=totalAggCost+totalBitCost;
+  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--gray-500);margin-bottom:9px;padding-bottom:6px;border-bottom:2px solid var(--amber)">🛒 Procurement Budget</div>';
+  html+='<div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">For <strong style="color:var(--gray-700)">'+fmtR(totalMixMT)+' MT</strong> of mix</div>';
+  // Aggregate
+  html+='<div style="padding:5px 0;border-bottom:1px solid var(--gray-100)">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:baseline">';
+  html+='<span style="font-size:12px;font-weight:600;color:var(--gray-700)">🪨 Aggregate</span>';
+  html+='<span style="font-size:13px;font-weight:700;color:var(--amber)">₹'+Math.round(totalAggCost).toLocaleString('en-IN')+'</span></div>';
+  html+='<div style="font-size:11px;color:var(--gray-400);margin-top:2px">'+fmtR(totalAggMT)+' MT'+(aggLanded>0?' @ ₹'+fmtR(aggLanded)+'/MT':'')+'</div></div>';
+  // Bitumen
+  html+='<div style="padding:5px 0;border-bottom:1px solid var(--gray-100)">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:baseline">';
+  html+='<span style="font-size:12px;font-weight:600;color:var(--gray-700)">🛢 Bitumen</span>';
+  html+='<span style="font-size:13px;font-weight:700;color:var(--amber)">₹'+Math.round(totalBitCost).toLocaleString('en-IN')+'</span></div>';
+  html+='<div style="font-size:11px;color:var(--gray-400);margin-top:2px">'+fmtR(totalBitKg/1000)+' MT'+(bitPrice>0?' @ ₹'+fmtR(bitPrice)+'/kg':'')+'</div></div>';
+  // Grand total
+  html+='<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0 2px;border-top:2px solid var(--amber);margin-top:4px">';
+  html+='<span style="font-size:12px;font-weight:700;color:#1e3a5f">Total Material Cost</span>';
+  html+='<span style="font-size:15px;font-weight:700;color:#1e3a5f">₹'+grandTotal.toLocaleString("en-IN",{maximumFractionDigits:0})+'</span></div>';
+  el.innerHTML=html;
 }
 
 function renderProfGlance(mixRates){
