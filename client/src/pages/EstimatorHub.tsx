@@ -59,7 +59,7 @@ export default function EstimatorHub() {
                   <ChevronRight className="w-5 h-5" />
                 </a>
                 <a
-                  href="/mix-calculator"
+                  href="/mix-calculator?new=1"
                   className="flex items-center justify-between text-base font-medium px-4 py-3 rounded-lg bg-muted/60 hover:bg-muted text-foreground transition-colors"
                   data-testid="link-bitmix-open"
                 >

@@ -386,9 +386,15 @@ body{font-size:11px;background:#fff}
   </div>
   <div class="card-body open">
     <div class="form-grid">
-      <div class="form-group"><label>Project Name</label><input id="projName" value="NH-48 Hot Mix Works"></div>
-      <div class="form-group"><label>Prepared By</label><input id="projBy" value=""></div>
+      <div class="form-group"><label>Project Name</label><input id="projName" placeholder="e.g. NH-48 Bridge Approach Works"></div>
+      <div class="form-group"><label>Prepared By</label><input id="projBy" placeholder="Your name"></div>
       <div class="form-group"><label>Date</label><input id="projDate" type="date"></div>
+    </div>
+    <div class="form-grid" style="margin-top:10px">
+      <div class="form-group"><label>Contractor / Company <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projContractor" placeholder="Contractor or company name"></div>
+      <div class="form-group"><label>Address <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projAddress" placeholder="Site or office address"></div>
+      <div class="form-group"><label>Contact Person <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projContact" placeholder="Contact name"></div>
+      <div class="form-group"><label>Contact Phone <span style="font-size:10px;color:var(--gray-400);font-weight:400">(optional)</span></label><input id="projPhone" type="tel" placeholder="+91 XXXXX XXXXX"></div>
     </div>
   </div>
 </div>
@@ -811,6 +817,7 @@ body{font-size:11px;background:#fff}
   <div class="rate-panel">
     <h2 id="rateSummaryTitle">📦 Supply Cost Summary</h2>
     <div id="rateSummaryTable"></div>
+    <div id="scopePanelBreakdown" style="display:none;margin-top:14px;border-top:1px solid var(--gray-200);padding-top:12px"></div>
     <div style="margin-top:16px">
       <label style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase">Cost Breakdown</label>
       <div id="costBarContainer"></div>
@@ -867,6 +874,7 @@ var transReturnTrip = false;        // same for finished mix transport
 var ldoMode = 'norm';               // 'norm' | 'actual'
 var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
 var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
+var _summarySectionQuoteLevel = 'target'; // 'min' | 'target' | 'premium'
 var _quoteProfitMin     = 150;      // JS-level profit state — survives innerHTML rebuilds
 var _quoteProfitTarget  = 300;
 var _quoteProfitPremium = 500;
@@ -1037,7 +1045,7 @@ function resetRevisedRates(){
 
 // ====== PERSISTENCE ======
 var PERSIST_INPUTS = [
-  'projName','projBy','projDate',
+  'projName','projBy','projDate','projContractor','projAddress','projContact','projPhone',
   'aggRate','aggDensity','aggDist','aggFreightRate','aggPayload','aggWastage','bitPrice','bitWastage',
   'tph','plantHrsMonth',
   'hsdPrice',
@@ -2384,6 +2392,82 @@ function renderRateSummary(mixRates){
   html+='</tr>';
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
+  renderScopePanel();
+}
+
+function renderScopePanel(){
+  var el = document.getElementById('scopePanelBreakdown');
+  if(!el) return;
+  var sg = scopeState.groups;
+  var anyActive = sg.mixing||sg.transport||sg.spraying||sg.paving;
+  if(!anyActive){ el.style.display='none'; return; }
+  el.style.display='block';
+  var sc = calcScopeComponents();
+  var sm = scopeState.mixing||{};
+  var sv = scopeState.spraying||{};
+  var sp = scopeState.paving||{};
+  var mType = mixTypes[0]||{binderPct:5.4,fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6}};
+  var aggL = parseFloat(((document.getElementById('aggLanded')||{}).value||'0').replace(/,/g,''))||0;
+  var bitP = n('bitPrice');
+  var sMgn = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
+  var mf = 1+sMgn/100;
+
+  function _mk(label,val,unit,color){
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;padding:3px 0">'
+      +'<span style="color:var(--gray-600)">'+label+'</span>'
+      +'<span style="font-weight:600;color:'+(color||'var(--gray-800)')+'">₹'+fmtR(val)
+      +'<span style="font-size:10px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>'
+      +'</div>';
+  }
+
+  var rows=[], totalMT=0;
+  if(sg.mixing){
+    var mx=0;
+    if(sm.hotmixHire) mx+=sc.hotmixHire||0;
+    if(sm.ldo)        mx+=sc.ldo||0;
+    if(sm.dgHire)     mx+=sc.dgHire||0;
+    if(sm.dgHsd)      mx+=sc.dgHsd||0;
+    if(sm.jcbHire)    mx+=sc.jcbHire||0;
+    if(sm.jcbHsd)     mx+=sc.jcbHsd||0;
+    if(sm.tipperHire) mx+=sc.tipperHire||0;
+    if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
+    if(sm.crew)       mx+=sc.crewPerMT||0;
+    if(sm.bitumen)    mx+=mType.binderPct/100*1000*bitP;
+    if(sm.aggregate)  mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*aggL;
+    mx*=mf; totalMT+=mx;
+    rows.push(_mk('🏭 Mixing',mx,'MT'));
+  }
+  if(sg.transport){
+    var tx = (typeof _wTransPerMT!=='undefined'&&_wTransPerMT>0)?_wTransPerMT:(sc.transPerMT||0);
+    tx*=mf; totalMT+=tx;
+    rows.push(_mk('🚛 Transport',tx,'MT'));
+  }
+  if(sg.spraying){
+    var prC = sv.prime?(sc.primeEm+sc.sprayOp):0;
+    var tkC = sv.tack?(sc.tackEm+sc.sprayOp):0;
+    var spTotal = (prC+tkC)*mf;
+    if(spTotal>0) rows.push(_mk('💦 Spraying',spTotal,'sqm'));
+  }
+  if(sg.paving){
+    var pv=0;
+    if(sp.paverHire) pv+=sc.paverHire||0;
+    if(sp.paverHsd)  pv+=sc.paverHsd||0;
+    if(sp.rollerHire)pv+=sc.rollerHire||0;
+    if(sp.rollerHsd) pv+=sc.rollerHsd||0;
+    if(sp.ptrHire&&sc.ptrEnabled)  pv+=sc.ptrHire||0;
+    if(sp.ptrHsd&&sc.ptrEnabled)   pv+=sc.ptrHsd||0;
+    if(sp.crew)      pv+=sc.layCrewPerMT||0;
+    pv*=mf; totalMT+=pv;
+    rows.push(_mk('🛣️ Paving',pv,'MT'));
+  }
+  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.6px;margin-bottom:6px">Scope Breakdown</div>';
+  html+=rows.join('');
+  if(rows.length>1&&totalMT>0){
+    html+='<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700;border-top:1px solid var(--gray-200);margin-top:5px;padding-top:5px">'
+      +'<span style="color:#1e3a5f">Scope Total (₹/MT)</span>'
+      +'<span style="color:var(--amber)">₹'+fmtR(totalMT)+'</span></div>';
+  }
+  el.innerHTML=html;
 }
 
 // ====== QUOTE MODE / LDO MODE / PLANT COST MODE SETTERS ======
@@ -2697,7 +2781,7 @@ function showSection(id){
   if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   // trigger lazy renders for analysis sections
   if(id==='rec-quote') _renderRecQuoteSection();
-  if(id==='final-summary') _renderFinalSummary();
+  if(id==='final-summary') { _summarySectionQuoteLevel = _summarySectionQuoteLevel||'target'; _renderFinalSummary(); }
 }
 
 function _renderRecQuoteSection(){
@@ -2768,42 +2852,150 @@ function _syncProfitInput(which, val){
 function _renderFinalSummary(){
   var el = document.getElementById('finalSummaryContainer');
   if(!el) return;
-  var allJobs = getAllJobs();
   if(!_lastMixRates||!_lastMixRates.length){
-    el.innerHTML='<p style="color:var(--gray-400);text-align:center;padding:24px">Complete setup to see a summary.</p>';
+    el.innerHTML='<div style="text-align:center;padding:40px 0;color:var(--gray-400);font-size:14px">Complete the setup sections (Mix Types, Raw Materials, Equipment) to generate a summary.</div>';
     return;
   }
-  var proj = (document.getElementById('projName')||{}).value||'—';
-  var prepBy = (document.getElementById('projBy')||{}).value||'—';
-  var projDate = (document.getElementById('projDate')||{}).value||'—';
-  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px">';
-  // Project info
-  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
-    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Project</div>'
-    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(proj)+'</div></div>';
-  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
-    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Prepared By</div>'
-    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(prepBy)+'</div></div>';
-  html+='<div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:12px">'
-    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px">Date</div>'
-    +'<div style="font-size:14px;font-weight:700;color:var(--gray-800)">'+esc(projDate)+'</div></div>';
-  // Mix rates
-  _lastMixRates.forEach(function(r,i){
-    var mixName = mixTypes[i]?mixTypes[i].name:'Mix '+(i+1);
-    var tgt = Math.ceil((r.total+_quoteProfitTarget)/10)*10;
-    html+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">'
-      +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--blue);margin-bottom:4px">'+esc(mixName)+' (Cost ₹/MT)</div>'
-      +'<div style="font-size:20px;font-weight:700;color:#1e3a5f">₹'+fmtR(r.total)+'</div>'
-      +'<div style="font-size:11px;color:#3b82f6;margin-top:3px">Target Quote: ₹'+fmtR(tgt)+'/MT</div></div>';
+  var allJobs = getAllJobs();
+
+  // Helpers to read project info fields
+  function _fv(id){ var e=document.getElementById(id); return e?(e.value||'').trim():''; }
+  var proj       = _fv('projName')||'—';
+  var prepBy     = _fv('projBy')||'—';
+  var projDate   = _fv('projDate')||'—';
+  var contractor = _fv('projContractor');
+  var address    = _fv('projAddress');
+  var contact    = _fv('projContact');
+  var phone      = _fv('projPhone');
+
+  // Quote level — quoted rate per mix
+  var _ql = _summarySectionQuoteLevel||'target';
+  var _profitMap = {min:_quoteProfitMin, target:_quoteProfitTarget, premium:_quoteProfitPremium};
+  var _profit = _profitMap[_ql]||_quoteProfitTarget;
+  function _quotedRate(r){ return Math.ceil(((r.quotedCost||0)+_profit)/10)*10; }
+
+  // Scope of work description
+  var _sowMap = {
+    supply_only:     'Ex-Plant Supply of Bituminous Mix',
+    supply_transport:'Supply & Delivery of Bituminous Mix to Site',
+    supply_laying:   'Supply, Transport & Laying of Bituminous Mix',
+    full_road:       'Full Scope — Supply, Transport, Laying & Coat Works'
+  };
+  var sowText = _sowMap[quoteMode]||'Bituminous Mix Supply';
+
+  // ===== QUOTE LEVEL SELECTOR (no-print) =====
+  var html='<div class="no-print" style="display:flex;align-items:center;gap:8px;margin-bottom:18px;padding:12px 16px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px">';
+  html+='<span style="font-size:12px;font-weight:700;color:var(--gray-600);white-space:nowrap">Quote this at:</span>';
+  ['min','target','premium'].forEach(function(lvl){
+    var labels={min:'Minimum',target:'Target',premium:'Premium'};
+    var profits={min:_quoteProfitMin,target:_quoteProfitTarget,premium:_quoteProfitPremium};
+    var active=_ql===lvl;
+    html+='<button onclick="_summarySectionQuoteLevel=\''+lvl+'\';_renderFinalSummary()" style="padding:6px 14px;border-radius:6px;border:2px solid '+(active?'var(--amber)':'var(--gray-200)')+';background:'+(active?'#fef3c7':'#fff')+';color:'+(active?'#92400e':'var(--gray-600)')+';font-size:12px;font-weight:'+(active?'700':'500')+';cursor:pointer">'
+      +labels[lvl]+'<span style="display:block;font-size:10px;font-weight:400;color:'+(active?'#b45309':'var(--gray-400)')+'">+₹'+fmtR(profits[lvl])+'/MT</span>'
+      +'</button>';
   });
-  // Total MT
-  var totalMT=0; allJobs.forEach(function(j){j.mixes.forEach(function(mx){totalMT+=mx._mt||0;});});
-  if(totalMT>0){
-    html+='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px">'
-      +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#15803d;margin-bottom:4px">Total Estimated MT</div>'
-      +'<div style="font-size:20px;font-weight:700;color:#15803d">'+fmtI(Math.round(totalMT))+' MT</div></div>';
-  }
   html+='</div>';
+
+  // ===== PRINTABLE DOCUMENT =====
+  html+='<div class="print-summary-doc" style="font-family:inherit">';
+
+  // — Header —
+  html+='<div style="border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:16px">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+  html+='<div>';
+  html+='<div style="font-size:22px;font-weight:800;color:#1e3a5f;line-height:1.2">'+esc(proj)+'</div>';
+  if(contractor) html+='<div style="font-size:14px;font-weight:600;color:var(--gray-700);margin-top:3px">'+esc(contractor)+'</div>';
+  if(address) html+='<div style="font-size:12px;color:var(--gray-500);margin-top:2px">'+esc(address)+'</div>';
+  html+='</div>';
+  html+='<div style="text-align:right;font-size:12px;color:var(--gray-500)">';
+  html+='<div style="font-weight:600;color:var(--gray-700)">Prepared by: '+esc(prepBy)+'</div>';
+  html+='<div>Date: '+esc(projDate)+'</div>';
+  if(contact) html+='<div style="margin-top:4px">'+esc(contact)+(phone?' &nbsp;|&nbsp; '+esc(phone):'')+'</div>';
+  html+='</div>';
+  html+='</div>';
+  html+='</div>';
+
+  // — Scope of Work —
+  html+='<div style="display:flex;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:18px">';
+  html+='<span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#3b82f6;white-space:nowrap">Scope of Work</span>';
+  html+='<span style="font-size:14px;font-weight:600;color:#1e3a5f">'+sowText+'</span>';
+  html+='</div>';
+
+  // — Rate Schedule —
+  html+='<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.5px;margin-bottom:6px">Rate Schedule</div>';
+  html+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">';
+  html+='<thead><tr style="background:#1e3a5f;color:#fff">';
+  html+='<th style="padding:8px 12px;text-align:left;border-radius:6px 0 0 0">Mix Type / Specification</th>';
+  html+='<th style="padding:8px 12px;text-align:center">Unit</th>';
+  html+='<th style="padding:8px 12px;text-align:right;border-radius:0 6px 0 0">Quoted Rate (₹)</th>';
+  html+='</tr></thead><tbody>';
+  _lastMixRates.forEach(function(r,i){
+    var mType = mixTypes[i]||{name:'Mix '+(i+1),binderPct:0};
+    var rate = _quotedRate(r);
+    var spec = mType.binderPct?('VG30, '+mType.binderPct.toFixed(1)+'% binder'):'';
+    html+='<tr style="border-bottom:1px solid var(--gray-100)">';
+    html+='<td style="padding:10px 12px"><span style="font-weight:700;color:#1e3a5f">'+esc(mType.name)+'</span>'+(spec?'<span style="font-size:11px;color:var(--gray-400);margin-left:6px">'+spec+'</span>':'')+'</td>';
+    html+='<td style="padding:10px 12px;text-align:center;color:var(--gray-500)">MT</td>';
+    html+='<td style="padding:10px 12px;text-align:right;font-size:16px;font-weight:700;color:var(--amber)">₹'+fmtI(rate)+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+
+  // — Job-wise Breakdown —
+  if(allJobs.length>0){
+    html+='<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.5px;margin-bottom:6px">Job-wise Quantity & Value</div>';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">';
+    html+='<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200)">';
+    html+='<th style="padding:8px 12px;text-align:left;color:var(--gray-600);font-weight:700">Location / Job</th>';
+    html+='<th style="padding:8px 12px;text-align:left;color:var(--gray-600);font-weight:700">Mix</th>';
+    html+='<th style="padding:8px 12px;text-align:right;color:var(--gray-600);font-weight:700">Qty (MT)</th>';
+    html+='<th style="padding:8px 12px;text-align:right;color:var(--gray-600);font-weight:700">Rate (₹/MT)</th>';
+    html+='<th style="padding:8px 12px;text-align:right;color:var(--gray-600);font-weight:700">Amount (₹)</th>';
+    html+='</tr></thead><tbody>';
+    var grandMT=0, grandAmt=0;
+    allJobs.forEach(function(j){
+      var jobLabel = (j.contractor||(j.name||''))||'—';
+      var firstRow=true;
+      (j.mixes||[]).forEach(function(mx){
+        var mIdx = mx.mixIdx||0;
+        var r = _lastMixRates[mIdx];
+        if(!r) return;
+        var mt = mx._mt||mx.qty_mt||0;
+        if(mt<=0) return;
+        var rate = _quotedRate(r);
+        var amt = mt*rate;
+        grandMT+=mt; grandAmt+=amt;
+        html+='<tr style="border-bottom:1px solid var(--gray-100)">';
+        html+='<td style="padding:8px 12px;font-weight:'+(firstRow?'600':'400')+';color:var(--gray-700)">'+(firstRow?esc(jobLabel):'')+'</td>';
+        html+='<td style="padding:8px 12px;color:var(--gray-700)">'+esc((mixTypes[mIdx]||{name:'Mix'}).name)+'</td>';
+        html+='<td style="padding:8px 12px;text-align:right;color:var(--gray-700)">'+fmtR(mt)+'</td>';
+        html+='<td style="padding:8px 12px;text-align:right;color:var(--gray-700)">'+fmtI(rate)+'</td>';
+        html+='<td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--gray-800)">'+fmtI(Math.round(amt))+'</td>';
+        html+='</tr>';
+        firstRow=false;
+      });
+    });
+    // Grand total row
+    html+='<tr style="background:#1e3a5f;color:#fff;font-weight:700">';
+    html+='<td colspan="2" style="padding:10px 12px;border-radius:0 0 0 6px">Total</td>';
+    html+='<td style="padding:10px 12px;text-align:right">'+fmtR(grandMT)+' MT</td>';
+    html+='<td style="padding:10px 12px;text-align:right">—</td>';
+    html+='<td style="padding:10px 12px;text-align:right;font-size:16px;border-radius:0 0 6px 0">₹&thinsp;'+grandAmt.toLocaleString('en-IN',{maximumFractionDigits:0})+'</td>';
+    html+='</tr>';
+    html+='</tbody></table>';
+  }
+
+  // — Terms / Notes —
+  var notesId='summaryTermsNotes';
+  var existingNotes=(document.getElementById(notesId)||{}).value||'';
+  html+='<div style="margin-bottom:16px">';
+  html+='<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.5px;margin-bottom:6px">Terms & Notes <span class="no-print" style="font-weight:400;font-size:10px;color:var(--gray-400)">(leave blank to hide from print)</span></div>';
+  html+='<textarea id="'+notesId+'" rows="4" placeholder="Price validity: 30 days&#10;GST extra as applicable&#10;Any special terms..." '
+    +'style="width:100%;border:1px solid var(--gray-200);border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box">'
+    +esc(existingNotes)+'</textarea>';
+  html+='</div>';
+
+  html+='</div>'; // end print-summary-doc
   el.innerHTML=html;
 }
 
@@ -5337,6 +5529,15 @@ function init(){
   }
   var scId = params.get('scenarioId');
   if(scId){ scenarioMode=true; scenarioModeId=parseInt(scId); }
+
+  // Handle ?new=1 from hub — silently clear state for a fresh estimate
+  if(params.get('new')==='1'){
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_KEY);
+    localStorage.removeItem(STORAGE_KEY+'_estId');
+    localStorage.removeItem(STORAGE_KEY+'_estName');
+    history.replaceState(null,'',location.pathname);
+  }
 
   document.getElementById('projDate').value = new Date().toISOString().slice(0,10);
   document.addEventListener('wheel', function(e){
