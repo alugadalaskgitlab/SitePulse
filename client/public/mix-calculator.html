@@ -372,9 +372,10 @@ body{font-size:11px;background:#fff}
   <div class="nav-item" id="navitem-job-estimator" onclick="showSection('job-estimator')">⑧ Job Estimator</div>
   <div class="nav-group-label">Analysis</div>
   <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑨ Recommended Quote</div>
-  <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑩ Price Impact</div>
-  <div class="nav-item" id="navitem-profitability" onclick="showSection('profitability')">⑪ Profitability</div>
-  <div class="nav-item" id="navitem-final-summary" onclick="showSection('final-summary')">⑫ Summary &amp; Print</div>
+  <div class="nav-item" id="navitem-procurement" onclick="showSection('procurement')">⑩ Procurement Costs</div>
+  <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑪ Price Impact</div>
+  <div class="nav-item" id="navitem-profitability" onclick="showSection('profitability')">⑫ Profitability</div>
+  <div class="nav-item" id="navitem-final-summary" onclick="showSection('final-summary')">⑬ Summary &amp; Print</div>
 </nav>
 <div class="calc-content" id="calcContent">
 
@@ -739,11 +740,11 @@ body{font-size:11px;background:#fff}
 </div><!-- /sec-rec-quote -->
 
 <!-- Section 10: Price Impact -->
-<div class="calc-section" id="sec-price-impact">
-<!-- ⑪ Procurement & Cost Summary -->
+<div class="calc-section" id="sec-procurement">
+<!-- ⑩ Procurement Costs -->
 <div class="card" id="cardProcurement">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑪ Procurement Costs</h2><span class="chevron">▼</span>
+    <h2>⑩ Procurement Costs</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div id="procScenarioBar" style="display:none;margin-bottom:14px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;align-items:center;gap:12px;flex-wrap:wrap">
@@ -764,8 +765,10 @@ body{font-size:11px;background:#fff}
     </table>
   </div>
 </div>
+</div><!-- /sec-procurement -->
 
-<!-- Cost Breakdown by Component (between Procurement and Internal Check) -->
+<div class="calc-section" id="sec-price-impact">
+<!-- Cost Breakdown by Component -->
 <div id="costBreakdownCard" class="card" style="display:none">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>📊 Cost Breakdown by Component</h2><span class="chevron">▼</span>
@@ -774,8 +777,6 @@ body{font-size:11px;background:#fff}
     <div id="costBreakdownContainer"></div>
   </div>
 </div>
-
-
 </div><!-- /sec-price-impact -->
 
 <!-- Section 11: Profitability -->
