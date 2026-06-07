@@ -360,22 +360,24 @@ body{font-size:11px;background:#fff}
       <button class="calc-nav-util-btn" onclick="newEstimateFromNav()" title="Start a new blank estimate">＋ New</button>
     </div>
   </div>
-  <div class="nav-group-label">Setup</div>
-  <div class="nav-item nav-active" id="navitem-quote-setup" onclick="showSection('quote-setup')">① Quote Setup</div>
+  <div class="nav-group-label">Project</div>
+  <div class="nav-item nav-active" id="navitem-quote-setup" onclick="showSection('quote-setup')">① Project / Work Detail</div>
+  <div class="nav-group-label">Rate Inputs</div>
   <div class="nav-item" id="navitem-mix-types" onclick="showSection('mix-types')">② Mix Types</div>
   <div class="nav-item" id="navitem-raw-materials" onclick="showSection('raw-materials')">③ Raw Materials</div>
   <div class="nav-item" id="navitem-plant-equip" onclick="showSection('plant-equip')">④ Plant Equipment</div>
   <div class="nav-item" id="navitem-fuel-energy" onclick="showSection('fuel-energy')">⑤ Fuel / LDO / HSD</div>
-  <div class="nav-item" id="navitem-labour-overhead" onclick="showSection('labour-overhead')">⑥ Labour &amp; Overhead</div>
-  <div class="nav-item" id="navitem-transport" onclick="showSection('transport')">⑦ Transport &amp; Coat</div>
-  <div class="nav-group-label">Estimation</div>
-  <div class="nav-item" id="navitem-job-estimator" onclick="showSection('job-estimator')">⑧ Job Estimator</div>
+  <div class="nav-item" id="navitem-transport" onclick="showSection('transport')">⑥ Transportation</div>
+  <div class="nav-item" id="navitem-prime-tack" onclick="showSection('prime-tack')">⑦ Prime &amp; Tack Coats</div>
+  <div class="nav-item" id="navitem-laying" onclick="showSection('laying')">⑧ Laying &amp; Compaction</div>
+  <div class="nav-item" id="navitem-labour-overhead" onclick="showSection('labour-overhead')">⑨ Overhead &amp; Margin</div>
   <div class="nav-group-label">Analysis</div>
-  <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑨ Recommended Quote</div>
-  <div class="nav-item" id="navitem-procurement" onclick="showSection('procurement')">⑩ Procurement Costs</div>
-  <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑪ Price Impact</div>
-  <div class="nav-item" id="navitem-profitability" onclick="showSection('profitability')">⑫ Profitability</div>
-  <div class="nav-item" id="navitem-final-summary" onclick="showSection('final-summary')">⑬ Summary &amp; Print</div>
+  <div class="nav-item" id="navitem-scope" onclick="showSection('scope')">⑩ Scope of Work</div>
+  <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑪ Recommended Quote</div>
+  <div class="nav-item" id="navitem-procurement" onclick="showSection('procurement')">⑫ Procurement Costs</div>
+  <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑬ Price Impact</div>
+  <div class="nav-item" id="navitem-profitability" onclick="showSection('profitability')">⑭ Profitability</div>
+  <div class="nav-item" id="navitem-final-summary" onclick="showSection('final-summary')">⑮ Summary &amp; Print</div>
 </nav>
 <div class="calc-content" id="calcContent">
 
@@ -399,6 +401,20 @@ body{font-size:11px;background:#fff}
     </div>
   </div>
 </div>
+
+<!-- ① Job Estimator -->
+<div class="card" id="cardJobEstimator">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>① Job Estimator</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <button class="btn btn-blue btn-sm no-print admin-only" onclick="addSite()" style="margin-bottom:12px">+ Add Site</button>
+    <div class="sites-container" id="sitesContainer"></div>
+    <div id="jobTotalsContainer" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div id="contractorSummary"></div>
 
 </div><!-- /sec-quote-setup -->
 <div class="calc-section" id="sec-mix-types">
@@ -540,10 +556,10 @@ body{font-size:11px;background:#fff}
 
 </div><!-- /sec-fuel-energy -->
 <div class="calc-section" id="sec-labour-overhead">
-<!-- ⑥ Overhead & Margin -->
+<!-- ⑨ Overhead & Margin -->
 <div class="card">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑥ Overhead & Margin</h2><span class="chevron">▼</span>
+    <h2>⑨ Overhead & Margin</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Lump-sum costs amortized over total estimated MT across all jobs</p>
@@ -568,30 +584,12 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-<!-- ⑦ Laying & Compaction -->
-<div class="card" id="cardLaying">
-  <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑦ Laying & Compaction</h2><span class="chevron">▼</span>
-  </div>
-  <div class="card-body open">
-    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Equipment hire + fuel costs auto-pulled from Section ④ (Paver, Tandem Roller, PTR)</p>
-    <div class="form-grid">
-      <div class="form-group"><label>Paver Daily Cost incl. Fuel (₹)</label><input class="derived" id="layPaverCost" readonly></div>
-      <div class="form-group"><label>Tandem Roller Daily Cost incl. Fuel (₹)</label><input class="derived" id="layRollerCost" readonly></div>
-      <div class="form-group"><label>PTR Daily Cost incl. Fuel (₹)</label><input class="derived" id="layPtrCost" readonly></div>
-      <div class="form-group"><label>Crew ₹/Day</label><input id="layCrew" type="number" value="5000" oninput="recalc()"></div>
-      <div class="form-group"><label>Productivity (MT/day)</label><input id="layProductivity" type="number" value="200" oninput="recalc()"></div>
-      <div class="form-group"><label>Laying & Compaction ₹/MT</label><input class="derived" id="layDerived" readonly></div>
-    </div>
-  </div>
-</div>
-
 </div><!-- /sec-labour-overhead -->
 <div class="calc-section" id="sec-transport">
-<!-- ⑧ Transport to Site -->
+<!-- ⑥ Transport to Site -->
 <div class="card" id="cardTransport">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑧ Transport to Site</h2><span class="chevron">▼</span>
+    <h2>⑥ Transport to Site</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <div class="form-grid">
@@ -618,10 +616,14 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-<!-- ⑨ Prime & Tack Coat -->
+</div><!-- /sec-transport -->
+
+<!-- Section: Prime & Tack Coats -->
+<div class="calc-section" id="sec-prime-tack">
+<!-- ⑦ Prime & Tack Coat -->
 <div class="card" id="cardCoat">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑨ Prime & Tack Coat</h2><span class="chevron">▼</span>
+    <h2>⑦ Prime & Tack Coat</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body open">
     <h3 style="font-size:13px;font-weight:700;color:var(--gray-600);margin-bottom:8px">Prime Coat</h3>
@@ -648,30 +650,38 @@ body{font-size:11px;background:#fff}
     </div>
   </div>
 </div>
+</div><!-- /sec-prime-tack -->
 
-</div><!-- /sec-transport -->
+<!-- Section: Laying & Compaction -->
+<div class="calc-section" id="sec-laying">
+<!-- ⑧ Laying & Compaction -->
+<div class="card" id="cardLaying">
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑧ Laying & Compaction</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body open">
+    <p style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Equipment hire + fuel costs auto-pulled from Section ④ (Paver, Tandem Roller, PTR)</p>
+    <div class="form-grid">
+      <div class="form-group"><label>Paver Daily Cost incl. Fuel (₹)</label><input class="derived" id="layPaverCost" readonly></div>
+      <div class="form-group"><label>Tandem Roller Daily Cost incl. Fuel (₹)</label><input class="derived" id="layRollerCost" readonly></div>
+      <div class="form-group"><label>PTR Daily Cost incl. Fuel (₹)</label><input class="derived" id="layPtrCost" readonly></div>
+      <div class="form-group"><label>Crew ₹/Day</label><input id="layCrew" type="number" value="5000" oninput="recalc()"></div>
+      <div class="form-group"><label>Productivity (MT/day)</label><input id="layProductivity" type="number" value="200" oninput="recalc()"></div>
+      <div class="form-group"><label>Laying & Compaction ₹/MT</label><input class="derived" id="layDerived" readonly></div>
+    </div>
+  </div>
+</div>
+</div><!-- /sec-laying -->
 
-<!-- Section 8: Job Estimator -->
-<div class="calc-section" id="sec-job-estimator">
+<!-- Section: Scope of Work -->
+<div class="calc-section" id="sec-scope">
 
 <hr class="section-sep">
 
-<!-- ⑩ Job Estimator -->
-<div class="card" id="cardJobEstimator">
-  <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑩ Job Estimator</h2><span class="chevron">▼</span>
-  </div>
-  <div class="card-body open">
-    <button class="btn btn-blue btn-sm no-print admin-only" onclick="addSite()" style="margin-bottom:12px">+ Add Site</button>
-    <div class="sites-container" id="sitesContainer"></div>
-    <div id="jobTotalsContainer" style="margin-top:12px"></div>
-  </div>
-</div>
-
-<!-- ⑬ Scope Quotation (positioned between Job Estimator and Contractor Summary) -->
+<!-- ⑩ Scope of Work -->
 <div class="card" id="cardScopeQuotation">
   <div class="card-header" onclick="toggleCard(this)">
-    <h2>⑬ Scope Quotation</h2><span class="chevron">▼</span>
+    <h2>⑩ Scope of Work</h2><span class="chevron">▼</span>
   </div>
   <div class="card-body" id="scopeCardBody">
     <p style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.6">
@@ -691,7 +701,7 @@ body{font-size:11px;background:#fff}
     <div class="scope-chk-group">
       <label class="scope-group-hdr">
         <input type="checkbox" id="scopeChkTransport" style="width:17px;height:17px" onchange="scopeToggleGroup('transport',this.checked)">
-        🚛 Transport to Site &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT — from Section ⑧)</span>
+        🚛 Transport to Site &nbsp;<span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:11px">(₹/MT — from Section ⑥)</span>
       </label>
       <div id="scopeBodyTransport" class="scope-group-body hidden"></div>
     </div>
@@ -730,9 +740,7 @@ body{font-size:11px;background:#fff}
   </div>
 </div>
 
-<div id="contractorSummary"></div>
-
-</div><!-- /sec-job-estimator -->
+</div><!-- /sec-scope -->
 
 <!-- Section 9: Recommended Quote -->
 <div class="calc-section" id="sec-rec-quote">
@@ -2824,7 +2832,7 @@ function toggleBreakdown(){
 
 // ====== SECTION NAVIGATION ======
 var _activeSection = 'quote-setup';
-var _sectionIds = ['quote-setup','mix-types','raw-materials','plant-equip','fuel-energy','labour-overhead','transport','job-estimator','rec-quote','procurement','price-impact','profitability','final-summary'];
+var _sectionIds = ['quote-setup','mix-types','raw-materials','plant-equip','fuel-energy','transport','prime-tack','laying','labour-overhead','scope','rec-quote','procurement','price-impact','profitability','final-summary'];
 
 function showSection(id){
   _activeSection = id;
