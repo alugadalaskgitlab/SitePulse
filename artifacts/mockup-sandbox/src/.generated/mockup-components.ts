@@ -18,6 +18,7 @@ export const modules: ModuleMap = {
   "./components/mockups/irn/IrnStores.tsx": () => import("../components/mockups/irn/IrnStores.tsx"),
   "./components/mockups/mix-calc-ux/AnalysisView.tsx": () => import("../components/mockups/mix-calc-ux/AnalysisView.tsx"),
   "./components/mockups/mix-calc-ux/MixCalcNav.tsx": () => import("../components/mockups/mix-calc-ux/MixCalcNav.tsx"),
+  "./components/mockups/mix-calc-ux/MixCalcPrototype.tsx": () => import("../components/mockups/mix-calc-ux/MixCalcPrototype.tsx"),
   "./components/mockups/mix-calc-ux/ProjectWorkDetail.tsx": () => import("../components/mockups/mix-calc-ux/ProjectWorkDetail.tsx"),
   "./components/mockups/mix-calc-ux/ScopeOfWork.tsx": () => import("../components/mockups/mix-calc-ux/ScopeOfWork.tsx"),
   "./components/mockups/mix-portal-login/LoginPage.tsx": () => import("../components/mockups/mix-portal-login/LoginPage.tsx"),
