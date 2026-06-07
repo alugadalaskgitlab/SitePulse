@@ -641,7 +641,7 @@ function SSummary() {
   );
 }
 
-const SCREENS: Record<string, () => JSX.Element> = {
+const SCREENS: Record<string, () => ReactNode> = {
   "project-detail": SProjectDetail,
   "mix-types": SMixTypes,
   "raw-materials": SRawMaterials,
