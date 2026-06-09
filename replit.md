@@ -6,6 +6,28 @@ SiteLog is a web application designed to digitalize and streamline construction 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Version Control
+
+**GitHub repository:** `https://github.com/alugadalaskgitlab/SitePulse.git`
+**Branch:** `main`
+**Git user:** alugadalaskgitlab (alugadalask@gmail.com)
+
+### How to push to GitHub from Replit
+
+Replit's agent sandbox cannot run `git remote add` or `git push` directly. Use Replit's built-in **Version Control / Git pane** instead:
+
+1. Open the **Tools** section in the left sidebar → click **Git**
+2. Under "Remote", add: `https://github.com/alugadalaskgitlab/SitePulse.git`
+3. When prompted for credentials use your GitHub username + a Personal Access Token (PAT) with `repo` scope as the password
+4. Click **Push** — all commits on `main` will upload to GitHub
+
+To create a PAT: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → check `repo` scope.
+
+### Verification checklist
+- Remote URL matches the repository above
+- Latest commit hash visible on `https://github.com/alugadalaskgitlab/SitePulse` after push
+- Auto-push is not enabled by default in Replit; use the Git pane to push manually after major changes
+
 ## System Architecture
 
 ### UI/UX and Frontend
