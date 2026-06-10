@@ -9,6 +9,7 @@ import { ChevronLeft, GitCompare, Printer } from "lucide-react";
 import type { MixEstimate, PriceScenario } from "@shared/schema";
 import { calcMixRatesAndJobs, calcSiteProfitCosts, calcRevenue, type CalcState, type CalcResult, type RevenueResult, type SiteProfitResult } from "@/lib/mixCalc";
 import { readEstimatorRole } from "@/lib/estimatorAuth";
+import { useAuth } from "@/lib/auth-context";
 
 function fmtI(v: number) { return Math.round(v).toLocaleString("en-IN"); }
 function fmtR(v: number) { return v.toFixed(2).replace(/\B(?=(\d{2})+(\d)(?!\d))/g, ","); }
@@ -33,12 +34,18 @@ interface ScenarioEntry {
 }
 
 export default function ScenarioComparison() {
+  const { sectionCan, isAdmin, isLoading: authLoading } = useAuth();
+  const hasMainAppAccess = isAdmin || sectionCan("mix_calculator", "create") || sectionCan("mix_calculator", "edit");
+
   useEffect(() => {
+    // Wait for auth to finish loading before deciding to redirect
+    if (authLoading) return;
     const r = readEstimatorRole();
-    if (!r) {
+    // Only redirect to estimator login if the user has no main-app access either
+    if (!r && !hasMainAppAccess) {
       window.location.href = "/estimator-login?returnTo=" + encodeURIComponent(window.location.pathname + window.location.search);
     }
-  }, []);
+  }, [hasMainAppAccess, authLoading]);
 
   const search = useSearch();
   const params = new URLSearchParams(search);

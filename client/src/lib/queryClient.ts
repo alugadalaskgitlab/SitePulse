@@ -1,11 +1,18 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 // Routes that handle their own 401s — never auto-redirect from these.
+// Estimator-portal pages (/admin/mix-*) are included so a stale or missing
+// main-app session doesn't send estimator users to the main-app /login page;
+// the component-level auth guard redirects them to /estimator-login instead.
 const AUTH_BYPASS_PATHS = [
   "/login",
   "/estimator-login",
   "/estimator-hub",
   "/concrete-calculator",
+  "/admin/mix-impact",
+  "/admin/scenario-comparison",
+  "/admin/mix-estimates",
+  "/admin/mix-comparison",
 ];
 
 function shouldRedirectOn401(): boolean {
