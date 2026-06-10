@@ -4719,6 +4719,24 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/plant-module/heating-sessions/:id/resync-flow", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_heating")) return;
+      const id = parseInt(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid session id" });
+      const existing = await storage.getBitumenHeatingSession(id);
+      if (!existing) return res.status(404).json({ message: "Heating session not found" });
+      const editedBy = currentUserName(req) || "operator";
+      const { upsertBitumenHeatingSessionSchema } = await import("@shared/schema");
+      const parsed = upsertBitumenHeatingSessionSchema.parse({ ...existing, id });
+      const authorizedRole: "admin" | "manager" | null = "manager";
+      await storage.upsertBitumenHeatingSession(parsed, editedBy, authorizedRole);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to resync flow entry" });
+    }
+  });
+
   app.post("/api/plant-module/heating-sessions/:id/finalize", async (req, res) => {
     try {
       if (!assertEdit(req, res, "plant_heating")) return;

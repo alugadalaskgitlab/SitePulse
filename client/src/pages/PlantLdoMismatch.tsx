@@ -252,7 +252,27 @@ function MismatchDiagnosisPanel({
   day: DaySummary;
   editSessionLink: (id: number) => string;
 }) {
+  const { toast } = useToast();
   const items = diagnoseDayMismatch(day, editSessionLink);
+
+  const resyncMutation = useMutation({
+    mutationFn: async (sessionId: number) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/plant-module/heating-sessions/${sessionId}/resync-flow`,
+      );
+      return res;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
+      toast({ title: "Flow entry created", description: "The missing LDO ledger entry has been added and the mismatch should now clear." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Fix failed", description: err?.message || "Could not create the flow entry. Try opening the session and saving manually.", variant: "destructive" });
+    },
+  });
+
   if (!day.hasMismatch || items.length === 0) return null;
 
   return (
@@ -280,16 +300,33 @@ function MismatchDiagnosisPanel({
                 <p className="text-xs font-semibold text-foreground">{item.sessionLabel}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
               </div>
-              <Link href={item.editLink} className="shrink-0">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  data-testid={`button-diagnose-open-session-${item.sessionId}`}
-                >
-                  Open Session <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              </Link>
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                {item.issue === "missing_flow_entry" && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    disabled={resyncMutation.isPending}
+                    onClick={() => resyncMutation.mutate(item.sessionId)}
+                    data-testid={`button-diagnose-fix-auto-${item.sessionId}`}
+                  >
+                    {resyncMutation.isPending && resyncMutation.variables === item.sessionId ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : null}
+                    Fix automatically
+                  </Button>
+                )}
+                <Link href={item.editLink}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    data-testid={`button-diagnose-open-session-${item.sessionId}`}
+                  >
+                    Open Session <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </Link>
+              </div>
             </div>
             <ol className="list-decimal list-inside space-y-0.5">
               {item.steps.map((step, si) => (
