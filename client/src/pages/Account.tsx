@@ -5,9 +5,23 @@ import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
-function usePushStatus() {
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function usePushNotifications() {
+  const { toast } = useToast();
   const [status, setStatus] = useState<"checking" | "active" | "inactive" | "not_allowed" | "unsupported">("checking");
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const supported =
@@ -49,12 +63,78 @@ function usePushStatus() {
     })();
   }, []);
 
-  return status;
+  async function enablePush() {
+    setIsLoading(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast({ title: "Permission Denied", description: "Please allow notifications in your browser settings", variant: "destructive" });
+        return;
+      }
+
+      const vapidRes = await fetch("/api/push/vapid-key");
+      const { publicKey } = await vapidRes.json();
+      if (!publicKey) {
+        toast({ title: "Error", description: "Push notifications not configured on server", variant: "destructive" });
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      const subJson = subscription.toJSON();
+      const res = await apiRequest("POST", "/api/push/subscribe", {
+        subscription: { endpoint: subJson.endpoint, keys: subJson.keys },
+        label: "Device",
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        await subscription.unsubscribe();
+        if (body.message === "notifications_disabled") {
+          setStatus("not_allowed");
+          return;
+        }
+        throw new Error(body.message || "Failed to register subscription");
+      }
+
+      setStatus("active");
+      toast({ title: "Notifications Enabled", description: "You will now receive push notifications on this device" });
+    } catch (err: any) {
+      toast({ title: "Failed", description: err.message || "Could not enable push notifications", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function disablePush() {
+    setIsLoading(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe();
+        await apiRequest("DELETE", "/api/push/unsubscribe", { endpoint });
+      }
+      setStatus("inactive");
+      toast({ title: "Notifications Disabled", description: "Push notifications turned off for this device" });
+    } catch {
+      toast({ title: "Error", description: "Failed to disable notifications", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return { status, isLoading, enablePush, disablePush };
 }
 
 export default function Account() {
   const { user, isAdmin, isManager } = useAuth();
-  const pushStatus = usePushStatus();
+  const { status: pushStatus, isLoading: pushLoading, enablePush, disablePush } = usePushNotifications();
   const { toast } = useToast();
 
   const [editingName, setEditingName] = useState(false);
@@ -295,6 +375,45 @@ export default function Account() {
             </div>
           </div>
         </div>
+
+        {/* Subscribe / Unsubscribe action */}
+        {pushStatus === "inactive" && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <Button
+              size="sm"
+              onClick={enablePush}
+              disabled={pushLoading}
+              className="w-full gap-2"
+              data-testid="button-enable-push"
+            >
+              {pushLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+              Enable on this device
+            </Button>
+          </div>
+        )}
+        {pushStatus === "active" && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={disablePush}
+              disabled={pushLoading}
+              className="w-full gap-2 text-slate-700"
+              data-testid="button-disable-push"
+            >
+              {pushLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <BellOff className="w-4 h-4" />
+              )}
+              Unsubscribe this device
+            </Button>
+          </div>
+        )}
 
         {/* Link to preferences */}
         <Link href="/notifications/preferences">
