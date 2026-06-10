@@ -221,7 +221,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       if (!res.ok) return [];
       return res.json() as Promise<string[]>;
     },
-    enabled: showForm && formItemIds.length > 0,
+    enabled: (showForm || !!editingDraftId) && formItemIds.length > 0,
     staleTime: 60_000,
   });
 
