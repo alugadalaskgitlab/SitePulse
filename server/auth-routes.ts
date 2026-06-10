@@ -267,6 +267,21 @@ export function registerAuthRoutes(app: Express) {
   app.get("/api/auth/me", sessionHandler);
   app.get("/api/auth/session", sessionHandler);
 
+  // Self-service: any authenticated user may update their own display name.
+  app.patch("/api/auth/me", requireAuth, async (req, res) => {
+    try {
+      const actor = req.authUser!;
+      const input = z.object({ fullName: z.string().min(1, "Name cannot be empty") }).parse(req.body);
+      const updated = await updateUserProfile(actor.id, { fullName: input.fullName });
+      if (!updated) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true, fullName: updated.fullName });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "invalid_request", details: err.errors });
+      console.error("[PATCH /api/auth/me]", err);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // Self-service: any authenticated user may update only their own notify flags,
   // but only for sections where they already have view or create access.
   // All other permission bits and out-of-scope sections are left untouched.

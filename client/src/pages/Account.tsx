@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { User, Bell, Shield, Clock, ChevronRight, CheckCircle, XCircle, Loader2, BellOff } from "lucide-react";
+import { User, Bell, Shield, Clock, ChevronRight, CheckCircle, XCircle, Loader2, BellOff, Pencil, Check, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 function usePushStatus() {
   const [status, setStatus] = useState<"checking" | "active" | "inactive" | "not_allowed" | "unsupported">("checking");
@@ -53,6 +55,10 @@ function usePushStatus() {
 export default function Account() {
   const { user, isAdmin, isManager } = useAuth();
   const pushStatus = usePushStatus();
+  const { toast } = useToast();
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
 
@@ -70,6 +76,45 @@ export default function Account() {
       ? "Strict (auto-lock after 5 min idle)"
       : "Sticky (stay signed in)";
 
+  const nameMutation = useMutation({
+    mutationFn: async (fullName: string) => {
+      const res = await apiRequest("PATCH", "/api/auth/me", { fullName });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || body.error || "Failed to update name");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setEditingName(false);
+      toast({ title: "Name updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not update name", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function startEdit() {
+    setNameInput(user?.fullName || "");
+    setEditingName(true);
+  }
+
+  function cancelEdit() {
+    setEditingName(false);
+    setNameInput("");
+  }
+
+  function submitEdit() {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    if (trimmed === user?.fullName) {
+      setEditingName(false);
+      return;
+    }
+    nameMutation.mutate(trimmed);
+  }
+
   return (
     <div className="max-w-lg mx-auto space-y-5 py-2">
       {/* Header card */}
@@ -81,12 +126,61 @@ export default function Account() {
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <p
-            className="text-base font-semibold text-slate-900 truncate"
-            data-testid="account-name"
-          >
-            {user?.fullName || user?.email}
-          </p>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                className="text-base font-semibold text-slate-900 border border-slate-300 rounded-md px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-amber-400 flex-1 min-w-0"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitEdit();
+                  if (e.key === "Escape") cancelEdit();
+                }}
+                autoFocus
+                disabled={nameMutation.isPending}
+                data-testid="input-display-name"
+              />
+              <button
+                onClick={submitEdit}
+                disabled={nameMutation.isPending || !nameInput.trim()}
+                className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
+                data-testid="button-save-name"
+                title="Save"
+              >
+                {nameMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+              </button>
+              <button
+                onClick={cancelEdit}
+                disabled={nameMutation.isPending}
+                className="p-1 rounded text-slate-400 hover:bg-slate-100"
+                data-testid="button-cancel-name"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 group">
+              <p
+                className="text-base font-semibold text-slate-900 truncate"
+                data-testid="account-name"
+              >
+                {user?.fullName || user?.email}
+              </p>
+              <button
+                onClick={startEdit}
+                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                data-testid="button-edit-name"
+                title="Edit display name"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           {user?.fullName && (
             <p
               className="text-sm text-slate-500 truncate"
