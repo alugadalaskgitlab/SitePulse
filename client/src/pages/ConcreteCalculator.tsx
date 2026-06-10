@@ -941,7 +941,6 @@ export default function ConcreteCalculator() {
 
   useEffect(() => {
     if (!role) window.location.href = "/estimator-login?returnTo=/concrete-calculator";
-    if (role === "manager") window.location.href = "/estimator-hub";
   }, [role]);
 
   // Load estimate by query-param estimateId on mount
