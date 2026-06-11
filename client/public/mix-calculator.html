@@ -372,7 +372,7 @@ body{font-size:11px;background:#fff}
   <div class="nav-item" id="navitem-laying" onclick="showSection('laying')">⑧ Laying &amp; Compaction</div>
   <div class="nav-item" id="navitem-labour-overhead" onclick="showSection('labour-overhead')">⑨ Overhead &amp; Margin</div>
   <div class="nav-group-label">Analysis</div>
-  <div class="nav-item" id="navitem-scope" onclick="showSection('scope')">⑩ Scope of Work</div>
+  <div class="nav-item" id="navitem-scope" onclick="showSection('scope')">⑩ Detailed Scope of Work</div>
   <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑪ Recommended Quote</div>
   <div class="nav-item" id="navitem-procurement" onclick="showSection('procurement')">⑫ Procurement Costs</div>
   <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑬ Price Impact</div>
@@ -696,14 +696,12 @@ body{font-size:11px;background:#fff}
 <!-- Section: Scope of Work -->
 <div class="calc-section" id="sec-scope">
 
-<hr class="section-sep">
-
 <!-- ⑩ Scope of Work -->
 <div class="card" id="cardScopeQuotation">
-  <div class="card-header" onclick="toggleCard(this)">
-    <h2>⑩ Scope of Work</h2><span class="chevron">▼</span>
+  <div class="card-header open" onclick="toggleCard(this)">
+    <h2>⑩ Detailed Scope of Work</h2><span class="chevron">▼</span>
   </div>
-  <div class="card-body" id="scopeCardBody">
+  <div class="card-body open" id="scopeCardBody">
     <p style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.6">
       Select what HLC provides for this contractor. All costs are pulled live from the equipment cards and inputs above.
       Set a <strong>separate margin</strong> here — partial-scope work typically carries a lower margin since procurement savings aren't available when the contractor controls materials or equipment.
