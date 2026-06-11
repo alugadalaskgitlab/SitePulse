@@ -181,9 +181,11 @@ function buildDaySummaries(
 }
 
 interface DiagnosisItem {
-  sessionId: number;
+  itemKey: string;
+  sessionId?: number;
+  shiftLogId?: number;
   sessionLabel: string;
-  issue: "missing_flow_entry" | "dip_override";
+  issue: "missing_flow_entry" | "dip_override" | "shift_vs_ledger";
   description: string;
   steps: string[];
   editLink: string;
@@ -192,6 +194,7 @@ interface DiagnosisItem {
 function diagnoseDayMismatch(
   day: DaySummary,
   editSessionLink: (id: number) => string,
+  shiftLogLink: string,
 ): DiagnosisItem[] {
   const items: DiagnosisItem[] = [];
   const sessionIdsWithFlowEntry = new Set(
@@ -206,6 +209,7 @@ function diagnoseDayMismatch(
 
     if (!sessionIdsWithFlowEntry.has(s.id)) {
       items.push({
+        itemKey: `session-${s.id}`,
         sessionId: s.id,
         sessionLabel,
         issue: "missing_flow_entry",
@@ -228,6 +232,7 @@ function diagnoseDayMismatch(
       const dipDiff = Math.abs((s.ldoTank1Consumed || 0) - meterDelta);
       if (dipDiff > MISMATCH_THRESHOLD_L) {
         items.push({
+          itemKey: `session-${s.id}`,
           sessionId: s.id,
           sessionLabel,
           issue: "dip_override",
@@ -242,18 +247,54 @@ function diagnoseDayMismatch(
       }
     }
   }
+
+  for (const sh of day.shiftLogs) {
+    const meterDelta = shiftConsumed(sh);
+    if (meterDelta == null) continue;
+
+    const shiftLedgerRows = day.ledgerRows.filter(r => r.sourceShiftLogId === sh.id);
+    const shiftLedgerTotal = shiftLedgerRows.reduce((sum, r) => {
+      const q = ldoLedgerConsumed(r);
+      return sum + (q == null ? 0 : q);
+    }, 0);
+
+    const diff = Math.abs(meterDelta - shiftLedgerTotal);
+    if (diff <= MISMATCH_THRESHOLD_L) continue;
+
+    const shiftLabel = `Shift ${sh.shiftCode}`;
+    const openMeter = fmt(sh.ldoTank1OpeningMeter, 2);
+    const closeMeter = fmt(sh.ldoTank1ClosingMeter, 2);
+
+    items.push({
+      itemKey: `shift-${sh.id}`,
+      shiftLogId: sh.id,
+      sessionLabel: shiftLabel,
+      issue: "shift_vs_ledger",
+      description: `The shift log meter readings (opening: ${openMeter}, closing: ${closeMeter} = ${fmt(meterDelta, 1)} L) don't match the LDO ledger total for this shift (${fmt(shiftLedgerTotal, 1)} L). The discrepancy is ${fmt(diff, 1)} L.`,
+      steps: [
+        `Click "Open Shift Log" to open the shift log for this date.`,
+        `Find ${shiftLabel} and check the LDO Tank 1 opening meter (currently ${openMeter}) and closing meter (currently ${closeMeter}).`,
+        `Correct the meter readings so that closing − opening = ${fmt(shiftLedgerTotal, 1)} L (the ledger value).`,
+        "Click Save — the mismatch will clear once the meter delta matches the ledger.",
+      ],
+      editLink: shiftLogLink,
+    });
+  }
+
   return items;
 }
 
 function MismatchDiagnosisPanel({
   day,
   editSessionLink,
+  shiftLogLink,
 }: {
   day: DaySummary;
   editSessionLink: (id: number) => string;
+  shiftLogLink: string;
 }) {
   const { toast } = useToast();
-  const items = diagnoseDayMismatch(day, editSessionLink);
+  const items = diagnoseDayMismatch(day, editSessionLink, shiftLogLink);
 
   const resyncMutation = useMutation({
     mutationFn: async (sessionId: number) => {
@@ -291,9 +332,9 @@ function MismatchDiagnosisPanel({
       <div className="space-y-3">
         {items.map(item => (
           <div
-            key={item.sessionId}
+            key={item.itemKey}
             className="rounded border border-amber-300/60 bg-white dark:bg-amber-950/50 p-3 space-y-2"
-            data-testid={`diagnosis-item-${item.sessionId}`}
+            data-testid={`diagnosis-item-${item.itemKey}`}
           >
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div className="min-w-0">
@@ -301,14 +342,14 @@ function MismatchDiagnosisPanel({
                 <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                {item.issue === "missing_flow_entry" && (
+                {item.issue === "missing_flow_entry" && item.sessionId != null && (
                   <Button
                     size="sm"
                     variant="default"
                     className="h-7 text-xs"
                     disabled={resyncMutation.isPending}
-                    onClick={() => resyncMutation.mutate(item.sessionId)}
-                    data-testid={`button-diagnose-fix-auto-${item.sessionId}`}
+                    onClick={() => resyncMutation.mutate(item.sessionId!)}
+                    data-testid={`button-diagnose-fix-auto-${item.itemKey}`}
                   >
                     {resyncMutation.isPending && resyncMutation.variables === item.sessionId ? (
                       <Loader2 className="w-3 h-3 mr-1 animate-spin" />
@@ -321,9 +362,13 @@ function MismatchDiagnosisPanel({
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs"
-                    data-testid={`button-diagnose-open-session-${item.sessionId}`}
+                    data-testid={`button-diagnose-open-${item.itemKey}`}
                   >
-                    Open Session <ArrowRight className="w-3 h-3 ml-1" />
+                    {item.issue === "shift_vs_ledger" ? (
+                      <>Open Shift Log <ArrowRight className="w-3 h-3 ml-1" /></>
+                    ) : (
+                      <>Open Session <ArrowRight className="w-3 h-3 ml-1" /></>
+                    )}
                   </Button>
                 </Link>
               </div>
@@ -420,7 +465,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
           )}
         </div>
       )}
-      <MismatchDiagnosisPanel day={day} editSessionLink={editSessionLink} />
+      <MismatchDiagnosisPanel day={day} editSessionLink={editSessionLink} shiftLogLink={shiftLogLink} />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
