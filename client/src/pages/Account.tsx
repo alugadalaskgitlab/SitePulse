@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { User, Bell, Shield, Clock, ChevronRight, CheckCircle, XCircle, Loader2, BellOff, Pencil, Check, X } from "lucide-react";
+import { User, Bell, Shield, Clock, ChevronRight, CheckCircle, XCircle, Loader2, BellOff, Pencil, Check, X, Smartphone, Share, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
@@ -136,6 +136,21 @@ export default function Account() {
   const { user, isAdmin, isManager } = useAuth();
   const { status: pushStatus, isLoading: pushLoading, enablePush, disablePush } = usePushNotifications();
   const { toast } = useToast();
+
+  const [isIos, setIsIos] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as any).standalone === true;
+    setIsStandalone(standalone);
+
+    const ios =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    setIsIos(ios);
+  }, []);
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -377,7 +392,29 @@ export default function Account() {
         </div>
 
         {/* Subscribe / Unsubscribe action */}
-        {pushStatus === "inactive" && (
+        {pushStatus === "inactive" && isIos && !isStandalone ? (
+          <div className="px-4 py-4 border-b border-slate-100" data-testid="ios-home-screen-instructions">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
+              <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 flex-shrink-0" />
+                Add to Home Screen Required
+              </p>
+              <p className="text-xs text-amber-700">
+                On iPhone/iPad, push notifications only work when the app is installed to your Home Screen:
+              </p>
+              <ol className="text-xs text-amber-700 space-y-1 list-decimal list-inside">
+                <li className="flex items-center gap-1">
+                  Tap the <Share className="w-3 h-3 inline flex-shrink-0" /> Share button in Safari
+                </li>
+                <li className="flex items-center gap-1">
+                  Scroll down and tap <Plus className="w-3 h-3 inline flex-shrink-0" /> Add to Home Screen
+                </li>
+                <li>Open the app from your Home Screen</li>
+                <li>Come back here to enable notifications</li>
+              </ol>
+            </div>
+          </div>
+        ) : pushStatus === "inactive" && (
           <div className="px-4 py-3 border-b border-slate-100">
             <Button
               size="sm"
