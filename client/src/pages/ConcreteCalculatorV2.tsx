@@ -54,6 +54,12 @@ interface SectionDimsV2 {
   pccDepthMm: number;
   pccOffsetMm: number;
   workingSpaceMm: number;
+  wallOuterCoverMm: number;
+  wallInnerCoverMm: number;
+  invertBotCoverMm: number;
+  invertTopCoverMm: number;
+  slabTopCoverMm: number;
+  slabBotCoverMm: number;
 }
 
 interface SubZoneV2 {
@@ -68,7 +74,7 @@ interface RebarRowV2 {
   barType: BarTypeV2;
   diaMm: number;
   spacingMm: number;
-  coverMm: number;
+  coverMm?: number;
   wallFaces: 2 | 4;
   layers: 1 | 2;
   faceCount?: number;
@@ -183,12 +189,12 @@ const BAR_TYPE_NOTES: Record<BarTypeV2, string> = {
 };
 
 const DEFAULT_REBAR_ROWS: RebarRowV2[] = [
-  { id: "r1", barType: "u_bar",       diaMm: 10, spacingMm: 150, coverMm: 40, wallFaces: 2, layers: 1 },
-  { id: "r2", barType: "invert_main", diaMm: 10, spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
-  { id: "r3", barType: "invert_dist", diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
-  { id: "r4", barType: "wall_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
-  { id: "r5", barType: "slab_main",   diaMm: 10, spacingMm: 150, coverMm: 40, wallFaces: 2, layers: 1 },
-  { id: "r6", barType: "slab_dist",   diaMm: 8,  spacingMm: 200, coverMm: 40, wallFaces: 2, layers: 1 },
+  { id: "r1", barType: "u_bar",       diaMm: 10, spacingMm: 150, wallFaces: 2, layers: 1 },
+  { id: "r2", barType: "invert_main", diaMm: 10, spacingMm: 200, wallFaces: 2, layers: 1 },
+  { id: "r3", barType: "invert_dist", diaMm: 8,  spacingMm: 200, wallFaces: 2, layers: 1 },
+  { id: "r4", barType: "wall_dist",   diaMm: 8,  spacingMm: 200, wallFaces: 2, layers: 1 },
+  { id: "r5", barType: "slab_main",   diaMm: 10, spacingMm: 150, wallFaces: 2, layers: 1 },
+  { id: "r6", barType: "slab_dist",   diaMm: 8,  spacingMm: 200, wallFaces: 2, layers: 1 },
 ];
 
 const DEFAULT_SECTION: SectionDimsV2 = {
@@ -200,6 +206,12 @@ const DEFAULT_SECTION: SectionDimsV2 = {
   pccDepthMm: 100,
   pccOffsetMm: 150,
   workingSpaceMm: 300,
+  wallOuterCoverMm: 50,
+  wallInnerCoverMm: 40,
+  invertBotCoverMm: 50,
+  invertTopCoverMm: 40,
+  slabTopCoverMm: 40,
+  slabBotCoverMm: 40,
 };
 
 const DEFAULT_CA_TABS: CATab[] = [
@@ -392,8 +404,16 @@ function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[]; ef
   const overallWMm = s.invertClearWidthMm + 2 * s.wallThickMm;
   const wallHMm    = loc.effectiveWallHMm ?? s.wallHeightMm;
 
+  // Section-level covers with backward-compat fallback for old saved estimates
+  const wallOuter  = s.wallOuterCoverMm  ?? 50;
+  const wallInner  = s.wallInnerCoverMm  ?? 40;
+  const invertBot  = s.invertBotCoverMm  ?? 50;
+  const invertTop  = s.invertTopCoverMm  ?? 40;
+  const slabTop    = s.slabTopCoverMm    ?? 40;
+  const slabBot    = s.slabBotCoverMm    ?? 40;
+
   const rows: RebarComputedRow[] = loc.rebarRows.map(row => {
-    const { barType, diaMm, spacingMm, coverMm } = row;
+    const { barType, diaMm, spacingMm } = row;
     const kgPerMBar = diaMm * diaMm / 162;
     let cutLengthMm = 0;
     let nosPerM = 0;
@@ -406,54 +426,62 @@ function computeRebar(loc: { section: SectionDimsV2; rebarRows: RebarRowV2[]; ef
 
     switch (barType) {
       case "u_bar": {
+        // Wraps outer wall faces; end cover = wallOuter on both sides
         const hooks = 2 * 9 * diaMm;
-        cutLengthMm = 2 * wallHMm + overallWMm - 2 * coverMm + hooks;
+        cutLengthMm = 2 * wallHMm + overallWMm - 2 * wallOuter + hooks;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
-        cutFormula = `2×${wallHMm}(wallH) + ${overallWMm}(width) − 2×${coverMm}(cover) + ${hooks}(hooks) = ${cutLengthMm.toFixed(0)}mm`;
+        cutFormula = `2×${wallHMm}(wallH) + ${overallWMm}(width) − 2×${wallOuter}(outer cover) + ${hooks}(hooks) = ${cutLengthMm.toFixed(0)}mm`;
         nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "invert_main": {
-        cutLengthMm = overallWMm - 2 * coverMm;
+        // Transverse bar; ends at outer wall faces; top/bot covers = invertTop + invertBot
+        cutLengthMm = overallWMm - 2 * wallOuter;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
-        cutFormula = `${overallWMm}(overallW) − 2×${coverMm}(cover) = ${cutLengthMm.toFixed(0)}mm`;
+        cutFormula = `${overallWMm}(overallW) − 2×${wallOuter}(outer cover) = ${cutLengthMm.toFixed(0)}mm`;
         nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "invert_dist": {
+        // Longitudinal; cut = 1m + hooks; nos spread across invert width using invertBot cover
         const stdHook = 9 * diaMm;
         cutLengthMm = 1000 + 2 * stdHook;
-        nosPerM = spacingMm > 0 ? layers * (overallWMm - 2 * coverMm) / spacingMm : 0;
+        nosPerM = spacingMm > 0 ? layers * (overallWMm - 2 * invertBot) / spacingMm : 0;
         cutFormula = `1000 + 2×${stdHook}(hook) = ${cutLengthMm.toFixed(0)}mm`;
-        nosFormula = `${layers}(layer) × (${overallWMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
+        nosFormula = `${layers}(layer) × (${overallWMm} − 2×${invertBot}(invert-bot cover)) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "wall_dist": {
+        // Longitudinal; cut = 1m; nos spread over wall height using wallOuter cover at top & bottom
         cutLengthMm = 1000;
-        const barsPerFace = spacingMm > 0 ? (wallHMm - 2 * coverMm) / spacingMm : 0;
+        const barsPerFace = spacingMm > 0 ? (wallHMm - wallOuter - wallOuter) / spacingMm : 0;
         nosPerM = wallFaces * barsPerFace;
         cutFormula = `1000mm (runs along drain length)`;
         nosFormula = spacingMm > 0
-          ? `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`
-          : `${wallFaces}(faces) × (${wallHMm} − 2×${coverMm}) / spacing — enter spacing to compute`;
+          ? `${wallFaces}(faces) × (${wallHMm} − 2×${wallOuter}(cover)) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`
+          : `${wallFaces}(faces) × (${wallHMm} − 2×${wallOuter}(cover)) / spacing — enter spacing to compute`;
         break;
       }
       case "slab_main": {
-        cutLengthMm = overallWMm - 2 * coverMm;
+        // Transverse; ends at outer wall faces; top/bot covers = slabTop + slabBot
+        cutLengthMm = overallWMm - 2 * wallOuter;
         nosPerM = spacingMm > 0 ? 1000 / spacingMm : 0;
-        cutFormula = `${overallWMm}(overallW) − 2×${coverMm}(cover) = ${cutLengthMm.toFixed(0)}mm`;
+        cutFormula = `${overallWMm}(overallW) − 2×${wallOuter}(outer cover) = ${cutLengthMm.toFixed(0)}mm`;
         nosFormula = `1000 / ${spacingMm}(spacing) = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
       case "slab_dist": {
+        // Longitudinal; nos spread across slab width using slabBot cover
         const stdHook = 9 * diaMm;
         cutLengthMm = 1000 + 2 * stdHook;
-        nosPerM = spacingMm > 0 ? (overallWMm - 2 * coverMm) / spacingMm : 0;
+        nosPerM = spacingMm > 0 ? (overallWMm - 2 * slabBot) / spacingMm : 0;
         cutFormula = `1000 + 2×${stdHook}(hook) = ${cutLengthMm.toFixed(0)}mm`;
-        nosFormula = `(${overallWMm} − 2×${coverMm}) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
+        nosFormula = `(${overallWMm} − 2×${slabBot}(slab-bot cover)) / ${spacingMm} = ${nosPerM.toFixed(2)} nos/m`;
         break;
       }
     }
+    // Suppress unused-variable warnings for face-specific covers referenced by formulas only
+    void invertTop; void slabTop; void wallInner;
 
     const kgPerM = (cutLengthMm / 1000) * nosPerM * kgPerMBar;
     return { id: row.id, cutLengthMm, nosPerM, kgPerM, cutFormula, nosFormula };
@@ -714,7 +742,6 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
               <th className="text-left py-1.5 pr-2 pl-1 font-medium text-muted-foreground w-48">Bar Type</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-16">Ø (mm)</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-20">Spacing</th>
-              <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground w-16">Cover</th>
               <th className="text-left py-1.5 pr-2 font-medium text-muted-foreground w-36">Wall / Layers</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground">Cut (mm)</th>
               <th className="text-right py-1.5 pr-2 font-medium text-muted-foreground">Nos/m</th>
@@ -751,10 +778,6 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
                   <td className="pr-2 align-top pt-1">
                     <Input type="number" className="h-7 text-xs w-20 text-right"
                       value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} />
-                  </td>
-                  <td className="pr-2 align-top pt-1">
-                    <Input type="number" className="h-7 text-xs w-16 text-right"
-                      value={row.coverMm} onChange={e => updRow(row.id, "coverMm", +e.target.value)} />
                   </td>
                   <td className="pr-2 align-top pt-1">
                     {row.barType === "wall_dist" && (
@@ -952,6 +975,35 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                   <NumInput label="PCC Depth (mm)" value={loc.section.pccDepthMm} onChange={v => updSec("pccDepthMm", v)} />
                   <NumInput label="PCC Offset (mm)" value={loc.section.pccOffsetMm} onChange={v => updSec("pccOffsetMm", v)} />
                   <NumInput label="Working Space (mm)" value={loc.section.workingSpaceMm} onChange={v => updSec("workingSpaceMm", v)} />
+                </div>
+
+                {/* Concrete Cover — per element face */}
+                <div className="border rounded p-3 space-y-2 bg-muted/20">
+                  <p className="text-xs font-semibold text-muted-foreground">Concrete Cover (mm) — per element face</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Walls</p>
+                      <div className="flex gap-2">
+                        <NumInput label="Outer (earth)" value={loc.section.wallOuterCoverMm ?? 50} onChange={v => updSec("wallOuterCoverMm", v)} />
+                        <NumInput label="Inner (water)" value={loc.section.wallInnerCoverMm ?? 40} onChange={v => updSec("wallInnerCoverMm", v)} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Invert Slab</p>
+                      <div className="flex gap-2">
+                        <NumInput label="Bottom (earth)" value={loc.section.invertBotCoverMm ?? 50} onChange={v => updSec("invertBotCoverMm", v)} />
+                        <NumInput label="Top (water)" value={loc.section.invertTopCoverMm ?? 40} onChange={v => updSec("invertTopCoverMm", v)} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Cover Slab</p>
+                      <div className="flex gap-2">
+                        <NumInput label="Top" value={loc.section.slabTopCoverMm ?? 40} onChange={v => updSec("slabTopCoverMm", v)} />
+                        <NumInput label="Bottom (water)" value={loc.section.slabBotCoverMm ?? 40} onChange={v => updSec("slabBotCoverMm", v)} />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Outer cover drives bar cut lengths &amp; spacing counts. Inner/top/bottom covers are for your reference and will be used for hook-depth checks.</p>
                 </div>
                 <div className="bg-muted/30 rounded p-3 text-xs">
                   <p className="font-semibold text-muted-foreground mb-1">Computed Volumes (per metre run)</p>
