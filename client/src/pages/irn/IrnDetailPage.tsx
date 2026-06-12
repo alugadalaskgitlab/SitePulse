@@ -539,7 +539,8 @@ export default function IrnDetailPage() {
             </div>
             <div className="space-y-2">
               {irn.items.map((item, idx) => {
-                const stock = findLiveStock(item.material);
+                // Pass item.uom so the result is converted to the requested UOM (e.g. CFT → MT)
+                const stock = findLiveStock(item.material, item.uom);
                 return (
                   <div key={item.id} className="py-1.5 border-b last:border-0 text-sm">
                     <div className="flex items-center justify-between">
@@ -563,10 +564,15 @@ export default function IrnDetailPage() {
                       </div>
                     </div>
                     {stock && (
-                      <div className="mt-1 ml-6">
-                        <span className={`text-xs px-2 py-0.5 rounded border ${stock.balance > 0 ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-red-50 text-red-600 border-red-200"}`}>
-                          Stock: {stock.balance.toFixed(2)} {stock.uom}{stock.approx ? " (approx)" : ""}
+                      <div className="mt-1 ml-6 space-y-0.5">
+                        <span className={`text-xs px-2 py-0.5 rounded border ${stock.balance >= item.qty ? "bg-teal-50 text-teal-700 border-teal-200" : stock.balance > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                          Available: {stock.balance.toFixed(3)} {stock.uom}{stock.approx ? " (approx)" : ""}
                         </span>
+                        {stock.sourceParts.length > 0 && (
+                          <p className="text-[10px] text-gray-400 ml-1">
+                            Source: {stock.sourceParts.join(" + ")}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
