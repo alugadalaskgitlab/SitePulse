@@ -247,3 +247,14 @@ input[type="number"] {
     display: none !important;
   }
 }
+
+/* ── Readability: darken light-gray text classes on white backgrounds ──
+   text-gray-300/400/500 are often used for labels, hints, and helper text
+   but render near-invisible on light backgrounds. Remap to one shade darker.
+   Dark-mode restores the original lighter values (they read well on dark bg). */
+.text-gray-300 { color: #9ca3af; }
+.text-gray-400 { color: #6b7280; }
+.text-gray-500 { color: #4b5563; }
+.dark .text-gray-300 { color: #d1d5db; }
+.dark .text-gray-400 { color: #9ca3af; }
+.dark .text-gray-500 { color: #9ca3af; }
