@@ -5145,6 +5145,9 @@ export async function registerRoutes(
           balance: stockBalances.balance,
           uom: stockBalances.uom,
           partyId: stockBalances.partyId,
+          conversionFactor: plantMaterials.conversionFactor,
+          conversionFromUom: plantMaterials.conversionFromUom,
+          conversionToUom: plantMaterials.conversionToUom,
         })
         .from(stockBalances)
         .innerJoin(plantMaterials, eq(stockBalances.materialId, plantMaterials.id));
@@ -5314,6 +5317,28 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const parsed = storesVerifyIrnSchema.safeParse({ ...req.body, verifiedBy: currentUserName(req) });
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+
+      // Server-side quantity validation: issue+queue cannot exceed requested qty
+      const existingIrn = await storage.getInternalRequisition(id);
+      if (!existingIrn) return res.status(404).json({ message: "IRN not found" });
+      for (const vi of parsed.data.items) {
+        const originalItem = (existingIrn as any).items?.find((i: any) => i.id === vi.itemId);
+        if (!originalItem) continue;
+        const reqQty = Number(originalItem.qty);
+        const issueQ = Number(vi.issueQty ?? 0);
+        const procureQ = Number(vi.procureQty ?? 0);
+        if (issueQ > reqQty) {
+          return res.status(400).json({
+            message: `Issue qty for "${originalItem.material}" (${issueQ} ${originalItem.uom}) cannot exceed requested qty (${reqQty} ${originalItem.uom})`
+          });
+        }
+        if (issueQ + procureQ > reqQty) {
+          return res.status(400).json({
+            message: `Issue + Queue qty for "${originalItem.material}" (${issueQ + procureQ} ${originalItem.uom}) cannot exceed requested qty (${reqQty} ${originalItem.uom})`
+          });
+        }
+      }
+
       const irn = await storage.storesVerifyIrn(id, parsed.data);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
       sendPushToSection("irn_view", "IRN Stores Verified", `${irn.irnNo} verified by stores`, "/irn").catch(() => {});

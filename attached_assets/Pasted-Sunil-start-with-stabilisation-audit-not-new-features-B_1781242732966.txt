@@ -1,0 +1,63 @@
+Sunil, start with **stabilisation audit**, not new features. Based on Replit’s inventory, the first bugs/risks to fix are in **IRN, PI, DPR, Stores, Vendor Bills, and Equipment**. 
+
+Send this to Replit:
+
+Please start HLC/SitePulse stabilisation review. Do not add commercial features yet.
+
+Priority 1: Fix/verify workflow bugs in these modules:
+
+1. IRN
+
+* Verify Raise → Stores Verify → Approve flow.
+* Ensure stores verification cannot be skipped unless explicitly intended.
+* Add/verify stock deduction on IRN approval or clearly block approval if stock issue is not linked.
+* Add IRN timeline/audit history display on detail page.
+* Add print/PDF option if simple.
+
+2. Purchase Indents
+
+* Verify server-side self-approval prevention.
+* Verify raise → approve/reject workflow.
+* Add item-level status/remarks if already schema-supported.
+* Identify best future linkage to GRN, but do not implement major GRN integration now.
+
+3. DPR / Site Reports
+
+* Verify create/edit/view/preview/versioning flow.
+* Check whether backfill entries have audit trail. If not, add minimal audit record or admin-only warning.
+* Verify equipment, labour, material logs save correctly.
+* Identify simple PDF/export gap, but do not build bulk PDF yet.
+
+4. Stores / Inventory
+
+* Verify GRN, issue, ledger balance consistency.
+* Check return-to-store gap.
+* Check whether stock ledger updates correctly after every GRN/issue.
+* Identify any negative stock possibility.
+
+5. Vendor Bills
+
+* Verify duplicate detection.
+* Verify self-approval prevention server-side.
+* Check approve/reject status transitions.
+* Do not add payment tracking yet.
+
+6. Equipment
+
+* Add validation/warning if hour meter or odometer reading goes backwards.
+* Review DPR equipment logs and plant equipment usage consistency.
+* Do not build full scheduling now.
+
+Please produce a bug audit table with:
+
+* Module
+* Issue found
+* Severity: Critical / High / Medium / Low
+* File(s) affected
+* Proposed minimal fix
+* Whether fix impacts HLC production
+* Whether fix should later be copied to SitePulse Master
+
+Do not make code changes until you first share the audit table.
+
+This is the right next step: **ask Replit to inspect and report first, not blindly modify code**.

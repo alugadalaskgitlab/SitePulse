@@ -87,7 +87,10 @@ export default function IrnDetailPage() {
   });
 
   // Fetch live stock balances for stores verification form AND manager approval view
-  const { data: stockLookupRows } = useQuery<{ materialName: string; balance: number; uom: string | null; partyId: number | null }[]>({
+  const { data: stockLookupRows } = useQuery<{
+    materialName: string; balance: number; uom: string | null; partyId: number | null;
+    conversionFactor?: number | null; conversionFromUom?: string | null; conversionToUom?: string | null;
+  }[]>({
     queryKey: ["/api/irn/stock-lookup"],
     enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
   });
@@ -103,38 +106,74 @@ export default function IrnDetailPage() {
     enabled: !!irn && ["approved", "closed", "rejected", "stores_verified"].includes(irn.status ?? ""),
   });
 
+  type StockEntry = {
+    balance: number; uom: string;
+    conversionFactor?: number | null; conversionFromUom?: string | null; conversionToUom?: string | null;
+  };
+  type LiveStockResult = {
+    balance: number; uom: string;
+    sourceBalance?: number; sourceUom?: string;
+    approx: boolean; converted: boolean;
+  };
+
   // Build a map: UPPER(materialName) → total balance across all parties + sorted list for partial matching
   const liveStock = useMemo(() => {
-    const exact = new Map<string, { balance: number; uom: string }>();
-    if (!stockLookupRows) return { exact, sorted: [] as { key: string; balance: number; uom: string }[] };
+    const exact = new Map<string, StockEntry>();
+    if (!stockLookupRows) return { exact, sorted: [] as ({ key: string } & StockEntry)[] };
     for (const row of stockLookupRows) {
       const key = row.materialName.toUpperCase().trim();
       const existing = exact.get(key);
-      if (existing) { existing.balance += row.balance; }
-      else { exact.set(key, { balance: row.balance, uom: row.uom ?? "" }); }
+      if (existing) {
+        existing.balance += row.balance;
+      } else {
+        exact.set(key, {
+          balance: row.balance,
+          uom: row.uom ?? "",
+          conversionFactor: row.conversionFactor,
+          conversionFromUom: row.conversionFromUom,
+          conversionToUom: row.conversionToUom,
+        });
+      }
     }
     const sorted = [...exact.entries()].map(([key, val]) => ({ key, ...val }));
     return { exact, sorted };
   }, [stockLookupRows]);
 
-  // Find the best live stock entry for an IRN item:
-  // 1. Exact name match (always wins)
-  // 2. Among all approximate word-level matches, pick the one with the highest balance
-  function findLiveStock(materialName: string): { balance: number; uom: string; approx: boolean } | null {
+  // Convert a stock entry to the requested UOM using material conversion factors.
+  // e.g. stock in CFT → convert to Ton using conversionFactor
+  function convertEntry(entry: StockEntry, requestedUom?: string): Omit<LiveStockResult, "approx"> {
+    if (!requestedUom || !entry.conversionFactor || !entry.conversionFromUom || !entry.conversionToUom) {
+      return { balance: entry.balance, uom: entry.uom, converted: false };
+    }
+    const reqU = requestedUom.toUpperCase().trim();
+    const stockU = entry.uom.toUpperCase().trim();
+    const fromU = entry.conversionFromUom.toUpperCase().trim();
+    const toU = entry.conversionToUom.toUpperCase().trim();
+    // If stock is already in the requested UOM — no conversion needed
+    if (stockU === reqU) return { balance: entry.balance, uom: entry.uom, converted: false };
+    // stock is in fromUom (e.g. CFT) and request is in toUom (e.g. Ton/MT)
+    if (stockU === fromU && (reqU === toU || (reqU === "MT" && toU === "TON") || (reqU === "TON" && toU === "MT"))) {
+      const converted = entry.balance * entry.conversionFactor;
+      return { balance: converted, uom: entry.conversionToUom, sourceBalance: entry.balance, sourceUom: entry.uom, converted: true };
+    }
+    return { balance: entry.balance, uom: entry.uom, converted: false };
+  }
+
+  // Find the best live stock entry for an IRN item.
+  // If requestedUom is provided, tries to convert stock balance to that UOM.
+  function findLiveStock(materialName: string, requestedUom?: string): LiveStockResult | null {
     const needle = materialName.toUpperCase().trim();
     const ex = liveStock.exact.get(needle);
-    if (ex) return { ...ex, approx: false };
-    // Collect all approximate matches, return the best (highest balance)
-    let best: { balance: number; uom: string } | null = null;
+    if (ex) return { ...convertEntry(ex, requestedUom), approx: false };
+    // Approximate match: pick the entry with the highest balance
+    let best: StockEntry | null = null;
     for (const entry of liveStock.sorted) {
       const stockWords = entry.key.split(/\s+/).filter(w => w.length >= 3);
       if (stockWords.some(w => needle.includes(w) || entry.key.includes(needle))) {
-        if (!best || entry.balance > best.balance) {
-          best = { balance: entry.balance, uom: entry.uom };
-        }
+        if (!best || entry.balance > best.balance) best = entry;
       }
     }
-    return best ? { ...best, approx: true } : null;
+    return best ? { ...convertEntry(best, requestedUom), approx: true } : null;
   }
 
   const [verifications, setVerifications] = useState<ItemVerification[]>([]);
@@ -143,7 +182,8 @@ export default function IrnDetailPage() {
   const [approvalRemarks, setApprovalRemarks] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-  // Auto-fill stock + set smart default action when live stock data arrives (first time only)
+  // Auto-fill stock + set smart default action when live stock data arrives (first time only).
+  // Balance is converted to the IRN item's requested UOM where possible.
   const autoFillApplied = useRef(false);
   useEffect(() => {
     if (liveStock.sorted.length === 0 || !irn || verifications.length === 0) return;
@@ -153,14 +193,18 @@ export default function IrnDetailPage() {
       const item = irn.items.find(i => i.id === v.itemId);
       if (!item) return v;
       if (item.storesAction != null) return v; // already verified — keep saved values
-      const live = findLiveStock(item.material);
+      // Pass item.uom so balance is converted to the requested UOM (e.g. CFT → Ton)
+      const live = findLiveStock(item.material, item.uom);
       if (!live) return v;
-      const balance = Math.max(0, live.balance);
+      const balance = Math.max(0, live.balance); // now in item.uom
       if (balance === 0) {
         return { ...v, stockAvailable: 0, storesAction: "procure", issueQty: 0, procureQty: item.qty };
       } else if (balance < item.qty) {
-        return { ...v, stockAvailable: balance, storesAction: "split", issueQty: Math.min(balance, item.qty), procureQty: Math.max(0, item.qty - balance) };
+        // Partial stock: issue what's available, queue the deficit
+        const canIssue = Math.min(balance, item.qty);
+        return { ...v, stockAvailable: balance, storesAction: "split", issueQty: canIssue, procureQty: Math.max(0, item.qty - canIssue) };
       } else {
+        // Full stock: issue exactly the requested qty
         return { ...v, stockAvailable: balance, storesAction: "issue", issueQty: item.qty, procureQty: 0 };
       }
     }));
@@ -178,19 +222,40 @@ export default function IrnDetailPage() {
         if (v.itemId !== itemId) return v;
         const updated = { ...v, [field]: value };
         const reqQty = irn?.items.find((i) => i.id === itemId)?.qty ?? 0;
+
         if (field === "storesAction") {
-          if (value === "issue") { updated.issueQty = reqQty; updated.procureQty = 0; }
-          else if (value === "procure") { updated.issueQty = 0; updated.procureQty = reqQty; }
-          else if (value === "split") { updated.issueQty = updated.stockAvailable; updated.procureQty = Math.max(0, reqQty - updated.stockAvailable); }
+          if (value === "issue") {
+            updated.issueQty = reqQty;  // issue exactly the requested qty
+            updated.procureQty = 0;
+          } else if (value === "procure") {
+            updated.issueQty = 0;
+            updated.procureQty = reqQty;
+          } else if (value === "split") {
+            // issue what's available (capped at reqQty), queue the deficit only
+            const canIssue = Math.min(v.stockAvailable, reqQty);
+            updated.issueQty = canIssue;
+            updated.procureQty = Math.max(0, reqQty - canIssue);
+          }
         }
+
         if (field === "stockAvailable" && updated.storesAction === "split") {
           const sa = Number(value);
-          updated.issueQty = Math.min(sa, reqQty);
-          updated.procureQty = Math.max(0, reqQty - sa);
+          updated.issueQty = Math.min(sa, reqQty);  // never exceed requested qty
+          updated.procureQty = Math.max(0, reqQty - updated.issueQty);  // deficit only
         }
-        // issueQty change sets a baseline procureQty (user can raise it further for replenishment)
-        if (field === "issueQty") { updated.procureQty = Math.max(updated.procureQty, reqQty - Number(value)); }
-        // procureQty is free — storekeeper can queue more than the deficit for stock replenishment
+
+        // issueQty: hard cap at requested qty; procureQty = remaining deficit
+        if (field === "issueQty") {
+          updated.issueQty = Math.min(Math.max(0, Number(value)), reqQty);
+          updated.procureQty = Math.max(0, reqQty - updated.issueQty);
+        }
+
+        // procureQty: hard cap at remaining deficit (reqQty - issueQty)
+        if (field === "procureQty") {
+          const maxProcure = Math.max(0, reqQty - updated.issueQty);
+          updated.procureQty = Math.min(Math.max(0, Number(value)), maxProcure);
+        }
+
         return updated;
       })
     );
@@ -950,68 +1015,92 @@ export default function IrnDetailPage() {
 
                     <Separator />
 
-                    <div className="grid grid-cols-12 gap-3 items-end">
-                      <div className="col-span-3 space-y-1">
-                        <Label className="text-xs text-gray-500">Stock in Hand ({item.uom})</Label>
-                        <Input
-                          type="number"
-                          value={v.stockAvailable}
-                          onChange={(e) => updateVerification(item.id, "stockAvailable", Number(e.target.value))}
-                          className={`h-8 text-sm font-medium ${v.stockAvailable >= item.qty ? "border-green-300 bg-green-50" : v.stockAvailable === 0 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
-                        />
-                        {(() => {
-                          const live = findLiveStock(item.material);
-                          if (!live) return null;
-                          const color = live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500";
-                          return (
-                            <p className={`text-[10px] flex items-center gap-0.5 ${color}`}>
-                              <Warehouse className="h-2.5 w-2.5" />
-                              Plant stock: {live.approx ? "~" : ""}{live.balance > 0 ? live.balance.toFixed(2) : "0"} {live.uom}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                      <div className="col-span-3 space-y-1">
-                        <Label className="text-xs text-gray-500">Action</Label>
-                        <Select value={v.storesAction} onValueChange={(val) => updateVerification(item.id, "storesAction", val as StoresAction)}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="issue" className="text-xs text-green-700">✅ Issue from Store</SelectItem>
-                            <SelectItem value="procure" className="text-xs text-purple-700">📋 Add to Procurement Queue</SelectItem>
-                            <SelectItem value="split" className="text-xs text-blue-700">⚖️ Split — issue now + queue balance</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs text-gray-500">Issue ({item.uom})</Label>
-                        <Input
-                          type="number"
-                          value={v.issueQty}
-                          onChange={(e) => updateVerification(item.id, "issueQty", Number(e.target.value))}
-                          disabled={v.storesAction === "procure"}
-                          className="h-8 text-sm bg-green-50 border-green-200 disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs text-gray-500">Queue ({item.uom})</Label>
-                        <Input
-                          type="number"
-                          value={v.procureQty}
-                          onChange={(e) => updateVerification(item.id, "procureQty", Number(e.target.value))}
-                          disabled={v.storesAction === "issue"}
-                          className="h-8 text-sm bg-purple-50 border-purple-200 disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs text-gray-500">Notes</Label>
-                        <Input
-                          value={v.storesNotes}
-                          onChange={(e) => updateVerification(item.id, "storesNotes", e.target.value)}
-                          placeholder="optional"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                    </div>
+                    {(() => {
+                      const live = findLiveStock(item.material, item.uom);
+                      const reqQty = item.qty;
+                      const issueOver = v.issueQty > reqQty;
+                      const procureOver = v.procureQty > reqQty - v.issueQty;
+                      return (
+                        <div className="grid grid-cols-12 gap-3 items-end">
+                          <div className="col-span-3 space-y-1">
+                            <Label className="text-xs text-gray-500">
+                              Stock in Hand ({item.uom})
+                            </Label>
+                            <Input
+                              type="number"
+                              value={v.stockAvailable}
+                              onChange={(e) => updateVerification(item.id, "stockAvailable", Number(e.target.value))}
+                              className={`h-8 text-sm font-medium ${v.stockAvailable >= item.qty ? "border-green-300 bg-green-50" : v.stockAvailable === 0 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
+                            />
+                            {live ? (
+                              <div className="space-y-0.5">
+                                <p className={`text-[10px] flex items-center gap-0.5 ${live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500"}`}>
+                                  <Warehouse className="h-2.5 w-2.5 shrink-0" />
+                                  {live.approx ? "~" : ""}Available: {live.balance > 0 ? live.balance.toFixed(3) : "0"} {live.uom}
+                                </p>
+                                {live.converted && live.sourceBalance != null && (
+                                  <p className="text-[10px] text-gray-400 ml-3">
+                                    Source: {live.sourceBalance.toFixed(2)} {live.sourceUom}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                <Warehouse className="h-2.5 w-2.5" /> No match in stock ledger
+                              </p>
+                            )}
+                          </div>
+                          <div className="col-span-3 space-y-1">
+                            <Label className="text-xs text-gray-500">Action</Label>
+                            <Select value={v.storesAction} onValueChange={(val) => updateVerification(item.id, "storesAction", val as StoresAction)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="issue" className="text-xs text-green-700">✅ Issue from Store</SelectItem>
+                                <SelectItem value="procure" className="text-xs text-purple-700">📋 Add to Procurement Queue</SelectItem>
+                                <SelectItem value="split" className="text-xs text-blue-700">⚖️ Split — issue now + queue balance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className={`text-xs ${issueOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                              Issue ({item.uom}) {issueOver ? "⚠ max " + reqQty : ""}
+                            </Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={reqQty}
+                              value={v.issueQty}
+                              onChange={(e) => updateVerification(item.id, "issueQty", Number(e.target.value))}
+                              disabled={v.storesAction === "procure"}
+                              className={`h-8 text-sm disabled:opacity-50 ${issueOver ? "border-red-400 bg-red-50" : "bg-green-50 border-green-200"}`}
+                            />
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className={`text-xs ${procureOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                              Queue ({item.uom}) {procureOver ? "⚠ max " + Math.max(0, reqQty - v.issueQty) : ""}
+                            </Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, reqQty - v.issueQty)}
+                              value={v.procureQty}
+                              onChange={(e) => updateVerification(item.id, "procureQty", Number(e.target.value))}
+                              disabled={v.storesAction === "issue"}
+                              className={`h-8 text-sm disabled:opacity-50 ${procureOver ? "border-red-400 bg-red-50" : "bg-purple-50 border-purple-200"}`}
+                            />
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-xs text-gray-500">Notes</Label>
+                            <Input
+                              value={v.storesNotes}
+                              onChange={(e) => updateVerification(item.id, "storesNotes", e.target.value)}
+                              placeholder="optional"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex gap-2 flex-wrap">
                       {v.issueQty > 0 && (

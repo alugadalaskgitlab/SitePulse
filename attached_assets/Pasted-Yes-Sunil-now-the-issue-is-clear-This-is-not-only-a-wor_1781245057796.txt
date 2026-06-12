@@ -1,0 +1,85 @@
+Yes Sunil, now the issue is clear.
+
+This is **not only a workflow issue**. It is first a **stock/UOM bug**.
+
+### What I observe from your screenshots
+
+1. IRN is raised for **STONE DUST — 10 MT**.
+2. Store verification shows **Stock in Hand 6560.4933** but below it says **Plant stock: ~6560.49 CFT**.
+3. The app is treating/displaying CFT stock almost like MT stock.
+4. Ledger shows DUST in **Ton**, with closing only around **248.315 Ton**, and HLC line even shows **negative -33.700 Ton**.
+5. In split screen, it allowed issue of **6560.4933 MT** and queue **100 MT**, even though the request was only **10 MT**. That is a serious validation bug.
+6. Approval screen shows “Procure 100 MT” although original requested qty was 10 MT. This should not be allowed without clear manager edit/approval logic.
+
+So before adding PI approval, Replit must fix:
+
+* UOM conversion
+* stock availability shown in requested UOM
+* issue qty cannot exceed requested qty
+* issue qty cannot exceed available stock
+* queue qty should normally be requested qty minus issue qty, unless manager edits procurement qty later
+
+### Tell Replit this focused instruction
+
+We found a critical IRN Stores Verification bug. Please inspect and fix only this IRN stock/UOM/quantity validation issue first.
+
+Context:
+An IRN was raised for STONE DUST, requested quantity 10 MT.
+
+Observed problems from UI:
+
+1. Store verification shows Stock in Hand as 6560.4933, but helper text says Plant stock: ~6560.49 CFT.
+2. The requested UOM is MT, but available stock appears to be fetched/displayed in CFT or mixed units.
+3. Ledger shows DUST in Ton, with overall closing around 248.315 Ton and one stock-owner line negative.
+4. In Split mode, the UI allowed Issue Qty = 6560.4933 MT and Queue Qty = 100 MT, even though the original IRN requested only 10 MT.
+5. Approval page then showed Issue 6560.493 MT and Procure 100 MT against a 10 MT request. This must not be possible.
+
+Required fix:
+
+1. In IRN Stores Verification, always show available stock converted to the IRN requested UOM.
+
+   * If IRN item is requested in MT/Ton, available stock must show in MT/Ton.
+   * If source ledger is in CFT, convert using the material’s configured conversion factor/density.
+   * Do not display CFT value as MT.
+
+2. Keep helper text if needed, but clearly show:
+
+   * Available stock in requested UOM
+   * Source stock/UOM separately
+     Example: Available: 248.315 MT; Source ledger: 6560.49 CFT.
+
+3. Add strict validation:
+
+   * Issue Qty cannot exceed Requested Qty.
+   * Queue Qty cannot exceed Requested Qty.
+   * Issue Qty + Queue Qty cannot exceed Requested Qty unless there is a separate manager-approved extra procurement quantity field.
+   * Issue Qty cannot exceed available stock in the same UOM.
+   * Negative stock should not be allowed unless an admin override exists.
+
+4. In Split mode:
+
+   * Default Issue Qty = min(available stock, requested qty)
+   * Default Queue Qty = requested qty - issue qty
+   * For this example, requested 10 MT and available more than 10 MT should default to Issue 10 MT, Queue 0 MT.
+
+5. Approval page should display the corrected quantities only.
+   It must never show Issue 6560 MT / Procure 100 MT for a 10 MT IRN.
+
+6. Please inspect related files:
+
+   * IRN detail/stores verification page
+   * IRN stores verification backend endpoint
+   * stock balance lookup/helper
+   * material UOM conversion logic
+   * stock ledger aggregation logic
+
+7. Before coding, please report:
+
+   * Which file/function is causing the CFT vs MT mismatch
+   * Whether the issue is UI-only, backend-only, or both
+   * Proposed minimal fix
+   * Whether existing wrong verification records need correction/reversal
+
+Do not add the PI approval feature yet. First fix this stock/UOM and validation bug.
+
+After this bug is fixed, then we should discuss the **PI approval from shortage queue**. This is step two.
