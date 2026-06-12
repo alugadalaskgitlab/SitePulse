@@ -764,29 +764,52 @@ export default function IrnDetailPage() {
                     )}
                   </div>
                   {/* Stores decision row */}
-                  {item.storesAction && (
-                    <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-200 mt-1">
-                      {item.stockAvailable != null && (
-                        <span className={`text-xs px-2 py-0.5 rounded border ${item.stockAvailable > 0 ? "bg-teal-50 text-teal-700 border-teal-200" : "bg-red-50 text-red-600 border-red-200"}`}>
-                          Stock at verification: {item.stockAvailable} {item.uom}
-                        </span>
-                      )}
-                      {(item.issueQty ?? 0) > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
-                          Issue {item.issueQty} {item.uom}
-                        </span>
-                      )}
-                      {(item.procureQty ?? 0) > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
-                          Procure {item.procureQty} {item.uom}
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500 italic">{ACTION_LABEL[item.storesAction] ?? item.storesAction}</span>
-                      {item.storesNotes && (
-                        <span className="text-xs text-blue-600">Note: {item.storesNotes}</span>
-                      )}
-                    </div>
-                  )}
+                  {item.storesAction && (() => {
+                    const live = findLiveStock(item.material, item.uom);
+                    return (
+                      <div className="pt-2 border-t border-gray-200 mt-1 space-y-1.5">
+                        {/* Available stock — converted to item's UOM */}
+                        {live && (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Warehouse className="h-3 w-3 text-gray-400 shrink-0" />
+                              <span className="text-xs text-gray-500">Stores verified available:</span>
+                              <span className={`text-xs font-semibold ${live.balance >= item.qty ? "text-green-700" : live.balance > 0 ? "text-amber-700" : "text-red-600"}`}>
+                                {live.balance > 0 ? live.balance.toFixed(3) : "0"} {live.uom}
+                              </span>
+                              {live.hasConversionError && (
+                                <span className="text-[10px] text-orange-600 flex items-center gap-0.5">
+                                  <AlertCircle className="h-2.5 w-2.5" /> partial conversion
+                                </span>
+                              )}
+                            </div>
+                            {live.sourceParts.length > 0 && (
+                              <p className="text-[10px] text-gray-400 ml-4.5">
+                                Source: {live.sourceParts.join(" + ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {/* Issue / Procure decision badges */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {(item.issueQty ?? 0) > 0 && (
+                            <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
+                              Issue {item.issueQty} {item.uom}
+                            </span>
+                          )}
+                          {(item.procureQty ?? 0) > 0 && (
+                            <span className="text-xs px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
+                              Procure {item.procureQty} {item.uom}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-500 italic">{ACTION_LABEL[item.storesAction] ?? item.storesAction}</span>
+                          {item.storesNotes && (
+                            <span className="text-xs text-blue-600">Note: {item.storesNotes}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Final status */}
                   <div className="mt-2 text-right">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
