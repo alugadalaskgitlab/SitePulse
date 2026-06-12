@@ -106,29 +106,37 @@ export default function IrnDetailPage() {
     enabled: !!irn && ["approved", "closed", "rejected", "stores_verified"].includes(irn.status ?? ""),
   });
 
+  type UomBreakdown = { balance: number; uom: string };
   type StockEntry = {
-    balance: number; uom: string;
+    breakdowns: UomBreakdown[];
     conversionFactor?: number | null; conversionFromUom?: string | null; conversionToUom?: string | null;
   };
   type LiveStockResult = {
-    balance: number; uom: string;
-    sourceBalance?: number; sourceUom?: string;
-    approx: boolean; converted: boolean;
+    balance: number;            // total in requested UOM (or raw if no conversion)
+    uom: string;               // requested UOM (or first-row UOM if no conversion)
+    sourceParts: string[];     // e.g. ["6546.653 CFT", "13.840 MT"] for display
+    hasConversionError: boolean; // true if any row could not be converted
+    approx: boolean;
+    converted: boolean;
   };
 
-  // Build a map: UPPER(materialName) → total balance across all parties + sorted list for partial matching
+  // Build a map: UPPER(materialName) → per-UOM breakdowns + sorted list for partial matching.
+  // We intentionally do NOT sum across UOMs here — conversion happens in findLiveStock.
   const liveStock = useMemo(() => {
     const exact = new Map<string, StockEntry>();
     if (!stockLookupRows) return { exact, sorted: [] as ({ key: string } & StockEntry)[] };
     for (const row of stockLookupRows) {
       const key = row.materialName.toUpperCase().trim();
+      const rowUom = row.uom ?? "";
       const existing = exact.get(key);
       if (existing) {
-        existing.balance += row.balance;
+        // Accumulate into the matching UOM bucket, or add a new bucket
+        const bucket = existing.breakdowns.find(b => b.uom.toUpperCase().trim() === rowUom.toUpperCase().trim());
+        if (bucket) { bucket.balance += row.balance; }
+        else { existing.breakdowns.push({ balance: row.balance, uom: rowUom }); }
       } else {
         exact.set(key, {
-          balance: row.balance,
-          uom: row.uom ?? "",
+          breakdowns: [{ balance: row.balance, uom: rowUom }],
           conversionFactor: row.conversionFactor,
           conversionFromUom: row.conversionFromUom,
           conversionToUom: row.conversionToUom,
@@ -139,41 +147,97 @@ export default function IrnDetailPage() {
     return { exact, sorted };
   }, [stockLookupRows]);
 
-  // Convert a stock entry to the requested UOM using material conversion factors.
-  // e.g. stock in CFT → convert to Ton using conversionFactor
-  function convertEntry(entry: StockEntry, requestedUom?: string): Omit<LiveStockResult, "approx"> {
-    if (!requestedUom || !entry.conversionFactor || !entry.conversionFromUom || !entry.conversionToUom) {
-      return { balance: entry.balance, uom: entry.uom, converted: false };
-    }
+  // Convert a single-row balance from rowUom → requestedUom using the material's conversion config.
+  // Returns null if the conversion cannot be performed (missing factor, incompatible UOMs).
+  function convertSingleRow(
+    rowBalance: number, rowUom: string, requestedUom: string,
+    cf?: number | null, cfFrom?: string | null, cfTo?: string | null,
+  ): number | null {
+    const isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
+    const fromU = rowUom.toUpperCase().trim();
     const reqU = requestedUom.toUpperCase().trim();
-    const stockU = entry.uom.toUpperCase().trim();
-    const fromU = entry.conversionFromUom.toUpperCase().trim();
-    const toU = entry.conversionToUom.toUpperCase().trim();
-    // If stock is already in the requested UOM — no conversion needed
-    if (stockU === reqU) return { balance: entry.balance, uom: entry.uom, converted: false };
-    // stock is in fromUom (e.g. CFT) and request is in toUom (e.g. Ton/MT)
-    if (stockU === fromU && (reqU === toU || (reqU === "MT" && toU === "TON") || (reqU === "TON" && toU === "MT"))) {
-      const converted = entry.balance * entry.conversionFactor;
-      return { balance: converted, uom: entry.conversionToUom, sourceBalance: entry.balance, sourceUom: entry.uom, converted: true };
-    }
-    return { balance: entry.balance, uom: entry.uom, converted: false };
+    if (fromU === reqU) return rowBalance;
+    if (isTon(fromU) && isTon(reqU)) return rowBalance; // MT ≡ Ton
+    if (!cf || !cfFrom || !cfTo) return null;
+    const cFrom = cfFrom.toUpperCase().trim();
+    const cTo = cfTo.toUpperCase().trim();
+    // Forward: CFT → Ton/MT
+    if (fromU === cFrom && (reqU === cTo || (isTon(reqU) && isTon(cTo)))) return rowBalance * cf;
+    // Reverse: Ton/MT → CFT
+    if ((isTon(fromU) || fromU === cTo) && reqU === cFrom && cf !== 0) return rowBalance / cf;
+    return null;
   }
 
   // Find the best live stock entry for an IRN item.
-  // If requestedUom is provided, tries to convert stock balance to that UOM.
+  // Converts EACH UOM breakdown individually to requestedUom, then sums.
+  // This prevents the CFT+MT mixing bug.
   function findLiveStock(materialName: string, requestedUom?: string): LiveStockResult | null {
     const needle = materialName.toUpperCase().trim();
+    let entry: StockEntry | null = null;
+    let approx = false;
+
     const ex = liveStock.exact.get(needle);
-    if (ex) return { ...convertEntry(ex, requestedUom), approx: false };
-    // Approximate match: pick the entry with the highest balance
-    let best: StockEntry | null = null;
-    for (const entry of liveStock.sorted) {
-      const stockWords = entry.key.split(/\s+/).filter(w => w.length >= 3);
-      if (stockWords.some(w => needle.includes(w) || entry.key.includes(needle))) {
-        if (!best || entry.balance > best.balance) best = entry;
+    if (ex) {
+      entry = ex;
+    } else {
+      // Approximate: pick the entry whose key has the most word overlap with needle
+      let bestTotalBalance = -1;
+      for (const e of liveStock.sorted) {
+        const stockWords = e.key.split(/\s+/).filter(w => w.length >= 3);
+        const isMatch = stockWords.some(w => needle.includes(w)) || e.key.includes(needle) || needle.includes(e.key);
+        if (isMatch) {
+          const total = e.breakdowns.reduce((s, b) => s + b.balance, 0);
+          if (total > bestTotalBalance) { bestTotalBalance = total; entry = e; approx = true; }
+        }
       }
     }
-    return best ? { ...convertEntry(best, requestedUom), approx: true } : null;
+    if (!entry) return null;
+
+    const { conversionFactor: cf, conversionFromUom: cfFrom, conversionToUom: cfTo } = entry;
+    const nonZero = entry.breakdowns.filter(b => b.balance !== 0);
+
+    if (!requestedUom) {
+      // No target UOM — sum raw (single-UOM use case)
+      const total = entry.breakdowns.reduce((s, b) => s + b.balance, 0);
+      const mainUom = entry.breakdowns[0]?.uom ?? "";
+      return { balance: total, uom: mainUom, sourceParts: [], hasConversionError: false, approx, converted: false };
+    }
+
+    // Convert each breakdown to requestedUom individually, then sum
+    let totalConverted = 0;
+    let hasConversionError = false;
+    const sourceParts: string[] = [];
+    const isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
+    const reqU = requestedUom.toUpperCase().trim();
+
+    for (const bd of nonZero) {
+      const converted = convertSingleRow(bd.balance, bd.uom, requestedUom, cf, cfFrom, cfTo);
+      if (converted === null) {
+        hasConversionError = true;
+        sourceParts.push(`${bd.balance.toFixed(3)} ${bd.uom} ⚠`);
+      } else {
+        totalConverted += converted;
+        // Show source line if this row wasn't already in the requested UOM
+        const bU = bd.uom.toUpperCase().trim();
+        if (bU !== reqU && !(isTon(bU) && isTon(reqU))) {
+          sourceParts.push(`${bd.balance.toFixed(3)} ${bd.uom}`);
+        }
+      }
+    }
+
+    const wasConverted = nonZero.some(bd => {
+      const bU = bd.uom.toUpperCase().trim();
+      return bU !== reqU && !(isTon(bU) && isTon(reqU));
+    });
+
+    return {
+      balance: Math.max(0, totalConverted),
+      uom: requestedUom,
+      sourceParts,
+      hasConversionError,
+      approx,
+      converted: wasConverted,
+    };
   }
 
   const [verifications, setVerifications] = useState<ItemVerification[]>([]);
@@ -244,9 +308,12 @@ export default function IrnDetailPage() {
           updated.procureQty = Math.max(0, reqQty - updated.issueQty);  // deficit only
         }
 
-        // issueQty: hard cap at requested qty; procureQty = remaining deficit
+        // issueQty: hard cap at min(reqQty, stockAvailable); procureQty = remaining deficit
         if (field === "issueQty") {
-          updated.issueQty = Math.min(Math.max(0, Number(value)), reqQty);
+          const maxIssue = updated.stockAvailable > 0
+            ? Math.min(reqQty, updated.stockAvailable)
+            : reqQty;
+          updated.issueQty = Math.min(Math.max(0, Number(value)), maxIssue);
           updated.procureQty = Math.max(0, reqQty - updated.issueQty);
         }
 
@@ -1018,8 +1085,12 @@ export default function IrnDetailPage() {
                     {(() => {
                       const live = findLiveStock(item.material, item.uom);
                       const reqQty = item.qty;
-                      const issueOver = v.issueQty > reqQty;
+                      // issueQty over-limit: exceeds requested qty OR exceeds what's physically available
+                      const issueOverReq = v.issueQty > reqQty;
+                      const issueOverStock = v.stockAvailable > 0 && v.issueQty > v.stockAvailable;
+                      const issueOver = issueOverReq || issueOverStock;
                       const procureOver = v.procureQty > reqQty - v.issueQty;
+                      const issueMax = v.stockAvailable > 0 ? Math.min(reqQty, v.stockAvailable) : reqQty;
                       return (
                         <div className="grid grid-cols-12 gap-3 items-end">
                           <div className="col-span-3 space-y-1">
@@ -1034,13 +1105,19 @@ export default function IrnDetailPage() {
                             />
                             {live ? (
                               <div className="space-y-0.5">
+                                {live.hasConversionError && (
+                                  <p className="text-[10px] flex items-center gap-0.5 text-orange-600">
+                                    <AlertCircle className="h-2.5 w-2.5 shrink-0" />
+                                    Mixed UOMs — partial conversion
+                                  </p>
+                                )}
                                 <p className={`text-[10px] flex items-center gap-0.5 ${live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500"}`}>
                                   <Warehouse className="h-2.5 w-2.5 shrink-0" />
                                   {live.approx ? "~" : ""}Available: {live.balance > 0 ? live.balance.toFixed(3) : "0"} {live.uom}
                                 </p>
-                                {live.converted && live.sourceBalance != null && (
+                                {live.sourceParts.length > 0 && (
                                   <p className="text-[10px] text-gray-400 ml-3">
-                                    Source: {live.sourceBalance.toFixed(2)} {live.sourceUom}
+                                    Source: {live.sourceParts.join(" + ")}
                                   </p>
                                 )}
                               </div>
@@ -1063,12 +1140,12 @@ export default function IrnDetailPage() {
                           </div>
                           <div className="col-span-2 space-y-1">
                             <Label className={`text-xs ${issueOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
-                              Issue ({item.uom}) {issueOver ? "⚠ max " + reqQty : ""}
+                              Issue ({item.uom}){issueOver ? ` ⚠ max ${issueMax.toFixed(3)}` : ""}
                             </Label>
                             <Input
                               type="number"
                               min={0}
-                              max={reqQty}
+                              max={issueMax}
                               value={v.issueQty}
                               onChange={(e) => updateVerification(item.id, "issueQty", Number(e.target.value))}
                               disabled={v.storesAction === "procure"}
@@ -1077,7 +1154,7 @@ export default function IrnDetailPage() {
                           </div>
                           <div className="col-span-2 space-y-1">
                             <Label className={`text-xs ${procureOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
-                              Queue ({item.uom}) {procureOver ? "⚠ max " + Math.max(0, reqQty - v.issueQty) : ""}
+                              Queue ({item.uom}){procureOver ? ` ⚠ max ${Math.max(0, reqQty - v.issueQty)}` : ""}
                             </Label>
                             <Input
                               type="number"

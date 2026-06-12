@@ -1,0 +1,93 @@
+Copy this full instruction to Replit:
+
+Please fix the IRN Stores Verification stock/UOM issue fully, including mixed-UOM aggregation and material-wise conversion factors.
+
+Problem observed:
+In production, DUST stock has mixed UOM rows:
+
+* 6546.653 CFT
+* 13.84 MT
+* 0 Ton
+* 0 Ton
+
+The app is wrongly adding them raw:
+6546.653 + 13.84 = 6560.493
+
+Then it displays 6560.493 as MT/Ton in IRN Stores Verification.
+
+This is incorrect because CFT, MT, and Ton cannot be added directly.
+
+Required logic:
+
+1. In IRN Stores Verification, convert each stock_balances row individually into the IRN requested UOM before summing.
+2. Do not aggregate first and convert later.
+3. Do not pick the first row UOM and apply it to the total.
+4. Do not display mixed raw balances as one UOM.
+
+Example:
+If IRN requested UOM is MT/Ton for DUST:
+
+* 6546.653 CFT × 0.050 = 327.333 Ton
+* 13.84 MT = 13.84 Ton
+* 0 Ton = 0 Ton
+  Expected available stock = about 341.173 MT/Ton, not 6560.493.
+
+Material-wise conversion:
+Do not hardcode 0.050 globally.
+
+Each material must use its own conversionFactor from material master / plant_materials.
+
+Formula:
+Ton = CFT × conversionFactor
+
+Default editable conversion factors where missing:
+
+* Stone Dust / Dust: 0.050
+* 6mm Aggregate: 0.048
+* 10mm Aggregate: 0.047
+* 20mm Aggregate: 0.045
+* 40mm Aggregate: 0.043
+* M-Sand: 0.050
+* River Sand: 0.045
+* WMM Mix: 0.052
+
+These are only default editable values. Admin must be able to change conversionFactor per material.
+
+Required validations:
+
+1. Issue Qty cannot exceed requested qty.
+2. Issue Qty cannot exceed converted available stock.
+3. Issue Qty + Queue/Procure Qty cannot exceed requested qty unless a separate manager-approved extra procurement quantity field is introduced later.
+4. Negative stock should not be allowed unless an explicit admin override exists.
+5. If conversionFactor is missing and mixed-UOM stock exists, block issue and show a warning instead of guessing.
+
+UI requirement:
+Show stock clearly like:
+
+* Available: 341.173 Ton
+* Source: 6546.653 CFT + 13.84 MT
+
+For IRN requested 10 MT, Split mode should default:
+
+* Issue Qty = min(requested qty, available stock)
+* Queue/Procure Qty = requested qty - issue qty
+
+So if requested 10 MT and available is 341.173 MT:
+
+* Issue Qty should default to 10 MT
+* Queue/Procure Qty should default to 0 MT
+
+Please fix this in both frontend and backend wherever required, especially:
+
+* IRN Stores Verification live stock lookup
+* stock_balances aggregation
+* UOM conversion helper
+* stores-verify backend validation
+
+After fixing, please confirm:
+
+1. Exact file/function changed.
+2. Expected available stock for DUST production data.
+3. Whether any production stock balance rows need manual correction.
+4. Whether this fix is safe for all aggregate materials.
+5. Whether this needs to be copied later to SitePulse Master.

@@ -2,7 +2,6 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/app-home/AppHome.tsx": () => import("../components/mockups/app-home/AppHome.tsx"),
-  "./components/mockups/home-dashboard/HomeDashboard.tsx": () => import("../components/mockups/home-dashboard/HomeDashboard.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcBottom.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcBottom.tsx"),
   "./components/mockups/concrete-calc/ConcreteCalcTop.tsx": () => import("../components/mockups/concrete-calc/ConcreteCalcTop.tsx"),
   "./components/mockups/concrete-calc/ConcreteEstimatesList.tsx": () => import("../components/mockups/concrete-calc/ConcreteEstimatesList.tsx"),
@@ -16,6 +15,7 @@ export const modules: ModuleMap = {
   "./components/mockups/irn/IrnRaiseC.tsx": () => import("../components/mockups/irn/IrnRaiseC.tsx"),
   "./components/mockups/irn/IrnRaiseD.tsx": () => import("../components/mockups/irn/IrnRaiseD.tsx"),
   "./components/mockups/irn/IrnStores.tsx": () => import("../components/mockups/irn/IrnStores.tsx"),
+  "./components/mockups/home-dashboard/HomeDashboard.tsx": () => import("../components/mockups/home-dashboard/HomeDashboard.tsx"),
   "./components/mockups/mix-calc-ux/AnalysisView.tsx": () => import("../components/mockups/mix-calc-ux/AnalysisView.tsx"),
   "./components/mockups/mix-calc-ux/MixCalcNav.tsx": () => import("../components/mockups/mix-calc-ux/MixCalcNav.tsx"),
   "./components/mockups/mix-calc-ux/MixCalcPrototype.tsx": () => import("../components/mockups/mix-calc-ux/MixCalcPrototype.tsx"),
