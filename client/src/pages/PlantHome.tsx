@@ -15,7 +15,11 @@ export default function PlantHome() {
     sectionVisible("plant_shift_logs") ||
     sectionVisible("plant_daily_reports") ||
     sectionVisible("plant_heating") ||
-    sectionVisible("vendor_bills");
+    sectionVisible("vendor_bills") ||
+    sectionVisible("vendor_bills_view") ||
+    sectionVisible("vendor_bills_raise") ||
+    sectionVisible("vendor_bills_verify") ||
+    sectionVisible("vendor_bills_approve");
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">

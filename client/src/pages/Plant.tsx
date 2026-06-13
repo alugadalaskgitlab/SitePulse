@@ -176,7 +176,11 @@ function PlantHomeCards({
     sectionVisible("plant_diesel_proc") ||
     sectionVisible("plant_bitumen") ||
     sectionVisible("plant_ldo") ||
-    sectionVisible("vendor_bills");
+    sectionVisible("vendor_bills") ||
+    sectionVisible("vendor_bills_view") ||
+    sectionVisible("vendor_bills_raise") ||
+    sectionVisible("vendor_bills_verify") ||
+    sectionVisible("vendor_bills_approve");
   const mastersVisible =
     sectionVisible("master_parties") ||
     sectionVisible("master_materials") ||
@@ -1252,7 +1256,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
         </Card>
       )}
 
-      {sectionVisible("vendor_bills") && (<>
+      {(sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve")) && (<>
       <div className="mt-2">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Procurement & Finance</h3>
       </div>

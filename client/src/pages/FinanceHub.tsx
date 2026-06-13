@@ -157,7 +157,7 @@ export default function FinanceHub() {
               description="Manage equipment, material, transport & labour vendor bills"
               accent="rose"
               iconBg="bg-rose-100"
-              enabled={sectionVisible("vendor_bills")}
+              enabled={sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view") || sectionVisible("vendor_bills_raise") || sectionVisible("vendor_bills_verify") || sectionVisible("vendor_bills_approve")}
             />
             <HubActionTile
               href={`/plant/rate-cards?returnTo=${HUB}`}

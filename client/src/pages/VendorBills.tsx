@@ -246,11 +246,11 @@ export default function VendorBills() {
   const backLink = getPlantBackLink({ defaultTab: "stock" });
   const { sectionCan, sectionVisible, isAdmin } = useAuth();
   const { companyName, logoFile } = useFeatureFlags();
-  const canCreate = sectionCan("vendor_bills", "create");
-  const canEdit = sectionCan("vendor_bills", "edit");
-  const canViewBills = sectionVisible("vendor_bills");
+  const canCreate = sectionCan("vendor_bills", "create") || sectionCan("vendor_bills_raise", "create");
+  const canEdit = sectionCan("vendor_bills", "edit") || sectionCan("vendor_bills_verify", "edit") || sectionCan("vendor_bills_approve", "edit");
+  const canViewBills = sectionVisible("vendor_bills") || sectionVisible("vendor_bills_view");
   const canDelete = isAdmin;
-  const canExport = sectionCan("vendor_bills", "view_reports");
+  const canExport = sectionCan("vendor_bills", "view_reports") || sectionCan("vendor_bills_view", "view_reports");
 
   const [view, setView] = useState<ViewMode>("list");
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
