@@ -1,0 +1,131 @@
+PI workflow redesign proposal
+
+We want to support two different procurement flows.
+
+Route A – Stores / Spares / Tools / Consumables
+
+PI Raised
+→ Stores Verification
+→ Manager Approval
+→ Purchaser Action Form
+→ Purchaser physically procures / orders material
+→ Purchaser hands over material to Stores
+→ Stores creates GRN
+→ Stores Stock updated
+→ Close
+
+Important:
+
+The Purchaser Form must be separate from GRN.
+
+Purchaser Form should capture:
+
+Approved Qty
+Purchased Qty
+Ordered Qty
+Balance Qty
+Vendor / Supplier
+Rate
+Amount
+Payment Mode
+Expected Delivery Date
+Purchaser Remarks
+
+If:
+Purchased Qty < Approved Qty
+
+then Reason becomes mandatory.
+
+Examples:
+
+Supplier shortage
+Material unavailable
+Partial supply
+Balance expected later
+Price issue
+
+Business Rules:
+
+Purchaser Form should NOT create GRN.
+Purchaser Form should NOT update stock.
+Purchaser Form should only record procurement activity.
+GRN should be created separately by Stores after physical receipt and handover.
+Stores Stock should update only after GRN.
+
+Partial procurement must be supported.
+
+Example:
+
+Approved Qty = 100
+Purchased Qty = 60
+Balance Qty = 40
+
+GRN created for 60 only.
+
+Remaining 40 stays pending until supplied later.
+
+Route B – Bulk Materials
+
+For:
+
+Dust
+6mm
+10mm
+20mm
+40mm
+Sand
+WMM
+Bitumen
+Diesel
+Similar plant materials
+
+Flow should be:
+
+PI Raised
+→ Stores Verification
+→ Manager Approval
+→ Purchaser Action / Order Details
+→ Supplier dispatch
+→ Plant Material Receipt
+→ Plant Stock updated
+→ Close
+
+Important:
+
+Bulk materials should NOT go through Stores GRN.
+
+Plant Material Receipt should update:
+
+stock_balances
+stock_ledger
+plant stock
+
+Stores stock should not be involved.
+
+Phase 4 – Classification
+
+Before implementation please inspect current master data and confirm:
+
+How will the system identify whether an item is:
+
+A. Store Item
+or
+B. Bulk Plant Material
+
+Please recommend the safest existing field or classification to use.
+
+Phase 5 – Implementation Plan
+
+Before coding:
+
+Please provide:
+
+Affected files.
+Database tables affected.
+New fields required, if any.
+Workflow screens affected.
+Minimal implementation plan.
+
+Do not implement immediately.
+
+First provide the implementation plan for review and approval.
