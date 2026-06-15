@@ -5921,11 +5921,11 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/purchaser-action", async (req, res) => {
     try {
       const indentId = Number(req.params.id);
-      const { items, actionBy } = req.body;
+      const actionBy = currentUserName(req);
+      const { items } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      if (!actionBy) return res.status(400).json({ message: "actionBy is required" });
       await storage.submitPurchaserAction(indentId, items, actionBy);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);
@@ -5938,12 +5938,12 @@ export async function registerRoutes(
   app.post("/api/purchase-indent-items/:itemId/handover", async (req, res) => {
     try {
       const indentItemId = Number(req.params.itemId);
-      const { indentId, handoverQty, acceptedQty, rejectedQty, handoverDate, receivedBy, storesRemarks, remarks, actionBy } = req.body;
+      const actionBy = currentUserName(req);
+      const { indentId, handoverQty, acceptedQty, rejectedQty, handoverDate, receivedBy, storesRemarks, remarks } = req.body;
       if (!indentId || handoverQty == null || acceptedQty == null || rejectedQty == null) {
         return res.status(400).json({ message: "indentId, handoverQty, acceptedQty, rejectedQty required" });
       }
-      if (!actionBy) return res.status(400).json({ message: "actionBy is required" });
-      const txn = await storage.submitHandover({ indentItemId, indentId, handoverQty, acceptedQty, rejectedQty, handoverDate, receivedBy, storesRemarks, remarks }, actionBy);
+      const txn = await storage.submitHandover({ indentItemId, indentId: Number(indentId), handoverQty: Number(handoverQty), acceptedQty: Number(acceptedQty), rejectedQty: Number(rejectedQty), handoverDate, receivedBy, storesRemarks, remarks }, actionBy);
       res.json(txn);
     } catch (err) {
       console.error("POST /api/purchase-indent-items/:itemId/handover:", err);
@@ -5954,11 +5954,11 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/bulk-receipt", async (req, res) => {
     try {
       const indentId = Number(req.params.id);
-      const { items, actionBy } = req.body;
+      const actionBy = currentUserName(req);
+      const { items } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "items array is required" });
       }
-      if (!actionBy) return res.status(400).json({ message: "actionBy is required" });
       await storage.recordBulkMaterialReceipt(indentId, items, actionBy);
       const indent = await storage.getPurchaseIndent(indentId);
       res.json(indent);

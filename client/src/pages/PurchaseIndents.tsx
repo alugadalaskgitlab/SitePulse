@@ -3534,7 +3534,7 @@ export default function PurchaseIndents() {
                                 .map(item => {
                                   const pd = purchaserActionData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "" };
                                   return {
-                                    indentItemId: item.id,
+                                    itemId: item.id,
                                     qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
                                     vendor: pd.vendor || null,
                                     rate: parseFloat(pd.rate) || null,
@@ -4050,6 +4050,7 @@ export default function PurchaseIndents() {
                     disabled={handoverMutation.isPending || !handoverData.acceptedQty}
                     onClick={() => handoverMutation.mutate({
                       indentItemId: handoverDialogItemId!,
+                      indentId: selectedIndentId!,
                       handoverQty: parseFloat(handoverData.handoverQty) || 0,
                       acceptedQty: parseFloat(handoverData.acceptedQty) || 0,
                       rejectedQty: parseFloat(handoverData.rejectedQty) || 0,
@@ -4125,7 +4126,7 @@ export default function PurchaseIndents() {
                       items: bulkItems.map(item => {
                         const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
                         return {
-                          indentItemId: item.id,
+                          itemId: item.id,
                           materialId: item.materialId,
                           qty: parseFloat(rd.qty) || 0,
                           uom: rd.uom,
