@@ -2642,6 +2642,7 @@ export function MaterialMaster() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
+  const [procurementRoute, setProcurementRoute] = useState("stores");
   
   // Opening Stock dialog state
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
@@ -2767,6 +2768,7 @@ export function MaterialMaster() {
     setName("");
     setCategory("");
     setDefaultUom("Ton");
+    setProcurementRoute("stores");
   };
 
   const resetOpeningStockForm = () => {
@@ -2785,6 +2787,7 @@ export function MaterialMaster() {
     setName(material.name);
     setCategory(material.category || "");
     setDefaultUom(material.defaultUom || "Ton");
+    setProcurementRoute((material as any).procurementRoute || "stores");
     setDialogOpen(true);
   };
 
@@ -2797,7 +2800,8 @@ export function MaterialMaster() {
     const data = { 
       name, 
       category, 
-      defaultUom
+      defaultUom,
+      procurementRoute,
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -2912,6 +2916,21 @@ export function MaterialMaster() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="material-procurement-route">Procurement Route</Label>
+                <Select value={procurementRoute} onValueChange={setProcurementRoute}>
+                  <SelectTrigger data-testid="select-material-procurement-route">
+                    <SelectValue placeholder="Select route" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stores">Stores / Spares / Tools / Consumables</SelectItem>
+                    <SelectItem value="bulk_plant">Bulk Plant Material</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {procurementRoute === "bulk_plant" ? "Goes directly to Plant Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
+                </p>
+              </div>
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}
               </Button>
@@ -2934,6 +2953,9 @@ export function MaterialMaster() {
                 <div>
                   <p className="font-medium">{material.name}</p>
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
+                  {(material as any).procurementRoute === "bulk_plant" && (
+                    <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK PLANT</span>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={() => openOpeningStockDialog(material)} data-testid={`button-add-stock-${material.id}`} title="Add Opening Stock">

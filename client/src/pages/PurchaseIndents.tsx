@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer } from "lucide-react";
+import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -240,6 +240,7 @@ interface ItemRow {
   estRate: number | null;
   estAmount: number | null;
   requiredBy: string | null;
+  procurementRoute: string | null; // 'stores' | 'bulk_plant' | null — auto-filled from material master
 }
 
 interface PurchaseUpdateData {
@@ -266,6 +267,14 @@ function getStatusBadge(status: string, storesStatus?: string | null) {
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-stores-check-pending">PENDING STORES</Badge>;
     case "approved":
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid="badge-status-approved">APPROVED</Badge>;
+    case "purchaser_actioned":
+      return <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700" data-testid="badge-status-purchaser-actioned">PURCHASER ACTIONED</Badge>;
+    case "handover_pending":
+      return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700" data-testid="badge-status-handover-pending">HANDOVER PENDING</Badge>;
+    case "partially_received":
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-partially-received">PARTIALLY RECEIVED</Badge>;
+    case "closed":
+      return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600" data-testid="badge-status-closed">CLOSED</Badge>;
     case "completed":
       return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700" data-testid="badge-status-completed">COMPLETED</Badge>;
     case "rejected":
@@ -646,7 +655,7 @@ export default function PurchaseIndents() {
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(fromIrnId ? null : defaultRaisedFrom);
   const [formItems, setFormItems] = useState<ItemRow[]>([
-    { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null },
+    { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null },
   ]);
 
 
@@ -682,6 +691,18 @@ export default function PurchaseIndents() {
   const [procureItemMode, setProcureItemMode] = useState<Record<number, "ordered" | "received" | null>>({});
   const [procureItemData, setProcureItemData] = useState<Record<number, ProcureItemData>>({});
   const [itemApprovalStates, setItemApprovalStates] = useState<Record<number, ItemApprovalState>>({});
+
+  // Dual-route: Purchaser Action dialog
+  const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
+  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; expectedDeliveryDate: string; remarks: string };
+  const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
+  // Dual-route: Handover dialog (Route A — Stores)
+  const [handoverDialogItemId, setHandoverDialogItemId] = useState<number | null>(null);
+  const [handoverData, setHandoverData] = useState({ handoverQty: "", acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
+  // Dual-route: Bulk plant receipt dialog (Route B)
+  const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
+  type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
+  const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
@@ -780,6 +801,12 @@ export default function PurchaseIndents() {
   const { data: selectedIndent, isLoading: isLoadingDetail } = useQuery<PurchaseIndentWithItems>({
     queryKey: ["/api/purchase-indents", selectedIndentId],
     enabled: !!selectedIndentId,
+  });
+
+  const { data: piTxns = [] } = useQuery<any[]>({
+    queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"],
+    queryFn: () => fetch(`/api/purchase-indents/${selectedIndentId}/transactions`).then(r => r.json()),
+    enabled: !!selectedIndentId && (view === "purchase" || view === "procurement"),
   });
 
   const { data: rawMaterialsList } = useQuery<any[]>({
@@ -1166,6 +1193,57 @@ export default function PurchaseIndents() {
     },
   });
 
+  const purchaserActionMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/purchaser-action`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
+      }
+      setPurchaserActionOpen(false);
+      setPurchaserActionData({});
+      toast({ title: "Purchaser action recorded" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to record purchaser action", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handoverMutation = useMutation({
+    mutationFn: ({ indentItemId, ...rest }: any) => apiRequest("POST", `/api/purchase-indent-items/${indentItemId}/handover`, { indentItemId, ...rest }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
+      }
+      setHandoverDialogItemId(null);
+      setHandoverData({ handoverQty: "", acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
+      toast({ title: "Handover to Stores recorded" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to record handover", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkReceiptMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/bulk-receipt`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId, "transactions"] });
+      }
+      setBulkReceiptOpen(false);
+      setBulkReceiptData({});
+      toast({ title: "Plant material receipt recorded — stock updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to record plant receipt", description: err.message, variant: "destructive" });
+    },
+  });
+
   const GRN_MAPPINGS_KEY = "grn_item_mappings";
   const normDesc = (s: string) => s.toUpperCase().trim().replace(/\s+/g, " ");
 
@@ -1219,7 +1297,7 @@ export default function PurchaseIndents() {
     if (!selectedIndent) return;
     const purchasedItems = selectedIndent.items.filter(i => {
       const ps = (i.purchaseStatus || "").toLowerCase();
-      return ps === "purchased" || ps === "partial";
+      return ps === "purchased" || ps === "partial" || ps === "handover_pending";
     });
     const firstVendor = purchasedItems.find(i => i.vendor)?.vendor || "";
     const firstBillNo = purchasedItems.find(i => (i as any).billNo)?.billNo || "";
@@ -1227,17 +1305,21 @@ export default function PurchaseIndents() {
     setGrnDialogSupplier(firstVendor);
     setGrnDialogInvoiceNo(firstBillNo);
     setGrnDialogRemarks("");
-    setGrnLines(purchasedItems.map(i => ({
-      indentItemId: i.id,
-      description: i.description,
-      qty: ((i as any).qtyPurchased ?? i.approvedQty ?? i.qty).toString(),
-      rate: i.rate?.toString() || "",
-      uom: i.uom,
-      storeItemId: "",
-      itemSearch: "",
-      autoLinked: false,
-      approvedQty: i.approvedQty ?? i.qty,
-    })));
+    setGrnLines(purchasedItems.map(i => {
+      const handoverTx = piTxns.filter((t: any) => t.indentItemId === i.id && t.transactionType === "handover").slice(-1)[0] as any;
+      const purchaserTx = piTxns.filter((t: any) => t.indentItemId === i.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
+      return {
+        indentItemId: i.id,
+        description: i.description,
+        qty: (handoverTx?.payload?.acceptedQty ?? (i as any).qtyPurchased ?? i.approvedQty ?? i.qty).toString(),
+        rate: (purchaserTx?.payload?.rate ?? i.rate)?.toString() || "",
+        uom: i.uom,
+        storeItemId: "",
+        itemSearch: "",
+        autoLinked: false,
+        approvedQty: i.approvedQty ?? i.qty,
+      };
+    }));
     setGrnOpenDropdownIdx(null);
     setShowGrnDialog(true);
   }
@@ -1438,12 +1520,12 @@ export default function PurchaseIndents() {
     setFormRemarks("");
     setFormSiteId(null);
     setFormRaisedFrom(defaultRaisedFrom);
-    setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
+    setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }]);
     setSourceIrnId(null);
   };
 
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null }]);
+    setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -1493,6 +1575,7 @@ export default function PurchaseIndents() {
         estRate: item.estRate || undefined,
         estAmount: item.estAmount || undefined,
         requiredBy: (item.priority !== "urgent" && item.requiredBy) ? item.requiredBy : undefined,
+        procurementRoute: item.procurementRoute || undefined,
       })),
     };
 
@@ -1643,6 +1726,7 @@ export default function PurchaseIndents() {
         estRate: item.estRate || null,
         estAmount: (item as any).estAmount || null,
         requiredBy: (item as any).requiredBy || null,
+        procurementRoute: (item as any).procurementRoute || null,
       })));
       setView("form");
     }
@@ -2447,6 +2531,7 @@ export default function PurchaseIndents() {
                           recentItemIds={recentIndentItemIds}
                           onChange={(desc, uom, materialId) => {
                             const updated = [...formItems];
+                            const mat = materialId != null ? (rawMaterialsList || []).find((m: any) => m.id === materialId) : null;
                             updated[index] = {
                               ...updated[index],
                               description: desc,
@@ -2454,6 +2539,7 @@ export default function PurchaseIndents() {
                               // used when a material has no defaultUom set — that would override the user's choice)
                               ...(uom && uom !== "NOS" ? { uom } : {}),
                               materialId: materialId ?? (desc !== item.description ? null : updated[index].materialId),
+                              procurementRoute: mat ? ((mat as any).procurementRoute || "stores") : updated[index].procurementRoute,
                             };
                             setFormItems(updated);
                           }}
@@ -2556,6 +2642,25 @@ export default function PurchaseIndents() {
                             />
                           </div>
                         )}
+                        <div>
+                          <Label className="text-xs">ROUTE</Label>
+                          <Select
+                            value={item.procurementRoute ?? ""}
+                            onValueChange={(v) => {
+                              const updated = [...formItems];
+                              updated[index] = { ...updated[index], procurementRoute: v || null };
+                              setFormItems(updated);
+                            }}
+                          >
+                            <SelectTrigger className="w-32 text-xs" data-testid={`select-item-route-${index}`}>
+                              <SelectValue placeholder="Route…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="stores">STORES</SelectItem>
+                              <SelectItem value="bulk_plant">BULK PLANT</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -3347,6 +3452,131 @@ export default function PurchaseIndents() {
                 </div>
               )}
 
+              {/* ── Purchaser Action Card (Dual Route: Stores / Bulk Plant) ── */}
+              {["approved", "purchaser_actioned"].includes(selectedIndent.status) &&
+                selectedIndent.items.some(i => (i as any).procurementRoute) && (
+                <Card className="border-violet-200 dark:border-violet-800">
+                  <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
+                    <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4" />
+                      PURCHASER ACTION
+                      {selectedIndent.status === "purchaser_actioned" && (
+                        <Badge variant="outline" className="ml-2 text-xs bg-green-50 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700">SUBMITTED</Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    {selectedIndent.status === "approved" ? (
+                      <>
+                        <p className="text-xs text-muted-foreground mb-3">Fill in procurement details for each dual-route item below, then submit all at once.</p>
+                        <div className="space-y-3">
+                          {selectedIndent.items
+                            .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
+                            .map(item => {
+                              const route = (item as any).procurementRoute as string;
+                              const pd = purchaserActionData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "" };
+                              const upd = (field: string, val: string) => setPurchaserActionData(prev => ({ ...prev, [item.id]: { ...pd, [field]: val } }));
+                              return (
+                                <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-white dark:bg-gray-950">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold">{item.description}</span>
+                                    <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
+                                      {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <div>
+                                      <Label className="text-xs">QTY ORDERED</Label>
+                                      <Input type="number" value={pd.qty} onChange={e => upd("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">VENDOR / SUPPLIER</Label>
+                                      <Input value={pd.vendor} onChange={e => upd("vendor", e.target.value)} data-testid={`input-pa-vendor-${item.id}`} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                                      <Input type="number" value={pd.rate} onChange={e => upd("rate", e.target.value)} data-testid={`input-pa-rate-${item.id}`} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">PAYMENT MODE</Label>
+                                      <Select value={pd.paymentMode} onValueChange={v => upd("paymentMode", v)}>
+                                        <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="cash">Cash</SelectItem>
+                                          <SelectItem value="credit">Credit</SelectItem>
+                                          <SelectItem value="upi">UPI</SelectItem>
+                                          <SelectItem value="cheque">Cheque</SelectItem>
+                                          <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">EXPECTED DELIVERY</Label>
+                                      <Input type="date" value={pd.expectedDeliveryDate} onChange={e => upd("expectedDeliveryDate", e.target.value)} data-testid={`input-pa-delivery-${item.id}`} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">REMARKS</Label>
+                                      <Input value={pd.remarks} onChange={e => upd("remarks", e.target.value)} data-testid={`input-pa-remarks-${item.id}`} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                        <div className="flex justify-end mt-3">
+                          <Button
+                            className="bg-violet-600 hover:bg-violet-700 text-white"
+                            disabled={purchaserActionMutation.isPending}
+                            onClick={() => {
+                              const items = selectedIndent.items
+                                .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
+                                .map(item => {
+                                  const pd = purchaserActionData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "" };
+                                  return {
+                                    indentItemId: item.id,
+                                    qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
+                                    vendor: pd.vendor || null,
+                                    rate: parseFloat(pd.rate) || null,
+                                    paymentMode: pd.paymentMode,
+                                    expectedDeliveryDate: pd.expectedDeliveryDate || null,
+                                    remarks: pd.remarks || null,
+                                  };
+                                });
+                              purchaserActionMutation.mutate({ items });
+                            }}
+                            data-testid="button-submit-purchaser-action"
+                          >
+                            {purchaserActionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <ClipboardList className="w-4 h-4 mr-1" />}
+                            RECORD PURCHASER ACTION
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground mb-2">Purchaser actions recorded for dual-route items.</p>
+                        {piTxns.filter((t: any) => t.transactionType === "purchaser_action").map((tx: any, idx: number) => {
+                          const relItem = selectedIndent.items.find(i => i.id === tx.indentItemId);
+                          if (!relItem) return null;
+                          const route = (relItem as any).procurementRoute as string;
+                          return (
+                            <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-violet-50 dark:bg-violet-900/10 rounded-lg flex-wrap">
+                              <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"} >
+                                {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
+                              </Badge>
+                              <span className="font-medium flex-1 min-w-0 truncate">{relItem.description}</span>
+                              <span className="text-muted-foreground">{tx.payload?.qty} {relItem.uom}</span>
+                              <span className="text-muted-foreground">@₹{tx.payload?.rate ?? "—"}</span>
+                              <span className="font-medium">{tx.payload?.vendor || "—"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Linked GRNs Panel */}
               {canViewStores && linkedGrns.length > 0 && (
                 <div className="border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden" data-testid="panel-linked-grns">
@@ -3685,27 +3915,59 @@ export default function PurchaseIndents() {
                                 </Select>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 pt-1">
-                              <Button
-                                variant="outline"
-                                className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300 font-semibold"
-                                onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "ordered" } })}
-                                disabled={procureMutation.isPending}
-                                data-testid={`button-mark-ordered-${item.id}`}
-                              >
-                                {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <ClipboardList className="w-3.5 h-3.5 mr-1.5" />}
-                                Mark Ordered
-                              </Button>
-                              <Button
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                                onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "received" } })}
-                                disabled={procureMutation.isPending}
-                                data-testid={`button-received-grn-${item.id}`}
-                              >
-                                {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
-                                Received → GRN
-                              </Button>
-                            </div>
+                            {(item as any).procurementRoute === "stores" && selectedIndent.status === "purchaser_actioned" ? (
+                              <div className="pt-1">
+                                <Button
+                                  className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
+                                  onClick={() => {
+                                    const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
+                                    setHandoverData({ handoverQty: paTx?.payload?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
+                                    setHandoverDialogItemId(item.id);
+                                  }}
+                                  data-testid={`button-handover-${item.id}`}
+                                >
+                                  <PackageCheck className="w-3.5 h-3.5 mr-1.5" />
+                                  Handover to Stores
+                                </Button>
+                              </div>
+                            ) : (item as any).procurementRoute === "bulk_plant" && selectedIndent.status === "purchaser_actioned" ? (
+                              <div className="pt-1">
+                                <Button
+                                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                                  onClick={() => {
+                                    const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
+                                    setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.payload?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.payload?.vendor || "", rate: paTx?.payload?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
+                                    setBulkReceiptOpen(true);
+                                  }}
+                                  data-testid={`button-bulk-receipt-${item.id}`}
+                                >
+                                  <Warehouse className="w-3.5 h-3.5 mr-1.5" />
+                                  Record Plant Receipt
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                <Button
+                                  variant="outline"
+                                  className="border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300 font-semibold"
+                                  onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "ordered" } })}
+                                  disabled={procureMutation.isPending}
+                                  data-testid={`button-mark-ordered-${item.id}`}
+                                >
+                                  {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <ClipboardList className="w-3.5 h-3.5 mr-1.5" />}
+                                  Mark Ordered
+                                </Button>
+                                <Button
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                  onClick={() => procureMutation.mutate({ itemId: item.id, data: { ...procData, action: "received" } })}
+                                  disabled={procureMutation.isPending}
+                                  data-testid={`button-received-grn-${item.id}`}
+                                >
+                                  {procureMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+                                  Received → GRN
+                                </Button>
+                              </div>
+                            )}
                             {canCancel && (
                               <div className="flex justify-end pt-1">
                                 <Button variant="outline" size="sm" className="text-red-600 border-red-300 text-xs" onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }} data-testid={`button-cancel-item-${item.id}`}>
@@ -3738,6 +4000,153 @@ export default function PurchaseIndents() {
           )}
         </>
       )}
+
+      {/* ── Handover to Stores Dialog (Route A) ── */}
+      <Dialog open={handoverDialogItemId !== null} onOpenChange={open => { if (!open) setHandoverDialogItemId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>HANDOVER TO STORES</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const handoverItem = selectedIndent?.items.find(i => i.id === handoverDialogItemId);
+            if (!handoverItem) return null;
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{handoverItem.description}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">Approved: {handoverItem.approvedQty ?? handoverItem.qty} {handoverItem.uom}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">QTY SENT TO STORES</Label>
+                    <Input type="number" value={handoverData.handoverQty} onChange={e => setHandoverData(prev => ({ ...prev, handoverQty: e.target.value }))} data-testid="input-handover-qty" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">QTY ACCEPTED BY STORES</Label>
+                    <Input type="number" value={handoverData.acceptedQty} onChange={e => setHandoverData(prev => ({ ...prev, acceptedQty: e.target.value }))} data-testid="input-accepted-qty" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">QTY REJECTED</Label>
+                    <Input type="number" value={handoverData.rejectedQty} onChange={e => setHandoverData(prev => ({ ...prev, rejectedQty: e.target.value }))} data-testid="input-rejected-qty" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">HANDOVER DATE</Label>
+                    <Input type="date" value={handoverData.handoverDate} onChange={e => setHandoverData(prev => ({ ...prev, handoverDate: e.target.value }))} data-testid="input-handover-date" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">RECEIVED BY (STORES)</Label>
+                    <Input value={handoverData.receivedBy} onChange={e => setHandoverData(prev => ({ ...prev, receivedBy: e.target.value }))} placeholder="Name of stores person accepting" data-testid="input-received-by" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">REMARKS</Label>
+                    <Input value={handoverData.remarks} onChange={e => setHandoverData(prev => ({ ...prev, remarks: e.target.value }))} data-testid="input-handover-remarks" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">After recording the handover, you can create a GRN using the accepted qty to add items to stores stock.</p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setHandoverDialogItemId(null)} data-testid="button-cancel-handover">Cancel</Button>
+                  <Button
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                    disabled={handoverMutation.isPending || !handoverData.acceptedQty}
+                    onClick={() => handoverMutation.mutate({
+                      indentItemId: handoverDialogItemId!,
+                      handoverQty: parseFloat(handoverData.handoverQty) || 0,
+                      acceptedQty: parseFloat(handoverData.acceptedQty) || 0,
+                      rejectedQty: parseFloat(handoverData.rejectedQty) || 0,
+                      handoverDate: handoverData.handoverDate,
+                      receivedBy: handoverData.receivedBy || null,
+                      remarks: handoverData.remarks || null,
+                    })}
+                    data-testid="button-submit-handover"
+                  >
+                    {handoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <PackageCheck className="w-4 h-4 mr-1" />}
+                    RECORD HANDOVER
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Bulk Plant Receipt Dialog (Route B) ── */}
+      <Dialog open={bulkReceiptOpen} onOpenChange={setBulkReceiptOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>RECORD PLANT MATERIAL RECEIPT</DialogTitle>
+          </DialogHeader>
+          {selectedIndent && (() => {
+            const bulkItems = selectedIndent.items.filter(i => (i as any).procurementRoute === "bulk_plant" && !["cancelled", "closed"].includes((i as any).status || ""));
+            if (bulkItems.length === 0) return <p className="text-sm text-muted-foreground">No bulk plant items found.</p>;
+            return (
+              <div className="space-y-4">
+                {bulkItems.map(item => {
+                  const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
+                  const upd = (field: string, val: string) => setBulkReceiptData(prev => ({ ...prev, [item.id]: { ...rd, [field]: val } }));
+                  return (
+                    <div key={item.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold">{item.description}</span>
+                        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">BULK PLANT</Badge>
+                        <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-xs">QTY RECEIVED</Label>
+                          <Input type="number" value={rd.qty} onChange={e => upd("qty", e.target.value)} data-testid={`input-br-qty-${item.id}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">VENDOR</Label>
+                          <Input value={rd.vendor} onChange={e => upd("vendor", e.target.value)} data-testid={`input-br-vendor-${item.id}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                          <Input type="number" value={rd.rate} onChange={e => upd("rate", e.target.value)} data-testid={`input-br-rate-${item.id}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">RECEIPT DATE</Label>
+                          <Input type="date" value={rd.receiptDate} onChange={e => upd("receiptDate", e.target.value)} data-testid={`input-br-date-${item.id}`} />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">REMARKS</Label>
+                          <Input value={rd.remarks} onChange={e => upd("remarks", e.target.value)} data-testid={`input-br-remarks-${item.id}`} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-muted-foreground">Plant material receipts are posted directly to plant stock under the material's assigned party.</p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setBulkReceiptOpen(false)} data-testid="button-cancel-bulk-receipt">Cancel</Button>
+                  <Button
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    disabled={bulkReceiptMutation.isPending}
+                    onClick={() => bulkReceiptMutation.mutate({
+                      items: bulkItems.map(item => {
+                        const rd = bulkReceiptData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" };
+                        return {
+                          indentItemId: item.id,
+                          materialId: item.materialId,
+                          qty: parseFloat(rd.qty) || 0,
+                          uom: rd.uom,
+                          vendor: rd.vendor || null,
+                          rate: parseFloat(rd.rate) || null,
+                          receiptDate: rd.receiptDate,
+                          remarks: rd.remarks || null,
+                        };
+                      }),
+                    })}
+                    data-testid="button-submit-bulk-receipt"
+                  >
+                    {bulkReceiptMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Warehouse className="w-4 h-4 mr-1" />}
+                    RECORD PLANT RECEIPT
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {view === "report" && (
         <>

@@ -139,6 +139,8 @@ import {
   purchaseIndents,
   purchaseIndentItems,
   purchaseIndentItemHistory,
+  piItemTransactions,
+  type PiItemTransaction,
   type PurchaseIndent,
   type PurchaseIndentItem,
   type PurchaseIndentItemHistoryEntry,
@@ -946,6 +948,12 @@ export interface IStorage {
   verifyIndentStores(id: number, items: { itemId: number; stockStatus: string; stockAvailableQty?: number; storesItemNote?: string }[], verifiedBy: string): Promise<PurchaseIndentWithItems | undefined>;
   bypassIndentStores(id: number, reason: string, bypassedBy: string): Promise<PurchaseIndentWithItems | undefined>;
   procureItem(itemId: number, data: { action: string; vendor?: string; rate?: number; qtyPurchased?: number; expectedDelivery?: string; orderPlacedAt?: string; paymentMode?: string; billNo?: string; purchaseRemarks?: string; purchasedBy?: string }, actionBy: string): Promise<PurchaseIndentItem | undefined>;
+
+  // PI Item Transactions (dual-route)
+  getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]>;
+  submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
+  submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
+  recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
 
   // Internal Requisition Notes (IRN)
   getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
@@ -9182,6 +9190,186 @@ export class DatabaseStorage implements IStorage {
       await this.checkAndCompleteIndent(updated.indentId);
     }
     return updated as PurchaseIndentItem | undefined;
+  }
+
+  // --- PI Item Transaction Methods (dual-route) ---
+
+  async getPiItemTransactions(indentId: number): Promise<PiItemTransaction[]> {
+    return db.select().from(piItemTransactions)
+      .where(eq(piItemTransactions.indentId, indentId))
+      .orderBy(asc(piItemTransactions.createdAt));
+  }
+
+  async submitPurchaserAction(
+    indentId: number,
+    items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[],
+    actionBy: string
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        await tx.insert(piItemTransactions).values({
+          indentId,
+          indentItemId: item.itemId,
+          transactionType: "purchaser_action",
+          qty: item.qty,
+          orderedQty: item.orderedQty ?? item.qty,
+          vendor: item.vendor?.toUpperCase() ?? null,
+          rate: item.rate ?? null,
+          amount: item.amount ?? null,
+          paymentMode: item.paymentMode ?? null,
+          expectedDeliveryDate: item.expectedDeliveryDate ?? null,
+          reasonCode: item.reasonCode ?? null,
+          remarks: item.remarks ?? null,
+          createdBy: actionBy.toUpperCase(),
+        });
+        // Update running totals on the item itself
+        const [existing] = await tx.select({ totalPurchasedQty: purchaseIndentItems.totalPurchasedQty })
+          .from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
+        const prevTotal = (existing?.totalPurchasedQty ?? 0);
+        await tx.update(purchaseIndentItems)
+          .set({
+            totalPurchasedQty: prevTotal + item.qty,
+            orderedQty: item.orderedQty ?? item.qty,
+            vendor: item.vendor?.toUpperCase() ?? null,
+            rate: item.rate ?? null,
+            paymentMode: item.paymentMode ?? null,
+            purchasedBy: actionBy.toUpperCase(),
+          })
+          .where(eq(purchaseIndentItems.id, item.itemId));
+      }
+      // Transition indent → purchaser_actioned
+      await tx.update(purchaseIndents)
+        .set({ status: "purchaser_actioned" })
+        .where(and(
+          eq(purchaseIndents.id, indentId),
+          inArray(purchaseIndents.status, ["approved", "purchasing"])
+        ));
+    });
+  }
+
+  async submitHandover(
+    data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string },
+    actionBy: string
+  ): Promise<PiItemTransaction> {
+    const [tx_row] = await db.transaction(async (tx) => {
+      const inserted = await tx.insert(piItemTransactions).values({
+        indentId: data.indentId,
+        indentItemId: data.indentItemId,
+        transactionType: "handover",
+        handoverQty: data.handoverQty,
+        acceptedQty: data.acceptedQty,
+        rejectedQty: data.rejectedQty,
+        handoverDate: data.handoverDate ?? null,
+        receivedBy: data.receivedBy ?? null,
+        storesRemarks: data.storesRemarks ?? null,
+        remarks: data.remarks ?? null,
+        createdBy: actionBy.toUpperCase(),
+      }).returning();
+      // Update running totals
+      const [existing] = await tx.select({
+        totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+        totalRejectedQty: purchaseIndentItems.totalRejectedQty,
+        approvedQty: purchaseIndentItems.approvedQty,
+      }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, data.indentItemId)).limit(1);
+      const newAccepted = (existing?.totalAcceptedQty ?? 0) + data.acceptedQty;
+      const newRejected = (existing?.totalRejectedQty ?? 0) + data.rejectedQty;
+      const approved = existing?.approvedQty ?? 0;
+      const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+      await tx.update(purchaseIndentItems)
+        .set({ totalAcceptedQty: newAccepted, totalRejectedQty: newRejected, purchaseStatus })
+        .where(eq(purchaseIndentItems.id, data.indentItemId));
+      // Transition indent to handover_pending if not already further along
+      await tx.update(purchaseIndents)
+        .set({ status: "handover_pending" })
+        .where(and(
+          eq(purchaseIndents.id, data.indentId),
+          inArray(purchaseIndents.status, ["purchaser_actioned", "approved"])
+        ));
+      return inserted;
+    });
+    // Check if all items are fully received
+    await this.checkAndCompleteIndent(data.indentId);
+    return tx_row as PiItemTransaction;
+  }
+
+  async recordBulkMaterialReceipt(
+    indentId: number,
+    items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[],
+    actionBy: string
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        // Insert pi_item_transactions record
+        await tx.insert(piItemTransactions).values({
+          indentId,
+          indentItemId: item.itemId,
+          transactionType: "bulk_receipt",
+          qty: item.qty,
+          vendor: item.vendor?.toUpperCase() ?? null,
+          rate: item.rate ?? null,
+          amount: item.rate != null ? item.rate * item.qty : null,
+          remarks: item.remarks ?? null,
+          createdBy: actionBy.toUpperCase(),
+        });
+        // Update running totals
+        const [existing] = await tx.select({
+          totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+          approvedQty: purchaseIndentItems.approvedQty,
+        }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
+        const newAccepted = (existing?.totalAcceptedQty ?? 0) + item.qty;
+        const approved = existing?.approvedQty ?? 0;
+        const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+        await tx.update(purchaseIndentItems)
+          .set({ totalAcceptedQty: newAccepted, purchaseStatus })
+          .where(eq(purchaseIndentItems.id, item.itemId));
+        // Create a plant material_receipts entry so stock is updated
+        const [mat] = await tx.select({ category: plantMaterials.category, name: plantMaterials.name })
+          .from(plantMaterials).where(eq(plantMaterials.id, item.materialId)).limit(1);
+        const catCode = this.getMaterialCategoryCode(mat?.category, mat?.name);
+        const receiptNo = await this.generateMaterialReceiptNumber(catCode);
+        const targetPartyId = item.isPlantCommon ? null : (item.partyId ?? null);
+        const uppercased = {
+          receiptNo,
+          materialId: item.materialId,
+          quantity: item.qty,
+          uom: item.uom.toUpperCase(),
+          supplier: item.vendor?.toUpperCase() ?? null,
+          rate: item.rate ?? null,
+          amount: item.rate != null ? item.rate * item.qty : null,
+          partyId: targetPartyId,
+          isPlantCommon: item.isPlantCommon ?? false,
+          receiptDate: item.receiptDate ?? format(new Date(), "yyyy-MM-dd"),
+          remarks: item.remarks ?? null,
+        };
+        const [receipt] = await tx.insert(materialReceipts).values(uppercased).returning();
+        // Update stock balance
+        const condition = targetPartyId === null
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, item.materialId))
+          : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, item.materialId));
+        const [existingBal] = await tx.select().from(stockBalances).where(condition).limit(1);
+        if (existingBal) {
+          await tx.update(stockBalances)
+            .set({ balance: existingBal.balance + item.qty, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existingBal.id));
+        } else {
+          await tx.insert(stockBalances).values({
+            partyId: targetPartyId,
+            materialId: item.materialId,
+            balance: item.qty,
+            uom: item.uom.toUpperCase(),
+            lastUpdated: new Date(),
+          });
+        }
+      }
+      // Transition indent → purchasing
+      await tx.update(purchaseIndents)
+        .set({ status: "purchasing" })
+        .where(and(
+          eq(purchaseIndents.id, indentId),
+          inArray(purchaseIndents.status, ["purchaser_actioned", "approved"])
+        ));
+    });
+    await this.checkAndCompleteIndent(indentId);
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {

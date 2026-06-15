@@ -227,6 +227,7 @@ export const plantMaterials = pgTable("plant_materials", {
   conversionToUom: text("conversion_to_uom"), // Target UOM for conversion (e.g., "Ton")
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
+  procurementRoute: text("procurement_route").default("stores"), // 'stores' | 'bulk_plant'
 });
 
 // Material Opening Stocks (per material, per party/stock owner)
@@ -1398,6 +1399,12 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   partNo: text("part_no"),
   // Who physically purchased this item
   purchasedBy: text("purchased_by"),
+  // Dual-route procurement fields
+  procurementRoute: text("procurement_route"), // 'stores' | 'bulk_plant' — auto-filled from plant_materials
+  orderedQty: real("ordered_qty"),             // qty placed on order with supplier
+  totalPurchasedQty: real("total_purchased_qty"), // running total across all purchaser_action transactions
+  totalAcceptedQty: real("total_accepted_qty"),   // running total across all handover/receipt transactions
+  totalRejectedQty: real("total_rejected_qty"),   // running total of rejected/damaged qty
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
@@ -1450,6 +1457,45 @@ export const createPurchaseIndentRequestSchema = insertPurchaseIndentSchema.exte
   { message: "Raised from / location is required", path: ["raisedFrom"] }
 );
 export type CreatePurchaseIndentRequest = z.infer<typeof createPurchaseIndentRequestSchema>;
+
+// ============================================
+// PI ITEM TRANSACTIONS
+// One row per procurement event per item:
+//   'purchaser_action' — purchaser fills order/purchase details
+//   'handover'         — purchaser physically hands over to Stores (Route A)
+//   'bulk_receipt'     — plant material receipt created (Route B)
+// ============================================
+
+export const piItemTransactions = pgTable("pi_item_transactions", {
+  id: serial("id").primaryKey(),
+  indentItemId: integer("indent_item_id").notNull(),
+  indentId: integer("indent_id").notNull(),
+  transactionType: text("transaction_type").notNull(), // 'purchaser_action' | 'handover' | 'bulk_receipt'
+  // Purchaser action fields
+  qty: real("qty"),                         // purchased qty (purchaser_action) or received qty (bulk_receipt)
+  orderedQty: real("ordered_qty"),
+  vendor: text("vendor"),
+  rate: real("rate"),
+  amount: real("amount"),
+  paymentMode: text("payment_mode"),
+  expectedDeliveryDate: date("expected_delivery_date"),
+  reasonCode: text("reason_code"),          // mandatory when qty < approvedQty
+  // Handover fields (Route A)
+  handoverQty: real("handover_qty"),
+  acceptedQty: real("accepted_qty"),        // Stores-accepted qty — GRN is based on this
+  rejectedQty: real("rejected_qty"),
+  handoverDate: date("handover_date"),
+  receivedBy: text("received_by"),          // Stores personnel who received
+  storesRemarks: text("stores_remarks"),
+  // General
+  remarks: text("remarks"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPiItemTransactionSchema = createInsertSchema(piItemTransactions).omit({ id: true, createdAt: true });
+export type PiItemTransaction = typeof piItemTransactions.$inferSelect;
+export type InsertPiItemTransaction = z.infer<typeof insertPiItemTransactionSchema>;
 
 // ============================================
 // INTERNAL REQUISITION NOTES (IRN)
