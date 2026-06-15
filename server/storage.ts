@@ -9162,7 +9162,6 @@ export class DatabaseStorage implements IStorage {
         itemId,
         action: purchaseStatus,
         actionBy: actionBy.toUpperCase(),
-        actionAt: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
         qtyValue: updates.qtyPurchased ?? null,
         vendor: updates.vendor ?? null,
         billNo: updates.billNo ?? null,
