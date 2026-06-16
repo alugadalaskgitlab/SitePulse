@@ -2933,7 +2933,7 @@ export function MaterialMaster() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="stores">Stores / Spares / Tools / Consumables</SelectItem>
-                    <SelectItem value="bulk_plant">Bulk Plant Material</SelectItem>
+                    <SelectItem value="bulk_plant">Bulk Material</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -3017,7 +3017,7 @@ export function MaterialMaster() {
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {(material as any).procurementRoute === "bulk_plant" && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK PLANT</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK MATERIAL</span>
                     )}
                     {(material as any).bulkDensity != null && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">

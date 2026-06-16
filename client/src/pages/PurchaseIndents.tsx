@@ -2804,7 +2804,7 @@ export default function PurchaseIndents() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="stores">STORES</SelectItem>
-                              <SelectItem value="bulk_plant">BULK PLANT</SelectItem>
+                              <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -3146,6 +3146,25 @@ export default function PurchaseIndents() {
                       <p className="text-sm uppercase">{selectedIndent.remarks}</p>
                     </div>
                   )}
+                  {(() => {
+                    const _createdAt = (selectedIndent as any).createdAt as string | null;
+                    const _storesVerifiedAt = (selectedIndent as any).storesVerifiedAt as string | null;
+                    const _storesStatus = (selectedIndent as any).storesStatus as string | null;
+                    const fmtDate = (ts: string | null) => { try { return ts ? format(new Date(ts), "dd-MMM-yyyy") : null; } catch { return null; } };
+                    const fmtTs = (ts: string | null) => { try { return ts ? format(new Date(ts), "dd-MMM-yyyy HH:mm") : null; } catch { return null; } };
+                    const raisedLabel = fmtDate(_createdAt);
+                    const storesLabel = _storesStatus === "verified" && _storesVerifiedAt
+                      ? `Stores verified: ${fmtTs(_storesVerifiedAt)}`
+                      : _storesStatus === "bypassed" ? "Stores bypassed" : null;
+                    if (!raisedLabel && !storesLabel) return null;
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        {raisedLabel && <span>Raised: {raisedLabel}</span>}
+                        {raisedLabel && storesLabel && <span className="mx-1.5">·</span>}
+                        {storesLabel && <span>{storesLabel}</span>}
+                      </p>
+                    );
+                  })()}
                   <div>
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} piType={(selectedIndent as any).piType} />
