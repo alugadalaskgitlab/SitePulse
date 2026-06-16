@@ -2382,6 +2382,35 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql`ALTER TABLE plant_materials ADD COLUMN IF NOT EXISTS bulk_density REAL`);
   }
 
+  async backfillMaterialBulkDensity(): Promise<{ updated: number; skipped: number }> {
+    // IRC/IS 2386 defaults (granite/basalt). Only applied when bulk_density IS NULL so user edits are never overwritten.
+    const DEFAULTS: Array<{ name: string; bulkDensity: number; conversionFromUom: string }> = [
+      { name: "20MM",     bulkDensity: 1.52, conversionFromUom: "CFT" },
+      { name: "10/12MM",  bulkDensity: 1.55, conversionFromUom: "CFT" },
+      { name: "6MM DOWN", bulkDensity: 1.60, conversionFromUom: "CFT" },
+      { name: "DUST",     bulkDensity: 1.65, conversionFromUom: "CFT" },
+      { name: "40MM",     bulkDensity: 1.50, conversionFromUom: "CFT" },
+      { name: "GSB",      bulkDensity: 1.75, conversionFromUom: "CFT" },
+      { name: "WMM",      bulkDensity: 2.10, conversionFromUom: "CFT" },
+    ];
+    let updated = 0, skipped = 0;
+    const existing = await db.select().from(plantMaterials).where(eq(plantMaterials.isActive, 1));
+    for (const def of DEFAULTS) {
+      const match = existing.find(m => m.name.toUpperCase().trim() === def.name.toUpperCase());
+      if (!match) { skipped++; continue; }
+      if (match.bulkDensity != null) { skipped++; continue; } // already set by user — never overwrite
+      const derived = this._deriveBulkDensityConversion({ bulkDensity: def.bulkDensity, conversionFromUom: def.conversionFromUom });
+      await db.update(plantMaterials).set({
+        bulkDensity: derived.bulkDensity,
+        conversionFactor: derived.conversionFactor,
+        conversionFromUom: derived.conversionFromUom,
+        conversionToUom: derived.conversionToUom,
+      }).where(eq(plantMaterials.id, match.id));
+      updated++;
+    }
+    return { updated, skipped };
+  }
+
   private _deriveBulkDensityConversion(material: Partial<InsertPlantMaterial>): Partial<InsertPlantMaterial> {
     const derived = { ...material };
     if (derived.bulkDensity != null && derived.bulkDensity > 0) {

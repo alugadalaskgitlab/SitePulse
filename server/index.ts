@@ -72,6 +72,13 @@ app.use((req, res, next) => {
   try { await storage.ensureBulkDensityColumn(); } catch (e) { console.error("Pre-routes: Failed to ensure bulk_density column:", e); }
   await registerRoutes(httpServer, app);
 
+  try {
+    const r = await storage.backfillMaterialBulkDensity();
+    console.log(`Startup: backfillMaterialBulkDensity — updated: ${r.updated}, skipped: ${r.skipped}`);
+  } catch (e) {
+    console.error("Startup: backfillMaterialBulkDensity failed:", e);
+  }
+
   // ── Startup migration / backfill orchestration ───────────────────────────
   //
   // IDEMPOTENCY STRATEGY

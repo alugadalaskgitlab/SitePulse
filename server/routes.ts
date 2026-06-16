@@ -9128,18 +9128,20 @@ async function seedPlantMasterData() {
   if (existingMaterials.length === 0) {
     console.log("Seeding plant master data...");
     
-    // Default materials - CFT included for aggregates (commonly received in CFT)
-    // Conversion factor: 1 CFT = ~0.028 Ton for aggregates (varies by material density)
+    // Default materials — bulk densities per IS 2386 / IRC norms (granite/basalt; editable in Material Master)
+    // conversionFactor is auto-derived from bulkDensity by storage._deriveBulkDensityConversion()
     const defaultMaterials = [
-      { name: "20MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.04, conversionFromUom: "CFT", conversionToUom: "Ton" },
-      { name: "10/12MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.04, conversionFromUom: "CFT", conversionToUom: "Ton" },
-      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.045, conversionFromUom: "CFT", conversionToUom: "Ton" },
-      { name: "DUST", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.05, conversionFromUom: "CFT", conversionToUom: "Ton" },
-      { name: "40MM", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), conversionFactor: 0.045, conversionFromUom: "CFT", conversionToUom: "Ton" },
-      { name: "BITUMEN", category: "Bitumen", defaultUom: "MT", allowedUoms: JSON.stringify(["MT", "Ton", "Kg", "Barrels"]) },
-      { name: "EMULSION", category: "Bitumen", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
-      { name: "DIESEL", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
-      { name: "LDO", category: "Utility", defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
+      { name: "20MM",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.52, conversionFromUom: "CFT" },
+      { name: "10/12MM",  category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.55, conversionFromUom: "CFT" },
+      { name: "6MM DOWN", category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.60, conversionFromUom: "CFT" },
+      { name: "DUST",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.65, conversionFromUom: "CFT" },
+      { name: "40MM",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.50, conversionFromUom: "CFT" },
+      { name: "GSB",      category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.75, conversionFromUom: "CFT" },
+      { name: "WMM",      category: "Aggregate", defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "CFT", "Cum", "Kg"]), bulkDensity: 2.10, conversionFromUom: "CFT" },
+      { name: "BITUMEN",  category: "Bitumen",   defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "Kg", "Barrels"]) },
+      { name: "EMULSION", category: "Bitumen",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
+      { name: "DIESEL",   category: "Utility",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
+      { name: "LDO",      category: "Utility",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
     ];
     
     for (const material of defaultMaterials) {
