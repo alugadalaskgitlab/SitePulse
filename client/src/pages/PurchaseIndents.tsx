@@ -752,7 +752,7 @@ export default function PurchaseIndents() {
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
 
   // Material Indent: Place Order & Record Receipt
-  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string }>>({});
+  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string; orderedQty: string }>>({});
   type MatReceiptForm = { qty: string; vendor: string; rate: string; receiptDate: string; notes: string };
   const [matReceiptForms, setMatReceiptForms] = useState<Record<number, MatReceiptForm>>({});
   const [matReceiptExpanded, setMatReceiptExpanded] = useState<Set<number>>(new Set());
@@ -3806,14 +3806,26 @@ export default function PurchaseIndents() {
                   </CardHeader>
                   <CardContent className="py-3 px-4 space-y-3">
                     {selectedIndent.items.filter(item => (item.approvedQty ?? 0) > 0).map(item => {
-                      const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "" };
+                      const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty) };
                       return (
                         <div key={item.id} className="border rounded-lg p-3 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold">{item.description}</span>
                             <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs">ORDER QTY ({item.uom})</Label>
+                              <Input
+                                type="number"
+                                value={pom.orderedQty}
+                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedQty: e.target.value } }))}
+                                min={0}
+                                max={item.approvedQty ?? item.qty}
+                                className="text-xs h-8"
+                                data-testid={`input-po-qty-${item.id}`}
+                              />
+                            </div>
                             <div>
                               <Label className="text-xs">VENDOR (OPTIONAL)</Label>
                               <Input
@@ -3848,8 +3860,13 @@ export default function PurchaseIndents() {
                           const items = selectedIndent.items
                             .filter(item => (item.approvedQty ?? 0) > 0)
                             .map(item => {
-                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "" };
-                              return { itemId: item.id, vendor: pom.vendor || undefined, expectedDelivery: pom.expectedDelivery || undefined };
+                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty) };
+                              return {
+                                itemId: item.id,
+                                vendor: pom.vendor || undefined,
+                                expectedDelivery: pom.expectedDelivery || undefined,
+                                orderedQty: pom.orderedQty ? parseFloat(pom.orderedQty) : undefined,
+                              };
                             });
                           placeOrderMutation.mutate({ items });
                         }}

@@ -5178,6 +5178,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/purchase-indents/items/:itemId/link-receipt", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "purchase_indents")) return;
+      const itemId = Number(req.params.itemId);
+      const { receiptId } = req.body;
+      if (!receiptId) return res.status(400).json({ message: "receiptId is required" });
+      const actionBy = currentUserName(req);
+      const item = await storage.linkReceiptToIndentItem(itemId, Number(receiptId), actionBy);
+      if (!item) return res.status(404).json({ message: "Item or receipt not found" });
+      res.json(item);
+    } catch (err) {
+      console.error("Error linking receipt to indent item:", err);
+      res.status(500).json({ message: "Failed to link receipt" });
+    }
+  });
+
   // ── Internal Requisition Notes (IRN) ────────────────────────────────────────
 
   // Returns live stock balances joined with material names for the stores verification form.

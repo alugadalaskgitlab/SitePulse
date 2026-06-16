@@ -954,9 +954,10 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
-  placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string }[]>;
+  linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined>;
 
   // Internal Requisition Notes (IRN)
   getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
@@ -9457,9 +9458,11 @@ export class DatabaseStorage implements IStorage {
         const approvedQty = indentItem.approvedQty ?? indentItem.qty;
         if (approvedQty <= 0) continue;
         const itemInput = items.find(i => i.itemId === indentItem.id);
+        // Use caller-supplied orderedQty if provided; fall back to approvedQty
+        const resolvedOrderedQty = itemInput?.orderedQty ?? approvedQty;
         await tx.update(purchaseIndentItems)
           .set({
-            orderedQty: approvedQty,
+            orderedQty: resolvedOrderedQty,
             ...(itemInput?.vendor ? { vendor: itemInput.vendor.toUpperCase() } : {}),
             ...(itemInput?.expectedDelivery ? { expectedDelivery: itemInput.expectedDelivery } : {}),
           })
@@ -9468,8 +9471,10 @@ export class DatabaseStorage implements IStorage {
           indentId: id,
           indentItemId: indentItem.id,
           transactionType: "purchaser_action",
-          qty: approvedQty,
+          qty: resolvedOrderedQty,
+          orderedQty: resolvedOrderedQty,
           vendor: itemInput?.vendor?.toUpperCase() ?? null,
+          expectedDeliveryDate: itemInput?.expectedDelivery ?? null,
           createdBy: actionBy.toUpperCase(),
         });
       }
@@ -9484,6 +9489,13 @@ export class DatabaseStorage implements IStorage {
   ): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(indentId);
     if (!existing) return undefined;
+    // Enforce workflow: only Material Indents in ordered status may record receipt
+    if ((existing as any).piType !== "material") {
+      throw new Error(`Indent ${indentId} is not a Material Indent`);
+    }
+    if (existing.status !== "ordered") {
+      throw new Error(`Indent ${indentId} must be in ordered status to record receipt (current: ${existing.status})`);
+    }
     // Security: verify all provided itemIds belong to this indent
     const validItemIds = new Set(existing.items.map(i => i.id));
     for (const item of items) {
@@ -9565,6 +9577,30 @@ export class DatabaseStorage implements IStorage {
       approvedQty: r.approvedQty ?? 0,
       uom: r.uom,
     }));
+  }
+
+  async linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined> {
+    const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId)).limit(1);
+    if (!existingItem) return undefined;
+    const [receipt] = await db.select({ quantity: materialReceipts.quantity }).from(materialReceipts).where(eq(materialReceipts.id, receiptId)).limit(1);
+    if (!receipt) return undefined;
+    const newAccepted = (existingItem.totalAcceptedQty ?? 0) + receipt.quantity;
+    const approved = existingItem.approvedQty ?? 0;
+    const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+    const [updated] = await db.update(purchaseIndentItems)
+      .set({ linkedReceiptId: receiptId, totalAcceptedQty: newAccepted, purchaseStatus })
+      .where(eq(purchaseIndentItems.id, itemId))
+      .returning();
+    if (!updated) return undefined;
+    await db.insert(piItemTransactions).values({
+      indentId: existingItem.indentId,
+      indentItemId: itemId,
+      transactionType: "bulk_receipt",
+      qty: receipt.quantity,
+      createdBy: actionBy.toUpperCase(),
+    });
+    await this.checkAndCompleteIndent(existingItem.indentId);
+    return updated;
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {

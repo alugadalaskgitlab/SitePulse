@@ -241,15 +241,29 @@ export default function PlantMaterialReceipts() {
     })),
   });
 
-  // Auto-select indent when exactly one approved/ordered indent matches the material
+  // materialId-based query for Material Indent PI items pending receipt (more precise than name-based)
+  const parsedMaterialId = materialId ? parseInt(materialId) : 0;
+  const { data: pendingMaterialIndents = [] } = useQuery<{indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string}[]>({
+    queryKey: ["/api/purchase-indents/pending-for-material", parsedMaterialId],
+    queryFn: () => fetch(`/api/purchase-indents/pending-for-material/${parsedMaterialId}`).then(r => r.json()),
+    enabled: parsedMaterialId > 0 && dialogOpen,
+  });
+
+  // Auto-select indent: prefer pending Material Indents (by materialId) over name-based matches
   useEffect(() => {
-    if (editingReceipt) return;          // don't clobber existing values in edit mode
-    if (indentRef) return;               // already set — don't overwrite
+    if (editingReceipt) return;
+    if (indentRef) return;
+    // Priority 1: pending Material Indent items matched by materialId
+    if (pendingMaterialIndents.length === 1) {
+      setIndentRef(pendingMaterialIndents[0].indentNo);
+      return;
+    }
+    // Priority 2: name-based approved/ordered indents
     const active = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
     if (active.length === 1) {
       setIndentRef(active[0].indentNo);
     }
-  }, [allPurchaseIndents, editingReceipt]);
+  }, [allPurchaseIndents, pendingMaterialIndents, editingReceipt]);
 
   const { data: nextReceiptNoData } = useQuery<{ number: string }>({
     queryKey: ["/api/plant-module/next-receipt-number", materialId],
