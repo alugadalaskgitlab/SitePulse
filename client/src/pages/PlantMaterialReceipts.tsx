@@ -66,6 +66,8 @@ export default function PlantMaterialReceipts() {
   const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
   const [autoEditDone, setAutoEditDone] = useState(false);
   const [autoOpenDone, setAutoOpenDone] = useState(false);
+  // When true the receipt dialog was opened from a PI "Record Receipt" link — indent ref is locked
+  const [indentLockedFromPi, setIndentLockedFromPi] = useState(false);
   useEffect(() => {
     if (highlightId != null) {
       setLocalHighlightId(highlightId);
@@ -209,7 +211,7 @@ export default function PlantMaterialReceipts() {
     if (autoOpenParams && !autoOpenDone && !editingReceipt) {
       setAutoOpenDone(true);
       if (autoOpenParams.materialId) setMaterialId(autoOpenParams.materialId);
-      if (autoOpenParams.piRef) setIndentRef(autoOpenParams.piRef);
+      if (autoOpenParams.piRef) { setIndentRef(autoOpenParams.piRef); setIndentLockedFromPi(true); }
       if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
       setDialogOpen(true);
       const url = new URL(window.location.href);
@@ -373,6 +375,7 @@ export default function PlantMaterialReceipts() {
     setIndentComboSearch("");
     setIndentOverride(false);
     setSelectedPendingPiItemId(null);
+    setIndentLockedFromPi(false);
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {
@@ -970,6 +973,7 @@ export default function PlantMaterialReceipts() {
                           <Input
                             value={indentRef || indentComboSearch}
                             onChange={e => {
+                              if (indentLockedFromPi) return;
                               const v = e.target.value;
                               if (indentRef) {
                                 setIndentRef("");
@@ -980,17 +984,22 @@ export default function PlantMaterialReceipts() {
                               setIndentComboOpen(true);
                               setIndentOverride(false);
                             }}
-                            onFocus={() => setIndentComboOpen(true)}
+                            onFocus={() => { if (!indentLockedFromPi) setIndentComboOpen(true); }}
                             placeholder="Type PI number to search…"
                             data-testid="input-indent-ref"
                             autoComplete="off"
+                            readOnly={indentLockedFromPi}
+                            className={indentLockedFromPi ? "bg-muted cursor-not-allowed" : undefined}
                           />
-                          {indentRef && (
+                          {indentRef && !indentLockedFromPi && (
                             <Button type="button" variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0"
                               onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); setSelectedPendingPiItemId(null); }}
                             >
                               <span className="sr-only">Clear</span>✕
                             </Button>
+                          )}
+                          {indentLockedFromPi && (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap px-1">🔒 locked</span>
                           )}
                         </div>
                         {indentComboOpen && !indentRef && filteredPIs.length > 0 && (

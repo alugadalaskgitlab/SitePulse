@@ -9614,6 +9614,22 @@ export class DatabaseStorage implements IStorage {
   async linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined> {
     const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId)).limit(1);
     if (!existingItem) return undefined;
+    // Guard: only Material Indent items in "ordered" status may be linked
+    const [parentIndent] = await db
+      .select({ piType: purchaseIndents.piType, status: purchaseIndents.status })
+      .from(purchaseIndents)
+      .where(eq(purchaseIndents.id, existingItem.indentId))
+      .limit(1);
+    if (!parentIndent || parentIndent.piType !== "material") {
+      throw new Error(`Indent item ${itemId} does not belong to a Material Indent — cannot link receipt`);
+    }
+    if (parentIndent.status !== "ordered") {
+      throw new Error(`Parent indent must be in 'ordered' status to link a receipt (current: ${parentIndent.status})`);
+    }
+    // Guard: prevent relinking an already-linked item
+    if (existingItem.linkedReceiptId != null) {
+      throw new Error(`PI item ${itemId} already has a linked receipt (#${existingItem.linkedReceiptId}) — unlink first`);
+    }
     const [receipt] = await db.select({ quantity: materialReceipts.quantity, materialId: materialReceipts.materialId }).from(materialReceipts).where(eq(materialReceipts.id, receiptId)).limit(1);
     if (!receipt) return undefined;
     // Integrity: verify the receipt's material matches the PI item's material

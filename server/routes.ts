@@ -5181,6 +5181,15 @@ export async function registerRoutes(
   app.patch("/api/purchase-indents/items/:itemId/link-receipt", async (req, res) => {
     try {
       if (!assertAuthed(req, res)) return;
+      // Require create rights on either plant_stock (receipt creators) or site_procurement
+      {
+        const user = req.authUser!;
+        const m = req.authPermissions;
+        const ok = user.isAdmin
+          || (m?.["plant_stock"]?.create)
+          || (m?.["site_procurement"]?.create);
+        if (!ok) return res.status(403).json({ error: "forbidden", message: "Requires plant_stock:create or site_procurement:create" });
+      }
       const itemId = Number(req.params.itemId);
       const { receiptId } = req.body;
       if (!receiptId) return res.status(400).json({ message: "receiptId is required" });
