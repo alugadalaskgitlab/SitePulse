@@ -60,6 +60,8 @@ export default function PlantMaterialReceipts() {
       piRef: params.get("piRef") ?? "",
       piItemId: params.get("piItemId") ? parseInt(params.get("piItemId")!, 10) : null,
       materialId: params.get("materialId") ?? "",
+      qty: params.get("qty") ?? "",
+      supplier: params.get("supplier") ?? "",
     };
   }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
@@ -213,6 +215,8 @@ export default function PlantMaterialReceipts() {
       if (autoOpenParams.materialId) setMaterialId(autoOpenParams.materialId);
       if (autoOpenParams.piRef) { setIndentRef(autoOpenParams.piRef); setIndentLockedFromPi(true); }
       if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
+      if (autoOpenParams.qty) setQuantity(autoOpenParams.qty);
+      if (autoOpenParams.supplier) setSupplier(autoOpenParams.supplier);
       setDialogOpen(true);
       const url = new URL(window.location.href);
       url.searchParams.delete("autoOpen");
@@ -327,7 +331,7 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDialogOpen(false);
       resetForm();
-      toast({ title: "Material receipt recorded successfully" });
+      toast({ title: "Material receipt recorded", description: receipt?.receiptNo ? `GRN: ${receipt.receiptNo}` : undefined });
     },
   });
 

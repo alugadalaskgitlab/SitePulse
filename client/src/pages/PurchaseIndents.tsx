@@ -3935,7 +3935,7 @@ export default function PurchaseIndents() {
                               variant="outline"
                               className="shrink-0 border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                               disabled={!item.materialId}
-                              onClick={() => navigate(`/plant/material-receipts?autoOpen=1&piRef=${encodeURIComponent(selectedIndent.indentNo)}&piItemId=${item.id}&materialId=${item.materialId}`)}
+                              onClick={() => navigate(`/plant/material-receipts?autoOpen=1&piRef=${encodeURIComponent(selectedIndent.indentNo)}&piItemId=${item.id}&materialId=${item.materialId}&qty=${item.orderedQty ?? item.approvedQty ?? ""}&supplier=${encodeURIComponent((item as any).vendor ?? "")}`)}
                               data-testid={`button-record-mat-receipt-${item.id}`}
                             >
                               <Package className="w-3.5 h-3.5 mr-1" />

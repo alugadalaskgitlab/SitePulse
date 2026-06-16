@@ -9626,9 +9626,15 @@ export class DatabaseStorage implements IStorage {
     if (parentIndent.status !== "ordered") {
       throw new Error(`Parent indent must be in 'ordered' status to link a receipt (current: ${parentIndent.status})`);
     }
-    // Guard: prevent relinking an already-linked item
-    if (existingItem.linkedReceiptId != null) {
-      throw new Error(`PI item ${itemId} already has a linked receipt (#${existingItem.linkedReceiptId}) — unlink first`);
+    // Guard: prevent relinking only if item is already in a terminal status.
+    // PARTIAL items can receive incremental receipts and may be relinked.
+    const terminalStatuses = ["PURCHASED", "NOT_PURCHASED", "CANCELLED"];
+    if (
+      existingItem.linkedReceiptId != null &&
+      existingItem.purchaseStatus != null &&
+      terminalStatuses.includes(existingItem.purchaseStatus.toUpperCase())
+    ) {
+      throw new Error(`PI item ${itemId} is already in terminal status '${existingItem.purchaseStatus}' — cannot relink`);
     }
     const [receipt] = await db.select({ quantity: materialReceipts.quantity, materialId: materialReceipts.materialId }).from(materialReceipts).where(eq(materialReceipts.id, receiptId)).limit(1);
     if (!receipt) return undefined;
