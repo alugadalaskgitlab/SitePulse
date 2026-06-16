@@ -954,6 +954,9 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
+  placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string }[]>;
 
   // Internal Requisition Notes (IRN)
   getInternalRequisitions(filters?: { status?: string; dateFrom?: string; dateTo?: string }): Promise<InternalRequisitionWithItems[]>;
@@ -8993,16 +8996,18 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const indentNo = await this.generateIndentNo(tx);
 
+      const piType = (data as any).piType ?? "stores";
       const [indent] = await tx.insert(purchaseIndents).values({
         date: data.date,
         indentNo,
         proposedBy: data.proposedBy.toUpperCase(),
         raisedBy: data.raisedBy.toUpperCase(),
-        status: "stores_check",
+        status: piType === "material" ? "pending" : "stores_check",
         remarks: data.remarks?.toUpperCase() || data.remarks,
         siteId: (data as any).siteId ?? null,
         raisedFrom: (data as any).raisedFrom ?? null,
         sourceIrnId: (data as any).sourceIrnId ?? null,
+        piType,
       }).returning();
 
       let items: PurchaseIndentItem[] = [];
@@ -9021,6 +9026,7 @@ export class DatabaseStorage implements IStorage {
             estRate: item.estRate ?? null,
             estAmount: item.estAmount ?? null,
             requiredBy: item.requiredBy || null,
+            procurementRoute: (item as any).procurementRoute || null,
           }))
         ).returning();
       }
@@ -9422,6 +9428,132 @@ export class DatabaseStorage implements IStorage {
     await this.checkAndCompleteIndent(indentId);
   }
 
+  async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(id);
+    if (!existing) return undefined;
+    const orderedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    await db.transaction(async (tx) => {
+      await tx.update(purchaseIndents)
+        .set({ status: "ordered", orderedAt })
+        .where(and(eq(purchaseIndents.id, id), eq(purchaseIndents.status, "approved")));
+      for (const item of items) {
+        if (!item.vendor && !item.expectedDelivery) continue;
+        await tx.update(purchaseIndentItems)
+          .set({
+            ...(item.vendor ? { vendor: item.vendor.toUpperCase() } : {}),
+            ...(item.expectedDelivery ? { expectedDelivery: item.expectedDelivery } : {}),
+          })
+          .where(eq(purchaseIndentItems.id, item.itemId));
+      }
+    });
+    return this.getPurchaseIndent(id);
+  }
+
+  async recordMaterialIndentReceipt(
+    indentId: number,
+    items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[],
+    actionBy: string
+  ): Promise<PurchaseIndentWithItems | undefined> {
+    const existing = await this.getPurchaseIndent(indentId);
+    if (!existing) return undefined;
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        const [mat] = await tx.select({ category: plantMaterials.category, name: plantMaterials.name })
+          .from(plantMaterials).where(eq(plantMaterials.id, item.materialId)).limit(1);
+        const catCode = this.getMaterialCategoryCode(mat?.category, mat?.name);
+        const receiptNo = await this.generateMaterialReceiptNumber(catCode);
+        const targetPartyId = item.isPlantCommon ? null : (item.partyId ?? null);
+        const [receipt] = await tx.insert(materialReceipts).values({
+          receiptNo,
+          date: item.receiptDate ?? format(new Date(), "yyyy-MM-dd"),
+          materialId: item.materialId,
+          quantity: item.qty,
+          uom: item.uom.toUpperCase(),
+          supplier: item.vendor?.toUpperCase() ?? null,
+          partyId: targetPartyId,
+          isPlantCommon: item.isPlantCommon ? 1 : 0,
+          notes: item.notes ?? null,
+          indentRef: existing.indentNo,
+          plantName: "Main Plant",
+        }).returning();
+        const [existingItem] = await tx.select({
+          totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+          approvedQty: purchaseIndentItems.approvedQty,
+        }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
+        const newAccepted = (existingItem?.totalAcceptedQty ?? 0) + item.qty;
+        const approved = existingItem?.approvedQty ?? 0;
+        const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+        await tx.update(purchaseIndentItems)
+          .set({
+            linkedReceiptId: receipt.id,
+            totalAcceptedQty: newAccepted,
+            purchaseStatus,
+            vendor: item.vendor?.toUpperCase() ?? null,
+          })
+          .where(eq(purchaseIndentItems.id, item.itemId));
+        const condition = targetPartyId === null
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, item.materialId))
+          : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, item.materialId));
+        const [existingBal] = await tx.select().from(stockBalances).where(condition).limit(1);
+        if (existingBal) {
+          await tx.update(stockBalances)
+            .set({ balance: existingBal.balance + item.qty, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existingBal.id));
+        } else {
+          await tx.insert(stockBalances).values({
+            partyId: targetPartyId,
+            materialId: item.materialId,
+            balance: item.qty,
+            uom: item.uom.toUpperCase(),
+            lastUpdated: new Date(),
+          });
+        }
+        await tx.insert(piItemTransactions).values({
+          indentId,
+          indentItemId: item.itemId,
+          transactionType: "bulk_receipt",
+          qty: item.qty,
+          vendor: item.vendor?.toUpperCase() ?? null,
+          rate: item.rate ?? null,
+          amount: item.rate != null ? item.rate * item.qty : null,
+          remarks: item.notes ?? null,
+          createdBy: actionBy.toUpperCase(),
+        });
+      }
+    });
+    await this.checkAndCompleteIndent(indentId);
+    return this.getPurchaseIndent(indentId);
+  }
+
+  async getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string }[]> {
+    const rows = await db
+      .select({
+        indentId: purchaseIndents.id,
+        indentNo: purchaseIndents.indentNo,
+        itemId: purchaseIndentItems.id,
+        description: purchaseIndentItems.description,
+        approvedQty: purchaseIndentItems.approvedQty,
+        uom: purchaseIndentItems.uom,
+      })
+      .from(purchaseIndentItems)
+      .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
+      .where(
+        and(
+          eq(purchaseIndentItems.materialId, materialId),
+          inArray(purchaseIndents.status, ["approved", "ordered"]),
+          sql`${purchaseIndentItems.linkedReceiptId} IS NULL`,
+        )
+      );
+    return rows.map(r => ({
+      indentId: r.indentId,
+      indentNo: r.indentNo,
+      itemId: r.itemId,
+      description: r.description,
+      approvedQty: r.approvedQty ?? 0,
+      uom: r.uom,
+    }));
+  }
+
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
     const allItems = await db.select().from(purchaseIndentItems)
       .where(eq(purchaseIndentItems.indentId, indentId));
@@ -9439,7 +9571,7 @@ export class DatabaseStorage implements IStorage {
         .set({ status: "completed" })
         .where(and(
           eq(purchaseIndents.id, indentId),
-          inArray(purchaseIndents.status, ["approved", "purchasing"])
+          inArray(purchaseIndents.status, ["approved", "purchasing", "ordered"])
         ));
     }
   }

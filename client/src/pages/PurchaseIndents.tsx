@@ -267,6 +267,8 @@ function getStatusBadge(status: string, storesStatus?: string | null) {
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-stores-check-pending">PENDING STORES</Badge>;
     case "approved":
       return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid="badge-status-approved">APPROVED</Badge>;
+    case "ordered":
+      return <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700" data-testid="badge-status-ordered">ORDER PLACED</Badge>;
     case "purchaser_actioned":
       return <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700" data-testid="badge-status-purchaser-actioned">PURCHASER ACTIONED</Badge>;
     case "handover_pending":
@@ -374,7 +376,51 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
   );
 }
 
-function StatusSteps({ status, storesStatus }: { status: string; storesStatus?: string | null }) {
+function StatusSteps({ status, storesStatus, piType }: { status: string; storesStatus?: string | null; piType?: string }) {
+  // Material Indent: simplified RAISED → APPROVED → ORDERED → COMPLETED
+  if (piType === "material") {
+    const matSteps = [
+      { key: "raised", label: "RAISED" },
+      { key: "approved", label: "APPROVED" },
+      { key: "ordered", label: "ORDERED" },
+      { key: "completed", label: "COMPLETED" },
+    ];
+    const getMatState = (stepKey: string) => {
+      if (status === "rejected") return stepKey === "raised" ? "done" : "pending";
+      if (status === "pending" || status === "stores_check") {
+        return stepKey === "raised" ? "done" : stepKey === "approved" ? "active" : "pending";
+      }
+      if (status === "approved") {
+        return (stepKey === "raised" || stepKey === "approved") ? "done" : stepKey === "ordered" ? "active" : "pending";
+      }
+      if (status === "ordered") {
+        return (stepKey === "raised" || stepKey === "approved") ? "done" : stepKey === "ordered" ? "active" : "pending";
+      }
+      if (status === "completed") return "done";
+      return "pending";
+    };
+    return (
+      <div className="flex items-center gap-1 flex-wrap" data-testid="status-steps">
+        {matSteps.map((step, i) => {
+          const state = getMatState(step.key);
+          return (
+            <div key={step.key} className="flex items-center gap-1">
+              {i > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground" />}
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
+                state === "done" ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" :
+                state === "active" ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" :
+                "border-muted text-muted-foreground"
+              }`}>
+                {state === "done" && <Check className="w-3 h-3 inline mr-1" />}
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   const steps = [
     { key: "raised", label: "RAISED" },
     { key: "stores", label: "STORES" },
@@ -657,6 +703,7 @@ export default function PurchaseIndents() {
   const [formItems, setFormItems] = useState<ItemRow[]>([
     { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null },
   ]);
+  const [formPiType, setFormPiType] = useState<"stores" | "material">("stores");
 
 
   const [editIndentId, setEditIndentId] = useState<number | null>(null);
@@ -703,6 +750,12 @@ export default function PurchaseIndents() {
   const [bulkReceiptOpen, setBulkReceiptOpen] = useState(false);
   type BulkReceiptItemData = { qty: string; uom: string; vendor: string; rate: string; receiptDate: string; remarks: string; partyId: string };
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
+
+  // Material Indent: Place Order & Record Receipt
+  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string }>>({});
+  type MatReceiptForm = { qty: string; vendor: string; rate: string; receiptDate: string; notes: string };
+  const [matReceiptForms, setMatReceiptForms] = useState<Record<number, MatReceiptForm>>({});
+  const [matReceiptExpanded, setMatReceiptExpanded] = useState<Set<number>>(new Set());
 
   const [addStoreItemOpen, setAddStoreItemOpen] = useState(false);
   const [addStoreItemTargetIdx, setAddStoreItemTargetIdx] = useState<number | null>(null);
@@ -1244,6 +1297,34 @@ export default function PurchaseIndents() {
     },
   });
 
+  const placeOrderMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/place-order`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      setPlaceOrderVendorMap({});
+      toast({ title: "Order placed — indent status updated to Ordered" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to place order", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const recordMatReceiptMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/purchase-indents/${selectedIndentId}/record-material-receipt`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+      if (selectedIndentId) queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents", selectedIndentId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
+      setMatReceiptForms({});
+      setMatReceiptExpanded(new Set());
+      toast({ title: "Material receipt recorded — stock updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to record receipt", description: err.message, variant: "destructive" });
+    },
+  });
+
   const GRN_MAPPINGS_KEY = "grn_item_mappings";
   const normDesc = (s: string) => s.toUpperCase().trim().replace(/\s+/g, " ");
 
@@ -1522,6 +1603,7 @@ export default function PurchaseIndents() {
     setFormRaisedFrom(defaultRaisedFrom);
     setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }]);
     setSourceIrnId(null);
+    setFormPiType("stores");
   };
 
   const addItemRow = () => {
@@ -1563,6 +1645,7 @@ export default function PurchaseIndents() {
       siteId: formSiteId ?? null,
       raisedFrom: formRaisedFrom ?? null,
       sourceIrnId: sourceIrnId ?? undefined,
+      piType: formPiType,
       items: validItems.map(item => ({
         description: item.description.toUpperCase(),
         spec: item.spec?.trim().toUpperCase() || undefined,
@@ -1588,6 +1671,7 @@ export default function PurchaseIndents() {
 
   const openDetail = (indent: PurchaseIndentWithItems) => {
     setSelectedIndentId(indent.id);
+    const piType = (indent as any).piType ?? "stores";
     const ss = (indent as any).storesStatus as string | null;
     const storesNotVerified = !ss || ss !== "verified";
 
@@ -1598,6 +1682,30 @@ export default function PurchaseIndents() {
       });
       setItemApprovalStates(states);
     };
+
+    // Material Indent: skip stores verification, go directly to approval or procurement
+    if (piType === "material" && (indent.status === "pending" || indent.status === "stores_check")) {
+      if (isApprover) {
+        const qtys: Record<number, number> = {};
+        const notes: Record<number, string> = {};
+        indent.items.forEach(item => {
+          qtys[item.id] = item.approvedQty ?? item.qty;
+          notes[item.id] = (item as any).reviewerNote || "";
+        });
+        setApprovedQtys(qtys);
+        setReviewerNotes(notes);
+        initApprovalStates(indent.items);
+        setApprovalRemarks("");
+      }
+      setView("detail");
+      return;
+    }
+    if (piType === "material" && ["approved", "ordered", "purchasing", "completed"].includes(indent.status)) {
+      setPurchaseUpdates({});
+      setProcurementExtras({});
+      setView("procurement");
+      return;
+    }
 
     if ((indent.status === "pending" && storesNotVerified) || (indent.status === "stores_check" && storesNotVerified)) {
       // Stores write permission takes priority — dual-role users (stores + approver) verify stock first
@@ -1644,7 +1752,7 @@ export default function PurchaseIndents() {
       initApprovalStates(indent.items);
       setApprovalRemarks("");
       setView("detail");
-    } else if (indent.status === "approved" || indent.status === "purchasing" || indent.status === "completed") {
+    } else if (indent.status === "approved" || indent.status === "ordered" || indent.status === "purchasing" || indent.status === "completed") {
       setPurchaseUpdates({});
       setProcurementExtras({});
       setView("procurement");
@@ -2345,12 +2453,14 @@ export default function PurchaseIndents() {
                             const raised = indent.createdAt ? format(new Date(indent.createdAt as any), "dd-MMM-yy HH:mm") : null;
                             const verified = (indent as any).storesVerifiedAt ? format(new Date((indent as any).storesVerifiedAt), "dd-MMM-yy HH:mm") : null;
                             const approved = (indent as any).approvedAt ? format(new Date((indent as any).approvedAt), "dd-MMM-yy HH:mm") : null;
-                            if (!raised && !verified && !approved) return null;
+                            const ordered = (indent as any).orderedAt ? format(new Date((indent as any).orderedAt), "dd-MMM-yy HH:mm") : null;
+                            if (!raised && !verified && !approved && !ordered) return null;
                             return (
                               <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
                                 {raised && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Raised {raised}</span>}
                                 {verified && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Verified {verified}</span></>}
                                 {approved && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full inline-block ${indent.status === "rejected" ? "bg-red-400" : "bg-emerald-400"}`} />{indent.status === "rejected" ? "Rejected" : "Approved"} {approved}</span></>}
+                                {ordered && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />Ordered {ordered}</span></>}
                               </div>
                             );
                           })()}
@@ -2420,6 +2530,9 @@ export default function PurchaseIndents() {
                               </Link>
                             ) : null}
                           </div>
+                          {(indent as any).piType === "material" && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700" data-testid={`badge-pi-type-${indent.id}`}>MAT. INDENT</Badge>
+                          )}
                           {getStatusBadge(indent.status, (indent as any).storesStatus)}
                         </div>
                       </div>
@@ -2495,6 +2608,30 @@ export default function PurchaseIndents() {
                   />
                   <p className="text-xs text-muted-foreground mt-0.5">PERSON CREATING THIS INDENT</p>
                 </div>
+              </div>
+              <div>
+                <Label className="text-xs uppercase">INDENT TYPE</Label>
+                <div className="flex rounded-md overflow-hidden border mt-1" data-testid="toggle-pi-type">
+                  <button
+                    type="button"
+                    className={`flex-1 text-xs py-1.5 font-semibold transition-colors ${formPiType === "stores" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                    onClick={() => setFormPiType("stores")}
+                    data-testid="button-pi-type-stores"
+                  >
+                    STORE INDENT
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 text-xs py-1.5 font-semibold transition-colors ${formPiType === "material" ? "bg-teal-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                    onClick={() => setFormPiType("material")}
+                    data-testid="button-pi-type-material"
+                  >
+                    MATERIAL INDENT
+                  </button>
+                </div>
+                {formPiType === "material" && (
+                  <p className="text-xs text-teal-700 dark:text-teal-400 mt-1">Material Indent goes directly for approval — no stores verification needed. Material receipt is recorded directly in the Plant module.</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs uppercase">GENERAL REMARKS (OPTIONAL)</Label>
@@ -3001,7 +3138,7 @@ export default function PurchaseIndents() {
                   )}
                   <div>
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
-                    <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} />
+                    <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} piType={(selectedIndent as any).piType} />
                   </div>
                 </CardContent>
               </Card>
@@ -3453,7 +3590,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Purchaser Action Card (Dual Route: Stores / Bulk Plant) ── */}
-              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (
+              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (selectedIndent as any).piType !== "material" && (
                 <Card className="border-violet-200 dark:border-violet-800">
                   <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
@@ -3510,7 +3647,7 @@ export default function PurchaseIndents() {
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-semibold">{item.description}</span>
                                         <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
-                                          {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
+                                          {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
                                         </Badge>
                                       </div>
                                       <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
@@ -3642,7 +3779,7 @@ export default function PurchaseIndents() {
                           return (
                             <div key={idx} className="flex items-center gap-3 text-sm p-2 bg-violet-50 dark:bg-violet-900/10 rounded-lg flex-wrap">
                               <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"} >
-                                {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
+                                {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
                               </Badge>
                               <span className="font-medium flex-1 min-w-0 truncate">{relItem.description}</span>
                               <span className="text-muted-foreground">{tx.payload?.qty} {relItem.uom}</span>
@@ -3652,6 +3789,216 @@ export default function PurchaseIndents() {
                           );
                         })}
                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── Material Indent: Place Order Card ── */}
+              {(selectedIndent as any).piType === "material" && selectedIndent.status === "approved" && canCreateProcurement && (
+                <Card className="border-teal-200 dark:border-teal-800" data-testid="card-place-order">
+                  <CardHeader className="py-3 px-4 bg-teal-50 dark:bg-teal-900/20 rounded-t-lg">
+                    <CardTitle className="text-sm font-semibold text-teal-800 dark:text-teal-200 flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4" />
+                      PLACE ORDER
+                    </CardTitle>
+                    <p className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">Record vendor and expected delivery for each item, then place the order.</p>
+                  </CardHeader>
+                  <CardContent className="py-3 px-4 space-y-3">
+                    {selectedIndent.items.filter(item => (item.approvedQty ?? 0) > 0).map(item => {
+                      const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "" };
+                      return (
+                        <div key={item.id} className="border rounded-lg p-3 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold">{item.description}</span>
+                            <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">VENDOR (OPTIONAL)</Label>
+                              <Input
+                                value={pom.vendor}
+                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, vendor: e.target.value } }))}
+                                onBlur={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, vendor: e.target.value.toUpperCase() } }))}
+                                placeholder="SUPPLIER NAME"
+                                className="uppercase text-xs h-8"
+                                data-testid={`input-po-vendor-${item.id}`}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">EXPECTED DELIVERY</Label>
+                              <Input
+                                type="date"
+                                value={pom.expectedDelivery}
+                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, expectedDelivery: e.target.value } }))}
+                                className="text-xs h-8"
+                                data-testid={`input-po-delivery-${item.id}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-end pt-1">
+                      <Button
+                        size="sm"
+                        className="bg-teal-600 hover:bg-teal-700 text-white"
+                        disabled={placeOrderMutation.isPending}
+                        onClick={() => {
+                          const items = selectedIndent.items
+                            .filter(item => (item.approvedQty ?? 0) > 0)
+                            .map(item => {
+                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "" };
+                              return { itemId: item.id, vendor: pom.vendor || undefined, expectedDelivery: pom.expectedDelivery || undefined };
+                            });
+                          placeOrderMutation.mutate({ items });
+                        }}
+                        data-testid="button-place-order"
+                      >
+                        {placeOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <ClipboardList className="w-4 h-4 mr-1" />}
+                        PLACE ORDER
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── Material Indent: Record Material Receipt Card ── */}
+              {(selectedIndent as any).piType === "material" && ["approved", "ordered"].includes(selectedIndent.status) && canCreateProcurement && (
+                <Card className="border-amber-200 dark:border-amber-800" data-testid="card-record-mat-receipt">
+                  <CardHeader className="py-3 px-4 bg-amber-50 dark:bg-amber-900/20 rounded-t-lg">
+                    <CardTitle className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      RECORD MATERIAL RECEIPT
+                    </CardTitle>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Record material received at plant. This creates a receipt entry in Plant module and updates stock.</p>
+                  </CardHeader>
+                  <CardContent className="py-3 px-4 space-y-3">
+                    {selectedIndent.items
+                      .filter(item => {
+                        const aQty = item.approvedQty ?? 0;
+                        const accepted = item.totalAcceptedQty ?? 0;
+                        return aQty > 0 && accepted < aQty;
+                      })
+                      .map(item => {
+                        const isExpanded = matReceiptExpanded.has(item.id);
+                        const rf = matReceiptForms[item.id] ?? { qty: String((item.approvedQty ?? item.qty) - (item.totalAcceptedQty ?? 0)), vendor: (item as any).vendor ?? "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), notes: "" };
+                        const remaining = (item.approvedQty ?? item.qty) - (item.totalAcceptedQty ?? 0);
+                        return (
+                          <div key={item.id} className="border rounded-lg overflow-hidden" data-testid={`card-mat-receipt-${item.id}`}>
+                            <button
+                              type="button"
+                              className="w-full flex items-center justify-between p-3 bg-amber-50/50 dark:bg-amber-900/10 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors text-left"
+                              onClick={() => setMatReceiptExpanded(prev => {
+                                const next = new Set(prev);
+                                if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                                return next;
+                              })}
+                              data-testid={`button-toggle-mat-receipt-${item.id}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">{item.description}</span>
+                                {item.materialId && <span className="text-xs text-teal-600 dark:text-teal-400">• linked material</span>}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span>Remaining: <strong className="text-amber-700 dark:text-amber-400">{remaining} {item.uom}</strong></span>
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="p-3 space-y-2 border-t border-amber-100 dark:border-amber-900/30">
+                                {!item.materialId && (
+                                  <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
+                                    ⚠ This item has no linked Plant material. Link a material in the item details to enable receipt recording.
+                                  </p>
+                                )}
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                  <div>
+                                    <Label className="text-xs">QTY RECEIVED <span className="text-red-500">*</span></Label>
+                                    <Input
+                                      type="number"
+                                      value={rf.qty}
+                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, qty: e.target.value } }))}
+                                      className="text-xs h-8"
+                                      data-testid={`input-mat-receipt-qty-${item.id}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">RECEIPT DATE</Label>
+                                    <Input
+                                      type="date"
+                                      value={rf.receiptDate}
+                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, receiptDate: e.target.value } }))}
+                                      className="text-xs h-8"
+                                      data-testid={`input-mat-receipt-date-${item.id}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">VENDOR</Label>
+                                    <Input
+                                      value={rf.vendor}
+                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, vendor: e.target.value } }))}
+                                      onBlur={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, vendor: e.target.value.toUpperCase() } }))}
+                                      placeholder="SUPPLIER"
+                                      className="uppercase text-xs h-8"
+                                      data-testid={`input-mat-receipt-vendor-${item.id}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                                    <Input
+                                      type="number"
+                                      value={rf.rate}
+                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, rate: e.target.value } }))}
+                                      placeholder="0.00"
+                                      className="text-xs h-8"
+                                      data-testid={`input-mat-receipt-rate-${item.id}`}
+                                    />
+                                  </div>
+                                  <div className="col-span-2">
+                                    <Label className="text-xs">NOTES (OPTIONAL)</Label>
+                                    <Input
+                                      value={rf.notes}
+                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, notes: e.target.value } }))}
+                                      placeholder="Any notes..."
+                                      className="text-xs h-8"
+                                      data-testid={`input-mat-receipt-notes-${item.id}`}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex justify-end pt-1">
+                                  <Button
+                                    size="sm"
+                                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                                    disabled={recordMatReceiptMutation.isPending || !item.materialId || !rf.qty || parseFloat(rf.qty) <= 0}
+                                    onClick={() => {
+                                      if (!item.materialId) return;
+                                      recordMatReceiptMutation.mutate({
+                                        items: [{
+                                          itemId: item.id,
+                                          materialId: item.materialId,
+                                          qty: parseFloat(rf.qty),
+                                          uom: item.uom,
+                                          vendor: rf.vendor || undefined,
+                                          rate: rf.rate ? parseFloat(rf.rate) : undefined,
+                                          receiptDate: rf.receiptDate,
+                                          notes: rf.notes || undefined,
+                                        }],
+                                      });
+                                    }}
+                                    data-testid={`button-record-mat-receipt-${item.id}`}
+                                  >
+                                    {recordMatReceiptMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Package className="w-4 h-4 mr-1" />}
+                                    RECORD RECEIPT
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    {selectedIndent.items.filter(i => (i.approvedQty ?? 0) > 0 && (i.totalAcceptedQty ?? 0) < (i.approvedQty ?? 0)).length === 0 && (
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400 text-center py-2">✓ All approved quantities have been received</p>
                     )}
                   </CardContent>
                 </Card>
@@ -4182,7 +4529,7 @@ export default function PurchaseIndents() {
                     <div key={item.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold">{item.description}</span>
-                        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">BULK PLANT</Badge>
+                        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">BULK MATERIAL</Badge>
                         <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">

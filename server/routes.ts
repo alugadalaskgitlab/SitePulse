@@ -5025,9 +5025,10 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You cannot approve a record you raised." });
       }
 
-      // Stores verification is mandatory before approval.
+      // Stores verification is mandatory before approval (Material Indents bypass this step).
       const storesStatus = (existingIndent as any).storesStatus;
-      if (storesStatus !== "verified") {
+      const piType = (existingIndent as any).piType ?? "stores";
+      if (piType !== "material" && storesStatus !== "verified") {
         return res.status(400).json({
           message: "Stores verification must be completed before this indent can be approved.",
         });
@@ -5129,6 +5130,51 @@ export async function registerRoutes(
       if (err instanceof Error && err.message.startsWith("Cannot ")) return res.status(400).json({ message: err.message });
       console.error("Error bypassing stores:", err);
       res.status(500).json({ message: "Failed to request stores bypass" });
+    }
+  });
+
+  // ── Material Indent Routes ──────────────────────────────────────────────────
+
+  app.post("/api/purchase-indents/:id/place-order", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!assertCreate(req, res, "purchase_indents")) return;
+      const actionBy = currentUserName(req);
+      const { items } = req.body;
+      const indent = await storage.placeOrderIndent(id, items || [], actionBy);
+      if (!indent) return res.status(404).json({ message: "Indent not found" });
+      res.json(indent);
+    } catch (err) {
+      console.error("Error placing order:", err);
+      res.status(500).json({ message: "Failed to place order" });
+    }
+  });
+
+  app.post("/api/purchase-indents/:id/record-material-receipt", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!assertCreate(req, res, "purchase_indents")) return;
+      const actionBy = currentUserName(req);
+      const { items } = req.body;
+      if (!items?.length) return res.status(400).json({ message: "items array is required" });
+      const indent = await storage.recordMaterialIndentReceipt(id, items, actionBy);
+      if (!indent) return res.status(404).json({ message: "Indent not found" });
+      res.json(indent);
+    } catch (err) {
+      console.error("Error recording material indent receipt:", err);
+      res.status(500).json({ message: "Failed to record receipt" });
+    }
+  });
+
+  app.get("/api/purchase-indents/pending-for-material/:materialId", async (req, res) => {
+    try {
+      if (!assertAuthed(req, res)) return;
+      const materialId = Number(req.params.materialId);
+      const rows = await storage.getPendingIndentsForMaterial(materialId);
+      res.json(rows);
+    } catch (err) {
+      console.error("Error fetching pending indents for material:", err);
+      res.status(500).json({ message: "Failed to fetch pending indents" });
     }
   });
 

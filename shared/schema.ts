@@ -1362,6 +1362,9 @@ export const purchaseIndents = pgTable("purchase_indents", {
   storesStatus: text("stores_status"),
   storesVerifiedBy: text("stores_verified_by"),
   storesVerifiedAt: text("stores_verified_at"),
+  // Material Indent type: 'stores' (default) or 'material' — material bypasses stores verification
+  piType: text("pi_type").notNull().default("stores"),
+  orderedAt: text("ordered_at"),
 });
 
 export const purchaseIndentItems = pgTable("purchase_indent_items", {
@@ -1406,6 +1409,7 @@ export const purchaseIndentItems = pgTable("purchase_indent_items", {
   totalPurchasedQty: real("total_purchased_qty"), // running total across all purchaser_action transactions
   totalAcceptedQty: real("total_accepted_qty"),   // running total across all handover/receipt transactions
   totalRejectedQty: real("total_rejected_qty"),   // running total of rejected/damaged qty
+  linkedReceiptId: integer("linked_receipt_id"),   // links to material_receipts.id for Material Indent receipts
 });
 
 export const purchaseIndentItemHistory = pgTable("purchase_indent_item_history", {
