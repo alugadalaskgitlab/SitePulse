@@ -2643,6 +2643,8 @@ export function MaterialMaster() {
   const [category, setCategory] = useState("");
   const [defaultUom, setDefaultUom] = useState("Ton");
   const [procurementRoute, setProcurementRoute] = useState("stores");
+  const [bulkDensity, setBulkDensity] = useState("");
+  const [volumeUom, setVolumeUom] = useState("CFT");
   
   // Opening Stock dialog state
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
@@ -2676,7 +2678,7 @@ export function MaterialMaster() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; category?: string; defaultUom: string }) =>
+    mutationFn: (data: { name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string }) =>
       apiRequest("POST", "/api/plant-module/materials", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -2693,7 +2695,7 @@ export function MaterialMaster() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string }> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<{ name: string; category?: string; defaultUom: string; procurementRoute: string; bulkDensity?: number | null; conversionFromUom?: string }> }) =>
       apiRequest("PATCH", `/api/plant-module/materials/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/materials"] });
@@ -2769,6 +2771,8 @@ export function MaterialMaster() {
     setCategory("");
     setDefaultUom("Ton");
     setProcurementRoute("stores");
+    setBulkDensity("");
+    setVolumeUom("CFT");
   };
 
   const resetOpeningStockForm = () => {
@@ -2788,6 +2792,8 @@ export function MaterialMaster() {
     setCategory(material.category || "");
     setDefaultUom(material.defaultUom || "Ton");
     setProcurementRoute((material as any).procurementRoute || "stores");
+    setBulkDensity((material as any).bulkDensity != null ? String((material as any).bulkDensity) : "");
+    setVolumeUom((material as any).conversionFromUom || "CFT");
     setDialogOpen(true);
   };
 
@@ -2797,11 +2803,14 @@ export function MaterialMaster() {
   };
 
   const handleSubmit = () => {
+    const bd = parseFloat(bulkDensity);
     const data = { 
       name, 
       category, 
       defaultUom,
       procurementRoute,
+      bulkDensity: !isNaN(bd) && bd > 0 ? bd : null,
+      conversionFromUom: !isNaN(bd) && bd > 0 ? volumeUom : undefined,
     };
     if (editingMaterial) {
       updateMutation.mutate({ id: editingMaterial.id, data });
@@ -2931,6 +2940,59 @@ export function MaterialMaster() {
                   {procurementRoute === "bulk_plant" ? "Goes directly to Plant Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
                 </p>
               </div>
+
+              {/* Bulk Density for volume→weight conversion */}
+              <div className="rounded-md border border-dashed border-border p-3 space-y-3 bg-muted/30">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Volume → Weight Conversion (optional)</p>
+                <p className="text-xs text-muted-foreground">
+                  Fill this only if the material is sometimes received in volume units (CFT / Cum) but tracked in weight (MT / Ton).
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Volume UOM at Receipt</Label>
+                    <Select value={volumeUom} onValueChange={setVolumeUom}>
+                      <SelectTrigger data-testid="select-volume-uom" className="h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CFT">CFT (cubic feet)</SelectItem>
+                        <SelectItem value="Cum">CUM / m³</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Bulk Density (MT/m³)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.1"
+                      max="5"
+                      value={bulkDensity}
+                      onChange={e => setBulkDensity(e.target.value)}
+                      placeholder="e.g. 2.1"
+                      className="h-8 text-sm"
+                      data-testid="input-bulk-density"
+                    />
+                  </div>
+                </div>
+                {parseFloat(bulkDensity) > 0 && (
+                  <div className="text-xs rounded bg-background border px-3 py-2 space-y-0.5">
+                    <p className="font-medium text-foreground">Derived conversion factor:</p>
+                    {volumeUom === "CFT" ? (
+                      <>
+                        <p className="text-muted-foreground">1 CFT = {(parseFloat(bulkDensity) / 35.3147).toFixed(5)} Ton</p>
+                        <p className="text-muted-foreground">1530 CFT = {(1530 * parseFloat(bulkDensity) / 35.3147).toFixed(2)} Ton (example)</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-muted-foreground">1 m³ = {parseFloat(bulkDensity).toFixed(3)} Ton</p>
+                        <p className="text-muted-foreground">43.32 m³ = {(43.32 * parseFloat(bulkDensity)).toFixed(2)} Ton (example)</p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !name.trim()} data-testid="button-save-material">
                 {(createMutation.isPending || updateMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : editingMaterial ? "Update" : "Create"}
               </Button>
@@ -2953,9 +3015,16 @@ export function MaterialMaster() {
                 <div>
                   <p className="font-medium">{material.name}</p>
                   <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
-                  {(material as any).procurementRoute === "bulk_plant" && (
-                    <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK PLANT</span>
-                  )}
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {(material as any).procurementRoute === "bulk_plant" && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK PLANT</span>
+                    )}
+                    {(material as any).bulkDensity != null && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {(material as any).bulkDensity} MT/m³ · {(material as any).conversionFromUom || "CFT"}→Ton
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={() => openOpeningStockDialog(material)} data-testid={`button-add-stock-${material.id}`} title="Add Opening Stock">

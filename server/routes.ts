@@ -5148,6 +5148,7 @@ export async function registerRoutes(
           conversionFactor: plantMaterials.conversionFactor,
           conversionFromUom: plantMaterials.conversionFromUom,
           conversionToUom: plantMaterials.conversionToUom,
+          bulkDensity: plantMaterials.bulkDensity,
         })
         .from(stockBalances)
         .innerJoin(plantMaterials, eq(stockBalances.materialId, plantMaterials.id));

@@ -2378,8 +2378,29 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(plantMaterials).where(eq(plantMaterials.isActive, 1)).orderBy(asc(plantMaterials.name));
   }
 
+  async ensureBulkDensityColumn(): Promise<void> {
+    await db.execute(sql`ALTER TABLE plant_materials ADD COLUMN IF NOT EXISTS bulk_density REAL`);
+  }
+
+  private _deriveBulkDensityConversion(material: Partial<InsertPlantMaterial>): Partial<InsertPlantMaterial> {
+    const derived = { ...material };
+    if (derived.bulkDensity != null && derived.bulkDensity > 0) {
+      const fromUom = (derived.conversionFromUom || "CFT").toUpperCase().trim();
+      if (fromUom === "CFT") {
+        derived.conversionFactor = derived.bulkDensity / 35.3147;
+      } else {
+        // CUM / M3 / CUM
+        derived.conversionFactor = derived.bulkDensity;
+      }
+      derived.conversionFromUom = fromUom === "CFT" ? "CFT" : "Cum";
+      derived.conversionToUom = "Ton";
+    }
+    return derived;
+  }
+
   async createPlantMaterial(material: InsertPlantMaterial): Promise<PlantMaterial> {
-    const uppercased = { ...material, name: material.name.toUpperCase().trim() };
+    const raw = this._deriveBulkDensityConversion({ ...material, name: material.name.toUpperCase().trim() });
+    const uppercased = raw as InsertPlantMaterial;
     
     // Check for existing material with same name and category to prevent duplicates
     const [existing] = await db.select().from(plantMaterials)
@@ -2395,7 +2416,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePlantMaterial(id: number, material: Partial<InsertPlantMaterial>): Promise<PlantMaterial | undefined> {
-    const updates = { ...material };
+    const updates = this._deriveBulkDensityConversion({ ...material });
     if (updates.name) updates.name = updates.name.toUpperCase();
     const [result] = await db.update(plantMaterials).set(updates).where(eq(plantMaterials.id, id)).returning();
     return result;

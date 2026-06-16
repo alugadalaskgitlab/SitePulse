@@ -222,9 +222,10 @@ export const plantMaterials = pgTable("plant_materials", {
   category: text("category"), // Aggregate, Bitumen, Utility, etc.
   allowedUoms: text("allowed_uoms"), // JSON array: ["Ton", "Cum", "Liters", etc.]
   defaultUom: text("default_uom"),
-  conversionFactor: real("conversion_factor"), // For UOM conversion, e.g., 1 CFT = X tons
-  conversionFromUom: text("conversion_from_uom"), // Source UOM for conversion (e.g., "CFT")
-  conversionToUom: text("conversion_to_uom"), // Target UOM for conversion (e.g., "Ton")
+  conversionFactor: real("conversion_factor"), // Auto-derived from bulkDensity; do not set manually
+  conversionFromUom: text("conversion_from_uom"), // Volume UOM used at receipt (e.g., "CFT", "Cum")
+  conversionToUom: text("conversion_to_uom"), // Always "Ton" when bulkDensity is set
+  bulkDensity: real("bulk_density"), // MT/m³ (T/Cum); user-entered; drives conversionFactor
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
   procurementRoute: text("procurement_route").default("stores"), // 'stores' | 'bulk_plant'

@@ -68,6 +68,8 @@ app.use((req, res, next) => {
 
 (async () => {
   initPush();
+  // Run schema-additive migrations BEFORE routes/seed so new columns exist at seed time
+  try { await storage.ensureBulkDensityColumn(); } catch (e) { console.error("Pre-routes: Failed to ensure bulk_density column:", e); }
   await registerRoutes(httpServer, app);
 
   // ── Startup migration / backfill orchestration ───────────────────────────
