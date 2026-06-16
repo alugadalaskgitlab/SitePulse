@@ -9576,8 +9576,12 @@ export class DatabaseStorage implements IStorage {
   async linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined> {
     const [existingItem] = await db.select().from(purchaseIndentItems).where(eq(purchaseIndentItems.id, itemId)).limit(1);
     if (!existingItem) return undefined;
-    const [receipt] = await db.select({ quantity: materialReceipts.quantity }).from(materialReceipts).where(eq(materialReceipts.id, receiptId)).limit(1);
+    const [receipt] = await db.select({ quantity: materialReceipts.quantity, materialId: materialReceipts.materialId }).from(materialReceipts).where(eq(materialReceipts.id, receiptId)).limit(1);
     if (!receipt) return undefined;
+    // Integrity: verify the receipt's material matches the PI item's material
+    if (existingItem.materialId && receipt.materialId !== existingItem.materialId) {
+      throw new Error(`Receipt material (${receipt.materialId}) does not match PI item material (${existingItem.materialId}) — cannot link`);
+    }
     const newAccepted = (existingItem.totalAcceptedQty ?? 0) + receipt.quantity;
     const approved = existingItem.approvedQty ?? 0;
     const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";

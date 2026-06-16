@@ -277,8 +277,10 @@ export default function PlantMaterialReceipts() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) =>
-      apiRequest("POST", "/api/plant-module/material-receipts", data),
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/plant-module/material-receipts", data);
+      return res.json() as Promise<{ id: number; [key: string]: any }>;
+    },
     onSuccess: async (receipt: any) => {
       // If a pending Material Indent item was identified, close the PI loop
       if (selectedPendingPiItemId && receipt?.id) {
