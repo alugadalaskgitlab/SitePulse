@@ -641,7 +641,7 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
 
 export default function PurchaseIndents() {
   const { toast } = useToast();
-  const { sectionCan, isAdmin, canApprove } = useAuth();
+  const { sectionCan, isAdmin, canApprove, user: currentUser } = useAuth();
   const { rmcEnabled } = useFeatureFlags();
   const canCreate = sectionCan("site_procurement", "create");
   const canEdit = sectionCan("site_procurement", "edit") || isAdmin;
@@ -3805,7 +3805,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Material Indent: Place Order Card ── */}
-              {(selectedIndent as any).piType === "material" && selectedIndent.status === "approved" && canCreateProcurement && (
+              {(selectedIndent as any).piType === "material" && selectedIndent.status === "approved" && canCreate && (
                 <Card className="border-teal-200 dark:border-teal-800" data-testid="card-place-order">
                   <CardHeader className="py-3 px-4 bg-teal-50 dark:bg-teal-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-teal-800 dark:text-teal-200 flex items-center gap-2">
@@ -3909,7 +3909,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Material Indent: Record Material Receipt Card ── */}
-              {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" && canCreateProcurement && (
+              {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" && canCreate && (
                 <Card className="border-amber-200 dark:border-amber-800" data-testid="card-record-mat-receipt">
                   <CardHeader className="py-3 px-4 bg-amber-50 dark:bg-amber-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
