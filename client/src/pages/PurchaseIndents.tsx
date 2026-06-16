@@ -694,7 +694,7 @@ export default function PurchaseIndents() {
 
   // Dual-route: Purchaser Action dialog
   const [purchaserActionOpen, setPurchaserActionOpen] = useState(false);
-  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; expectedDeliveryDate: string; remarks: string };
+  type PurchaserActionItemData = { qty: string; vendor: string; rate: string; paymentMode: string; expectedDeliveryDate: string; remarks: string; shortfallReason: string };
   const [purchaserActionData, setPurchaserActionData] = useState<Record<number, PurchaserActionItemData>>({});
   // Dual-route: Handover dialog (Route A — Stores)
   const [handoverDialogItemId, setHandoverDialogItemId] = useState<number | null>(null);
@@ -3474,50 +3474,130 @@ export default function PurchaseIndents() {
                             .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
                             .map(item => {
                               const route = (item as any).procurementRoute as string;
-                              const pd = purchaserActionData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "" };
-                              const upd = (field: string, val: string) => setPurchaserActionData(prev => ({ ...prev, [item.id]: { ...pd, [field]: val } }));
+                              const approvedQty = item.approvedQty ?? item.qty;
+                              const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
+                              const purchaseQtyNum = parseFloat(pd.qty) || 0;
+                              const isShort = purchaseQtyNum < approvedQty;
+                              const updField = (field: string, val: string) => {
+                                const next: PurchaserActionItemData = { ...pd, [field]: val };
+                                if (field === "qty") {
+                                  const q = parseFloat(val) || 0;
+                                  if (q >= approvedQty) next.shortfallReason = "full";
+                                  else if (q === 0) next.shortfallReason = "not_available";
+                                  else if (next.shortfallReason === "full") next.shortfallReason = "partial";
+                                }
+                                if (field === "shortfallReason") {
+                                  if (val === "not_available") next.qty = "0";
+                                  if (val === "full") next.qty = String(approvedQty);
+                                }
+                                setPurchaserActionData(prev => ({ ...prev, [item.id]: next }));
+                              };
+                              const shortfallBadge = pd.shortfallReason === "full"
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : pd.shortfallReason === "not_available"
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : pd.shortfallReason === "ordered"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200";
+                              const shortfallLabel = pd.shortfallReason === "full" ? "Purchasing in Full"
+                                : pd.shortfallReason === "not_available" ? "Not Available"
+                                : pd.shortfallReason === "ordered" ? "Ordered"
+                                : "Partial";
                               return (
-                                <div key={item.id} className="border rounded-lg p-3 space-y-2 bg-white dark:bg-gray-950">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-semibold">{item.description}</span>
-                                    <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
-                                      {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
-                                    </Badge>
-                                    <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                                <div key={item.id} className="border rounded-lg overflow-hidden bg-white dark:bg-gray-950">
+                                  {/* Item header row */}
+                                  <div className="flex items-start justify-between px-4 py-3 bg-muted/40 border-b">
+                                    <div>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-semibold">{item.description}</span>
+                                        <Badge variant="outline" className={route === "bulk_plant" ? "text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300" : "text-blue-700 border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300"}>
+                                          {route === "bulk_plant" ? "BULK PLANT" : "STORES"}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                                        <span>PI Qty: <strong>{item.qty} {item.uom}</strong></span>
+                                        <span>Approved: <strong className="text-green-700 dark:text-green-400">{approvedQty} {item.uom}</strong></span>
+                                      </div>
+                                    </div>
+                                    <Badge variant="outline" className={`text-xs ${shortfallBadge}`}>{shortfallLabel}</Badge>
                                   </div>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                    <div>
-                                      <Label className="text-xs">QTY ORDERED</Label>
-                                      <Input type="number" value={pd.qty} onChange={e => upd("qty", e.target.value)} data-testid={`input-pa-qty-${item.id}`} />
+                                  {/* Form fields */}
+                                  <div className="p-3 space-y-3">
+                                    {/* Row 1: Qty + shortfall reason + expected date */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                      <div>
+                                        <Label className="text-xs">QTY PURCHASING <span className="text-red-500">*</span></Label>
+                                        <Input type="number" min={0} max={approvedQty} value={pd.qty}
+                                          onChange={e => updField("qty", e.target.value)}
+                                          data-testid={`input-pa-qty-${item.id}`} />
+                                        {isShort && purchaseQtyNum > 0 && (
+                                          <p className="text-[11px] text-amber-600 mt-0.5">Shortfall: {approvedQty - purchaseQtyNum} {item.uom}</p>
+                                        )}
+                                      </div>
+                                      {isShort && (
+                                        <div>
+                                          <Label className="text-xs">SHORTFALL REASON <span className="text-red-500">*</span></Label>
+                                          <Select value={pd.shortfallReason} onValueChange={v => updField("shortfallReason", v)}>
+                                            <SelectTrigger data-testid={`select-pa-reason-${item.id}`}><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="partial">Partially Available</SelectItem>
+                                              <SelectItem value="not_available">Not Available in Market</SelectItem>
+                                              <SelectItem value="ordered">Ordered — Awaiting Delivery</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      )}
+                                      {pd.shortfallReason === "ordered" && (
+                                        <div>
+                                          <Label className="text-xs">EXPECTED DELIVERY <span className="text-red-500">*</span></Label>
+                                          <Input type="date" value={pd.expectedDeliveryDate}
+                                            onChange={e => updField("expectedDeliveryDate", e.target.value)}
+                                            data-testid={`input-pa-delivery-${item.id}`} />
+                                        </div>
+                                      )}
                                     </div>
-                                    <div>
-                                      <Label className="text-xs">VENDOR / SUPPLIER</Label>
-                                      <Input value={pd.vendor} onChange={e => upd("vendor", e.target.value)} data-testid={`input-pa-vendor-${item.id}`} />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">RATE (₹/{item.uom})</Label>
-                                      <Input type="number" value={pd.rate} onChange={e => upd("rate", e.target.value)} data-testid={`input-pa-rate-${item.id}`} />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">PAYMENT MODE</Label>
-                                      <Select value={pd.paymentMode} onValueChange={v => upd("paymentMode", v)}>
-                                        <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="cash">Cash</SelectItem>
-                                          <SelectItem value="credit">Credit</SelectItem>
-                                          <SelectItem value="upi">UPI</SelectItem>
-                                          <SelectItem value="cheque">Cheque</SelectItem>
-                                          <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">EXPECTED DELIVERY</Label>
-                                      <Input type="date" value={pd.expectedDeliveryDate} onChange={e => upd("expectedDeliveryDate", e.target.value)} data-testid={`input-pa-delivery-${item.id}`} />
-                                    </div>
+                                    {/* Row 2: Vendor / Rate / Payment (hidden when not_available) */}
+                                    {pd.shortfallReason !== "not_available" && (
+                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        <div>
+                                          <Label className="text-xs">VENDOR / SUPPLIER</Label>
+                                          <Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)}
+                                            placeholder="Supplier name" data-testid={`input-pa-vendor-${item.id}`} />
+                                        </div>
+                                        <div>
+                                          <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                                          <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)}
+                                            data-testid={`input-pa-rate-${item.id}`} />
+                                          {pd.rate && purchaseQtyNum > 0 && (
+                                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                              Total: ₹{(parseFloat(pd.rate) * purchaseQtyNum).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <Label className="text-xs">PAYMENT MODE</Label>
+                                          <Select value={pd.paymentMode} onValueChange={v => updField("paymentMode", v)}>
+                                            <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="cash">Cash</SelectItem>
+                                              <SelectItem value="credit">Credit</SelectItem>
+                                              <SelectItem value="upi">UPI</SelectItem>
+                                              <SelectItem value="cheque">Cheque</SelectItem>
+                                              <SelectItem value="rtgs">RTGS / NEFT</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {pd.shortfallReason === "not_available" && (
+                                      <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">
+                                        Item not available in market — no purchase details required. This item will be marked as not procured.
+                                      </p>
+                                    )}
                                     <div>
                                       <Label className="text-xs">REMARKS</Label>
-                                      <Input value={pd.remarks} onChange={e => upd("remarks", e.target.value)} data-testid={`input-pa-remarks-${item.id}`} />
+                                      <Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)}
+                                        placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} />
                                     </div>
                                   </div>
                                 </div>
@@ -3532,7 +3612,7 @@ export default function PurchaseIndents() {
                               const items = selectedIndent.items
                                 .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
                                 .map(item => {
-                                  const pd = purchaserActionData[item.id] ?? { qty: (item.approvedQty ?? item.qty).toString(), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "" };
+                                  const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                                   return {
                                     itemId: item.id,
                                     qty: parseFloat(pd.qty) || (item.approvedQty ?? item.qty),
@@ -3540,6 +3620,7 @@ export default function PurchaseIndents() {
                                     rate: parseFloat(pd.rate) || null,
                                     paymentMode: pd.paymentMode,
                                     expectedDeliveryDate: pd.expectedDeliveryDate || null,
+                                    reasonCode: pd.shortfallReason !== "full" ? pd.shortfallReason : null,
                                     remarks: pd.remarks || null,
                                   };
                                 });
@@ -4037,6 +4118,12 @@ export default function PurchaseIndents() {
                     <Label className="text-xs">RECEIVED BY (STORES)</Label>
                     <Input value={handoverData.receivedBy} onChange={e => setHandoverData(prev => ({ ...prev, receivedBy: e.target.value }))} placeholder="Name of stores person accepting" data-testid="input-received-by" />
                   </div>
+                  {parseFloat(handoverData.rejectedQty) > 0 && (
+                    <div className="col-span-2">
+                      <Label className="text-xs">REJECTION REASON <span className="text-red-500">*</span></Label>
+                      <Input value={handoverData.storesRemarks} onChange={e => setHandoverData(prev => ({ ...prev, storesRemarks: e.target.value }))} placeholder="e.g. Damaged packaging, wrong spec" data-testid="input-rejection-reason" />
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <Label className="text-xs">REMARKS</Label>
                     <Input value={handoverData.remarks} onChange={e => setHandoverData(prev => ({ ...prev, remarks: e.target.value }))} data-testid="input-handover-remarks" />
@@ -4056,6 +4143,7 @@ export default function PurchaseIndents() {
                       rejectedQty: parseFloat(handoverData.rejectedQty) || 0,
                       handoverDate: handoverData.handoverDate,
                       receivedBy: handoverData.receivedBy || null,
+                      storesRemarks: handoverData.storesRemarks || null,
                       remarks: handoverData.remarks || null,
                     })}
                     data-testid="button-submit-handover"
