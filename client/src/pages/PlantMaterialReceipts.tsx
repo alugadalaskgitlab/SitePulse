@@ -241,13 +241,13 @@ export default function PlantMaterialReceipts() {
     })),
   });
 
-  // Auto-select indent when exactly one approved indent matches the material
+  // Auto-select indent when exactly one approved/ordered indent matches the material
   useEffect(() => {
     if (editingReceipt) return;          // don't clobber existing values in edit mode
     if (indentRef) return;               // already set — don't overwrite
-    const approved = allPurchaseIndents.filter(pi => pi.status === "approved");
-    if (approved.length === 1) {
-      setIndentRef(approved[0].indentNo);
+    const active = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
+    if (active.length === 1) {
+      setIndentRef(active[0].indentNo);
     }
   }, [allPurchaseIndents, editingReceipt]);
 
@@ -346,7 +346,8 @@ export default function PlantMaterialReceipts() {
       return;
     }
     const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
-    if (selectedPI && selectedPI.status !== "approved" && !indentOverride) {
+    const piIsLinkable = !selectedPI || selectedPI.status === "approved" || selectedPI.status === "ordered";
+    if (!piIsLinkable && !indentOverride) {
       toast({ title: "Indent not approved", description: "Tick the override checkbox to proceed.", variant: "destructive" });
       return;
     }
@@ -879,10 +880,10 @@ export default function PlantMaterialReceipts() {
 
               {/* Indent Ref — searchable combobox + status card */}
               {(() => {
-                const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved");
+                const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
                 const noPiForMaterial = !!materialId && approvedPIs.length === 0;
                 const selectedPI = indentRef ? allPurchaseIndents.find(pi => pi.indentNo === indentRef) : null;
-                const isNotApproved = selectedPI && selectedPI.status !== "approved";
+                const isNotApproved = selectedPI && selectedPI.status !== "approved" && selectedPI.status !== "ordered";
                 const filteredPIs = approvedPIs.filter(pi =>
                   !indentComboSearch || pi.indentNo.toLowerCase().includes(indentComboSearch.toLowerCase())
                 );

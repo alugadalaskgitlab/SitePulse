@@ -9026,7 +9026,7 @@ export class DatabaseStorage implements IStorage {
             estRate: item.estRate ?? null,
             estAmount: item.estAmount ?? null,
             requiredBy: item.requiredBy || null,
-            procurementRoute: (item as any).procurementRoute || null,
+            procurementRoute: piType === "material" ? "bulk_plant" : ((item as any).procurementRoute || null),
           }))
         ).returning();
       }
@@ -9431,19 +9431,37 @@ export class DatabaseStorage implements IStorage {
   async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
+    // Security: verify all provided itemIds belong to this indent
+    const validItemIds = new Set(existing.items.map(i => i.id));
+    for (const item of items) {
+      if (!validItemIds.has(item.itemId)) {
+        throw new Error(`Item ${item.itemId} does not belong to indent ${id}`);
+      }
+    }
     const orderedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
     await db.transaction(async (tx) => {
       await tx.update(purchaseIndents)
         .set({ status: "ordered", orderedAt })
         .where(and(eq(purchaseIndents.id, id), eq(purchaseIndents.status, "approved")));
-      for (const item of items) {
-        if (!item.vendor && !item.expectedDelivery) continue;
+      for (const indentItem of existing.items) {
+        const approvedQty = indentItem.approvedQty ?? indentItem.qty;
+        if (approvedQty <= 0) continue;
+        const itemInput = items.find(i => i.itemId === indentItem.id);
         await tx.update(purchaseIndentItems)
           .set({
-            ...(item.vendor ? { vendor: item.vendor.toUpperCase() } : {}),
-            ...(item.expectedDelivery ? { expectedDelivery: item.expectedDelivery } : {}),
+            orderedQty: approvedQty,
+            ...(itemInput?.vendor ? { vendor: itemInput.vendor.toUpperCase() } : {}),
+            ...(itemInput?.expectedDelivery ? { expectedDelivery: itemInput.expectedDelivery } : {}),
           })
-          .where(eq(purchaseIndentItems.id, item.itemId));
+          .where(eq(purchaseIndentItems.id, indentItem.id));
+        await tx.insert(piItemTransactions).values({
+          indentId: id,
+          indentItemId: indentItem.id,
+          transactionType: "purchaser_action",
+          qty: approvedQty,
+          vendor: itemInput?.vendor?.toUpperCase() ?? null,
+          createdBy: actionBy.toUpperCase(),
+        });
       }
     });
     return this.getPurchaseIndent(id);
@@ -9456,6 +9474,13 @@ export class DatabaseStorage implements IStorage {
   ): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(indentId);
     if (!existing) return undefined;
+    // Security: verify all provided itemIds belong to this indent
+    const validItemIds = new Set(existing.items.map(i => i.id));
+    for (const item of items) {
+      if (!validItemIds.has(item.itemId)) {
+        throw new Error(`Item ${item.itemId} does not belong to indent ${indentId}`);
+      }
+    }
     await db.transaction(async (tx) => {
       for (const item of items) {
         const [mat] = await tx.select({ category: plantMaterials.category, name: plantMaterials.name })
@@ -9540,6 +9565,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(purchaseIndentItems.materialId, materialId),
+          eq(purchaseIndents.piType, "material"),
           inArray(purchaseIndents.status, ["approved", "ordered"]),
           sql`${purchaseIndentItems.linkedReceiptId} IS NULL`,
         )

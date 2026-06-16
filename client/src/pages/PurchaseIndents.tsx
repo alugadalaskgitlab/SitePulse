@@ -3864,7 +3864,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Material Indent: Record Material Receipt Card ── */}
-              {(selectedIndent as any).piType === "material" && ["approved", "ordered"].includes(selectedIndent.status) && canCreateProcurement && (
+              {(selectedIndent as any).piType === "material" && selectedIndent.status === "ordered" && canCreateProcurement && (
                 <Card className="border-amber-200 dark:border-amber-800" data-testid="card-record-mat-receipt">
                   <CardHeader className="py-3 px-4 bg-amber-50 dark:bg-amber-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
