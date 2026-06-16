@@ -3916,129 +3916,31 @@ export default function PurchaseIndents() {
                       <Package className="w-4 h-4" />
                       RECORD MATERIAL RECEIPT
                     </CardTitle>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Record material received at plant. This creates a receipt entry in Plant module and updates stock.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Record material received at plant via the Plant Material Receipts form. The PI indent reference will be pre-filled and stock updated automatically.</p>
                   </CardHeader>
-                  <CardContent className="py-3 px-4 space-y-3">
+                  <CardContent className="py-3 px-4 space-y-2">
                     {selectedIndent.items
-                      .filter(item => {
-                        const aQty = item.approvedQty ?? 0;
-                        const accepted = item.totalAcceptedQty ?? 0;
-                        return aQty > 0 && accepted < aQty;
-                      })
+                      .filter(item => (item.approvedQty ?? 0) > 0 && (item.totalAcceptedQty ?? 0) < (item.approvedQty ?? 0))
                       .map(item => {
-                        const isExpanded = matReceiptExpanded.has(item.id);
-                        const rf = matReceiptForms[item.id] ?? { qty: String((item.approvedQty ?? item.qty) - (item.totalAcceptedQty ?? 0)), vendor: (item as any).vendor ?? "", rate: "", receiptDate: format(new Date(), "yyyy-MM-dd"), notes: "" };
                         const remaining = (item.approvedQty ?? item.qty) - (item.totalAcceptedQty ?? 0);
                         return (
-                          <div key={item.id} className="border rounded-lg overflow-hidden" data-testid={`card-mat-receipt-${item.id}`}>
-                            <button
-                              type="button"
-                              className="w-full flex items-center justify-between p-3 bg-amber-50/50 dark:bg-amber-900/10 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors text-left"
-                              onClick={() => setMatReceiptExpanded(prev => {
-                                const next = new Set(prev);
-                                if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
-                                return next;
-                              })}
-                              data-testid={`button-toggle-mat-receipt-${item.id}`}
+                          <div key={item.id} className="flex items-center justify-between gap-3 border rounded-lg p-3 bg-amber-50/40 dark:bg-amber-900/10" data-testid={`card-mat-receipt-${item.id}`}>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold truncate">{item.description}</p>
+                              <p className="text-xs text-muted-foreground">Remaining: <strong className="text-amber-700 dark:text-amber-400">{remaining} {item.uom}</strong></p>
+                              {!item.materialId && <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">⚠ No linked plant material — link first to enable receipt</p>}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0 border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                              disabled={!item.materialId}
+                              onClick={() => navigate(`/plant/material-receipts?autoOpen=1&piRef=${encodeURIComponent(selectedIndent.indentNo)}&piItemId=${item.id}&materialId=${item.materialId}`)}
+                              data-testid={`button-record-mat-receipt-${item.id}`}
                             >
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold">{item.description}</span>
-                                {item.materialId && <span className="text-xs text-teal-600 dark:text-teal-400">• linked material</span>}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                <span>Remaining: <strong className="text-amber-700 dark:text-amber-400">{remaining} {item.uom}</strong></span>
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              </div>
-                            </button>
-                            {isExpanded && (
-                              <div className="p-3 space-y-2 border-t border-amber-100 dark:border-amber-900/30">
-                                {!item.materialId && (
-                                  <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
-                                    ⚠ This item has no linked Plant material. Link a material in the item details to enable receipt recording.
-                                  </p>
-                                )}
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                  <div>
-                                    <Label className="text-xs">QTY RECEIVED <span className="text-red-500">*</span></Label>
-                                    <Input
-                                      type="number"
-                                      value={rf.qty}
-                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, qty: e.target.value } }))}
-                                      className="text-xs h-8"
-                                      data-testid={`input-mat-receipt-qty-${item.id}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">RECEIPT DATE</Label>
-                                    <Input
-                                      type="date"
-                                      value={rf.receiptDate}
-                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, receiptDate: e.target.value } }))}
-                                      className="text-xs h-8"
-                                      data-testid={`input-mat-receipt-date-${item.id}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">VENDOR</Label>
-                                    <Input
-                                      value={rf.vendor}
-                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, vendor: e.target.value } }))}
-                                      onBlur={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, vendor: e.target.value.toUpperCase() } }))}
-                                      placeholder="SUPPLIER"
-                                      className="uppercase text-xs h-8"
-                                      data-testid={`input-mat-receipt-vendor-${item.id}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">RATE (₹/{item.uom})</Label>
-                                    <Input
-                                      type="number"
-                                      value={rf.rate}
-                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, rate: e.target.value } }))}
-                                      placeholder="0.00"
-                                      className="text-xs h-8"
-                                      data-testid={`input-mat-receipt-rate-${item.id}`}
-                                    />
-                                  </div>
-                                  <div className="col-span-2">
-                                    <Label className="text-xs">NOTES (OPTIONAL)</Label>
-                                    <Input
-                                      value={rf.notes}
-                                      onChange={e => setMatReceiptForms(prev => ({ ...prev, [item.id]: { ...rf, notes: e.target.value } }))}
-                                      placeholder="Any notes..."
-                                      className="text-xs h-8"
-                                      data-testid={`input-mat-receipt-notes-${item.id}`}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex justify-end pt-1">
-                                  <Button
-                                    size="sm"
-                                    className="bg-amber-600 hover:bg-amber-700 text-white"
-                                    disabled={recordMatReceiptMutation.isPending || !item.materialId || !rf.qty || parseFloat(rf.qty) <= 0}
-                                    onClick={() => {
-                                      if (!item.materialId) return;
-                                      recordMatReceiptMutation.mutate({
-                                        items: [{
-                                          itemId: item.id,
-                                          materialId: item.materialId,
-                                          qty: parseFloat(rf.qty),
-                                          uom: item.uom,
-                                          vendor: rf.vendor || undefined,
-                                          rate: rf.rate ? parseFloat(rf.rate) : undefined,
-                                          receiptDate: rf.receiptDate,
-                                          notes: rf.notes || undefined,
-                                        }],
-                                      });
-                                    }}
-                                    data-testid={`button-record-mat-receipt-${item.id}`}
-                                  >
-                                    {recordMatReceiptMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Package className="w-4 h-4 mr-1" />}
-                                    RECORD RECEIPT
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
+                              <Package className="w-3.5 h-3.5 mr-1" />
+                              Record Receipt →
+                            </Button>
                           </div>
                         );
                       })}

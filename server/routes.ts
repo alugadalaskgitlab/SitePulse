@@ -5180,7 +5180,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indents/items/:itemId/link-receipt", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "site_procurement")) return;
+      if (!assertAuthed(req, res)) return;
       const itemId = Number(req.params.itemId);
       const { receiptId } = req.body;
       if (!receiptId) return res.status(400).json({ message: "receiptId is required" });

@@ -8991,6 +8991,26 @@ export class DatabaseStorage implements IStorage {
         : item
     );
 
+    // Infer procurementRoute for items where it's null but materialId is set (legacy/historical)
+    const nullRouteMaterialIds = Array.from(new Set(
+      finalItems.filter((i: any) => !i.procurementRoute && i.materialId).map((i: any) => i.materialId as number)
+    ));
+    let materialRouteMap = new Map<number, string | null>();
+    if (nullRouteMaterialIds.length > 0) {
+      const matRows = await db
+        .select({ id: plantMaterials.id, procurementRoute: plantMaterials.procurementRoute })
+        .from(plantMaterials)
+        .where(inArray(plantMaterials.id, nullRouteMaterialIds));
+      for (const m of matRows) {
+        materialRouteMap.set(m.id, m.procurementRoute ?? null);
+      }
+    }
+    const resolvedItems = finalItems.map((item: any) =>
+      !item.procurementRoute && item.materialId && materialRouteMap.has(item.materialId)
+        ? { ...item, procurementRoute: materialRouteMap.get(item.materialId) ?? null }
+        : item
+    );
+
     let unlockedByName: string | null = null;
     if ((indent as any).unlockedByUserId) {
       const [unlocker] = await db.select({ fullName: users.fullName })
@@ -8999,7 +9019,7 @@ export class DatabaseStorage implements IStorage {
       unlockedByName = unlocker?.fullName ?? null;
     }
 
-    return { ...indent, items: finalItems, unlockedByName } as PurchaseIndentWithItems | undefined;
+    return { ...indent, items: resolvedItems, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
   private async generateIndentNo(tx: any): Promise<string> {

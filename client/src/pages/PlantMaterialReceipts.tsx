@@ -53,9 +53,19 @@ export default function PlantMaterialReceipts() {
     const v = params.get("edit");
     return v ? parseInt(v, 10) : null;
   }, [searchString]);
+  const autoOpenParams = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    if (!params.get("autoOpen")) return null;
+    return {
+      piRef: params.get("piRef") ?? "",
+      piItemId: params.get("piItemId") ? parseInt(params.get("piItemId")!, 10) : null,
+      materialId: params.get("materialId") ?? "",
+    };
+  }, [searchString]);
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
   const [localHighlightId, setLocalHighlightId] = useState<number | null>(null);
   const [autoEditDone, setAutoEditDone] = useState(false);
+  const [autoOpenDone, setAutoOpenDone] = useState(false);
   useEffect(() => {
     if (highlightId != null) {
       setLocalHighlightId(highlightId);
@@ -194,6 +204,23 @@ export default function PlantMaterialReceipts() {
     }
   }, [editId, receipts, autoEditDone]);
 
+  // Auto-open "new receipt" dialog from ?autoOpen=1&piRef=...&piItemId=...&materialId=...
+  useEffect(() => {
+    if (autoOpenParams && !autoOpenDone && !editingReceipt) {
+      setAutoOpenDone(true);
+      if (autoOpenParams.materialId) setMaterialId(autoOpenParams.materialId);
+      if (autoOpenParams.piRef) setIndentRef(autoOpenParams.piRef);
+      if (autoOpenParams.piItemId) setSelectedPendingPiItemId(autoOpenParams.piItemId);
+      setDialogOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("autoOpen");
+      url.searchParams.delete("piRef");
+      url.searchParams.delete("piItemId");
+      url.searchParams.delete("materialId");
+      history.replaceState(null, "", url.toString());
+    }
+  }, [autoOpenParams, autoOpenDone, editingReceipt]);
+
   // When the page was opened via a deep-link ?edit= (e.g. from the stock ledger),
   // navigate back to the origin page once the user closes the dialog.
   useEffect(() => {
@@ -289,6 +316,7 @@ export default function PlantMaterialReceipts() {
           queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
         } catch (e) {
           console.error("Failed to link receipt to Material Indent item:", e);
+          toast({ title: "Receipt saved — PI link failed", description: "Receipt was recorded but could not be linked to the Purchase Indent automatically. Open the PI and use Record Receipt to link it manually.", variant: "destructive" });
         }
       }
       await clearDraft();
