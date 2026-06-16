@@ -9431,6 +9431,12 @@ export class DatabaseStorage implements IStorage {
   async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
+    if ((existing as any).piType !== "material") {
+      throw new Error(`Indent ${id} is not a Material Indent — place-order is only valid for material type`);
+    }
+    if (existing.status !== "approved") {
+      throw new Error(`Indent ${id} must be in approved status to place order (current: ${existing.status})`);
+    }
     // Security: verify all provided itemIds belong to this indent
     const validItemIds = new Set(existing.items.map(i => i.id));
     for (const item of items) {
@@ -9440,9 +9446,13 @@ export class DatabaseStorage implements IStorage {
     }
     const orderedAt = format(new Date(), "yyyy-MM-dd HH:mm:ss");
     await db.transaction(async (tx) => {
-      await tx.update(purchaseIndents)
+      const [headerUpdated] = await tx.update(purchaseIndents)
         .set({ status: "ordered", orderedAt })
-        .where(and(eq(purchaseIndents.id, id), eq(purchaseIndents.status, "approved")));
+        .where(and(eq(purchaseIndents.id, id), eq(purchaseIndents.status, "approved")))
+        .returning({ id: purchaseIndents.id });
+      if (!headerUpdated) {
+        throw new Error(`Indent ${id} status transition to ordered failed — concurrent update detected`);
+      }
       for (const indentItem of existing.items) {
         const approvedQty = indentItem.approvedQty ?? indentItem.qty;
         if (approvedQty <= 0) continue;
@@ -9481,71 +9491,48 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Item ${item.itemId} does not belong to indent ${indentId}`);
       }
     }
-    await db.transaction(async (tx) => {
-      for (const item of items) {
-        const [mat] = await tx.select({ category: plantMaterials.category, name: plantMaterials.name })
-          .from(plantMaterials).where(eq(plantMaterials.id, item.materialId)).limit(1);
-        const catCode = this.getMaterialCategoryCode(mat?.category, mat?.name);
-        const receiptNo = await this.generateMaterialReceiptNumber(catCode);
-        const targetPartyId = item.isPlantCommon ? null : (item.partyId ?? null);
-        const [receipt] = await tx.insert(materialReceipts).values({
-          receiptNo,
-          date: item.receiptDate ?? format(new Date(), "yyyy-MM-dd"),
-          materialId: item.materialId,
-          quantity: item.qty,
-          uom: item.uom.toUpperCase(),
-          supplier: item.vendor?.toUpperCase() ?? null,
-          partyId: targetPartyId,
-          isPlantCommon: item.isPlantCommon ? 1 : 0,
-          notes: item.notes ?? null,
-          indentRef: existing.indentNo,
-          plantName: "Main Plant",
-        }).returning();
-        const [existingItem] = await tx.select({
-          totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
-          approvedQty: purchaseIndentItems.approvedQty,
-        }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
-        const newAccepted = (existingItem?.totalAcceptedQty ?? 0) + item.qty;
-        const approved = existingItem?.approvedQty ?? 0;
-        const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
-        await tx.update(purchaseIndentItems)
-          .set({
-            linkedReceiptId: receipt.id,
-            totalAcceptedQty: newAccepted,
-            purchaseStatus,
-            vendor: item.vendor?.toUpperCase() ?? null,
-          })
-          .where(eq(purchaseIndentItems.id, item.itemId));
-        const condition = targetPartyId === null
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, item.materialId))
-          : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, item.materialId));
-        const [existingBal] = await tx.select().from(stockBalances).where(condition).limit(1);
-        if (existingBal) {
-          await tx.update(stockBalances)
-            .set({ balance: existingBal.balance + item.qty, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existingBal.id));
-        } else {
-          await tx.insert(stockBalances).values({
-            partyId: targetPartyId,
-            materialId: item.materialId,
-            balance: item.qty,
-            uom: item.uom.toUpperCase(),
-            lastUpdated: new Date(),
-          });
-        }
-        await tx.insert(piItemTransactions).values({
-          indentId,
-          indentItemId: item.itemId,
-          transactionType: "bulk_receipt",
-          qty: item.qty,
+    for (const item of items) {
+      // Delegate to canonical receipt path — handles UOM conversion, stock_ledger write, and LDO flow
+      const receipt = await this.createMaterialReceipt({
+        date: item.receiptDate ?? format(new Date(), "yyyy-MM-dd"),
+        materialId: item.materialId,
+        quantity: item.qty,
+        uom: item.uom,
+        supplier: item.vendor ?? null,
+        partyId: item.partyId ?? null,
+        isPlantCommon: item.isPlantCommon ? 1 : 0,
+        notes: item.notes ?? null,
+        indentRef: existing.indentNo,
+        plantName: "Main Plant",
+      } as any);
+      // Link PI item to the created receipt and update running totals
+      const [existingItem] = await db.select({
+        totalAcceptedQty: purchaseIndentItems.totalAcceptedQty,
+        approvedQty: purchaseIndentItems.approvedQty,
+      }).from(purchaseIndentItems).where(eq(purchaseIndentItems.id, item.itemId)).limit(1);
+      const newAccepted = (existingItem?.totalAcceptedQty ?? 0) + item.qty;
+      const approved = existingItem?.approvedQty ?? 0;
+      const purchaseStatus = newAccepted >= approved ? "PURCHASED" : "PARTIAL";
+      await db.update(purchaseIndentItems)
+        .set({
+          linkedReceiptId: receipt.id,
+          totalAcceptedQty: newAccepted,
+          purchaseStatus,
           vendor: item.vendor?.toUpperCase() ?? null,
-          rate: item.rate ?? null,
-          amount: item.rate != null ? item.rate * item.qty : null,
-          remarks: item.notes ?? null,
-          createdBy: actionBy.toUpperCase(),
-        });
-      }
-    });
+        })
+        .where(eq(purchaseIndentItems.id, item.itemId));
+      await db.insert(piItemTransactions).values({
+        indentId,
+        indentItemId: item.itemId,
+        transactionType: "bulk_receipt",
+        qty: item.qty,
+        vendor: item.vendor?.toUpperCase() ?? null,
+        rate: item.rate ?? null,
+        amount: item.rate != null ? item.rate * item.qty : null,
+        remarks: item.notes ?? null,
+        createdBy: actionBy.toUpperCase(),
+      });
+    }
     await this.checkAndCompleteIndent(indentId);
     return this.getPurchaseIndent(indentId);
   }
@@ -9581,10 +9568,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async checkAndCompleteIndent(indentId: number): Promise<void> {
+    const [indent] = await db.select({ piType: purchaseIndents.piType })
+      .from(purchaseIndents).where(eq(purchaseIndents.id, indentId)).limit(1);
     const allItems = await db.select().from(purchaseIndentItems)
       .where(eq(purchaseIndentItems.indentId, indentId));
 
-    const terminalStatuses = ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
+    // Material Indents require full receipt before completion — PARTIAL is not terminal
+    const isMaterialIndent = indent?.piType === "material";
+    const terminalStatuses = isMaterialIndent
+      ? ["PURCHASED", "NOT_PURCHASED", "CANCELLED"]
+      : ["PURCHASED", "PARTIAL", "NOT_PURCHASED", "CANCELLED"];
     const allTerminal = allItems.every(item =>
       // Manager-rejected items (approvedQty === 0) are treated as terminal — no procurement needed
       (item.approvedQty != null && item.approvedQty <= 0) ||
