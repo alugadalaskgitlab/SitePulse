@@ -102,6 +102,8 @@ export default function PlantMaterialReceipts() {
   const [indentComboOpen, setIndentComboOpen] = useState(false);
   const indentComboRef = useRef<HTMLDivElement>(null);
   const [indentOverride, setIndentOverride] = useState(false);
+  // tracks the PI item id from a pending Material Indent so we can close the loop after receipt creation
+  const [selectedPendingPiItemId, setSelectedPendingPiItemId] = useState<number | null>(null);
 
   interface ReceiptFormData {
     date: string;
@@ -256,8 +258,10 @@ export default function PlantMaterialReceipts() {
     // Priority 1: pending Material Indent items matched by materialId
     if (pendingMaterialIndents.length === 1) {
       setIndentRef(pendingMaterialIndents[0].indentNo);
+      setSelectedPendingPiItemId(pendingMaterialIndents[0].itemId);
       return;
     }
+    setSelectedPendingPiItemId(null);
     // Priority 2: name-based approved/ordered indents
     const active = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
     if (active.length === 1) {
@@ -275,7 +279,16 @@ export default function PlantMaterialReceipts() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest("POST", "/api/plant-module/material-receipts", data),
-    onSuccess: async () => {
+    onSuccess: async (receipt: any) => {
+      // If a pending Material Indent item was identified, close the PI loop
+      if (selectedPendingPiItemId && receipt?.id) {
+        try {
+          await apiRequest("PATCH", `/api/purchase-indents/items/${selectedPendingPiItemId}/link-receipt`, { receiptId: receipt.id });
+          queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
+        } catch (e) {
+          console.error("Failed to link receipt to Material Indent item:", e);
+        }
+      }
       await clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
@@ -329,6 +342,7 @@ export default function PlantMaterialReceipts() {
     setIndentRef("");
     setIndentComboSearch("");
     setIndentOverride(false);
+    setSelectedPendingPiItemId(null);
   };
 
   const openEditDialog = (receipt: MaterialReceipt) => {

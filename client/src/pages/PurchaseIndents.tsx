@@ -377,10 +377,11 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
 }
 
 function StatusSteps({ status, storesStatus, piType }: { status: string; storesStatus?: string | null; piType?: string }) {
-  // Material Indent: simplified RAISED → APPROVED → ORDERED → COMPLETED
+  // Material Indent: RAISED → STOCK INFO (N/A) → APPROVED → ORDERED → COMPLETED
   if (piType === "material") {
     const matSteps = [
       { key: "raised", label: "RAISED" },
+      { key: "stock_info", label: "STOCK INFO" },
       { key: "approved", label: "APPROVED" },
       { key: "ordered", label: "ORDERED" },
       { key: "completed", label: "COMPLETED" },
@@ -388,13 +389,13 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
     const getMatState = (stepKey: string) => {
       if (status === "rejected") return stepKey === "raised" ? "done" : "pending";
       if (status === "pending" || status === "stores_check") {
-        return stepKey === "raised" ? "done" : stepKey === "approved" ? "active" : "pending";
+        return stepKey === "raised" ? "done" : stepKey === "stock_info" ? "bypassed" : stepKey === "approved" ? "active" : "pending";
       }
       if (status === "approved") {
-        return (stepKey === "raised" || stepKey === "approved") ? "done" : stepKey === "ordered" ? "active" : "pending";
+        return (stepKey === "raised" || stepKey === "stock_info" || stepKey === "approved") ? "done" : stepKey === "ordered" ? "active" : "pending";
       }
       if (status === "ordered") {
-        return (stepKey === "raised" || stepKey === "approved") ? "done" : stepKey === "ordered" ? "active" : "pending";
+        return (stepKey === "raised" || stepKey === "stock_info" || stepKey === "approved" || stepKey === "ordered") ? "done" : "pending";
       }
       if (status === "completed") return "done";
       return "pending";
@@ -409,10 +410,11 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
               <span className={`text-xs font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
                 state === "done" ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" :
                 state === "active" ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" :
+                state === "bypassed" ? "border-slate-300 bg-slate-50 text-slate-400 dark:bg-slate-800/30 dark:text-slate-500 dark:border-slate-700 line-through" :
                 "border-muted text-muted-foreground"
               }`}>
                 {state === "done" && <Check className="w-3 h-3 inline mr-1" />}
-                {step.label}
+                {step.label}{state === "bypassed" ? " (N/A)" : ""}
               </span>
             </div>
           );
@@ -1392,8 +1394,8 @@ export default function PurchaseIndents() {
       return {
         indentItemId: i.id,
         description: i.description,
-        qty: (handoverTx?.payload?.acceptedQty ?? (i as any).qtyPurchased ?? i.approvedQty ?? i.qty).toString(),
-        rate: (purchaserTx?.payload?.rate ?? i.rate)?.toString() || "",
+        qty: (handoverTx?.acceptedQty ?? (i as any).qtyPurchased ?? i.approvedQty ?? i.qty).toString(),
+        rate: (purchaserTx?.rate ?? i.rate)?.toString() || "",
         uom: i.uom,
         storeItemId: "",
         itemSearch: "",
@@ -2530,8 +2532,10 @@ export default function PurchaseIndents() {
                               </Link>
                             ) : null}
                           </div>
-                          {(indent as any).piType === "material" && (
+                          {(indent as any).piType === "material" ? (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700" data-testid={`badge-pi-type-${indent.id}`}>MAT. INDENT</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700" data-testid={`badge-pi-type-${indent.id}`}>STORE</Badge>
                           )}
                           {getStatusBadge(indent.status, (indent as any).storesStatus)}
                         </div>
@@ -3782,9 +3786,9 @@ export default function PurchaseIndents() {
                                 {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
                               </Badge>
                               <span className="font-medium flex-1 min-w-0 truncate">{relItem.description}</span>
-                              <span className="text-muted-foreground">{tx.payload?.qty} {relItem.uom}</span>
-                              <span className="text-muted-foreground">@₹{tx.payload?.rate ?? "—"}</span>
-                              <span className="font-medium">{tx.payload?.vendor || "—"}</span>
+                              <span className="text-muted-foreground">{tx.qty} {relItem.uom}</span>
+                              <span className="text-muted-foreground">@₹{tx.rate ?? "—"}</span>
+                              <span className="font-medium">{tx.vendor || "—"}</span>
                             </div>
                           );
                         })}
@@ -4371,7 +4375,7 @@ export default function PurchaseIndents() {
                                   className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
                                   onClick={() => {
                                     const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
-                                    setHandoverData({ handoverQty: paTx?.payload?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
+                                    setHandoverData({ handoverQty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), acceptedQty: "", rejectedQty: "0", handoverDate: format(new Date(), "yyyy-MM-dd"), receivedBy: "", storesRemarks: "", remarks: "" });
                                     setHandoverDialogItemId(item.id);
                                   }}
                                   data-testid={`button-handover-${item.id}`}
@@ -4386,7 +4390,7 @@ export default function PurchaseIndents() {
                                   className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold"
                                   onClick={() => {
                                     const paTx = piTxns.filter((t: any) => t.indentItemId === item.id && t.transactionType === "purchaser_action").slice(-1)[0] as any;
-                                    setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.payload?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.payload?.vendor || "", rate: paTx?.payload?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
+                                    setBulkReceiptData(prev => ({ ...prev, [item.id]: { qty: paTx?.qty?.toString() || (item.approvedQty ?? item.qty).toString(), uom: item.uom, vendor: paTx?.vendor || "", rate: paTx?.rate?.toString() || "", receiptDate: format(new Date(), "yyyy-MM-dd"), remarks: "", partyId: "" } }));
                                     setBulkReceiptOpen(true);
                                   }}
                                   data-testid={`button-bulk-receipt-${item.id}`}
