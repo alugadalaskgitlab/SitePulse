@@ -8973,6 +8973,24 @@ export class DatabaseStorage implements IStorage {
       return { ...item, liveStockQty: null, liveStoreItemName: null };
     });
 
+    // Enrich Material Indent items: resolve linkedReceiptNo from materialReceipts
+    const linkedIds = enrichedItems.map((i: any) => i.linkedReceiptId).filter(Boolean) as number[];
+    let linkedReceiptNoMap = new Map<number, string>();
+    if (linkedIds.length > 0) {
+      const linkedReceipts = await db
+        .select({ id: materialReceipts.id, receiptNo: materialReceipts.receiptNo, challanNumber: materialReceipts.challanNumber })
+        .from(materialReceipts)
+        .where(inArray(materialReceipts.id, linkedIds));
+      for (const r of linkedReceipts) {
+        linkedReceiptNoMap.set(r.id, r.receiptNo ?? r.challanNumber ?? `#${r.id}`);
+      }
+    }
+    const finalItems = enrichedItems.map((item: any) =>
+      item.linkedReceiptId
+        ? { ...item, linkedReceiptNo: linkedReceiptNoMap.get(item.linkedReceiptId) ?? null }
+        : item
+    );
+
     let unlockedByName: string | null = null;
     if ((indent as any).unlockedByUserId) {
       const [unlocker] = await db.select({ fullName: users.fullName })
@@ -8981,7 +8999,7 @@ export class DatabaseStorage implements IStorage {
       unlockedByName = unlocker?.fullName ?? null;
     }
 
-    return { ...indent, items: enrichedItems, unlockedByName } as PurchaseIndentWithItems | undefined;
+    return { ...indent, items: finalItems, unlockedByName } as PurchaseIndentWithItems | undefined;
   }
 
   private async generateIndentNo(tx: any): Promise<string> {

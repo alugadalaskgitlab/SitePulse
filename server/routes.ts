@@ -5138,7 +5138,7 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/place-order", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertCreate(req, res, "purchase_indents")) return;
+      if (!assertCreate(req, res, "site_procurement")) return;
       const actionBy = currentUserName(req);
       const { items } = req.body;
       const indent = await storage.placeOrderIndent(id, items || [], actionBy);
@@ -5153,7 +5153,7 @@ export async function registerRoutes(
   app.post("/api/purchase-indents/:id/record-material-receipt", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!assertCreate(req, res, "purchase_indents")) return;
+      if (!assertCreate(req, res, "site_procurement")) return;
       const actionBy = currentUserName(req);
       const { items } = req.body;
       if (!items?.length) return res.status(400).json({ message: "items array is required" });
@@ -5180,7 +5180,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-indents/items/:itemId/link-receipt", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "purchase_indents")) return;
+      if (!assertCreate(req, res, "site_procurement")) return;
       const itemId = Number(req.params.itemId);
       const { receiptId } = req.body;
       if (!receiptId) return res.status(400).json({ message: "receiptId is required" });

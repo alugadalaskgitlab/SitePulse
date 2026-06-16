@@ -4186,7 +4186,7 @@ export default function PurchaseIndents() {
                               <PackageCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                               <div>
                                 <p className="font-semibold text-emerald-800 dark:text-emerald-300 text-sm">
-                                  Received{item.billNo ? ` · Bill: ${item.billNo}` : ""}
+                                  Received{(item as any).linkedReceiptNo ? ` · ${(item as any).linkedReceiptNo}` : item.billNo ? ` · Bill: ${item.billNo}` : ""}
                                 </p>
                                 <p className="text-xs text-emerald-600 dark:text-emerald-400">
                                   {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
