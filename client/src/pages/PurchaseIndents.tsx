@@ -3453,8 +3453,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Purchaser Action Card (Dual Route: Stores / Bulk Plant) ── */}
-              {["approved", "purchaser_actioned"].includes(selectedIndent.status) &&
-                selectedIndent.items.some(i => (i as any).procurementRoute) && (
+              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (
                 <Card className="border-violet-200 dark:border-violet-800">
                   <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
@@ -3468,12 +3467,12 @@ export default function PurchaseIndents() {
                   <CardContent className="p-4">
                     {selectedIndent.status === "approved" ? (
                       <>
-                        <p className="text-xs text-muted-foreground mb-3">Fill in procurement details for each dual-route item below, then submit all at once.</p>
+                        <p className="text-xs text-muted-foreground mb-3">Fill in procurement details for each item below, then submit all at once.</p>
                         <div className="space-y-3">
                           {selectedIndent.items
-                            .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
+                            .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
                             .map(item => {
-                              const route = (item as any).procurementRoute as string;
+                              const route = ((item as any).procurementRoute as string) || "stores";
                               const approvedQty = item.approvedQty ?? item.qty;
                               const pd = purchaserActionData[item.id] ?? { qty: String(approvedQty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                               const purchaseQtyNum = parseFloat(pd.qty) || 0;
@@ -3610,7 +3609,7 @@ export default function PurchaseIndents() {
                             disabled={purchaserActionMutation.isPending}
                             onClick={() => {
                               const items = selectedIndent.items
-                                .filter(i => (i as any).procurementRoute && !["cancelled", "closed"].includes((i as any).status || ""))
+                                .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
                                 .map(item => {
                                   const pd = purchaserActionData[item.id] ?? { qty: String(item.approvedQty ?? item.qty), vendor: "", rate: "", paymentMode: "cash", expectedDeliveryDate: "", remarks: "", shortfallReason: "full" };
                                   return {
@@ -3944,6 +3943,12 @@ export default function PurchaseIndents() {
                               <span>🔔</span><span>{(item as any).reviewerNote}</span>
                             </div>
                           )}
+                          {selectedIndent.status === "approved" ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2.5">
+                              <ClipboardList className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                              Fill in procurement details in the <span className="font-semibold text-violet-700 dark:text-violet-300">PURCHASER ACTION</span> form above.
+                            </div>
+                          ) : (
                           <div className="space-y-3">
                             <div>
                               <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Purchased By</label>
@@ -3996,7 +4001,7 @@ export default function PurchaseIndents() {
                                 </Select>
                               </div>
                             </div>
-                            {(item as any).procurementRoute === "stores" && selectedIndent.status === "purchaser_actioned" ? (
+                            {(((item as any).procurementRoute === "stores" || !(item as any).procurementRoute)) && selectedIndent.status === "purchaser_actioned" ? (
                               <div className="pt-1">
                                 <Button
                                   className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold"
@@ -4057,6 +4062,7 @@ export default function PurchaseIndents() {
                               </div>
                             )}
                           </div>
+                          )}
                           <div className="mt-3">
                             <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
                               <Clock className="w-3 h-3 mr-1" />
