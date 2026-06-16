@@ -954,9 +954,9 @@ export interface IStorage {
   submitPurchaserAction(indentId: number, items: { itemId: number; qty: number; orderedQty?: number; vendor?: string; rate?: number; amount?: number; paymentMode?: string; expectedDeliveryDate?: string; reasonCode?: string; remarks?: string }[], actionBy: string): Promise<void>;
   submitHandover(data: { indentItemId: number; indentId: number; handoverQty: number; acceptedQty: number; rejectedQty: number; handoverDate?: string; receivedBy?: string; storesRemarks?: string; remarks?: string }, actionBy: string): Promise<PiItemTransaction>;
   recordBulkMaterialReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; remarks?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<void>;
-  placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
+  placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
   recordMaterialIndentReceipt(indentId: number, items: { itemId: number; materialId: number; qty: number; uom: string; vendor?: string; rate?: number; notes?: string; receiptDate?: string; partyId?: number; isPlantCommon?: boolean }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined>;
-  getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string }[]>;
+  getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null }[]>;
   linkReceiptToIndentItem(itemId: number, receiptId: number, actionBy: string): Promise<PurchaseIndentItem | undefined>;
 
   // Internal Requisition Notes (IRN)
@@ -9413,7 +9413,7 @@ export class DatabaseStorage implements IStorage {
     await this.checkAndCompleteIndent(indentId);
   }
 
-  async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
+  async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
     if ((existing as any).piType !== "material") {
@@ -9447,7 +9447,7 @@ export class DatabaseStorage implements IStorage {
         await tx.update(purchaseIndentItems)
           .set({
             orderedQty: resolvedOrderedQty,
-            purchasedBy: actionBy.toUpperCase(),
+            purchasedBy: (itemInput?.orderedBy ?? actionBy).toUpperCase(),
             orderPlacedAt: orderedAt,
             ...(itemInput?.vendor ? { vendor: itemInput.vendor.toUpperCase() } : {}),
             ...(itemInput?.expectedDelivery ? { expectedDelivery: itemInput.expectedDelivery } : {}),
@@ -9535,7 +9535,7 @@ export class DatabaseStorage implements IStorage {
     return this.getPurchaseIndent(indentId);
   }
 
-  async getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string }[]> {
+  async getPendingIndentsForMaterial(materialId: number): Promise<{ indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null }[]> {
     const rows = await db
       .select({
         indentId: purchaseIndents.id,
@@ -9544,6 +9544,10 @@ export class DatabaseStorage implements IStorage {
         description: purchaseIndentItems.description,
         approvedQty: purchaseIndentItems.approvedQty,
         uom: purchaseIndentItems.uom,
+        status: purchaseIndents.status,
+        vendor: purchaseIndentItems.vendor,
+        expectedDelivery: purchaseIndentItems.expectedDelivery,
+        orderedQty: purchaseIndentItems.orderedQty,
       })
       .from(purchaseIndentItems)
       .innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id))
@@ -9562,6 +9566,10 @@ export class DatabaseStorage implements IStorage {
       description: r.description,
       approvedQty: r.approvedQty ?? 0,
       uom: r.uom,
+      status: r.status,
+      vendor: r.vendor ?? null,
+      expectedDelivery: r.expectedDelivery ?? null,
+      orderedQty: r.orderedQty ?? null,
     }));
   }
 

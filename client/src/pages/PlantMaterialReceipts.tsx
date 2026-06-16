@@ -245,7 +245,7 @@ export default function PlantMaterialReceipts() {
 
   // materialId-based query for Material Indent PI items pending receipt (more precise than name-based)
   const parsedMaterialId = materialId ? parseInt(materialId) : 0;
-  const { data: pendingMaterialIndents = [] } = useQuery<{indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string}[]>({
+  const { data: pendingMaterialIndents = [] } = useQuery<{indentId: number; indentNo: string; itemId: number; description: string; approvedQty: number; uom: string; status: string; vendor: string | null; expectedDelivery: string | null; orderedQty: number | null}[]>({
     queryKey: ["/api/purchase-indents/pending-for-material", parsedMaterialId],
     queryFn: () => fetch(`/api/purchase-indents/pending-for-material/${parsedMaterialId}`).then(r => r.json()),
     enabled: parsedMaterialId > 0 && dialogOpen,
@@ -957,7 +957,7 @@ export default function PlantMaterialReceipts() {
                           />
                           {indentRef && (
                             <Button type="button" variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0"
-                              onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); }}
+                              onClick={() => { setIndentRef(""); setIndentComboSearch(""); setIndentOverride(false); setSelectedPendingPiItemId(null); }}
                             >
                               <span className="sr-only">Clear</span>✕
                             </Button>
@@ -974,6 +974,8 @@ export default function PlantMaterialReceipts() {
                                   setIndentRef(pi.indentNo);
                                   setIndentComboSearch("");
                                   setIndentComboOpen(false);
+                                  const pendingMatch = pendingMaterialIndents.find(p => p.indentNo === pi.indentNo);
+                                  setSelectedPendingPiItemId(pendingMatch?.itemId ?? null);
                                 }}
                                 data-testid={`option-indent-${pi.indentNo}`}
                               >

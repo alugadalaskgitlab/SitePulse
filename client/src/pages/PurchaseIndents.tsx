@@ -754,7 +754,7 @@ export default function PurchaseIndents() {
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
 
   // Material Indent: Place Order & Record Receipt
-  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string; orderedQty: string }>>({});
+  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string }>>({});
   type MatReceiptForm = { qty: string; vendor: string; rate: string; receiptDate: string; notes: string };
   const [matReceiptForms, setMatReceiptForms] = useState<Record<number, MatReceiptForm>>({});
   const [matReceiptExpanded, setMatReceiptExpanded] = useState<Set<number>>(new Set());
@@ -2456,13 +2456,19 @@ export default function PurchaseIndents() {
                             const verified = (indent as any).storesVerifiedAt ? format(new Date((indent as any).storesVerifiedAt), "dd-MMM-yy HH:mm") : null;
                             const approved = (indent as any).approvedAt ? format(new Date((indent as any).approvedAt), "dd-MMM-yy HH:mm") : null;
                             const ordered = (indent as any).orderedAt ? format(new Date((indent as any).orderedAt), "dd-MMM-yy HH:mm") : null;
-                            if (!raised && !verified && !approved && !ordered) return null;
+                            const earliestExpected = indent.items?.reduce((min: string | null, it: any) => {
+                              if (!it.expectedDelivery) return min;
+                              return (!min || it.expectedDelivery < min) ? it.expectedDelivery : min;
+                            }, null as string | null);
+                            const expectedStr = earliestExpected ? format(new Date(earliestExpected + "T00:00:00"), "dd-MMM-yy") : null;
+                            if (!raised && !verified && !approved && !ordered && !expectedStr) return null;
                             return (
                               <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
                                 {raised && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Raised {raised}</span>}
                                 {verified && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Verified {verified}</span></>}
                                 {approved && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full inline-block ${indent.status === "rejected" ? "bg-red-400" : "bg-emerald-400"}`} />{indent.status === "rejected" ? "Rejected" : "Approved"} {approved}</span></>}
                                 {ordered && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />Ordered {ordered}</span></>}
+                                {expectedStr && <><span className="text-muted-foreground/40">·</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />Expected {expectedStr}</span></>}
                               </div>
                             );
                           })()}
@@ -3817,7 +3823,7 @@ export default function PurchaseIndents() {
                             <span className="text-sm font-semibold">{item.description}</span>
                             <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
                           </div>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             <div>
                               <Label className="text-xs">ORDER QTY ({item.uom})</Label>
                               <Input
@@ -3851,6 +3857,23 @@ export default function PurchaseIndents() {
                                 data-testid={`input-po-delivery-${item.id}`}
                               />
                             </div>
+                            <div>
+                              <Label className="text-xs">ORDERED BY</Label>
+                              <Input
+                                value={pom.orderedBy}
+                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedBy: e.target.value } }))}
+                                onBlur={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedBy: e.target.value.toUpperCase() } }))}
+                                placeholder={currentUser?.fullName?.toUpperCase() || "PURCHASER NAME"}
+                                className="uppercase text-xs h-8"
+                                data-testid={`input-po-orderedby-${item.id}`}
+                                list={`orderedby-suggestions-${item.id}`}
+                              />
+                              <datalist id={`orderedby-suggestions-${item.id}`}>
+                                {Array.from(new Set((indents ?? []).flatMap(ind => ind.items?.map((it: any) => it.purchasedBy).filter(Boolean) || []))).slice(0, 8).map((name: any) => (
+                                  <option key={name} value={name} />
+                                ))}
+                              </datalist>
+                            </div>
                           </div>
                         </div>
                       );
@@ -3864,12 +3887,13 @@ export default function PurchaseIndents() {
                           const items = selectedIndent.items
                             .filter(item => (item.approvedQty ?? 0) > 0)
                             .map(item => {
-                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty) };
+                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "" };
                               return {
                                 itemId: item.id,
                                 vendor: pom.vendor || undefined,
                                 expectedDelivery: pom.expectedDelivery || undefined,
                                 orderedQty: pom.orderedQty ? parseFloat(pom.orderedQty) : undefined,
+                                orderedBy: pom.orderedBy || undefined,
                               };
                             });
                           placeOrderMutation.mutate({ items });
