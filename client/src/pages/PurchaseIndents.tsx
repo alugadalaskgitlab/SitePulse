@@ -2836,30 +2836,22 @@ export default function PurchaseIndents() {
                         )}
                         <div>
                           <Label className="text-xs">ROUTE</Label>
-                          {isAdmin ? (
-                            <Select
-                              value={item.procurementRoute ?? ""}
-                              onValueChange={(v) => {
-                                const updated = [...formItems];
-                                updated[index] = { ...updated[index], procurementRoute: v || null };
-                                setFormItems(updated);
-                              }}
-                            >
-                              <SelectTrigger className="w-32 text-xs" data-testid={`select-item-route-${index}`}>
-                                <SelectValue placeholder="Route…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="stores">STORES</SelectItem>
-                                <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="h-9 flex items-center" data-testid={`select-item-route-${index}`}>
-                              <Badge variant="outline" className={item.procurementRoute === "bulk_plant" ? "text-teal-700 border-teal-300 dark:text-teal-300" : "text-blue-700 border-blue-300 dark:text-blue-300"}>
-                                {item.procurementRoute === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
-                              </Badge>
-                            </div>
-                          )}
+                          <Select
+                            value={item.procurementRoute ?? ""}
+                            onValueChange={(v) => {
+                              const updated = [...formItems];
+                              updated[index] = { ...updated[index], procurementRoute: v || null };
+                              setFormItems(updated);
+                            }}
+                          >
+                            <SelectTrigger className="w-36 text-xs" data-testid={`select-item-route-${index}`}>
+                              <SelectValue placeholder="Route…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="stores">STORES</SelectItem>
+                              <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
