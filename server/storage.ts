@@ -972,6 +972,7 @@ export interface IStorage {
   reopenIrn(id: number, reopenedBy: string): Promise<InternalRequisitionWithItems | undefined>;
   createIrnAuditLog(irnId: number, event: string, actorName: string, notes?: string): Promise<IrnAuditLog>;
   getIrnAuditLogs(irnId: number): Promise<IrnAuditLog[]>;
+  getIrnIssueVouchers(irnId: number): Promise<StoreIssueWithItems[]>;
   createIrnIssueVoucher(irnId: number, data: RecordIrnIssueRequest): Promise<StoreIssueWithItems>;
 
   // Daily Diesel Requirements
@@ -19282,19 +19283,35 @@ export class DatabaseStorage implements IStorage {
       .orderBy(irnAuditLogs.timestamp);
   }
 
+  async getIrnIssueVouchers(irnId: number): Promise<StoreIssueWithItems[]> {
+    const issues = await db.select().from(storeIssues)
+      .where(eq(storeIssues.irnId, irnId))
+      .orderBy(asc(storeIssues.id));
+    return Promise.all(issues.map(i => this.buildIssueWithItems(i)));
+  }
+
   async createIrnIssueVoucher(irnId: number, data: RecordIrnIssueRequest): Promise<StoreIssueWithItems> {
     const irn = await this.getInternalRequisition(irnId);
     if (!irn) throw new Error("IRN not found");
-    if (irn.status !== "approved") throw new Error("IRN must be approved before recording an issue");
-    if (irn.linkedIssueId) throw new Error("Issue voucher already recorded for this IRN");
+    if (irn.status !== "approved" && irn.status !== "partially_issued") {
+      throw new Error("IRN must be in approved or partially issued state to record an issue");
+    }
 
-    // Validate actualIssuedQty ≤ issueQty for each item
+    // Fetch all existing vouchers for this IRN to compute already-issued qty per material
+    const existingVouchers = await this.getIrnIssueVouchers(irnId);
+
+    // Validate actualIssuedQty ≤ remaining qty (approvedQty - alreadyIssuedQty) for each item
     for (const reqItem of data.items) {
       const irnItem = irn.items.find(i => i.id === reqItem.irnItemId);
       if (!irnItem) throw new Error(`IRN item ${reqItem.irnItemId} not found`);
-      const maxQty = irnItem.issueQty ?? 0;
-      if (reqItem.actualIssuedQty > maxQty + 0.001) {
-        throw new Error(`Actual issued qty (${reqItem.actualIssuedQty}) exceeds approved issue qty (${maxQty}) for ${irnItem.material}`);
+      const approvedQty = irnItem.issueQty ?? 0;
+      const alreadyIssued = existingVouchers.reduce((sum, v) => {
+        const match = v.items.find(vi => vi.materialText === irnItem.material);
+        return sum + (match?.qty ?? 0);
+      }, 0);
+      const remainingQty = Math.max(0, approvedQty - alreadyIssued);
+      if (reqItem.actualIssuedQty > remainingQty + 0.001) {
+        throw new Error(`Issued qty (${reqItem.actualIssuedQty}) exceeds remaining balance (${remainingQty.toFixed(2)}) for ${irnItem.material}`);
       }
     }
 
@@ -19344,15 +19361,21 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // Determine new IRN status based on fulfilment
-      const allFulfilled = data.items.every(reqItem => {
-        const irnItem = irn.items.find(i => i.id === reqItem.irnItemId);
-        const maxQty = irnItem?.issueQty ?? 0;
-        return reqItem.actualIssuedQty >= maxQty - 0.001;
-      });
+      // Determine new IRN status — compare total issued (all past vouchers + this one) vs approvedQty
+      const allFulfilled = irn.items
+        .filter(i => (i.issueQty ?? 0) > 0)
+        .every(irnItem => {
+          const approvedQty = irnItem.issueQty ?? 0;
+          const prevIssued = existingVouchers.reduce((sum, v) => {
+            const match = v.items.find(vi => vi.materialText === irnItem.material);
+            return sum + (match?.qty ?? 0);
+          }, 0);
+          const thisIssued = data.items.find(r => r.irnItemId === irnItem.id)?.actualIssuedQty ?? 0;
+          return (prevIssued + thisIssued) >= approvedQty - 0.001;
+        });
       const newStatus = allFulfilled ? "issued" : "partially_issued";
 
-      // Update internalRequisitions.linkedIssueId + status
+      // Update internalRequisitions.linkedIssueId (latest) + status
       await tx.update(internalRequisitions)
         .set({ linkedIssueId: issue.id, status: newStatus })
         .where(eq(internalRequisitions.id, irnId));

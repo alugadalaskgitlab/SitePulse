@@ -5572,11 +5572,23 @@ export async function registerRoutes(
       res.status(201).json(issue);
     } catch (err: any) {
       const msg = err?.message ?? "Failed to record issue voucher";
-      if (msg.includes("already recorded") || msg.includes("must be approved")) {
+      if (msg.includes("must be in approved") || msg.includes("exceeds remaining balance")) {
         return res.status(400).json({ message: msg });
       }
       console.error("POST /api/irn/:id/record-issue:", err);
       res.status(500).json({ message: msg });
+    }
+  });
+
+  app.get("/api/irn/:id/issue-vouchers", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const vouchers = await storage.getIrnIssueVouchers(id);
+      res.json(vouchers);
+    } catch (err) {
+      console.error("GET /api/irn/:id/issue-vouchers:", err);
+      res.status(500).json({ message: "Failed to fetch issue vouchers" });
     }
   });
 
@@ -5586,10 +5598,30 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
       const irn = await storage.getInternalRequisition(id);
       if (!irn) return res.status(404).json({ message: "IRN not found" });
-      if (irn.status !== "approved") {
-        return res.status(400).json({ message: "Issue voucher is only available for approved IRNs" });
+      if (!["approved", "issued", "partially_issued"].includes(irn.status)) {
+        return res.status(400).json({ message: "Issue voucher PDF is only available for approved or issued IRNs" });
       }
-      const issueItems = irn.items.filter((i: any) => i.issueQty && Number(i.issueQty) > 0);
+
+      // Optional voucherId param — prints that specific voucher's data
+      const voucherIdParam = req.query.voucherId ? Number(req.query.voucherId) : null;
+      let specificVoucher: any = null;
+      if (voucherIdParam && !isNaN(voucherIdParam)) {
+        specificVoucher = await storage.getStoreIssue(voucherIdParam);
+      }
+      if (!specificVoucher && !voucherIdParam) {
+        // Default: latest voucher if any exist
+        const allVouchers = await storage.getIrnIssueVouchers(id);
+        if (allVouchers.length > 0) specificVoucher = allVouchers[allVouchers.length - 1];
+      }
+
+      const issueItems = specificVoucher
+        ? specificVoucher.items.map((vi: any) => ({
+            material: vi.materialText ?? vi.itemName ?? "—",
+            qty: irn.items.find((i: any) => i.material === (vi.materialText ?? vi.itemName))?.qty ?? vi.qty,
+            issueQty: vi.qty,
+            uom: vi.uom,
+          }))
+        : irn.items.filter((i: any) => i.issueQty && Number(i.issueQty) > 0);
       if (issueItems.length === 0) {
         return res.status(400).json({ message: "No items flagged for issue from store" });
       }
@@ -5645,11 +5677,27 @@ export async function registerRoutes(
       const metaY = doc.y;
       doc.fillColor("#000").fontSize(10).font("Helvetica-Bold");
       doc.text(`IRN No: ${irn.irnNo}`, tableX, metaY);
-      doc.text(`Date: ${fmtDate(irn.date)}`, tableX + 300, metaY);
+      if (specificVoucher) {
+        doc.text(`Voucher No: ${specificVoucher.issueNumber}`, tableX + 190, metaY);
+        doc.text(`Date: ${fmtDate(specificVoucher.date)}`, tableX + 380, metaY);
+      } else {
+        doc.text(`Date: ${fmtDate(irn.date)}`, tableX + 380, metaY);
+      }
       doc.moveDown(0.4);
       doc.font("Helvetica").fontSize(10);
       doc.text(`Raised By: ${irn.raisedBy}`, tableX);
       doc.text(`Section: ${irn.raisedFrom}`, tableX + 300, doc.y - 14);
+      if (specificVoucher?.issuedBy || specificVoucher?.receivedBy) {
+        doc.moveDown(0.2);
+        doc.font("Helvetica").fontSize(10);
+        if (specificVoucher.issuedBy) doc.text(`Issued By: ${specificVoucher.issuedBy}`, tableX);
+        if (specificVoucher.receivedBy) doc.text(`Received By: ${specificVoucher.receivedBy}`, tableX + 300, doc.y - 14);
+        if (specificVoucher.vehicleNo) {
+          doc.moveDown(0.2);
+          doc.text(`Vehicle: ${specificVoucher.vehicleType ?? ""} ${specificVoucher.vehicleNo}`, tableX);
+          if (specificVoucher.driverName) doc.text(`Driver: ${specificVoucher.driverName}`, tableX + 300, doc.y - 14);
+        }
+      }
       doc.moveDown(0.8);
 
       const colWidths = [25, 225, 80, 80, 105];
@@ -5724,33 +5772,42 @@ export async function registerRoutes(
       if (y + 140 > 720) { doc.addPage(); y = 40; }
       y += 40;
 
-      const signAreaW = Math.floor(pageW / 3);
+      const signCols = specificVoucher
+        ? ["Raised By", "Approved By", "Issued By", "Received By"]
+        : ["Raised By", "Stores Verified By", "Approved By"];
+      const signAreaW = Math.floor(pageW / signCols.length);
+      const signNames = specificVoucher
+        ? [irn.raisedBy || "", irn.approvedBy || "", specificVoucher.issuedBy || "", specificVoucher.receivedBy || ""]
+        : [irn.raisedBy || "", irn.storesVerifiedBy || "", irn.approvedBy || ""];
 
       doc.fillColor("#000").fontSize(9).font("Helvetica");
-      doc.text("Raised By", tableX, y, { width: signAreaW, align: "center" });
-      doc.text("Stores Verified By", tableX + signAreaW, y, { width: signAreaW, align: "center" });
-      doc.text("Approved By", tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      signCols.forEach((col, i) => {
+        doc.text(col, tableX + signAreaW * i, y, { width: signAreaW, align: "center" });
+      });
       y += 40;
 
-      [tableX, tableX + signAreaW, tableX + signAreaW * 2].forEach((sx) => {
+      signCols.forEach((_, i) => {
+        const sx = tableX + signAreaW * i;
         doc.moveTo(sx + 8, y).lineTo(sx + signAreaW - 8, y).strokeColor("#000").lineWidth(0.5).stroke();
       });
       y += 6;
 
       doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
-      doc.text(irn.raisedBy || "", tableX, y, { width: signAreaW, align: "center" });
-      doc.text(irn.storesVerifiedBy || "", tableX + signAreaW, y, { width: signAreaW, align: "center" });
-      doc.text(irn.approvedBy || "", tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      signNames.forEach((name, i) => {
+        doc.text(name, tableX + signAreaW * i, y, { width: signAreaW, align: "center" });
+      });
       y += 14;
 
       doc.fontSize(8).font("Helvetica").fillColor("#555");
-      if (irn.storesVerifiedAt) {
-        const svDate = new Date(irn.storesVerifiedAt);
-        doc.text(svDate.toLocaleString("en-IN"), tableX + signAreaW, y, { width: signAreaW, align: "center" });
-      }
-      if (irn.approvedAt) {
-        const appDate = new Date(irn.approvedAt);
-        doc.text(appDate.toLocaleString("en-IN"), tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+      if (!specificVoucher) {
+        if (irn.storesVerifiedAt) {
+          doc.text(new Date(irn.storesVerifiedAt).toLocaleString("en-IN"), tableX + signAreaW, y, { width: signAreaW, align: "center" });
+        }
+        if (irn.approvedAt) {
+          doc.text(new Date(irn.approvedAt).toLocaleString("en-IN"), tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
+        }
+      } else if (specificVoucher.issuedAt) {
+        doc.text(new Date(specificVoucher.issuedAt).toLocaleString("en-IN"), tableX + signAreaW * 2, y, { width: signAreaW, align: "center" });
       }
 
       const pages = doc.bufferedPageRange();

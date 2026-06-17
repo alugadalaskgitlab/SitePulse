@@ -1,0 +1,138 @@
+Please revise the IRN Issue Voucher implementation before finalising.
+
+### 1. IRN Status
+
+After an Issue Voucher is recorded, the IRN should not continue showing only "Approved".
+
+Suggested status progression:
+
+Approved
+→ Partially Issued
+→ Fully Issued / Fulfilled
+
+Rules:
+
+* If issued quantity < approved quantity, status = Partially Issued.
+* If total issued quantity reaches approved quantity, status = Fully Issued / Fulfilled.
+
+### 2. One IRN must support multiple Issue Vouchers
+
+Current proposal appears to link one Issue Voucher to one IRN.
+
+This is not sufficient for construction operations.
+
+Example:
+
+IRN:
+Dust = 100 MT
+
+Issue Voucher 1:
+28 MT (Truck 1)
+
+Issue Voucher 2:
+28 MT (Truck 2)
+
+Issue Voucher 3:
+44 MT (Truck 3)
+
+All three should be linked to the same IRN.
+
+Please revise the design so:
+
+* One IRN can have multiple Issue Vouchers.
+* Each Issue Voucher has its own:
+
+  * voucher number
+  * date/time
+  * vehicle
+  * receiver
+  * issued quantity
+
+The IRN should show:
+
+Approved Qty
+Total Issued Qty
+Balance Qty
+
+### 3. View / Reprint behaviour
+
+Instead of showing only "Reprint", consider:
+
+View Issue Vouchers
+
+or
+
+Issue History
+
+Clicking should show all issue vouchers linked to the IRN.
+
+From there:
+
+* open voucher
+* print voucher
+* save PDF
+
+The IRN itself should also show:
+
+* Approved Qty
+* Total Issued Qty
+* Balance Qty
+* Number of Issue Vouchers raised
+
+### 4. Voucher details
+
+Issue Voucher must display and store:
+
+* Voucher No.
+* IRN No.
+* Project / Site
+* Raised By
+* Raised Timestamp
+* Approved By
+* Approved Timestamp
+* Issued By
+* Issue Timestamp
+* Received By
+* Receiver Designation
+* Vehicle Type
+* Vehicle Number
+* Driver Name
+* Remarks
+
+### 5. Partial Issue Logic
+
+When a voucher is recorded:
+
+Remaining Qty = Approved Qty − Total Issued Qty
+
+Next voucher should automatically show:
+
+Available to Issue = Remaining Qty
+
+and prevent over-issue.
+
+Example:
+
+Approved = 100 MT
+
+Voucher 1 = 28 MT
+Voucher 2 = 28 MT
+
+Remaining = 44 MT
+
+Voucher 3 cannot exceed 44 MT.
+
+### 6. Reports
+
+Issue reports should show:
+
+* IRN No.
+* Voucher No.
+* Issue Date
+* Material
+* Issued Qty
+* Receiver
+* Vehicle No.
+* Balance Qty after issue
+
+Please revise the implementation plan accordingly before finalising.

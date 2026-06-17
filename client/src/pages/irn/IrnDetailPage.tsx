@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { format } from "date-fns";
 import {
-  ClipboardList, ChevronLeft, PackageCheck, ListTodo, CheckCircle2,
+  ClipboardList, ChevronLeft, ChevronDown, PackageCheck, ListTodo, CheckCircle2,
   AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
   ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
   Warehouse, Pencil, Trash2, Clock, Hash, Truck, FileCheck, Printer,
@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { InternalRequisitionWithItems, InternalRequisitionItem, IrnAuditLog } from "@shared/schema";
+import type { InternalRequisitionWithItems, InternalRequisitionItem, IrnAuditLog, StoreIssueWithItems } from "@shared/schema";
 
 type StoresAction = "issue" | "procure" | "split";
 
@@ -102,7 +102,13 @@ export default function IrnDetailPage() {
   // Store items for the Issue Voucher form (to link materials to store items for stock deduction)
   const { data: storeItems = [] } = useQuery<{ id: number; name: string; category: string; uom: string }[]>({
     queryKey: ["/api/stores/items"],
-    enabled: !!irn && (irn.status === "approved" || irn.status === "partially_issued") && !irn.linkedIssueId,
+    enabled: !!irn && (irn.status === "approved" || irn.status === "partially_issued"),
+  });
+
+  // Fetch all issue vouchers for this IRN (for multi-voucher history)
+  const { data: irnVouchers = [] } = useQuery<StoreIssueWithItems[]>({
+    queryKey: [`/api/irn/${id}/issue-vouchers`],
+    enabled: !!irn && ["approved", "issued", "partially_issued"].includes(irn.status ?? ""),
   });
 
   // Fetch audit log for approved / closed / rejected IRNs
@@ -257,6 +263,7 @@ export default function IrnDetailPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // ── Issue Voucher form state ──────────────────────────────────────────────
+  const [showIssueHistory, setShowIssueHistory] = useState(false);
   const [showIssueForm, setShowIssueForm] = useState(false);
   const [ivDate, setIvDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [ivIssuedBy, setIvIssuedBy] = useState("");
@@ -383,9 +390,11 @@ export default function IrnDetailPage() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/irn"] });
       queryClient.invalidateQueries({ queryKey: ["/api/irn", id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/irn/${id}/issue-vouchers`] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores/issues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores/stock-summary"] });
       setShowIssueForm(false);
+      setShowIssueHistory(true);
       toast({ title: `Issue Voucher ${data.issueNumber} recorded`, description: "Stock has been updated." });
     },
     onError: (err: any) => {
@@ -983,259 +992,319 @@ export default function IrnDetailPage() {
 
           {/* ── 6. Issue Voucher action ── */}
           {issueItems.length > 0 && !isClosed && (() => {
-            const linkedIssueNo = (irn as any).linkedIssueNo as string | null | undefined;
-            const linkedIssueId = irn.linkedIssueId;
+            // Compute per-item totals from all recorded vouchers
+            const itemSummary = issueItems.map(item => {
+              const totalIssued = irnVouchers.reduce((sum, v) => {
+                const match = v.items.find(vi => vi.materialText === item.material);
+                return sum + (match?.qty ?? 0);
+              }, 0);
+              const approvedQty = item.issueQty ?? 0;
+              const balance = Math.max(0, approvedQty - totalIssued);
+              return { item, totalIssued, approvedQty, balance };
+            });
+            const hasBalance = itemSummary.some(s => s.balance > 0.001);
+            const voucherCount = irnVouchers.length;
 
-            // Already recorded — show badge + reprint
-            if (linkedIssueId && linkedIssueNo) {
-              return (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <FileCheck className="h-4 w-4 text-green-600 shrink-0" />
-                      <span className="text-sm font-semibold text-green-800">Issue Voucher Recorded</span>
-                      <span className="text-xs font-mono bg-white border border-green-300 text-green-700 px-2 py-0.5 rounded" data-testid="text-issue-voucher-no">
-                        {linkedIssueNo}
+            return (
+              <div className="space-y-3">
+                {/* ── Summary card ── */}
+                <div className="bg-white border rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <PackageCheck className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-semibold text-gray-800">Issue Voucher Status</span>
+                    {voucherCount > 0 && (
+                      <span className="ml-auto text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-medium">
+                        {voucherCount} voucher{voucherCount > 1 ? "s" : ""} raised
                       </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher`, "_blank")}
-                        className="gap-2 text-xs border-green-300 text-green-700 hover:bg-green-100"
-                        data-testid="button-reprint-issue-voucher"
-                      >
-                        <Printer className="h-3.5 w-3.5" /> View / Reprint
-                      </Button>
-                    </div>
+                    )}
                   </div>
-                  <div className="mt-3 space-y-1">
-                    {issueItems.map((item) => (
-                      <div key={item.id} className="flex justify-between text-xs text-green-800 border-t border-green-100 pt-1">
-                        <span className="font-medium">{item.material}</span>
-                        <span>
-                          Issued: <strong>{(item as any).actualIssuedQty ?? item.issueQty ?? 0}</strong> {item.uom}
-                          {" "}(Approved: {item.issueQty} {item.uom})
+                  <div className="space-y-1.5">
+                    {itemSummary.map(({ item, totalIssued, approvedQty, balance }) => (
+                      <div key={item.id} className="flex justify-between items-center text-xs border-t pt-1.5 text-gray-700">
+                        <span className="font-medium text-gray-800">{item.material}</span>
+                        <span className="flex gap-4">
+                          <span className="text-gray-500">Approved: <strong className="text-gray-700">{approvedQty} {item.uom}</strong></span>
+                          <span className="text-gray-500">Issued: <strong className="text-gray-700">{totalIssued.toFixed(2)} {item.uom}</strong></span>
+                          <span className={`font-semibold ${balance > 0.001 ? "text-amber-700" : "text-emerald-700"}`}>
+                            Bal: {balance.toFixed(2)} {item.uom}
+                          </span>
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
-              );
-            }
 
-            // Not yet recorded — show Record Issue button + collapsible form
-            return (
-              <div className="bg-white border rounded-lg overflow-hidden">
-                {/* Header row */}
-                <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <PackageCheck className="h-4 w-4 text-green-600 shrink-0" />
-                    <span className="text-sm text-gray-700 font-medium">{issueItems.length} item(s) — Issue Voucher authorised</span>
-                  </div>
-                  {!showIssueForm ? (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        // Pre-fill qtys from issueQty
-                        const qtys: Record<number, string> = {};
-                        for (const item of issueItems) qtys[item.id] = String(item.issueQty ?? 0);
-                        setIvItemQtys(qtys);
-                        // Pre-match store items by name
-                        const storeMap: Record<number, number | null> = {};
-                        for (const item of issueItems) {
-                          const match = storeItems.find(s => s.name.toLowerCase().trim() === item.material.toLowerCase().trim());
-                          storeMap[item.id] = match ? match.id : null;
-                        }
-                        setIvItemStoreIds(storeMap);
-                        setShowIssueForm(true);
-                      }}
-                      className="bg-green-700 hover:bg-green-800 text-white gap-2 text-sm h-8"
-                      data-testid="button-record-issue-voucher"
+                {/* ── Issue History ── */}
+                {voucherCount > 0 && (
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <button
+                      className="w-full p-4 flex items-center justify-between text-sm hover:bg-gray-50 transition-colors"
+                      onClick={() => setShowIssueHistory(h => !h)}
+                      data-testid="button-toggle-issue-history"
                     >
-                      <PackageCheck className="h-4 w-4" /> Record Issue
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setShowIssueForm(false)} className="text-xs text-gray-500">
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-
-                {/* Expanded form */}
-                {showIssueForm && (
-                  <div className="border-t bg-gray-50 p-4 space-y-4">
-                    {/* Header fields */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs text-gray-600">Issue Date *</Label>
-                        <Input type="date" value={ivDate} onChange={e => setIvDate(e.target.value)}
-                          className="h-8 text-sm mt-1" data-testid="input-iv-date" />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-gray-600">Issued By *</Label>
-                        <Input value={ivIssuedBy} onChange={e => setIvIssuedBy(e.target.value)}
-                          placeholder="Name of person issuing" className="h-8 text-sm mt-1" data-testid="input-iv-issued-by" />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-gray-600">Received By *</Label>
-                        <Input value={ivReceivedBy} onChange={e => setIvReceivedBy(e.target.value)}
-                          placeholder="Name of recipient" className="h-8 text-sm mt-1" data-testid="input-iv-received-by" />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-gray-600">Receiver Designation</Label>
-                        <Input value={ivReceiverDesig} onChange={e => setIvReceiverDesig(e.target.value)}
-                          placeholder="e.g. Site Engineer" className="h-8 text-sm mt-1" data-testid="input-iv-receiver-desig" />
-                      </div>
-                    </div>
-
-                    {/* Delivery mode */}
-                    <div>
-                      <Label className="text-xs text-gray-600 mb-1 block">Delivery Mode *</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={ivDeliveryMode === "vehicle" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setIvDeliveryMode("vehicle")}
-                          className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "vehicle" ? "bg-amber-700 hover:bg-amber-800" : ""}`}
-                          data-testid="button-iv-mode-vehicle"
-                        >
-                          <Truck className="h-3.5 w-3.5" /> Vehicle
-                        </Button>
-                        <Button
-                          variant={ivDeliveryMode === "hand_carried" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setIvDeliveryMode("hand_carried")}
-                          className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "hand_carried" ? "bg-blue-700 hover:bg-blue-800" : ""}`}
-                          data-testid="button-iv-mode-hand"
-                        >
-                          Hand-carried
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Vehicle fields — shown only when mode = vehicle */}
-                    {ivDeliveryMode === "vehicle" && (
-                      <div className="grid grid-cols-3 gap-3 bg-amber-50 border border-amber-200 rounded p-3">
-                        <div>
-                          <Label className="text-xs text-gray-600">Vehicle Type *</Label>
-                          <Select value={ivVehicleType} onValueChange={setIvVehicleType}>
-                            <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-iv-vehicle-type">
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Two Wheeler", "Three Wheeler", "Light Vehicle", "Medium Vehicle", "Heavy Vehicle", "Tractor", "Other"].map(v => (
-                                <SelectItem key={v} value={v}>{v}</SelectItem>
+                      <span className="flex items-center gap-2 font-medium text-gray-800">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        Issue History ({voucherCount} voucher{voucherCount > 1 ? "s" : ""})
+                      </span>
+                      <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${showIssueHistory ? "rotate-180" : ""}`} />
+                    </button>
+                    {showIssueHistory && (
+                      <div className="border-t divide-y">
+                        {irnVouchers.map(v => (
+                          <div key={v.id} className="p-4 space-y-2" data-testid={`card-voucher-${v.id}`}>
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200" data-testid={`text-voucher-no-${v.id}`}>
+                                  {v.issueNumber}
+                                </span>
+                                <span className="text-xs text-gray-500">{v.date}</span>
+                              </div>
+                              <Button
+                                variant="outline" size="sm"
+                                onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher?voucherId=${v.id}`, "_blank")}
+                                className="gap-1.5 text-xs h-7 border-gray-300"
+                                data-testid={`button-print-voucher-${v.id}`}
+                              >
+                                <Printer className="h-3 w-3" /> Print
+                              </Button>
+                            </div>
+                            <div className="text-xs text-gray-600 flex flex-wrap gap-3">
+                              {v.issuedBy && <span>Issued by: <strong className="text-gray-800">{v.issuedBy}</strong></span>}
+                              {v.receivedBy && <span>Received by: <strong className="text-gray-800">{v.receivedBy}</strong></span>}
+                              {v.receiverDesignation && <span>Desig: <strong className="text-gray-800">{v.receiverDesignation}</strong></span>}
+                              {v.vehicleNo && <span>Vehicle: <strong className="text-gray-800">{v.vehicleNo}</strong></span>}
+                              {v.driverName && <span>Driver: <strong className="text-gray-800">{v.driverName}</strong></span>}
+                            </div>
+                            <div className="space-y-0.5">
+                              {v.items.map(vi => (
+                                <div key={vi.id} className="flex justify-between text-xs text-gray-700">
+                                  <span>{vi.materialText ?? vi.itemName ?? "—"}</span>
+                                  <span className="font-semibold">{vi.qty} {vi.uom}</span>
+                                </div>
                               ))}
-                            </SelectContent>
-                          </Select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Record next Issue Voucher — only when balance remains ── */}
+                {hasBalance && (
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PackageCheck className="h-4 w-4 text-green-600 shrink-0" />
+                        <span className="text-sm text-gray-700 font-medium">
+                          {voucherCount === 0
+                            ? `${issueItems.length} item(s) — Issue Voucher authorised`
+                            : "Balance remaining — record next Issue Voucher"}
+                        </span>
+                      </div>
+                      {!showIssueForm ? (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const qtys: Record<number, string> = {};
+                            for (const { item, balance } of itemSummary) qtys[item.id] = balance > 0.001 ? String(Math.round(balance * 1000) / 1000) : "0";
+                            setIvItemQtys(qtys);
+                            const storeMap: Record<number, number | null> = {};
+                            for (const item of issueItems) {
+                              const match = storeItems.find(s => s.name.toLowerCase().trim() === item.material.toLowerCase().trim());
+                              storeMap[item.id] = match ? match.id : null;
+                            }
+                            setIvItemStoreIds(storeMap);
+                            setShowIssueForm(true);
+                          }}
+                          className="bg-green-700 hover:bg-green-800 text-white gap-2 text-sm h-8"
+                          data-testid="button-record-issue-voucher"
+                        >
+                          <PackageCheck className="h-4 w-4" /> {voucherCount === 0 ? "Record Issue" : "Record Next Issue"}
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => setShowIssueForm(false)} className="text-xs text-gray-500">
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+
+                    {showIssueForm && (
+                      <div className="border-t bg-gray-50 p-4 space-y-4">
+                        {/* Header fields */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-gray-600">Issue Date *</Label>
+                            <Input type="date" value={ivDate} onChange={e => setIvDate(e.target.value)}
+                              className="h-8 text-sm mt-1" data-testid="input-iv-date" />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Issued By *</Label>
+                            <Input value={ivIssuedBy} onChange={e => setIvIssuedBy(e.target.value)}
+                              placeholder="Name of person issuing" className="h-8 text-sm mt-1" data-testid="input-iv-issued-by" />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Received By *</Label>
+                            <Input value={ivReceivedBy} onChange={e => setIvReceivedBy(e.target.value)}
+                              placeholder="Name of recipient" className="h-8 text-sm mt-1" data-testid="input-iv-received-by" />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Receiver Designation</Label>
+                            <Input value={ivReceiverDesig} onChange={e => setIvReceiverDesig(e.target.value)}
+                              placeholder="e.g. Site Engineer" className="h-8 text-sm mt-1" data-testid="input-iv-receiver-desig" />
+                          </div>
                         </div>
+
+                        {/* Delivery mode */}
                         <div>
-                          <Label className="text-xs text-gray-600">Vehicle No. *</Label>
-                          <Input value={ivVehicleNo} onChange={e => setIvVehicleNo(e.target.value)}
-                            placeholder="e.g. TN 01 AA 1234" className="h-8 text-sm mt-1" data-testid="input-iv-vehicle-no" />
+                          <Label className="text-xs text-gray-600 mb-1 block">Delivery Mode *</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={ivDeliveryMode === "vehicle" ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setIvDeliveryMode("vehicle")}
+                              className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "vehicle" ? "bg-amber-700 hover:bg-amber-800" : ""}`}
+                              data-testid="button-iv-mode-vehicle"
+                            >
+                              <Truck className="h-3.5 w-3.5" /> Vehicle
+                            </Button>
+                            <Button
+                              variant={ivDeliveryMode === "hand_carried" ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setIvDeliveryMode("hand_carried")}
+                              className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "hand_carried" ? "bg-blue-700 hover:bg-blue-800" : ""}`}
+                              data-testid="button-iv-mode-hand"
+                            >
+                              Hand-carried
+                            </Button>
+                          </div>
                         </div>
+
+                        {ivDeliveryMode === "vehicle" && (
+                          <div className="grid grid-cols-3 gap-3 bg-amber-50 border border-amber-200 rounded p-3">
+                            <div>
+                              <Label className="text-xs text-gray-600">Vehicle Type *</Label>
+                              <Select value={ivVehicleType} onValueChange={setIvVehicleType}>
+                                <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-iv-vehicle-type">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {["Two Wheeler", "Three Wheeler", "Light Vehicle", "Medium Vehicle", "Heavy Vehicle", "Tractor", "Other"].map(v => (
+                                    <SelectItem key={v} value={v}>{v}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Vehicle No. *</Label>
+                              <Input value={ivVehicleNo} onChange={e => setIvVehicleNo(e.target.value)}
+                                placeholder="e.g. TN 01 AA 1234" className="h-8 text-sm mt-1" data-testid="input-iv-vehicle-no" />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Driver Name *</Label>
+                              <Input value={ivDriverName} onChange={e => setIvDriverName(e.target.value)}
+                                placeholder="Driver name" className="h-8 text-sm mt-1" data-testid="input-iv-driver-name" />
+                            </div>
+                          </div>
+                        )}
+
                         <div>
-                          <Label className="text-xs text-gray-600">Driver Name *</Label>
-                          <Input value={ivDriverName} onChange={e => setIvDriverName(e.target.value)}
-                            placeholder="Driver name" className="h-8 text-sm mt-1" data-testid="input-iv-driver-name" />
+                          <Label className="text-xs text-gray-600">Movement Remarks</Label>
+                          <Textarea value={ivRemarks} onChange={e => setIvRemarks(e.target.value)}
+                            placeholder="Any remarks about the movement" rows={2}
+                            className="text-sm mt-1 resize-none" data-testid="textarea-iv-remarks" />
+                        </div>
+
+                        {/* Items table — shows remaining qty as the cap */}
+                        <div>
+                          <Label className="text-xs text-gray-700 font-semibold mb-2 block">Items to Issue (this voucher)</Label>
+                          <div className="border rounded overflow-hidden bg-white">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-100 border-b">
+                                <tr>
+                                  <th className="text-left p-2 font-semibold text-gray-600">Material</th>
+                                  <th className="text-center p-2 font-semibold text-gray-600">Remaining Qty</th>
+                                  <th className="text-center p-2 font-semibold text-gray-600">Issue Qty (this voucher)</th>
+                                  <th className="text-left p-2 font-semibold text-gray-600">Store Item (for stock)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {issueItems.map((item) => {
+                                  const summary = itemSummary.find(s => s.item.id === item.id)!;
+                                  const maxQty = summary.balance;
+                                  const currentQty = parseFloat(ivItemQtys[item.id] ?? String(maxQty)) || 0;
+                                  const storeMatch = ivItemStoreIds[item.id];
+                                  return (
+                                    <tr key={item.id} className={`border-t ${maxQty < 0.001 ? "opacity-50" : ""}`}>
+                                      <td className="p-2 font-medium text-gray-800">{item.material}</td>
+                                      <td className="p-2 text-center text-gray-600">{maxQty.toFixed(2)} {item.uom}</td>
+                                      <td className="p-2">
+                                        <div className="flex items-center gap-1 justify-center">
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            max={maxQty}
+                                            step={0.01}
+                                            value={ivItemQtys[item.id] ?? String(maxQty)}
+                                            disabled={maxQty < 0.001}
+                                            onChange={e => {
+                                              const v = e.target.value;
+                                              setIvItemQtys(prev => ({ ...prev, [item.id]: v }));
+                                            }}
+                                            className={`h-7 w-24 text-center text-xs ${currentQty > maxQty + 0.001 ? "border-red-400 bg-red-50" : ""}`}
+                                            data-testid={`input-iv-qty-${item.id}`}
+                                          />
+                                          <span className="text-gray-500">{item.uom}</span>
+                                        </div>
+                                        {currentQty > maxQty + 0.001 && (
+                                          <p className="text-red-600 text-[10px] text-center">Exceeds balance {maxQty.toFixed(2)}</p>
+                                        )}
+                                      </td>
+                                      <td className="p-2">
+                                        <Select
+                                          value={storeMatch != null ? String(storeMatch) : "__none__"}
+                                          onValueChange={v => setIvItemStoreIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
+                                          disabled={maxQty < 0.001}
+                                        >
+                                          <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-store-item-${item.id}`}>
+                                            <SelectValue placeholder="None (text only)" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="__none__">— None (text only) —</SelectItem>
+                                            {storeItems.map(si => (
+                                              <SelectItem key={si.id} value={String(si.id)}>{si.name} ({si.category})</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        {storeMatch == null && maxQty > 0.001 && (
+                                          <p className="text-amber-600 text-[10px] mt-0.5">No store stock deduction</p>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Submit */}
+                        <div className="flex justify-end gap-2 pt-1">
+                          <Button variant="outline" size="sm" onClick={() => setShowIssueForm(false)} className="text-sm">
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={recordIssueMutation.isPending || !ivIssuedBy.trim() || !ivReceivedBy.trim() || !ivDate}
+                            onClick={() => recordIssueMutation.mutate()}
+                            className="bg-green-700 hover:bg-green-800 text-white gap-2 text-sm"
+                            data-testid="button-submit-record-issue"
+                          >
+                            {recordIssueMutation.isPending ? "Recording…" : <><FileCheck className="h-4 w-4" /> Record Issue Voucher</>}
+                          </Button>
                         </div>
                       </div>
                     )}
-
-                    <div>
-                      <Label className="text-xs text-gray-600">Movement Remarks</Label>
-                      <Textarea value={ivRemarks} onChange={e => setIvRemarks(e.target.value)}
-                        placeholder="Any remarks about the movement" rows={2}
-                        className="text-sm mt-1 resize-none" data-testid="textarea-iv-remarks" />
-                    </div>
-
-                    {/* Items table */}
-                    <div>
-                      <Label className="text-xs text-gray-700 font-semibold mb-2 block">Items to Issue</Label>
-                      <div className="border rounded overflow-hidden bg-white">
-                        <table className="w-full text-xs">
-                          <thead className="bg-gray-100 border-b">
-                            <tr>
-                              <th className="text-left p-2 font-semibold text-gray-600">Material</th>
-                              <th className="text-center p-2 font-semibold text-gray-600">Approved Qty</th>
-                              <th className="text-center p-2 font-semibold text-gray-600">Actual Issued Qty</th>
-                              <th className="text-left p-2 font-semibold text-gray-600">Store Item (for stock)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {issueItems.map((item) => {
-                              const maxQty = item.issueQty ?? 0;
-                              const currentQty = parseFloat(ivItemQtys[item.id] ?? String(maxQty)) || 0;
-                              const storeMatch = ivItemStoreIds[item.id];
-                              return (
-                                <tr key={item.id} className="border-t">
-                                  <td className="p-2 font-medium text-gray-800">{item.material}</td>
-                                  <td className="p-2 text-center text-gray-600">{maxQty} {item.uom}</td>
-                                  <td className="p-2">
-                                    <div className="flex items-center gap-1 justify-center">
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        max={maxQty}
-                                        step={0.01}
-                                        value={ivItemQtys[item.id] ?? String(maxQty)}
-                                        onChange={e => {
-                                          const v = e.target.value;
-                                          setIvItemQtys(prev => ({ ...prev, [item.id]: v }));
-                                        }}
-                                        className={`h-7 w-24 text-center text-xs ${currentQty > maxQty ? "border-red-400 bg-red-50" : ""}`}
-                                        data-testid={`input-iv-qty-${item.id}`}
-                                      />
-                                      <span className="text-gray-500">{item.uom}</span>
-                                    </div>
-                                    {currentQty > maxQty && (
-                                      <p className="text-red-600 text-[10px] text-center">Exceeds approved {maxQty}</p>
-                                    )}
-                                  </td>
-                                  <td className="p-2">
-                                    <Select
-                                      value={storeMatch != null ? String(storeMatch) : "__none__"}
-                                      onValueChange={v => setIvItemStoreIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
-                                    >
-                                      <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-store-item-${item.id}`}>
-                                        <SelectValue placeholder="None (text only)" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="__none__">— None (text only) —</SelectItem>
-                                        {storeItems.map(si => (
-                                          <SelectItem key={si.id} value={String(si.id)}>{si.name} ({si.category})</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    {storeMatch == null && (
-                                      <p className="text-amber-600 text-[10px] mt-0.5">No store stock deduction</p>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Submit */}
-                    <div className="flex justify-end gap-2 pt-1">
-                      <Button variant="outline" size="sm" onClick={() => setShowIssueForm(false)} className="text-sm">
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={recordIssueMutation.isPending || !ivIssuedBy.trim() || !ivReceivedBy.trim() || !ivDate}
-                        onClick={() => recordIssueMutation.mutate()}
-                        className="bg-green-700 hover:bg-green-800 text-white gap-2 text-sm"
-                        data-testid="button-submit-record-issue"
-                      >
-                        {recordIssueMutation.isPending ? "Recording…" : <><FileCheck className="h-4 w-4" /> Record Issue Voucher</>}
-                      </Button>
-                    </div>
                   </div>
                 )}
               </div>
