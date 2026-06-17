@@ -1,0 +1,103 @@
+Please inspect and fix the IRN Issue Voucher workflow.
+
+Current issue:
+
+After IRN approval, when stock is available and Stores issues the material, the "Issue Voucher" button appears to open a Save/Download dialog directly.
+
+This is not sufficient for live operations.
+
+We need to verify what the system is currently doing and then convert it into a proper in-app Issue Voucher workflow.
+
+### First inspect and confirm
+
+1. When Issue Voucher is clicked:
+
+   * Is an Issue Voucher record created in the database?
+   * Is stock adjusted?
+   * Is stock ledger updated?
+   * Is any issue transaction stored?
+   * Or is it only generating a PDF/download?
+
+2. Identify:
+
+   * tables involved
+   * routes involved
+   * UI components involved
+
+### Required workflow
+
+After IRN approval and issue authorization:
+
+Stores should create/record an Issue Voucher inside the application.
+
+The Issue Voucher should be a proper transaction record.
+
+### Required fields
+
+Header:
+
+* Issue Voucher No.
+* IRN No.
+* Project / Site
+* Issue Date & Time (system timestamp)
+* Raised By
+* Raised Timestamp
+* Issued By
+* Issue Timestamp
+
+Material-wise:
+
+* Item / Material
+* Approved Qty
+* Issued Qty
+* UOM
+
+Receiver details:
+
+* Received By
+* Receiver Designation / Role
+* Department / Site
+
+Movement details:
+
+For bulk materials:
+
+* Vehicle Type
+* Vehicle Number
+* Driver / Operator
+* Transport Remarks
+
+For stores/spares/tools:
+
+* Hand-carried / Vehicle
+* Receiver acknowledgement
+
+### Business Rules
+
+1. Stock should reduce only based on actual issued quantity.
+2. Stock ledger should record the issue transaction.
+3. Issue Voucher should remain viewable later from the IRN.
+4. Users should be able to open/view/reprint an existing Issue Voucher.
+5. Issue Voucher details should appear in reports.
+6. Reports should show:
+
+   * Issue Voucher No.
+   * Issue Date
+   * IRN No.
+   * Issued Qty
+   * Received By
+   * Vehicle Number (if applicable)
+
+### Important
+
+Do not immediately redesign.
+
+First inspect current implementation and report:
+
+* What is currently stored?
+* What is currently missing?
+* Whether stock adjustment already happens.
+* Whether issue ledger entries already exist.
+* Minimal implementation plan to convert Issue Voucher from a PDF/download action into a proper in-app transaction workflow.
+
+Please provide findings before coding.
