@@ -9451,7 +9451,7 @@ export class DatabaseStorage implements IStorage {
     await this.checkAndCompleteIndent(indentId);
   }
 
-  async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
+  async placeOrderIndent(id: number, items: { itemId: number; vendor?: string; expectedDelivery?: string; orderedQty?: number; orderedBy?: string; rate?: number; paymentMode?: string; remarks?: string }[], actionBy: string): Promise<PurchaseIndentWithItems | undefined> {
     const existing = await this.getPurchaseIndent(id);
     if (!existing) return undefined;
     if ((existing as any).piType !== "material") {
@@ -9489,6 +9489,9 @@ export class DatabaseStorage implements IStorage {
             orderPlacedAt: orderedAt,
             ...(itemInput?.vendor ? { vendor: itemInput.vendor.toUpperCase() } : {}),
             ...(itemInput?.expectedDelivery ? { expectedDelivery: itemInput.expectedDelivery } : {}),
+            ...(itemInput?.rate != null ? { rate: itemInput.rate } : {}),
+            ...(itemInput?.paymentMode ? { paymentMode: itemInput.paymentMode } : {}),
+            ...(itemInput?.remarks ? { purchaseRemarks: itemInput.remarks } : {}),
           })
           .where(eq(purchaseIndentItems.id, indentItem.id));
         await tx.insert(piItemTransactions).values({

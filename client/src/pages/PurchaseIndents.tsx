@@ -12,6 +12,7 @@ import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -754,7 +755,8 @@ export default function PurchaseIndents() {
   const [bulkReceiptData, setBulkReceiptData] = useState<Record<number, BulkReceiptItemData>>({});
 
   // Material Indent: Place Order & Record Receipt
-  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string }>>({});
+  type PlaceOrderItemData = { vendor: string; expectedDelivery: string; orderedQty: string; orderedBy: string; rate: string; paymentMode: string; remarks: string };
+  const [placeOrderVendorMap, setPlaceOrderVendorMap] = useState<Record<number, PlaceOrderItemData>>({});
   type MatReceiptForm = { qty: string; vendor: string; rate: string; receiptDate: string; notes: string };
   const [matReceiptForms, setMatReceiptForms] = useState<Record<number, MatReceiptForm>>({});
   const [matReceiptExpanded, setMatReceiptExpanded] = useState<Set<number>>(new Set());
@@ -1608,8 +1610,23 @@ export default function PurchaseIndents() {
     setFormPiType("stores");
   };
 
+  const openIndentForm = (type: "stores" | "material") => {
+    const defaultRoute = type === "material" ? "bulk_plant" : "stores";
+    setFormDate(format(new Date(), "yyyy-MM-dd"));
+    setFormProposedBy("");
+    setFormRaisedBy("");
+    setFormRemarks("");
+    setFormSiteId(null);
+    setFormRaisedFrom(defaultRaisedFrom);
+    setFormItems([{ description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: defaultRoute }]);
+    setSourceIrnId(null);
+    setFormPiType(type);
+    setView("form");
+  };
+
   const addItemRow = () => {
-    setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }]);
+    const defaultRoute = formPiType === "material" ? "bulk_plant" : "stores";
+    setFormItems([...formItems, { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: defaultRoute }]);
   };
 
   const removeItemRow = (index: number) => {
@@ -2253,9 +2270,29 @@ export default function PurchaseIndents() {
               <BarChart3 className="w-4 h-4 mr-1" /> REPORT
             </Button>
             {canCreate && (
-              <Button onClick={() => { resetForm(); setView("form"); }} data-testid="button-raise-indent">
-                <Plus className="w-4 h-4 mr-1" /> RAISE INDENT
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button data-testid="button-raise-indent">
+                    <Plus className="w-4 h-4 mr-1" /> RAISE INDENT <ChevronDown className="w-4 h-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuItem onClick={() => openIndentForm("stores")} data-testid="menu-item-store-indent">
+                    <Warehouse className="w-4 h-4 mr-2 shrink-0 text-blue-600" />
+                    <div>
+                      <p className="font-semibold text-sm">Store / Spares / Consumables</p>
+                      <p className="text-xs text-muted-foreground">Routed through Stores verification</p>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openIndentForm("material")} data-testid="menu-item-bulk-indent">
+                    <Package className="w-4 h-4 mr-2 shrink-0 text-teal-600" />
+                    <div>
+                      <p className="font-semibold text-sm">Bulk Material Indent</p>
+                      <p className="text-xs text-muted-foreground">Direct approval → Plant Material Receipt</p>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         )}
@@ -2621,23 +2658,31 @@ export default function PurchaseIndents() {
               </div>
               <div>
                 <Label className="text-xs uppercase">INDENT TYPE</Label>
-                <div className="flex rounded-md overflow-hidden border mt-1" data-testid="toggle-pi-type">
-                  <button
-                    type="button"
-                    className={`flex-1 text-xs py-1.5 font-semibold transition-colors ${formPiType === "stores" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-                    onClick={() => setFormPiType("stores")}
-                    data-testid="button-pi-type-stores"
-                  >
-                    STORE INDENT
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 text-xs py-1.5 font-semibold transition-colors ${formPiType === "material" ? "bg-teal-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-                    onClick={() => setFormPiType("material")}
-                    data-testid="button-pi-type-material"
-                  >
-                    MATERIAL INDENT
-                  </button>
+                <div className="flex items-center gap-2 mt-1" data-testid="toggle-pi-type">
+                  {formPiType === "material" ? (
+                    <Badge className="bg-teal-50 text-teal-700 border border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 font-semibold px-3 py-1" data-testid="badge-pi-type">
+                      <Package className="w-3 h-3 mr-1.5" /> BULK MATERIAL INDENT
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-blue-50 text-blue-700 border border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 font-semibold px-3 py-1" data-testid="badge-pi-type">
+                      <Warehouse className="w-3 h-3 mr-1.5" /> STORE / SPARES / CONSUMABLES
+                    </Badge>
+                  )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline hover:text-foreground"
+                      onClick={() => {
+                        const next = formPiType === "material" ? "stores" : "material";
+                        setFormPiType(next);
+                        const defaultRoute = next === "material" ? "bulk_plant" : "stores";
+                        setFormItems(prev => prev.map(it => ({ ...it, procurementRoute: defaultRoute })));
+                      }}
+                      data-testid="button-change-pi-type"
+                    >
+                      Change
+                    </button>
+                  )}
                 </div>
                 {formPiType === "material" && (
                   <p className="text-xs text-teal-700 dark:text-teal-400 mt-1">Material Indent goes directly for approval — no stores verification needed. Material receipt is recorded directly in the Plant module.</p>
@@ -2791,22 +2836,30 @@ export default function PurchaseIndents() {
                         )}
                         <div>
                           <Label className="text-xs">ROUTE</Label>
-                          <Select
-                            value={item.procurementRoute ?? ""}
-                            onValueChange={(v) => {
-                              const updated = [...formItems];
-                              updated[index] = { ...updated[index], procurementRoute: v || null };
-                              setFormItems(updated);
-                            }}
-                          >
-                            <SelectTrigger className="w-32 text-xs" data-testid={`select-item-route-${index}`}>
-                              <SelectValue placeholder="Route…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="stores">STORES</SelectItem>
-                              <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          {isAdmin ? (
+                            <Select
+                              value={item.procurementRoute ?? ""}
+                              onValueChange={(v) => {
+                                const updated = [...formItems];
+                                updated[index] = { ...updated[index], procurementRoute: v || null };
+                                setFormItems(updated);
+                              }}
+                            >
+                              <SelectTrigger className="w-32 text-xs" data-testid={`select-item-route-${index}`}>
+                                <SelectValue placeholder="Route…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="stores">STORES</SelectItem>
+                                <SelectItem value="bulk_plant">BULK MATERIAL</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="h-9 flex items-center" data-testid={`select-item-route-${index}`}>
+                              <Badge variant="outline" className={item.procurementRoute === "bulk_plant" ? "text-teal-700 border-teal-300 dark:text-teal-300" : "text-blue-700 border-blue-300 dark:text-blue-300"}>
+                                {item.procurementRoute === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
@@ -3823,96 +3876,178 @@ export default function PurchaseIndents() {
                 </Card>
               )}
 
-              {/* ── Material Indent: Place Order Card ── */}
+              {/* ── Bulk Material Indent: Order / Procurement Action Card ── */}
               {(selectedIndent as any).piType === "material" && selectedIndent.status === "approved" && canCreate && (
                 <Card className="border-teal-200 dark:border-teal-800" data-testid="card-place-order">
                   <CardHeader className="py-3 px-4 bg-teal-50 dark:bg-teal-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-teal-800 dark:text-teal-200 flex items-center gap-2">
                       <ClipboardList className="w-4 h-4" />
-                      PLACE ORDER
+                      ORDER / PROCUREMENT ACTION
                     </CardTitle>
-                    <p className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">Record vendor and expected delivery for each item, then place the order.</p>
+                    <p className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">Fill in order details below and click Mark Ordered. Receipt must be recorded via Plant Material Receipts — this action does not update stock.</p>
                   </CardHeader>
-                  <CardContent className="py-3 px-4 space-y-3">
+                  <CardContent className="py-3 px-4 space-y-4">
+                    {/* Prefilled PI metadata header */}
+                    <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground uppercase font-semibold">PI No.</span>
+                        <p className="font-mono font-bold text-foreground">{selectedIndent.indentNo}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground uppercase font-semibold">Raised By</span>
+                        <p className="font-semibold text-foreground">{selectedIndent.raisedBy}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground uppercase font-semibold">Raised On</span>
+                        <p className="text-foreground">{selectedIndent.createdAt ? format(new Date(selectedIndent.createdAt as any), "dd-MMM-yy HH:mm") : "—"}</p>
+                      </div>
+                      {(selectedIndent as any).approvedBy && (
+                        <div>
+                          <span className="text-muted-foreground uppercase font-semibold">Approved By</span>
+                          <p className="font-semibold text-foreground">{(selectedIndent as any).approvedBy}</p>
+                        </div>
+                      )}
+                      {(selectedIndent as any).approvedAt && (
+                        <div>
+                          <span className="text-muted-foreground uppercase font-semibold">Approved On</span>
+                          <p className="text-foreground">{format(new Date((selectedIndent as any).approvedAt as string), "dd-MMM-yy HH:mm")}</p>
+                        </div>
+                      )}
+                      {((selectedIndent as any).siteId || (selectedIndent as any).raisedFrom) && (
+                        <div>
+                          <span className="text-muted-foreground uppercase font-semibold">Project / Site</span>
+                          <p className="text-foreground">{locationLabel({ siteId: (selectedIndent as any).siteId ?? null, raisedFrom: (selectedIndent as any).raisedFrom ?? null }, sitesList)}</p>
+                        </div>
+                      )}
+                      {(selectedIndent as any).sourceIrnId && (
+                        <div>
+                          <span className="text-muted-foreground uppercase font-semibold">Source IRN</span>
+                          <p className="font-mono text-indigo-700 dark:text-indigo-400">{(selectedIndent as any).sourceIrnNo ?? `IRN-${(selectedIndent as any).sourceIrnId}`}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Per-item order detail form */}
                     {selectedIndent.items.filter(item => (item.approvedQty ?? 0) > 0).map(item => {
-                      const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty) };
+                      const pom: PlaceOrderItemData = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "", rate: "", paymentMode: "credit", remarks: "" };
+                      const setPom = (patch: Partial<PlaceOrderItemData>) => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, ...patch } }));
                       return (
-                        <div key={item.id} className="border rounded-lg p-3 space-y-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold">{item.description}</span>
-                            <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                        <div key={item.id} className="border rounded-lg overflow-hidden">
+                          {/* Item header */}
+                          <div className="flex items-start justify-between gap-2 px-4 py-2.5 bg-muted/30 border-b">
+                            <div>
+                              <p className="text-sm font-semibold">{item.description}</p>
+                              {item.spec && <p className="text-xs text-muted-foreground">{item.spec}</p>}
+                            </div>
+                            <div className="text-right text-xs shrink-0">
+                              <p className="text-muted-foreground">APPROVED QTY</p>
+                              <p className="font-bold text-teal-700 dark:text-teal-400">{item.approvedQty ?? item.qty} {item.uom}</p>
+                              {item.purpose && <p className="text-muted-foreground mt-0.5">For: {item.purpose}</p>}
+                              {item.requiredBy && <p className="text-muted-foreground">Required: {format(new Date(item.requiredBy + "T00:00:00"), "dd-MMM-yy")}</p>}
+                            </div>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <div>
-                              <Label className="text-xs">ORDER QTY ({item.uom})</Label>
-                              <Input
-                                type="number"
-                                value={pom.orderedQty}
-                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedQty: e.target.value } }))}
-                                min={0}
-                                max={item.approvedQty ?? item.qty}
-                                className="text-xs h-8"
-                                data-testid={`input-po-qty-${item.id}`}
-                              />
+                          {/* Editable fields */}
+                          <div className="p-3 space-y-2">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              <div>
+                                <Label className="text-xs">SUPPLIER / VENDOR</Label>
+                                <Input
+                                  value={pom.vendor}
+                                  onChange={e => setPom({ vendor: e.target.value })}
+                                  onBlur={e => setPom({ vendor: e.target.value.toUpperCase() })}
+                                  placeholder="SUPPLIER NAME"
+                                  className="uppercase text-xs h-8"
+                                  data-testid={`input-po-vendor-${item.id}`}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">ORDER QTY ({item.uom})</Label>
+                                <Input
+                                  type="number"
+                                  value={pom.orderedQty}
+                                  onChange={e => setPom({ orderedQty: e.target.value })}
+                                  min={0}
+                                  className="text-xs h-8"
+                                  data-testid={`input-po-qty-${item.id}`}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">RATE (₹ / {item.uom})</Label>
+                                <Input
+                                  type="number"
+                                  value={pom.rate}
+                                  onChange={e => setPom({ rate: e.target.value })}
+                                  placeholder="0.00"
+                                  className="text-xs h-8"
+                                  data-testid={`input-po-rate-${item.id}`}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">EXPECTED DELIVERY</Label>
+                                <Input
+                                  type="date"
+                                  value={pom.expectedDelivery}
+                                  onChange={e => setPom({ expectedDelivery: e.target.value })}
+                                  className="text-xs h-8"
+                                  data-testid={`input-po-delivery-${item.id}`}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">PAYMENT MODE</Label>
+                                <Select value={pom.paymentMode || "credit"} onValueChange={v => setPom({ paymentMode: v })}>
+                                  <SelectTrigger className="text-xs h-8" data-testid={`select-po-payment-${item.id}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="credit">CREDIT</SelectItem>
+                                    <SelectItem value="cash">CASH</SelectItem>
+                                    <SelectItem value="advance">ADVANCE</SelectItem>
+                                    <SelectItem value="lc">LC</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">TRANSPORT / REMARKS</Label>
+                                <Input
+                                  value={pom.remarks}
+                                  onChange={e => setPom({ remarks: e.target.value })}
+                                  onBlur={e => setPom({ remarks: e.target.value.toUpperCase() })}
+                                  placeholder="e.g. SUPPLIER TRANSPORT, FOB..."
+                                  className="uppercase text-xs h-8"
+                                  data-testid={`input-po-remarks-${item.id}`}
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-xs">VENDOR (OPTIONAL)</Label>
-                              <Input
-                                value={pom.vendor}
-                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, vendor: e.target.value } }))}
-                                onBlur={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, vendor: e.target.value.toUpperCase() } }))}
-                                placeholder="SUPPLIER NAME"
-                                className="uppercase text-xs h-8"
-                                data-testid={`input-po-vendor-${item.id}`}
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">EXPECTED DELIVERY</Label>
-                              <Input
-                                type="date"
-                                value={pom.expectedDelivery}
-                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, expectedDelivery: e.target.value } }))}
-                                className="text-xs h-8"
-                                data-testid={`input-po-delivery-${item.id}`}
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">ORDERED BY</Label>
-                              <Input
-                                value={pom.orderedBy}
-                                onChange={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedBy: e.target.value } }))}
-                                onBlur={e => setPlaceOrderVendorMap(prev => ({ ...prev, [item.id]: { ...pom, orderedBy: e.target.value.toUpperCase() } }))}
-                                placeholder={currentUser?.fullName?.toUpperCase() || "PURCHASER NAME"}
-                                className="uppercase text-xs h-8"
-                                data-testid={`input-po-orderedby-${item.id}`}
-                                list={`orderedby-suggestions-${item.id}`}
-                              />
-                              <datalist id={`orderedby-suggestions-${item.id}`}>
-                                {Array.from(new Set((indents ?? []).flatMap(ind => ind.items?.map((it: any) => it.purchasedBy).filter(Boolean) || []))).slice(0, 8).map((name: any) => (
-                                  <option key={name} value={name} />
-                                ))}
-                              </datalist>
-                            </div>
+                            {pom.rate && pom.orderedQty ? (
+                              <p className="text-xs text-teal-700 dark:text-teal-400 font-semibold text-right">
+                                Est. Order Value: ₹ {(parseFloat(pom.rate) * parseFloat(pom.orderedQty)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex justify-end pt-1">
+
+                    <div className="flex items-center justify-between pt-1 border-t">
+                      <p className="text-xs text-muted-foreground italic">Marking ordered will NOT create a GRN or update stock. Record actual receipt via Plant Material Receipts.</p>
                       <Button
                         size="sm"
-                        className="bg-teal-600 hover:bg-teal-700 text-white"
+                        className="bg-teal-600 hover:bg-teal-700 text-white ml-4 shrink-0"
                         disabled={placeOrderMutation.isPending}
                         onClick={() => {
                           const items = selectedIndent.items
                             .filter(item => (item.approvedQty ?? 0) > 0)
                             .map(item => {
-                              const pom = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "" };
+                              const pom: PlaceOrderItemData = placeOrderVendorMap[item.id] ?? { vendor: "", expectedDelivery: "", orderedQty: String(item.approvedQty ?? item.qty), orderedBy: "", rate: "", paymentMode: "credit", remarks: "" };
                               return {
                                 itemId: item.id,
                                 vendor: pom.vendor || undefined,
                                 expectedDelivery: pom.expectedDelivery || undefined,
                                 orderedQty: pom.orderedQty ? parseFloat(pom.orderedQty) : undefined,
-                                orderedBy: pom.orderedBy || undefined,
+                                orderedBy: pom.orderedBy || currentUser?.fullName || undefined,
+                                rate: pom.rate ? parseFloat(pom.rate) : undefined,
+                                paymentMode: pom.paymentMode || undefined,
+                                remarks: pom.remarks || undefined,
                               };
                             });
                           placeOrderMutation.mutate({ items });
@@ -3920,7 +4055,7 @@ export default function PurchaseIndents() {
                         data-testid="button-place-order"
                       >
                         {placeOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <ClipboardList className="w-4 h-4 mr-1" />}
-                        PLACE ORDER
+                        MARK ORDERED
                       </Button>
                     </div>
                   </CardContent>
