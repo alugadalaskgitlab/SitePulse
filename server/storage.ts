@@ -227,6 +227,7 @@ import {
   type CreateIrnRequest,
   type StoresVerifyIrnRequest,
   type ApproveIrnRequest,
+  type RecordIrnIssueRequest,
   userPermissions,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
@@ -971,6 +972,7 @@ export interface IStorage {
   reopenIrn(id: number, reopenedBy: string): Promise<InternalRequisitionWithItems | undefined>;
   createIrnAuditLog(irnId: number, event: string, actorName: string, notes?: string): Promise<IrnAuditLog>;
   getIrnAuditLogs(irnId: number): Promise<IrnAuditLog[]>;
+  createIrnIssueVoucher(irnId: number, data: RecordIrnIssueRequest): Promise<StoreIssueWithItems>;
 
   // Daily Diesel Requirements
   getDieselRequirements(filters?: { dateFrom?: string; dateTo?: string; status?: string }): Promise<DieselRequirementWithItems[]>;
@@ -18163,15 +18165,16 @@ export class DatabaseStorage implements IStorage {
         id: storeIssueItems.id,
         issueId: storeIssueItems.issueId,
         itemId: storeIssueItems.itemId,
+        materialText: storeIssueItems.materialText,
         qty: storeIssueItems.qty,
         uom: storeIssueItems.uom,
         itemName: storeItems.name,
         category: storeItems.category,
       })
       .from(storeIssueItems)
-      .leftJoin(storeItems, eq(storeIssueItems.itemId, storeItems.id))
+      .leftJoin(storeItems, sql`${storeIssueItems.itemId} = ${storeItems.id}`)
       .where(eq(storeIssueItems.issueId, issue.id));
-    return { ...issue, items: items as (StoreIssueItem & { itemName: string; category: string })[] };
+    return { ...issue, items: items as (StoreIssueItem & { itemName: string | null; category: string | null })[] };
   }
 
   async getStoreIssues(filters?: { dateFrom?: string; dateTo?: string; section?: string; siteId?: number; permittedSiteIds?: number[]; item?: string; category?: string }): Promise<StoreIssueWithItems[]> {
@@ -18239,6 +18242,7 @@ export class DatabaseStorage implements IStorage {
     const issueTotals = await db.execute(sql`
       SELECT item_id, COALESCE(SUM(qty), 0) AS total_out
       FROM store_issue_items
+      WHERE item_id IS NOT NULL
       GROUP BY item_id
     `);
     const inMap: Record<number, number> = {};
@@ -18995,7 +18999,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(purchaseIndents.sourceIrnId, id))
       .limit(1);
     const linkedPi = linkedPis[0] ?? null;
-    return { ...row, linkedPiId: linkedPi?.id ?? null, linkedPi } as InternalRequisitionWithItems;
+    // Annotate with linked issue voucher number if issue was recorded.
+    let linkedIssueNo: string | null = null;
+    if (row.linkedIssueId) {
+      const [issueRow] = await db.select({ issueNumber: storeIssues.issueNumber })
+        .from(storeIssues)
+        .where(eq(storeIssues.id, row.linkedIssueId));
+      linkedIssueNo = issueRow?.issueNumber ?? null;
+    }
+    return { ...row, linkedPiId: linkedPi?.id ?? null, linkedPi, linkedIssueNo } as InternalRequisitionWithItems;
   }
 
   async updateInternalRequisition(
@@ -19268,6 +19280,95 @@ export class DatabaseStorage implements IStorage {
       .from(irnAuditLogs)
       .where(eq(irnAuditLogs.irnId, irnId))
       .orderBy(irnAuditLogs.timestamp);
+  }
+
+  async createIrnIssueVoucher(irnId: number, data: RecordIrnIssueRequest): Promise<StoreIssueWithItems> {
+    const irn = await this.getInternalRequisition(irnId);
+    if (!irn) throw new Error("IRN not found");
+    if (irn.status !== "approved") throw new Error("IRN must be approved before recording an issue");
+    if (irn.linkedIssueId) throw new Error("Issue voucher already recorded for this IRN");
+
+    // Validate actualIssuedQty ≤ issueQty for each item
+    for (const reqItem of data.items) {
+      const irnItem = irn.items.find(i => i.id === reqItem.irnItemId);
+      if (!irnItem) throw new Error(`IRN item ${reqItem.irnItemId} not found`);
+      const maxQty = irnItem.issueQty ?? 0;
+      if (reqItem.actualIssuedQty > maxQty + 0.001) {
+        throw new Error(`Actual issued qty (${reqItem.actualIssuedQty}) exceeds approved issue qty (${maxQty}) for ${irnItem.material}`);
+      }
+    }
+
+    // Map issuedToSection from irn.raisedFrom
+    const sectionMap: Record<string, string> = {
+      "HMP Plant": "plant",
+      "RMC Operations": "plant",
+      "Site Operations": "site",
+      "Equipment & Fleet": "other",
+    };
+    const issuedToSection = sectionMap[irn.raisedFrom] ?? "other";
+
+    return await db.transaction(async (tx) => {
+      // Generate issue number
+      const issueNumber = await this.generateStoreDocNumber('ISS');
+
+      // Create store_issues record
+      const [issue] = await tx.insert(storeIssues).values({
+        issueNumber,
+        date: data.date,
+        issuedToSection,
+        issuedToDetail: irn.raisedBy,
+        siteId: irn.siteId ?? null,
+        purpose: `IRN ${irn.irnNo}`,
+        remarks: data.movementRemarks ?? null,
+        irnId,
+        issuedBy: data.issuedBy.toUpperCase(),
+        issuedAt: new Date(),
+        receivedBy: data.receivedBy.toUpperCase(),
+        receiverDesignation: data.receiverDesignation?.toUpperCase() ?? null,
+        vehicleType: data.deliveryMode === "vehicle" ? (data.vehicleType ?? null) : "hand_carried",
+        vehicleNo: data.deliveryMode === "vehicle" ? (data.vehicleNo?.toUpperCase() ?? null) : null,
+        driverName: data.deliveryMode === "vehicle" ? (data.driverName?.toUpperCase() ?? null) : null,
+        movementRemarks: data.movementRemarks?.toUpperCase() ?? null,
+      }).returning();
+
+      // Create store_issue_items for each item
+      if (data.items.length > 0) {
+        await tx.insert(storeIssueItems).values(
+          data.items.map(it => ({
+            issueId: issue.id,
+            itemId: it.storeItemId ?? null,
+            materialText: it.materialText,
+            qty: it.actualIssuedQty,
+            uom: it.uom,
+          }))
+        );
+      }
+
+      // Update internalRequisitions.linkedIssueId
+      await tx.update(internalRequisitions)
+        .set({ linkedIssueId: issue.id })
+        .where(eq(internalRequisitions.id, irnId));
+
+      // Update each internalRequisitionItem with actualIssuedQty and storeItemId
+      for (const reqItem of data.items) {
+        await tx.update(internalRequisitionItems)
+          .set({
+            actualIssuedQty: reqItem.actualIssuedQty,
+            storeItemId: reqItem.storeItemId ?? null,
+          })
+          .where(eq(internalRequisitionItems.id, reqItem.irnItemId));
+      }
+
+      // Insert audit log
+      await tx.insert(irnAuditLogs).values({
+        irnId,
+        event: "issue_recorded",
+        actorName: data.issuedBy.toUpperCase(),
+        notes: `Issue Voucher ${issueNumber} recorded. Received by: ${data.receivedBy.toUpperCase()}`,
+      });
+
+      return this.buildIssueWithItems(issue);
+    });
   }
 }
 

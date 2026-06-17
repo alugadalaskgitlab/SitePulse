@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -5551,6 +5551,32 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error updating IRN:", err);
       res.status(500).json({ message: "Failed to update IRN" });
+    }
+  });
+
+  app.post("/api/irn/:id/record-issue", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "stores_inventory")) return;
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid IRN id" });
+      const parsed = recordIrnIssueSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Validation error" });
+      // Vehicle fields mandatory when deliveryMode is "vehicle"
+      if (parsed.data.deliveryMode === "vehicle") {
+        if (!parsed.data.vehicleNo?.trim()) return res.status(400).json({ message: "Vehicle number is required for vehicle delivery" });
+        if (!parsed.data.vehicleType?.trim()) return res.status(400).json({ message: "Vehicle type is required for vehicle delivery" });
+        if (!parsed.data.driverName?.trim()) return res.status(400).json({ message: "Driver name is required for vehicle delivery" });
+      }
+      const issue = await storage.createIrnIssueVoucher(id, parsed.data);
+      sendPushToSection("irn_view", "Issue Voucher Recorded", `Issue ${issue.issueNumber} recorded for IRN`, "/irn").catch(() => {});
+      res.status(201).json(issue);
+    } catch (err: any) {
+      const msg = err?.message ?? "Failed to record issue voucher";
+      if (msg.includes("already recorded") || msg.includes("must be approved")) {
+        return res.status(400).json({ message: msg });
+      }
+      console.error("POST /api/irn/:id/record-issue:", err);
+      res.status(500).json({ message: msg });
     }
   });
 

@@ -1527,6 +1527,7 @@ export const internalRequisitions = pgTable("internal_requisitions", {
   rejectionReason: text("rejection_reason"),
   closedBy: text("closed_by"),
   closedAt: timestamp("closed_at"),
+  linkedIssueId: integer("linked_issue_id"), // FK → store_issues (set when Issue Voucher is recorded)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1545,6 +1546,8 @@ export const internalRequisitionItems = pgTable("internal_requisition_items", {
   itemStatus: text("item_status").notNull().default("pending"), // pending | issued | queued_procurement | partially_issued
   storesAction: text("stores_action"), // issue | procure | split
   storesNotes: text("stores_notes"),
+  storeItemId: integer("store_item_id"), // optional FK → store_items (set when recording issue)
+  actualIssuedQty: real("actual_issued_qty"), // what was actually dispatched (may differ from issueQty)
 });
 
 export const internalRequisitionsRelations = relations(internalRequisitions, ({ many }) => ({
@@ -1567,6 +1570,7 @@ export type InternalRequisitionWithItems = InternalRequisition & {
   items: InternalRequisitionItem[];
   linkedPiId?: number | null;
   linkedPi?: { id: number; indentNo: string; raisedBy: string; createdAt: Date | string | null } | null;
+  linkedIssueNo?: string | null;
 };
 
 export const irnAuditLogs = pgTable("irn_audit_logs", {
@@ -1619,6 +1623,26 @@ export const approveIrnSchema = z.object({
   actionBy: z.string(),
 });
 export type ApproveIrnRequest = z.infer<typeof approveIrnSchema>;
+
+export const recordIrnIssueSchema = z.object({
+  date: z.string().min(1, "Date is required"),
+  issuedBy: z.string().min(1, "Issued By is required"),
+  receivedBy: z.string().min(1, "Received By is required"),
+  receiverDesignation: z.string().optional(),
+  deliveryMode: z.enum(["vehicle", "hand_carried"]),
+  vehicleType: z.string().optional(),
+  vehicleNo: z.string().optional(),
+  driverName: z.string().optional(),
+  movementRemarks: z.string().optional(),
+  items: z.array(z.object({
+    irnItemId: z.number().int(),
+    storeItemId: z.number().int().nullable().optional(),
+    actualIssuedQty: z.number().positive("Issued qty must be > 0"),
+    uom: z.string(),
+    materialText: z.string(),
+  })).min(1, "At least one item required"),
+});
+export type RecordIrnIssueRequest = z.infer<typeof recordIrnIssueSchema>;
 
 // ============================================
 // DAILY DIESEL REQUIREMENTS
@@ -2039,6 +2063,15 @@ export const storeIssues = pgTable("store_issues", {
   siteId: integer("site_id").references(() => sites.id), // nullable FK; set when issuedToSection = "site"
   purpose: text("purpose"),
   remarks: text("remarks"),
+  irnId: integer("irn_id"),               // nullable FK → internal_requisitions (set when created from IRN flow)
+  issuedBy: text("issued_by"),
+  issuedAt: timestamp("issued_at"),
+  receivedBy: text("received_by"),
+  receiverDesignation: text("receiver_designation"),
+  vehicleType: text("vehicle_type"),      // "vehicle" | "hand_carried"
+  vehicleNo: text("vehicle_no"),
+  driverName: text("driver_name"),
+  movementRemarks: text("movement_remarks"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   dateIdx: index("store_issues_date_idx").on(t.date),
@@ -2047,7 +2080,8 @@ export const storeIssues = pgTable("store_issues", {
 export const storeIssueItems = pgTable("store_issue_items", {
   id: serial("id").primaryKey(),
   issueId: integer("issue_id").notNull(),
-  itemId: integer("item_id").notNull(),
+  itemId: integer("item_id"),           // nullable — null when issued via IRN for non-store material
+  materialText: text("material_text"),  // display name when itemId is null
   qty: real("qty").notNull(),
   uom: text("uom").notNull(),
 });
@@ -2055,7 +2089,7 @@ export const storeIssueItems = pgTable("store_issue_items", {
 export const insertStoreItemSchema = createInsertSchema(storeItems).omit({ id: true, createdAt: true });
 export const insertStoreGrnSchema = createInsertSchema(storeGrns).omit({ id: true, createdAt: true });
 export const insertStoreGrnItemSchema = createInsertSchema(storeGrnItems).omit({ id: true });
-export const insertStoreIssueSchema = createInsertSchema(storeIssues).omit({ id: true, createdAt: true });
+export const insertStoreIssueSchema = createInsertSchema(storeIssues).omit({ id: true, createdAt: true, issuedAt: true });
 export const insertStoreIssueItemSchema = createInsertSchema(storeIssueItems).omit({ id: true });
 
 export type StoreItem = typeof storeItems.$inferSelect;
@@ -2073,7 +2107,7 @@ export type StoreGrnWithItems = StoreGrn & {
   items: (StoreGrnItem & { itemName: string; category: string })[];
 };
 export type StoreIssueWithItems = StoreIssue & {
-  items: (StoreIssueItem & { itemName: string; category: string })[];
+  items: (StoreIssueItem & { itemName: string | null; category: string | null })[];
 };
 export type StoreStockBalance = {
   itemId: number;
