@@ -1546,7 +1546,8 @@ export const internalRequisitionItems = pgTable("internal_requisition_items", {
   itemStatus: text("item_status").notNull().default("pending"), // pending | issued | queued_procurement | partially_issued
   storesAction: text("stores_action"), // issue | procure | split
   storesNotes: text("stores_notes"),
-  storeItemId: integer("store_item_id"), // optional FK → store_items (set when recording issue)
+  storeItemId: integer("store_item_id"), // optional FK → store_items (set when recording issue for store items)
+  materialId: integer("material_id").references(() => plantMaterials.id), // optional FK → plant_materials (for bulk material items)
   actualIssuedQty: real("actual_issued_qty"), // what was actually dispatched (may differ from issueQty)
 });
 
@@ -1599,6 +1600,7 @@ export const createIrnRequestSchema = z.object({
     urgency: z.enum(["normal", "high", "urgent"]).default("normal"),
     purpose: z.string().min(1, "Purpose is required"),
     needByDate: z.string().optional(),
+    materialId: z.number().int().nullish(), // optional link to plant_materials
   })).min(1, "At least one item is required"),
 });
 export type CreateIrnRequest = z.infer<typeof createIrnRequestSchema>;
@@ -1637,6 +1639,8 @@ export const recordIrnIssueSchema = z.object({
   items: z.array(z.object({
     irnItemId: z.number().int(),
     storeItemId: z.number().int().nullable().optional(),
+    materialId: z.number().int().nullable().optional(),   // plant_materials FK — bulk material items
+    partyId: z.number().int().nullable().optional(),      // whose plant stock to deduct
     actualIssuedQty: z.number().positive("Issued qty must be > 0"),
     uom: z.string(),
     materialText: z.string(),

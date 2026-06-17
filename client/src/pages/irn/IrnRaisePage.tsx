@@ -41,64 +41,48 @@ function parseQueryParams() {
   };
 }
 
-// ── Material combobox with localStorage memory ──────────────────────────────
+// ── Plant-aware material combobox ─────────────────────────────────────────
 
-const SEED_MATERIALS = [
-  "Bitumen (VG-30)", "Aggregate 20mm", "Aggregate 10mm", "Stone Dust",
-  "Cement (OPC 53)", "TMT Steel 10mm", "TMT Steel 12mm", "Diesel (HSD)",
-  "Engine Oil 15W40", "Hydraulic Oil", "Binding Wire", "Shuttering Plates",
-  "MS Pipe 50mm", "Bitumen Emulsion", "Anti-stripping Agent",
-];
-const STORAGE_KEY = "irn_material_history";
+type PlantMat = { id: number; name: string; category: string; defaultUom: string | null };
 
-function loadMaterials(): string[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const custom: string[] = stored ? JSON.parse(stored) : [];
-    const merged = [...SEED_MATERIALS];
-    custom.forEach((m) => { if (!merged.includes(m)) merged.push(m); });
-    return merged;
-  } catch { return SEED_MATERIALS; }
-}
-
-function saveMaterial(name: string) {
-  if (!name.trim()) return;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const custom: string[] = stored ? JSON.parse(stored) : [];
-    if (!custom.includes(name) && !SEED_MATERIALS.includes(name)) {
-      custom.unshift(name);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(custom.slice(0, 50)));
-    }
-  } catch {}
-}
-
-function MaterialCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PlantMaterialCombobox({
+  value, materialId, onChange, plantMaterials,
+}: {
+  value: string;
+  materialId: number | null | undefined;
+  onChange: (name: string, id: number | null) => void;
+  plantMaterials: PlantMat[];
+}) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
-  const [materials, setMaterials] = useState<string[]>(loadMaterials);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setQuery(value); }, [value]);
 
-  const filtered = query.trim()
-    ? materials.filter((m) => m.toLowerCase().includes(query.toLowerCase()))
-    : materials;
-  const showCreate = query.trim() && !materials.some((m) => m.toLowerCase() === query.toLowerCase());
+  const q = query.trim().toLowerCase();
+  const filteredPlant = q
+    ? plantMaterials.filter(m => m.name.toLowerCase().includes(q))
+    : plantMaterials;
 
-  function select(m: string) {
-    onChange(m);
-    setQuery(m);
+  const linkedName = materialId ? plantMaterials.find(m => m.id === materialId)?.name : null;
+
+  function selectPlant(m: PlantMat) {
+    onChange(m.name, m.id);
+    setQuery(m.name);
     setOpen(false);
-    saveMaterial(m);
-    setMaterials(loadMaterials());
+  }
+
+  function selectFreeText(name: string) {
+    onChange(name, null);
+    setQuery(name);
+    setOpen(false);
   }
 
   function handleBlur(e: React.FocusEvent) {
     if (listRef.current?.contains(e.relatedTarget as Node)) return;
     setOpen(false);
-    if (query.trim() && query !== value) { onChange(query.trim()); saveMaterial(query.trim()); }
+    if (query.trim() && query.trim() !== value) { onChange(query.trim(), null); }
   }
 
   return (
@@ -111,10 +95,15 @@ function MaterialCombobox({ value, onChange }: { value: string; onChange: (v: st
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onBlur={handleBlur}
-          placeholder="Search or type material…"
-          className="h-9 w-full rounded-md border border-input bg-background pl-6 pr-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 placeholder:text-muted-foreground"
+          placeholder="Search plant materials or type freely…"
+          className={`h-9 w-full rounded-md border bg-background pl-6 pr-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 placeholder:text-muted-foreground ${linkedName ? "border-green-400" : "border-input"}`}
           autoComplete="off"
         />
+        {linkedName && (
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-700 bg-green-50 border border-green-200 px-1 rounded font-medium whitespace-nowrap">
+            linked
+          </span>
+        )}
       </div>
       {open && (
         <div
@@ -122,20 +111,37 @@ function MaterialCombobox({ value, onChange }: { value: string; onChange: (v: st
           className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg max-h-52 overflow-auto text-sm"
           onMouseDown={(e) => e.preventDefault()}
         >
-          {showCreate && (
-            <div className="px-3 py-2 cursor-pointer hover:bg-amber-50 text-amber-700 font-medium border-b flex items-center gap-1.5 text-xs" onClick={() => select(query.trim())}>
-              <Plus className="h-3 w-3" /> Add "{query.trim()}"
+          {filteredPlant.length > 0 && (
+            <>
+              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-green-700 uppercase tracking-wide bg-green-50 border-b">
+                Plant Stock Materials
+              </div>
+              {filteredPlant.map(m => (
+                <div
+                  key={m.id}
+                  className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center justify-between text-xs"
+                  onClick={() => selectPlant(m)}
+                >
+                  <span className="font-medium">{m.name}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-gray-400 text-[10px]">{m.category}</span>
+                    {m.id === materialId && <Check className="h-3 w-3 text-green-600" />}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+          {q && (
+            <div
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 text-amber-700 font-medium flex items-center gap-1.5 text-xs border-t"
+              onClick={() => selectFreeText(query.trim())}
+            >
+              <Plus className="h-3 w-3" /> Use "{query.trim()}" (free text)
             </div>
           )}
-          {filtered.length === 0 && !showCreate && (
-            <div className="px-3 py-2 text-gray-400 italic text-xs">No matches</div>
+          {!q && filteredPlant.length === 0 && (
+            <div className="px-3 py-2 text-gray-400 italic text-xs">Type to search…</div>
           )}
-          {filtered.map((m) => (
-            <div key={m} className="px-3 py-2 cursor-pointer hover:bg-amber-50 flex items-center justify-between text-xs" onClick={() => select(m)}>
-              <span>{m}</span>
-              {m === value && <Check className="h-3 w-3 text-amber-600" />}
-            </div>
-          ))}
         </div>
       )}
     </div>
@@ -146,6 +152,7 @@ function MaterialCombobox({ value, onChange }: { value: string; onChange: (v: st
 
 const itemSchema = z.object({
   material: z.string().min(1, "Material is required"),
+  materialId: z.number().int().nullish(),
   qty: z.coerce.number().positive("Must be > 0"),
   uom: z.string().min(1),
   urgency: z.enum(["normal", "high", "urgent"]),
@@ -195,7 +202,7 @@ export default function IrnRaisePage() {
       raisedBy: user?.fullName?.toUpperCase() ?? user?.email ?? "",
       siteId: null,
       remarks: "",
-      items: [{ material: "", qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" }],
+      items: [{ material: "", materialId: null, qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" }],
     },
   });
 
@@ -209,6 +216,7 @@ export default function IrnRaisePage() {
       remarks: editIrn.remarks ?? "",
       items: editIrn.items.map((item) => ({
         material: item.material,
+        materialId: item.materialId ?? null,
         qty: item.qty,
         uom: item.uom,
         urgency: (item.urgency ?? "normal") as "normal" | "high" | "urgent",
@@ -219,11 +227,6 @@ export default function IrnRaisePage() {
     setEditFillApplied(true);
   }, [editIrn, editFillApplied, form]);
 
-  const raisedFrom = form.watch("raisedFrom");
-  const showSiteField = editId
-    ? (raisedFrom === "Site Operations" || raisedFrom === "Equipment & Fleet")
-    : (fromParam === "site" || fromParam === "equipment");
-
   const { data: sites = [] } = useQuery<{ id: number; name: string; isActive?: boolean }[]>({
     queryKey: ["/api/sites"],
     queryFn: async () => {
@@ -231,9 +234,17 @@ export default function IrnRaisePage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: showSiteField,
   });
   const activeSites = sites.filter((s) => s.isActive !== false);
+
+  const { data: plantMats = [] } = useQuery<PlantMat[]>({
+    queryKey: ["/api/plant-module/materials"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/materials", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
 
@@ -385,32 +396,30 @@ export default function IrnRaisePage() {
                 />
               </div>
 
-              {/* Site / Job — shown only for Site Operations + Equipment & Fleet */}
-              {showSiteField && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium flex items-center gap-1">
-                    <MapPin className="h-3 w-3 text-gray-400" />
-                    Site / Job
-                  </Label>
-                  <Select
-                    value={form.watch("siteId") != null ? String(form.watch("siteId")) : "__none__"}
-                    onValueChange={(v) => form.setValue("siteId", v === "__none__" ? null : Number(v))}
-                    data-testid="select-site-id"
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select site (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— None —</SelectItem>
-                      {activeSites.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {/* Site / Location — always visible for tracking material flow */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-gray-400" />
+                  Site / Location
+                </Label>
+                <Select
+                  value={form.watch("siteId") != null ? String(form.watch("siteId")) : "__none__"}
+                  onValueChange={(v) => form.setValue("siteId", v === "__none__" ? null : Number(v))}
+                  data-testid="select-site-id"
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Select site / location (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None / General —</SelectItem>
+                    {activeSites.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -438,7 +447,7 @@ export default function IrnRaisePage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => append({ material: "", qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" })}
+                onClick={() => append({ material: "", materialId: null, qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" })}
                 className="h-7 text-xs gap-1"
                 data-testid="btn-add-item"
               >
@@ -475,10 +484,25 @@ export default function IrnRaisePage() {
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-7 space-y-1">
                       <Label className="text-xs">Material <span className="text-red-500">*</span></Label>
-                      <MaterialCombobox
+                      <PlantMaterialCombobox
                         value={form.watch(`items.${idx}.material`)}
-                        onChange={(v) => form.setValue(`items.${idx}.material`, v, { shouldValidate: true })}
+                        materialId={form.watch(`items.${idx}.materialId`)}
+                        plantMaterials={plantMats}
+                        onChange={(name, id) => {
+                          form.setValue(`items.${idx}.material`, name, { shouldValidate: true });
+                          form.setValue(`items.${idx}.materialId`, id ?? null);
+                          // Auto-fill UOM from plant material
+                          if (id) {
+                            const mat = plantMats.find(m => m.id === id);
+                            if (mat?.defaultUom) form.setValue(`items.${idx}.uom`, mat.defaultUom.toUpperCase());
+                          }
+                        }}
                       />
+                      {form.watch(`items.${idx}.materialId`) && (
+                        <p className="text-[10px] text-green-700 flex items-center gap-0.5">
+                          <Check className="h-3 w-3" /> Linked to plant stock — stock will update on issue
+                        </p>
+                      )}
                       {form.formState.errors.items?.[idx]?.material && (
                         <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.material?.message}</p>
                       )}

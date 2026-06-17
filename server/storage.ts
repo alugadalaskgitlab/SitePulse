@@ -19091,6 +19091,7 @@ export class DatabaseStorage implements IStorage {
             purpose: item.purpose.toUpperCase(),
             needByDate: item.needByDate ?? null,
             itemStatus: "pending",
+            materialId: item.materialId ?? null,
           })),
         )
         .returning();
@@ -19360,6 +19361,56 @@ export class DatabaseStorage implements IStorage {
             uom: it.uom,
           }))
         );
+      }
+
+      // For bulk material items (materialId set + partyId provided), also write to plant stock_ledger
+      for (const reqItem of nonZeroItems) {
+        if (!reqItem.materialId) continue;
+        const stockPartyId = reqItem.partyId ?? null;
+        const [material] = await tx.select().from(plantMaterials)
+          .where(eq(plantMaterials.id, reqItem.materialId)).limit(1);
+        if (!material) continue;
+
+        // UOM conversion (same logic as createMaterialIssue)
+        let stockQty = reqItem.actualIssuedQty;
+        let stockUom = reqItem.uom;
+        if (material.conversionFactor && material.conversionFromUom && material.conversionToUom) {
+          if (reqItem.uom.toUpperCase() === material.conversionFromUom.toUpperCase()) {
+            stockQty = reqItem.actualIssuedQty * material.conversionFactor;
+            stockUom = material.conversionToUom;
+          }
+        }
+
+        // Update stock_balances
+        const balCond = stockPartyId === null
+          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, reqItem.materialId))
+          : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, reqItem.materialId));
+        const [existing] = await tx.select().from(stockBalances).where(balCond).limit(1);
+        const newBalance = (existing?.balance ?? 0) - stockQty;
+        if (existing) {
+          await tx.update(stockBalances).set({ balance: newBalance, lastUpdated: new Date() })
+            .where(eq(stockBalances.id, existing.id));
+        } else {
+          await tx.insert(stockBalances).values({ partyId: stockPartyId, materialId: reqItem.materialId, balance: newBalance, uom: stockUom });
+        }
+
+        // Insert stock_ledger row
+        await tx.insert(stockLedger).values({
+          date: data.date,
+          partyId: stockPartyId,
+          materialId: reqItem.materialId,
+          transactionType: "issue",
+          referenceId: issue.id,
+          quantityOut: stockQty,
+          balanceAfter: newBalance,
+          uom: stockUom,
+          notes: `IRN Issue: ${irn.irnNo} — ${reqItem.materialText} to ${irn.raisedBy}`,
+        });
+
+        // Update internalRequisitionItems.materialId (persist the link)
+        await tx.update(internalRequisitionItems)
+          .set({ materialId: reqItem.materialId })
+          .where(eq(internalRequisitionItems.id, reqItem.irnItemId));
       }
 
       // Determine new IRN status — compare total issued (all past vouchers + this one) vs approvedQty

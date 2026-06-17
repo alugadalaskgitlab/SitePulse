@@ -4,7 +4,7 @@ import { useLocation, useParams } from "wouter";
 import { format } from "date-fns";
 import {
   ClipboardList, ChevronLeft, ChevronDown, PackageCheck, ListTodo, CheckCircle2,
-  AlertCircle, AlertTriangle, User, Calendar, FileText, Info,
+  AlertCircle, AlertTriangle, User, Calendar, FileText, Info, MapPin,
   ShieldCheck, XCircle, ThumbsUp, ThumbsDown, ShoppingCart, Download, Archive,
   Warehouse, Pencil, Trash2, Clock, Hash, Truck, FileCheck, Printer,
 } from "lucide-react";
@@ -99,9 +99,31 @@ export default function IrnDetailPage() {
     enabled: (canVerify && irn?.status === "pending_stores") || (canApprove && irn?.status === "stores_verified") || isAdmin,
   });
 
-  // Store items for the Issue Voucher form (to link materials to store items for stock deduction)
+  // Store items for the Issue Voucher form (to link store items for stock deduction)
   const { data: storeItems = [] } = useQuery<{ id: number; name: string; category: string; uom: string }[]>({
     queryKey: ["/api/stores/items"],
+    enabled: !!irn && (irn.status === "approved" || irn.status === "partially_issued"),
+  });
+
+  // Sites list (to display site name in headers)
+  const { data: allSites = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/sites"],
+    queryFn: async () => {
+      const res = await fetch("/api/sites", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const getSiteName = (id: number | null | undefined) => allSites.find(s => s.id === id)?.name ?? null;
+
+  // Parties for party picker in issue form (bulk material stock deduction)
+  const { data: parties = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/plant-module/parties"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-module/parties", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!irn && (irn.status === "approved" || irn.status === "partially_issued"),
   });
 
@@ -276,6 +298,7 @@ export default function IrnDetailPage() {
   const [ivRemarks, setIvRemarks] = useState("");
   const [ivItemQtys, setIvItemQtys] = useState<Record<number, string>>({});
   const [ivItemStoreIds, setIvItemStoreIds] = useState<Record<number, number | null>>({});
+  const [ivItemPartyIds, setIvItemPartyIds] = useState<Record<number, number | null>>({});
 
   // Auto-fill stock + set smart default action when live stock data arrives (first time only).
   // Balance is converted to the IRN item's requested UOM where possible.
@@ -375,7 +398,9 @@ export default function IrnDetailPage() {
         items: issueItems
           .map((item) => ({
             irnItemId: item.id,
-            storeItemId: ivItemStoreIds[item.id] ?? null,
+            storeItemId: item.materialId ? null : (ivItemStoreIds[item.id] ?? null),
+            materialId: item.materialId ?? null,
+            partyId: item.materialId ? (ivItemPartyIds[item.id] ?? null) : null,
             actualIssuedQty: parseFloat(ivItemQtys[item.id] ?? String(item.issueQty ?? 0)) || 0,
             uom: item.uom,
             materialText: item.material,
@@ -602,6 +627,12 @@ export default function IrnDetailPage() {
               <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
               <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
               <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              {getSiteName(irn.siteId) && (
+                <div className="flex items-center gap-2 col-span-3 pt-1 border-t mt-1">
+                  <MapPin className="h-4 w-4 text-gray-400" />
+                  <div><p className="text-xs text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -811,6 +842,15 @@ export default function IrnDetailPage() {
                   <p className="font-semibold text-gray-800">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p>
                 </div>
               </div>
+              {getSiteName(irn.siteId) && (
+                <div className="flex items-start gap-2 col-span-3 pt-2 mt-1 border-t">
+                  <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Site / Location</p>
+                    <p className="font-semibold text-gray-800">{getSiteName(irn.siteId)}</p>
+                  </div>
+                </div>
+              )}
             </div>
             {irn.remarks && (
               <p className="text-xs text-gray-500 italic mt-3 pt-3 border-t">Remarks: "{irn.remarks}"</p>
@@ -1006,10 +1046,12 @@ export default function IrnDetailPage() {
             });
             const hasBalance = itemSummary.some(s => s.balance > 0.001);
             const voucherCount = irnVouchers.length;
-            // Items with balance that have no store item selected (used for submit warning)
-            const unlinkedActiveCount = itemSummary.filter(
-              s => s.balance > 0.001 && (ivItemStoreIds[s.item.id] == null)
-            ).length;
+            // Items with balance that have no stock link (store item OR plant party)
+            const unlinkedActiveCount = itemSummary.filter(s => {
+              if (s.balance < 0.001) return false;
+              if (s.item.materialId) return ivItemPartyIds[s.item.id] == null;
+              return ivItemStoreIds[s.item.id] == null;
+            }).length;
 
             return (
               <div className="space-y-3">
@@ -1236,7 +1278,7 @@ export default function IrnDetailPage() {
                                   <th className="text-left p-2 font-semibold text-gray-600">Material</th>
                                   <th className="text-center p-2 font-semibold text-gray-600">Remaining Qty</th>
                                   <th className="text-center p-2 font-semibold text-gray-600">Issue Qty (this voucher)</th>
-                                  <th className="text-left p-2 font-semibold text-gray-600">Store Item (for stock)</th>
+                                  <th className="text-left p-2 font-semibold text-gray-600">Stock Deduction</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1244,10 +1286,17 @@ export default function IrnDetailPage() {
                                   const summary = itemSummary.find(s => s.item.id === item.id)!;
                                   const maxQty = summary.balance;
                                   const currentQty = parseFloat(ivItemQtys[item.id] ?? String(maxQty)) || 0;
+                                  const isBulk = !!item.materialId;
                                   const storeMatch = ivItemStoreIds[item.id];
+                                  const partyMatch = ivItemPartyIds[item.id];
                                   return (
                                     <tr key={item.id} className={`border-t ${maxQty < 0.001 ? "opacity-50" : ""}`}>
-                                      <td className="p-2 font-medium text-gray-800">{item.material}</td>
+                                      <td className="p-2 font-medium text-gray-800">
+                                        {item.material}
+                                        {isBulk && (
+                                          <span className="ml-1 text-[9px] bg-green-100 text-green-700 border border-green-200 px-1 py-0.5 rounded font-semibold">PLANT</span>
+                                        )}
+                                      </td>
                                       <td className="p-2 text-center text-gray-600">{maxQty.toFixed(2)} {item.uom}</td>
                                       <td className="p-2">
                                         <div className="flex items-center gap-1 justify-center">
@@ -1272,23 +1321,48 @@ export default function IrnDetailPage() {
                                         )}
                                       </td>
                                       <td className="p-2">
-                                        <Select
-                                          value={storeMatch != null ? String(storeMatch) : "__none__"}
-                                          onValueChange={v => setIvItemStoreIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
-                                          disabled={maxQty < 0.001}
-                                        >
-                                          <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-store-item-${item.id}`}>
-                                            <SelectValue placeholder="None (text only)" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="__none__">— None (text only) —</SelectItem>
-                                            {storeItems.map(si => (
-                                              <SelectItem key={si.id} value={String(si.id)}>{si.name} ({si.category})</SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                        {storeMatch == null && maxQty > 0.001 && (
-                                          <p className="text-red-600 font-semibold text-[10px] mt-0.5">⚠ No stock deduction</p>
+                                        {isBulk ? (
+                                          <>
+                                            <Select
+                                              value={partyMatch != null ? String(partyMatch) : "__none__"}
+                                              onValueChange={v => setIvItemPartyIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
+                                              disabled={maxQty < 0.001}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-party-${item.id}`}>
+                                                <SelectValue placeholder="Select party" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">— No party —</SelectItem>
+                                                {parties.map(p => (
+                                                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                            {partyMatch == null && maxQty > 0.001 && (
+                                              <p className="text-amber-600 font-semibold text-[10px] mt-0.5">⚠ Select party for plant stock</p>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Select
+                                              value={storeMatch != null ? String(storeMatch) : "__none__"}
+                                              onValueChange={v => setIvItemStoreIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
+                                              disabled={maxQty < 0.001}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-store-item-${item.id}`}>
+                                                <SelectValue placeholder="None (text only)" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">— None (text only) —</SelectItem>
+                                                {storeItems.map(si => (
+                                                  <SelectItem key={si.id} value={String(si.id)}>{si.name} ({si.category})</SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                            {storeMatch == null && maxQty > 0.001 && (
+                                              <p className="text-red-600 font-semibold text-[10px] mt-0.5">⚠ No stock deduction</p>
+                                            )}
+                                          </>
                                         )}
                                       </td>
                                     </tr>
@@ -1304,8 +1378,7 @@ export default function IrnDetailPage() {
                           <div className="bg-amber-50 border border-amber-300 rounded p-3 text-xs text-amber-800 flex items-start gap-2">
                             <span className="text-amber-600 mt-0.5 shrink-0">⚠</span>
                             <span>
-                              <strong>{unlinkedActiveCount} item{unlinkedActiveCount > 1 ? "s" : ""}</strong> {unlinkedActiveCount > 1 ? "have" : "has"} no Store Item linked — store stock will <strong>not</strong> be deducted for {unlinkedActiveCount > 1 ? "those items" : "that item"}.
-                              Please select the matching store item from the dropdown above to enable stock deduction.
+                              <strong>{unlinkedActiveCount} item{unlinkedActiveCount > 1 ? "s" : ""}</strong> {unlinkedActiveCount > 1 ? "have" : "has"} no stock link — select the party (PLANT items) or store item (spare/consumable items) above to enable stock deduction.
                             </span>
                           </div>
                         )}
@@ -1457,6 +1530,12 @@ export default function IrnDetailPage() {
               <Calendar className="h-4 w-4 text-gray-400 shrink-0" />
               <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div>
             </div>
+            {getSiteName(irn.siteId) && (
+              <div className="flex items-center gap-2 text-gray-600 col-span-3 pt-2 mt-1 border-t">
+                <MapPin className="h-4 w-4 text-gray-400 shrink-0" />
+                <div><p className="text-xs text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
+              </div>
+            )}
           </div>
           {irn.remarks && (
             <>
