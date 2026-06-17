@@ -3664,7 +3664,7 @@ export default function PurchaseIndents() {
               )}
 
               {/* ── Purchaser Action Card (Dual Route: Stores / Bulk Plant) ── */}
-              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (selectedIndent as any).piType !== "material" && (
+              {["approved", "purchaser_actioned"].includes(selectedIndent.status) && (
                 <Card className="border-violet-200 dark:border-violet-800">
                   <CardHeader className="py-3 px-4 bg-violet-50 dark:bg-violet-900/20 rounded-t-lg">
                     <CardTitle className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">

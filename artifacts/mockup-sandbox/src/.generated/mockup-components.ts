@@ -41,7 +41,7 @@ export const modules: ModuleMap = {
   "./components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep3Handover.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep3Handover.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx"),
-  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
   "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
+  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
   "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
 };

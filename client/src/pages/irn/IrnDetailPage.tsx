@@ -372,13 +372,15 @@ export default function IrnDetailPage() {
         vehicleNo: ivDeliveryMode === "vehicle" ? ivVehicleNo : undefined,
         driverName: ivDeliveryMode === "vehicle" ? ivDriverName : undefined,
         movementRemarks: ivRemarks || undefined,
-        items: issueItems.map((item) => ({
-          irnItemId: item.id,
-          storeItemId: ivItemStoreIds[item.id] ?? null,
-          actualIssuedQty: parseFloat(ivItemQtys[item.id] ?? String(item.issueQty ?? 0)) || 0,
-          uom: item.uom,
-          materialText: item.material,
-        })),
+        items: issueItems
+          .map((item) => ({
+            irnItemId: item.id,
+            storeItemId: ivItemStoreIds[item.id] ?? null,
+            actualIssuedQty: parseFloat(ivItemQtys[item.id] ?? String(item.issueQty ?? 0)) || 0,
+            uom: item.uom,
+            materialText: item.material,
+          }))
+          .filter(it => it.actualIssuedQty > 0),
       };
       const res = await apiRequest("POST", `/api/irn/${id}/record-issue`, payload);
       if (!res.ok) {
@@ -1004,6 +1006,10 @@ export default function IrnDetailPage() {
             });
             const hasBalance = itemSummary.some(s => s.balance > 0.001);
             const voucherCount = irnVouchers.length;
+            // Items with balance that have no store item selected (used for submit warning)
+            const unlinkedActiveCount = itemSummary.filter(
+              s => s.balance > 0.001 && (ivItemStoreIds[s.item.id] == null)
+            ).length;
 
             return (
               <div className="space-y-3">
@@ -1111,8 +1117,13 @@ export default function IrnDetailPage() {
                             setIvItemQtys(qtys);
                             const storeMap: Record<number, number | null> = {};
                             for (const item of issueItems) {
-                              const match = storeItems.find(s => s.name.toLowerCase().trim() === item.material.toLowerCase().trim());
-                              storeMap[item.id] = match ? match.id : null;
+                              const n = item.material.toLowerCase().trim();
+                              const found =
+                                storeItems.find(s => s.name.toLowerCase().trim() === n) ??
+                                storeItems.find(s => s.name.toLowerCase().trim().startsWith(n) || n.startsWith(s.name.toLowerCase().trim())) ??
+                                storeItems.find(s => s.name.toLowerCase().includes(n) || n.includes(s.name.toLowerCase().trim())) ??
+                                null;
+                              storeMap[item.id] = found ? found.id : null;
                             }
                             setIvItemStoreIds(storeMap);
                             setShowIssueForm(true);
@@ -1277,7 +1288,7 @@ export default function IrnDetailPage() {
                                           </SelectContent>
                                         </Select>
                                         {storeMatch == null && maxQty > 0.001 && (
-                                          <p className="text-amber-600 text-[10px] mt-0.5">No store stock deduction</p>
+                                          <p className="text-red-600 font-semibold text-[10px] mt-0.5">⚠ No stock deduction</p>
                                         )}
                                       </td>
                                     </tr>
@@ -1289,6 +1300,15 @@ export default function IrnDetailPage() {
                         </div>
 
                         {/* Submit */}
+                        {unlinkedActiveCount > 0 && (
+                          <div className="bg-amber-50 border border-amber-300 rounded p-3 text-xs text-amber-800 flex items-start gap-2">
+                            <span className="text-amber-600 mt-0.5 shrink-0">⚠</span>
+                            <span>
+                              <strong>{unlinkedActiveCount} item{unlinkedActiveCount > 1 ? "s" : ""}</strong> {unlinkedActiveCount > 1 ? "have" : "has"} no Store Item linked — store stock will <strong>not</strong> be deducted for {unlinkedActiveCount > 1 ? "those items" : "that item"}.
+                              Please select the matching store item from the dropdown above to enable stock deduction.
+                            </span>
+                          </div>
+                        )}
                         <div className="flex justify-end gap-2 pt-1">
                           <Button variant="outline" size="sm" onClick={() => setShowIssueForm(false)} className="text-sm">
                             Cancel

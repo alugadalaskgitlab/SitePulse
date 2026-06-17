@@ -19348,10 +19348,11 @@ export class DatabaseStorage implements IStorage {
         movementRemarks: data.movementRemarks?.toUpperCase() ?? null,
       }).returning();
 
-      // Create store_issue_items for each item
-      if (data.items.length > 0) {
+      // Create store_issue_items for each item (skip zero-qty rows)
+      const nonZeroItems = data.items.filter(it => it.actualIssuedQty > 0);
+      if (nonZeroItems.length > 0) {
         await tx.insert(storeIssueItems).values(
-          data.items.map(it => ({
+          nonZeroItems.map(it => ({
             issueId: issue.id,
             itemId: it.storeItemId ?? null,
             materialText: it.materialText,
