@@ -51,6 +51,10 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs">Awaiting Approval</Badge>;
   if (status === "approved")
     return <Badge className="bg-green-50 text-green-700 border border-green-200 text-xs gap-1"><ShieldCheck className="h-3 w-3" />Approved</Badge>;
+  if (status === "issued")
+    return <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs gap-1"><PackageCheck className="h-3 w-3" />Issued</Badge>;
+  if (status === "partially_issued")
+    return <Badge className="bg-orange-50 text-orange-700 border border-orange-300 text-xs gap-1"><PackageCheck className="h-3 w-3" />Partial Issue</Badge>;
   if (status === "rejected")
     return <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs gap-1"><XCircle className="h-3 w-3" />Rejected</Badge>;
   return <Badge className="bg-gray-100 text-gray-600 border border-gray-200 text-xs">Closed</Badge>;
@@ -98,7 +102,7 @@ export default function IrnDetailPage() {
   // Store items for the Issue Voucher form (to link materials to store items for stock deduction)
   const { data: storeItems = [] } = useQuery<{ id: number; name: string; category: string; uom: string }[]>({
     queryKey: ["/api/stores/items"],
-    enabled: !!irn && irn.status === "approved" && !irn.linkedIssueId,
+    enabled: !!irn && (irn.status === "approved" || irn.status === "partially_issued") && !irn.linkedIssueId,
   });
 
   // Fetch audit log for approved / closed / rejected IRNs
@@ -109,7 +113,7 @@ export default function IrnDetailPage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!irn && ["approved", "closed", "rejected", "stores_verified"].includes(irn.status ?? ""),
+    enabled: !!irn && ["approved", "issued", "partially_issued", "closed", "rejected", "stores_verified"].includes(irn.status ?? ""),
   });
 
   type UomBreakdown = { balance: number; uom: string };
@@ -521,6 +525,7 @@ export default function IrnDetailPage() {
   const procureCount = verifications.filter((v) => v.procureQty > 0).length;
   const isStoresVerified = irn.status === "stores_verified";
   const isApproved = irn.status === "approved";
+  const isIssued = irn.status === "issued" || irn.status === "partially_issued";
   const isRejected = irn.status === "rejected";
   const allItemsIssued = irn.items.length > 0 && irn.items.every((i) => i.itemStatus === "issued");
 
@@ -737,8 +742,8 @@ export default function IrnDetailPage() {
     );
   }
 
-  // ── Shared audit trail for approved / closed / rejected ────────────────────
-  if (isApproved || irn.status === "closed" || isRejected) {
+  // ── Shared audit trail for approved / issued / closed / rejected ──────────
+  if (isApproved || isIssued || irn.status === "closed" || isRejected) {
     const isClosed = irn.status === "closed";
     const procureItems = irn.items.filter((i) => (i.procureQty ?? 0) > 0);
     const issueItems = irn.items.filter((i) => (i.issueQty ?? 0) > 0);

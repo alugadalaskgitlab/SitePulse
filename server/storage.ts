@@ -19344,9 +19344,17 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      // Update internalRequisitions.linkedIssueId
+      // Determine new IRN status based on fulfilment
+      const allFulfilled = data.items.every(reqItem => {
+        const irnItem = irn.items.find(i => i.id === reqItem.irnItemId);
+        const maxQty = irnItem?.issueQty ?? 0;
+        return reqItem.actualIssuedQty >= maxQty - 0.001;
+      });
+      const newStatus = allFulfilled ? "issued" : "partially_issued";
+
+      // Update internalRequisitions.linkedIssueId + status
       await tx.update(internalRequisitions)
-        .set({ linkedIssueId: issue.id })
+        .set({ linkedIssueId: issue.id, status: newStatus })
         .where(eq(internalRequisitions.id, irnId));
 
       // Update each internalRequisitionItem with actualIssuedQty and storeItemId

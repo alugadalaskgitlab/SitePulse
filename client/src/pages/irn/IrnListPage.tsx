@@ -42,6 +42,8 @@ const STATUS_TABS = [
   { key: "pending_stores", label: "Pending Stores" },
   { key: "stores_verified", label: "Awaiting Approval" },
   { key: "approved", label: "Approved" },
+  { key: "issued", label: "Issued" },
+  { key: "partially_issued", label: "Partial" },
   { key: "rejected", label: "Rejected" },
   { key: "closed", label: "Closed" },
   { key: "procurement_queue", label: "Procurement Queue" },
@@ -60,6 +62,10 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge className="bg-blue-50 text-blue-700 border border-blue-200 font-medium text-xs gap-1"><Clock className="h-3 w-3" />Awaiting Approval</Badge>;
   if (status === "approved")
     return <Badge className="bg-green-50 text-green-700 border border-green-200 font-medium text-xs gap-1"><ShieldCheck className="h-3 w-3" />Approved</Badge>;
+  if (status === "issued")
+    return <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-medium text-xs gap-1"><PackageCheck className="h-3 w-3" />Issued</Badge>;
+  if (status === "partially_issued")
+    return <Badge className="bg-orange-50 text-orange-700 border border-orange-300 font-medium text-xs gap-1"><PackageCheck className="h-3 w-3" />Partial Issue</Badge>;
   if (status === "rejected")
     return <Badge className="bg-red-50 text-red-700 border border-red-200 font-medium text-xs gap-1"><XCircle className="h-3 w-3" />Rejected</Badge>;
   return <Badge className="bg-gray-100 text-gray-600 border border-gray-200 font-medium text-xs gap-1"><Archive className="h-3 w-3" />Closed</Badge>;
