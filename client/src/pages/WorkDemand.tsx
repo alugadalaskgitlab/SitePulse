@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
-  Package, Wrench, Users, CalendarDays,
+  Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,21 +53,24 @@ function MaterialsTable({
   project: BoqProject;
 }) {
   const mats = demand.materials;
+  const [expandedMat, setExpandedMat] = useState<string | null>(null);
+
   if (!mats.length) return <EmptyState label="No material demand calculated. Configure material recipes on BOQ items first." />;
 
-  const totalMonths = project.totalMonths ?? 12;
   const allMonths = useMemo(() => {
     const ms = new Set<number>();
     for (const row of mats) for (const m of Object.keys(row.monthlyQty)) ms.add(Number(m));
     return [...ms].sort((a, b) => a - b);
   }, [mats]);
 
+  const colSpan = 2 + allMonths.length + 1;
+
   return (
     <div className="overflow-x-auto rounded-xl border">
       <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Material</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[70px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
@@ -78,26 +81,93 @@ function MaterialsTable({
           </tr>
         </thead>
         <tbody>
-          {mats.map((row) => (
-            <tr key={row.materialName} className="border-b border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">{row.materialName}</td>
-              <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
-              {allMonths.map((m) => {
-                const val = row.monthlyQty[m] ?? 0;
-                return (
-                  <td
-                    key={m}
-                    className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-teal-700 font-semibold bg-teal-50/50" : "text-slate-300"}`}
-                  >
-                    {val > 0 ? fmtQty(val, 1) : "—"}
+          {mats.map((row) => {
+            const isExpanded = expandedMat === row.materialName;
+            return (
+              <Fragment key={row.materialName}>
+                <tr
+                  className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-teal-50/60" : "hover:bg-slate-50"}`}
+                  onClick={() => setExpandedMat(isExpanded ? null : row.materialName)}
+                  data-testid={`mat-row-${row.materialName}`}
+                >
+                  <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-teal-50" : "bg-white"}`}>
+                    <div className="flex items-center gap-1.5">
+                      {isExpanded
+                        ? <ChevronUp className="w-3 h-3 text-teal-500 flex-shrink-0" />
+                        : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      }
+                      <span className="font-medium text-slate-700">{row.materialName}</span>
+                      {row.hasAutoSource ? (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0">
+                          <Zap className="w-2.5 h-2.5" />Auto
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex-shrink-0">
+                          <PencilLine className="w-2.5 h-2.5" />Manual
+                        </span>
+                      )}
+                    </div>
                   </td>
-                );
-              })}
-              <td className="px-3 py-2 text-right font-semibold font-mono text-teal-800">
-                {fmtQty(row.totalQty, 1)}
-              </td>
-            </tr>
-          ))}
+                  <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
+                  {allMonths.map((m) => {
+                    const val = row.monthlyQty[m] ?? 0;
+                    return (
+                      <td
+                        key={m}
+                        className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-teal-700 font-semibold bg-teal-50/50" : "text-slate-300"}`}
+                      >
+                        {val > 0 ? fmtQty(val, 1) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-right font-semibold font-mono text-teal-800">
+                    {fmtQty(row.totalQty, 1)}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${row.materialName}__drill`} className="bg-teal-50/40">
+                    <td colSpan={colSpan} className="px-4 py-2">
+                      <p className="text-[10px] font-semibold text-teal-700 mb-1.5 uppercase tracking-wide">Source BOQ Items</p>
+                      <div className="rounded-lg border border-teal-100 bg-white overflow-hidden">
+                        <table className="text-[11px] w-full border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Qty/Unit</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Total</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-center">Source</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.breakdown.map((b, i) => (
+                              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-teal-50/30">
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate">{b.itemDescription}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.qtyPerUnit, 4)}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
+                                <td className="px-2 py-1.5 text-center">
+                                  {b.isAuto ? (
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-teal-100 text-teal-700">
+                                      <Zap className="w-2.5 h-2.5" />Auto
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-slate-100 text-slate-500">
+                                      <PencilLine className="w-2.5 h-2.5" />Manual
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

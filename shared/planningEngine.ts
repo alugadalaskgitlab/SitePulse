@@ -277,7 +277,8 @@ export interface BomMaterialRow {
   uom: string;
   totalQty: number;
   monthlyQty: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; qtyPerUnit: number; workQty: number; lineQty: number }>;
+  hasAutoSource: boolean;
+  breakdown: Array<{ itemDescription: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
 }
 
 export interface BomEquipmentRow {
@@ -312,6 +313,7 @@ export interface BomInputItem {
     qtyPerBoqUnit: number;
     wastagePct: number;
     isClientSupplied: boolean;
+    isAuto?: boolean | null;
   }>;
   equipment: Array<{
     equipmentName: string;
@@ -388,12 +390,13 @@ export function calculateBomDemand(
       const lineQty = effQtyPerUnit * workQty;
       const key = m.materialName;
       if (!matMap.has(key)) {
-        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, monthlyQty: {}, breakdown: [] });
+        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
       }
       const row = matMap.get(key)!;
       row.totalQty += lineQty;
       row.uom = m.uom;
-      row.breakdown.push({ itemDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty });
+      if (m.isAuto) row.hasAutoSource = true;
+      row.breakdown.push({ itemDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }

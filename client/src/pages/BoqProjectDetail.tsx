@@ -4,7 +4,7 @@ import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
-  GitBranch, CalendarDays, Package,
+  GitBranch, CalendarDays, Package, Settings2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -675,6 +675,120 @@ function RevisionPanel({
   );
 }
 
+// ─── Project Settings Dialog ─────────────────────────────────────────────────
+
+function ProjectSettingsDialog({
+  project,
+  onClose,
+}: {
+  project: BoqProject;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [hmp, setHmp] = useState(project.hmpChainageKm != null ? String(project.hmpChainageKm) : "");
+  const [wmm, setWmm] = useState(project.wmmPlantChainageKm != null ? String(project.wmmPlantChainageKm) : "");
+  const [quarry, setQuarry] = useState(project.quarryChainageKm != null ? String(project.quarryChainageKm) : "");
+  const [speed, setSpeed] = useState(project.avgTipperSpeedKmHr != null ? String(project.avgTipperSpeedKmHr) : "30");
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/boq/projects/${project.id}`, {
+        hmpChainageKm: hmp ? parseFloat(hmp) : null,
+        wmmPlantChainageKm: wmm ? parseFloat(wmm) : null,
+        quarryChainageKm: quarry ? parseFloat(quarry) : null,
+        avgTipperSpeedKmHr: speed ? parseFloat(speed) : 30,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", project.id] });
+      toast({ title: "Project settings saved" });
+      onClose();
+    },
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-teal-600" />
+            Planning Source Settings
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          Chainage distances from mid-project to each supply source, used to auto-compute tipper fleet size in the Work Programme.
+        </p>
+        <div className="space-y-3 pt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[10px]">HMP CHAINAGE (km)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-xs mt-0.5"
+                placeholder="e.g. 8.5"
+                value={hmp}
+                onChange={(e) => setHmp(e.target.value)}
+                data-testid="input-hmp-chainage"
+              />
+              <p className="text-[9px] text-muted-foreground mt-0.5">Hot Mix Plant → site</p>
+            </div>
+            <div>
+              <Label className="text-[10px]">WMM PLANT CHAINAGE (km)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-xs mt-0.5"
+                placeholder="e.g. 5.0"
+                value={wmm}
+                onChange={(e) => setWmm(e.target.value)}
+                data-testid="input-wmm-chainage"
+              />
+              <p className="text-[9px] text-muted-foreground mt-0.5">WMM Plant → site</p>
+            </div>
+            <div>
+              <Label className="text-[10px]">QUARRY CHAINAGE (km)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-xs mt-0.5"
+                placeholder="e.g. 12.0"
+                value={quarry}
+                onChange={(e) => setQuarry(e.target.value)}
+                data-testid="input-quarry-chainage"
+              />
+              <p className="text-[9px] text-muted-foreground mt-0.5">Quarry → site</p>
+            </div>
+            <div>
+              <Label className="text-[10px]">AVG TIPPER SPEED (km/hr)</Label>
+              <Input
+                type="number" step="1" min="1"
+                className="h-8 text-xs mt-0.5"
+                placeholder="30"
+                value={speed}
+                onChange={(e) => setSpeed(e.target.value)}
+                data-testid="input-tipper-speed"
+              />
+              <p className="text-[9px] text-muted-foreground mt-0.5">Default: 30 km/hr</p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="pt-2">
+          <Button variant="outline" size="sm" onClick={onClose} className="text-xs">Cancel</Button>
+          <Button
+            size="sm"
+            className="bg-teal-700 hover:bg-teal-800 text-white text-xs"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-project-settings"
+          >
+            {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+            Save Settings
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BoqProjectDetail() {
@@ -683,6 +797,7 @@ export default function BoqProjectDetail() {
   const { toast } = useToast();
   const projectId = parseInt(params.id);
   const [showImport, setShowImport] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -804,6 +919,17 @@ export default function BoqProjectDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-slate-200 text-slate-600 hover:bg-slate-50 h-8"
+            onClick={() => setShowSettings(true)}
+            data-testid="button-project-settings"
+            title="Planning source settings (chainage, tipper speed)"
+          >
+            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+            Settings
+          </Button>
           <Link href={`/work-program/${projectId}/programme`}>
             <a>
               <Button
@@ -916,6 +1042,14 @@ export default function BoqProjectDetail() {
           projectName={project.name}
           onClose={() => setShowImport(false)}
           onSuccess={handleImportSuccess}
+        />
+      )}
+
+      {/* Planning Settings Dialog */}
+      {showSettings && (
+        <ProjectSettingsDialog
+          project={project}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
