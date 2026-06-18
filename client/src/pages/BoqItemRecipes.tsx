@@ -22,20 +22,24 @@ import type {
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
-interface EquipmentMasterMinimal {
+interface PlanningEquipTypeMinimal {
   id: number;
   name: string;
-  outputUnit: string | null;
-  outputTheoretical: number | null;
-  outputEfficiency: number | null;
+  category: string;
   standardOutputs: Array<{ unit: string; outputPerHr: number }> | null;
+}
+
+interface PlanningLabourTypeMinimal {
+  id: number;
+  designation: string;
+  skillTier: string;
 }
 
 // ─── Equipment Recipe Tab ───────────────────────────────────────────────────────
 
 interface EquipRow {
   key: string;
-  equipmentMasterId: string;
+  planningEquipTypeId: string;
   equipmentName: string;
   qtyPerBoqUnit: string;
   count: string;
@@ -45,7 +49,7 @@ interface EquipRow {
 function makeEquipRow(r?: BoqItemEquipmentWithMaster): EquipRow {
   return {
     key: Math.random().toString(36).slice(2),
-    equipmentMasterId: r?.equipmentMasterId ? String(r.equipmentMasterId) : "__manual__",
+    planningEquipTypeId: r?.planningEquipmentTypeId ? String(r.planningEquipmentTypeId) : "__manual__",
     equipmentName: r?.equipmentName ?? "",
     qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "",
     count: r?.count != null ? String(r.count) : "1",
@@ -60,7 +64,7 @@ function EquipmentTab({
 }: {
   boqItemId: number;
   boqUnit: string;
-  masterList: EquipmentMasterMinimal[];
+  masterList: PlanningEquipTypeMinimal[];
 }) {
   const { toast } = useToast();
 
@@ -85,12 +89,13 @@ function EquipmentTab({
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: InsertBoqItemEquipment[] = rows
-        .filter((r) => r.equipmentName.trim())
+        .filter((r) => r.equipmentName.trim() || r.planningEquipTypeId !== "__manual__")
         .map((r, i) => ({
           boqItemId,
-          equipmentMasterId: r.equipmentMasterId !== "__manual__" ? parseInt(r.equipmentMasterId) : null,
-          equipmentName: r.equipmentMasterId !== "__manual__"
-            ? (masterList.find((m) => m.id === parseInt(r.equipmentMasterId))?.name ?? r.equipmentName)
+          planningEquipmentTypeId: r.planningEquipTypeId !== "__manual__" ? parseInt(r.planningEquipTypeId) : null,
+          equipmentMasterId: null,
+          equipmentName: r.planningEquipTypeId !== "__manual__"
+            ? (masterList.find((m) => m.id === parseInt(r.planningEquipTypeId))?.name ?? r.equipmentName)
             : r.equipmentName.toUpperCase(),
           qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : null,
           count: parseInt(r.count) || 1,
@@ -123,9 +128,9 @@ function EquipmentTab({
       prev.map((r) => {
         if (r.key !== key) return r;
         const updated = { ...r, [field]: value };
-        if (field === "equipmentMasterId" && value !== "__manual__") {
-          const master = masterList.find((m) => m.id === parseInt(value));
-          if (master) updated.equipmentName = master.name;
+        if (field === "planningEquipTypeId" && value !== "__manual__") {
+          const planType = masterList.find((m) => m.id === parseInt(value));
+          if (planType) updated.equipmentName = planType.name;
         }
         return updated;
       }),
@@ -142,15 +147,15 @@ function EquipmentTab({
       </p>
 
       {rows.map((row) => {
-        const master = row.equipmentMasterId !== "__manual__"
-          ? masterList.find((m) => m.id === parseInt(row.equipmentMasterId))
+        const planType = row.planningEquipTypeId !== "__manual__"
+          ? masterList.find((m) => m.id === parseInt(row.planningEquipTypeId))
           : null;
-        const effOutput = master
+        const effOutput = planType
           ? getEffectiveOutputPerHr({
-              outputUnit: master.outputUnit,
-              outputTheoretical: master.outputTheoretical,
-              outputEfficiency: master.outputEfficiency,
-              standardOutputs: master.standardOutputs,
+              outputUnit: null,
+              outputTheoretical: null,
+              outputEfficiency: null,
+              standardOutputs: planType.standardOutputs,
               count: 1,
             }, boqUnit)
           : null;
@@ -161,21 +166,19 @@ function EquipmentTab({
               <div>
                 <Label className="text-[10px]">EQUIPMENT</Label>
                 <Select
-                  value={row.equipmentMasterId}
-                  onValueChange={(v) => updateRow(row.key, "equipmentMasterId", v)}
+                  value={row.planningEquipTypeId}
+                  onValueChange={(v) => updateRow(row.key, "planningEquipTypeId", v)}
                 >
                   <SelectTrigger className="h-8 text-xs" data-testid={`select-equip-master-${row.key}`}>
-                    <SelectValue placeholder="Select from master…" />
+                    <SelectValue placeholder="Select from planning types…" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__manual__">— Enter manually —</SelectItem>
                     {masterList.map((m) => {
                       const stdCount = m.standardOutputs?.length ?? 0;
                       const suffix = stdCount > 0
-                        ? ` (${stdCount} unit${stdCount !== 1 ? "s" : ""} configured)`
-                        : m.outputTheoretical
-                          ? ` (${fmtQty(m.outputTheoretical, 1)} ${m.outputUnit ?? ""}/hr)`
-                          : "";
+                        ? ` (${stdCount} unit${stdCount !== 1 ? "s" : ""})`
+                        : "";
                       return (
                         <SelectItem key={m.id} value={String(m.id)}>
                           {m.name}{suffix}
@@ -184,7 +187,7 @@ function EquipmentTab({
                     })}
                   </SelectContent>
                 </Select>
-                {row.equipmentMasterId === "__manual__" && (
+                {row.planningEquipTypeId === "__manual__" && (
                   <Input
                     className="h-8 text-xs mt-1"
                     placeholder="Equipment name"
@@ -221,16 +224,16 @@ function EquipmentTab({
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
-            {effOutput !== null && (
+            {effOutput !== null && effOutput > 0 && (
               <div className="flex items-center gap-1.5 text-[10px] text-teal-700">
                 <Zap className="w-3 h-3" />
                 Auto output for {boqUnit}: {fmtQty(effOutput, 2)} {boqUnit}/hr
               </div>
             )}
-            {master && !master.outputTheoretical && !(master.standardOutputs?.length) && (
+            {planType && !(planType.standardOutputs?.length) && (
               <div className="flex items-center gap-1.5 text-[10px] text-amber-600">
                 <Info className="w-3 h-3" />
-                No productivity data on this master record — duration auto-calc unavailable.
+                No standard outputs on this type — duration auto-calc unavailable.
               </div>
             )}
           </div>
@@ -263,18 +266,33 @@ function EquipmentTab({
 
 // ─── Labour Recipe Tab ──────────────────────────────────────────────────────────
 
-interface LabRow { key: string; designation: string; qtyPerBoqUnit: string; notes: string; }
+interface LabRow {
+  key: string;
+  planningLabourTypeId: string;
+  designation: string;
+  qtyPerBoqUnit: string;
+  notes: string;
+}
 
 function makeLabRow(r?: BoqItemLabourRow): LabRow {
   return {
     key: Math.random().toString(36).slice(2),
+    planningLabourTypeId: "__manual__",
     designation: r?.designation ?? "",
     qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "",
     notes: r?.notes ?? "",
   };
 }
 
-function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string }) {
+function LabourTab({
+  boqItemId,
+  boqUnit,
+  labourTypeList,
+}: {
+  boqItemId: number;
+  boqUnit: string;
+  labourTypeList: PlanningLabourTypeMinimal[];
+}) {
   const { toast } = useToast();
 
   const { data: existing = [], isLoading } = useQuery<BoqItemLabourRow[]>({
@@ -316,6 +334,21 @@ function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string 
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  function updateLabRow(key: string, field: keyof LabRow, value: string) {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        const updated = { ...r, [field]: value };
+        if (field === "planningLabourTypeId" && value !== "__manual__") {
+          const lt = labourTypeList.find((l) => l.id === parseInt(value));
+          if (lt) updated.designation = lt.designation;
+        }
+        return updated;
+      }),
+    );
+    setDirty(true);
+  }
+
   if (isLoading) return <div className="py-8 text-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Loading…</div>;
 
   return (
@@ -323,33 +356,54 @@ function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string 
       <p className="text-[11px] text-muted-foreground">Labour gangs required per unit of this BOQ item.</p>
 
       {rows.map((row) => (
-        <div key={row.key} className="grid grid-cols-[2fr_1fr_auto] gap-2 items-end">
-          <div>
-            <Label className="text-[10px]">LABOUR CATEGORY</Label>
-            <Input
-              className="h-8 text-xs"
-              placeholder="e.g. Skilled Mason"
-              value={row.designation}
-              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, designation: e.target.value } : r)); setDirty(true); }}
-              data-testid={`input-labour-cat-${row.key}`}
-            />
+        <div key={row.key} className="rounded-lg border border-slate-200 bg-slate-50/50 dark:bg-slate-900/20 p-3 space-y-2">
+          <div className="grid grid-cols-[2fr_1fr_auto] gap-2 items-end">
+            <div>
+              <Label className="text-[10px]">LABOUR TYPE</Label>
+              <Select
+                value={row.planningLabourTypeId}
+                onValueChange={(v) => updateLabRow(row.key, "planningLabourTypeId", v)}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid={`select-labour-type-${row.key}`}>
+                  <SelectValue placeholder="Select from planning types…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__manual__">— Enter manually —</SelectItem>
+                  {labourTypeList.map((l) => (
+                    <SelectItem key={l.id} value={String(l.id)}>
+                      {l.designation}
+                      <span className="text-[10px] text-muted-foreground ml-1">({l.skillTier})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {row.planningLabourTypeId === "__manual__" && (
+                <Input
+                  className="h-8 text-xs mt-1"
+                  placeholder="e.g. Skilled Mason"
+                  value={row.designation}
+                  onChange={(e) => updateLabRow(row.key, "designation", e.target.value)}
+                  data-testid={`input-labour-cat-${row.key}`}
+                />
+              )}
+            </div>
+            <div>
+              <Label className="text-[10px]">DAYS / BOQ UNIT ({boqUnit})</Label>
+              <Input
+                type="number" step="0.001" className="h-8 text-xs"
+                placeholder="0"
+                value={row.qtyPerBoqUnit}
+                onChange={(e) => updateLabRow(row.key, "qtyPerBoqUnit", e.target.value)}
+                data-testid={`input-labour-qty-${row.key}`}
+              />
+            </div>
+            <button
+              className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <div>
-            <Label className="text-[10px]">DAYS / BOQ UNIT ({boqUnit})</Label>
-            <Input
-              type="number" step="0.001" className="h-8 text-xs"
-              placeholder="0"
-              value={row.qtyPerBoqUnit}
-              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, qtyPerBoqUnit: e.target.value } : r)); setDirty(true); }}
-              data-testid={`input-labour-qty-${row.key}`}
-            />
-          </div>
-          <button
-            className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-            onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
         </div>
       ))}
 
@@ -512,10 +566,18 @@ export function BoqItemRecipeDialog({
 }) {
   const [tab, setTab] = useState("equipment");
 
-  const { data: masterList = [] } = useQuery<EquipmentMasterMinimal[]>({
-    queryKey: ["/api/plant-module/equipment"],
+  const { data: masterList = [] } = useQuery<PlanningEquipTypeMinimal[]>({
+    queryKey: ["/api/planning/equipment-types"],
     queryFn: async () => {
-      const res = await fetch("/api/plant-module/equipment", { credentials: "include" });
+      const res = await fetch("/api/planning/equipment-types", { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+  });
+
+  const { data: labourTypeList = [] } = useQuery<PlanningLabourTypeMinimal[]>({
+    queryKey: ["/api/planning/labour-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/planning/labour-types", { credentials: "include" });
       return res.ok ? res.json() : [];
     },
   });
@@ -549,7 +611,7 @@ export function BoqItemRecipeDialog({
               <EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} />
             </TabsContent>
             <TabsContent value="labour">
-              <LabourTab boqItemId={item.id} boqUnit={item.unit} />
+              <LabourTab boqItemId={item.id} boqUnit={item.unit} labourTypeList={labourTypeList} />
             </TabsContent>
             <TabsContent value="materials">
               <MaterialsTab boqItemId={item.id} boqUnit={item.unit} />

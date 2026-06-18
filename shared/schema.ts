@@ -2284,6 +2284,30 @@ export type RmcBatchRecordWithDesign = RmcBatchRecord & {
 };
 
 // ============================================
+// PLANNING MASTERS (Work Programme — separate from operational Equipment Master)
+// ============================================
+
+export const planningEquipmentTypes = pgTable("planning_equipment_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("General"),
+  standardOutputs: jsonb("standard_outputs").$type<Array<{ unit: string; outputPerHr: number }>>(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const planningLabourTypes = pgTable("planning_labour_types", {
+  id: serial("id").primaryKey(),
+  designation: text("designation").notNull(),
+  skillTier: text("skill_tier").notNull().default("Skilled"),
+  standardOutputs: jsonb("standard_outputs").$type<Array<{ unit: string; outputPerDay: number }>>(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ============================================
 // WORK PROGRAM & BOQ CONTROL
 // ============================================
 
@@ -2377,6 +2401,7 @@ export const boqItemEquipment = pgTable("boq_item_equipment", {
   boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
   equipmentName: text("equipment_name").notNull(),             // display name
   equipmentMasterId: integer("equipment_master_id").references(() => equipmentMaster.id, { onDelete: "set null" }),
+  planningEquipmentTypeId: integer("planning_equipment_type_id").references(() => planningEquipmentTypes.id, { onDelete: "set null" }),
   qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // hours per 1 BOQ unit
   count: real("count").notNull().default(1),                   // machines deployed simultaneously
   sortOrder: integer("sort_order").notNull().default(0),
@@ -2415,6 +2440,10 @@ export const boqItemMaterials = pgTable("boq_item_materials", {
   itemIdx: index("boq_item_materials_item_idx").on(t.boqItemId),
 }));
 
+// Planning masters insert schemas
+export const insertPlanningEquipmentTypeSchema = createInsertSchema(planningEquipmentTypes).omit({ id: true, createdAt: true });
+export const insertPlanningLabourTypeSchema = createInsertSchema(planningLabourTypes).omit({ id: true, createdAt: true });
+
 // Insert schemas
 export const insertBoqProjectSchema = createInsertSchema(boqProjects).omit({ id: true, createdAt: true });
 export const insertBoqCategorySchema = createInsertSchema(boqCategories).omit({ id: true });
@@ -2425,6 +2454,12 @@ export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).om
 export const insertBoqItemEquipmentSchema = createInsertSchema(boqItemEquipment).omit({ id: true, createdAt: true });
 export const insertBoqItemLabourSchema = createInsertSchema(boqItemLabour).omit({ id: true, createdAt: true });
 export const insertBoqItemMaterialsSchema = createInsertSchema(boqItemMaterials).omit({ id: true, createdAt: true });
+
+// Planning master types
+export type PlanningEquipmentType = typeof planningEquipmentTypes.$inferSelect;
+export type InsertPlanningEquipmentType = z.infer<typeof insertPlanningEquipmentTypeSchema>;
+export type PlanningLabourType = typeof planningLabourTypes.$inferSelect;
+export type InsertPlanningLabourType = z.infer<typeof insertPlanningLabourTypeSchema>;
 
 // Types
 export type BoqProject = typeof boqProjects.$inferSelect;

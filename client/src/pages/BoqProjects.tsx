@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   FileSpreadsheet, Plus, Upload, Loader2, Pencil, Copy, Trash2,
-  Building2, Calendar, Ruler, Tag, FolderOpen,
+  Building2, Calendar, Ruler, Tag, FolderOpen, Settings,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Link } from "wouter";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
 import type { BoqProjectWithCounts } from "@shared/schema";
 
@@ -459,14 +460,22 @@ export default function BoqProjects() {
             Create BOQ projects, import Excel schedules, and manage quantity revisions
           </p>
         </div>
-        <Button
-          onClick={() => setShowNew(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          data-testid="button-new-project"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href="/work-program/planning-masters">
+            <a className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-teal-700 px-3 py-1.5 rounded-md border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-colors"
+              data-testid="link-planning-masters">
+              <Settings className="w-3.5 h-3.5" /> Planning Masters
+            </a>
+          </Link>
+          <Button
+            onClick={() => setShowNew(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            data-testid="button-new-project"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Project
+          </Button>
+        </div>
       </div>
 
       {/* Projects grid */}

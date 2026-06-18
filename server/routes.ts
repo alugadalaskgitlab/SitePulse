@@ -9660,8 +9660,95 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // PLANNING MASTERS (Equipment Types + Labour Types for Work Programme)
+  // ============================================
+
+  app.get("/api/planning/equipment-types", async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === "true";
+      res.json(await storage.getPlanningEquipmentTypes(includeInactive));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch planning equipment types" });
+    }
+  });
+
+  app.post("/api/planning/equipment-types", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const row = await storage.createPlanningEquipmentType(req.body);
+      res.status(201).json(row);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create planning equipment type" });
+    }
+  });
+
+  app.patch("/api/planning/equipment-types/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const row = await storage.updatePlanningEquipmentType(parseInt(req.params.id), req.body);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update planning equipment type" });
+    }
+  });
+
+  app.delete("/api/planning/equipment-types/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deletePlanningEquipmentType(parseInt(req.params.id));
+      if (!ok) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete planning equipment type" });
+    }
+  });
+
+  app.get("/api/planning/labour-types", async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === "true";
+      res.json(await storage.getPlanningLabourTypes(includeInactive));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch planning labour types" });
+    }
+  });
+
+  app.post("/api/planning/labour-types", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const row = await storage.createPlanningLabourType(req.body);
+      res.status(201).json(row);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create planning labour type" });
+    }
+  });
+
+  app.patch("/api/planning/labour-types/:id", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const row = await storage.updatePlanningLabourType(parseInt(req.params.id), req.body);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update planning labour type" });
+    }
+  });
+
+  app.delete("/api/planning/labour-types/:id", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const ok = await storage.deletePlanningLabourType(parseInt(req.params.id));
+      if (!ok) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete planning labour type" });
+    }
+  });
+
   seedDatabase();
   seedPlantMasterData();
+  seedPlanningMasters();
 
   return httpServer;
 }
@@ -9894,5 +9981,65 @@ async function seedDatabase() {
     }
   } catch (err) {
     console.error("Startup: Failed to normalise labour contractor casing:", err);
+  }
+}
+
+async function seedPlanningMasters() {
+  try {
+    const existing = await storage.getPlanningEquipmentTypes(true);
+    if (existing.length > 0) return;
+
+    console.log("Seeding planning equipment & labour type masters...");
+
+    const equipmentSeed: Array<{ name: string; category: string; sortOrder: number; standardOutputs: Array<{ unit: string; outputPerHr: number }> }> = [
+      { name: "Excavator",                    category: "Earthwork",  sortOrder: 1,  standardOutputs: [{ unit: "CUM", outputPerHr: 80 }] },
+      { name: "Dozer / Bulldozer",             category: "Earthwork",  sortOrder: 2,  standardOutputs: [{ unit: "CUM", outputPerHr: 120 }] },
+      { name: "Motor Grader",                  category: "Earthwork",  sortOrder: 3,  standardOutputs: [{ unit: "SQM", outputPerHr: 1500 }, { unit: "RM", outputPerHr: 1500 }] },
+      { name: "Tractor (Dozer)",               category: "Earthwork",  sortOrder: 4,  standardOutputs: [{ unit: "CUM", outputPerHr: 60 }] },
+      { name: "Paver",                         category: "Paving",     sortOrder: 5,  standardOutputs: [{ unit: "SQM", outputPerHr: 800 }] },
+      { name: "Tandem Roller",                 category: "Paving",     sortOrder: 6,  standardOutputs: [{ unit: "SQM", outputPerHr: 1200 }] },
+      { name: "Pneumatic Tyre Roller (PTR)",   category: "Paving",     sortOrder: 7,  standardOutputs: [{ unit: "SQM", outputPerHr: 1200 }] },
+      { name: "Vibratory Roller",              category: "Paving",     sortOrder: 8,  standardOutputs: [{ unit: "SQM", outputPerHr: 1500 }] },
+      { name: "Plate Compactor",               category: "Paving",     sortOrder: 9,  standardOutputs: [{ unit: "SQM", outputPerHr: 150 }] },
+      { name: "Bitumen Pressure Distributor",  category: "Paving",     sortOrder: 10, standardOutputs: [{ unit: "SQM", outputPerHr: 2000 }] },
+      { name: "Tipper",                        category: "Transport",  sortOrder: 11, standardOutputs: [{ unit: "CUM", outputPerHr: 60 }] },
+      { name: "Water Tanker",                  category: "Transport",  sortOrder: 12, standardOutputs: [{ unit: "KL", outputPerHr: 12 }] },
+      { name: "Transit Mixer",                 category: "Transport",  sortOrder: 13, standardOutputs: [{ unit: "CUM", outputPerHr: 6 }] },
+      { name: "Dumper",                        category: "Transport",  sortOrder: 14, standardOutputs: [{ unit: "CUM", outputPerHr: 40 }] },
+      { name: "Hot Mix Plant",                 category: "Plant",      sortOrder: 15, standardOutputs: [{ unit: "MT", outputPerHr: 70 }] },
+      { name: "WMM Plant",                     category: "Plant",      sortOrder: 16, standardOutputs: [{ unit: "MT", outputPerHr: 100 }] },
+      { name: "Concrete Pump",                 category: "Plant",      sortOrder: 17, standardOutputs: [{ unit: "CUM", outputPerHr: 30 }] },
+      { name: "Wheel Loader / JCB",            category: "Plant",      sortOrder: 18, standardOutputs: [{ unit: "CUM", outputPerHr: 60 }] },
+      { name: "DG / Generator",                category: "Support",    sortOrder: 19, standardOutputs: [] },
+    ];
+
+    for (const e of equipmentSeed) {
+      await storage.createPlanningEquipmentType({ name: e.name, category: e.category, sortOrder: e.sortOrder, standardOutputs: e.standardOutputs, isActive: true });
+    }
+
+    const labourSeed: Array<{ designation: string; skillTier: string; sortOrder: number; standardOutputs: Array<{ unit: string; outputPerDay: number }> }> = [
+      { designation: "Unskilled Labour",      skillTier: "Unskilled",    sortOrder: 1,  standardOutputs: [{ unit: "CUM", outputPerDay: 2.0 }, { unit: "SQM", outputPerDay: 6.0 }] },
+      { designation: "Semi-skilled Labour",   skillTier: "Semi-skilled", sortOrder: 2,  standardOutputs: [{ unit: "SQM", outputPerDay: 8.0 }, { unit: "RM", outputPerDay: 15.0 }] },
+      { designation: "Skilled Labour (Gen.)", skillTier: "Skilled",      sortOrder: 3,  standardOutputs: [{ unit: "CUM", outputPerDay: 1.0 }, { unit: "SQM", outputPerDay: 10.0 }] },
+      { designation: "Mason",                 skillTier: "Skilled",      sortOrder: 4,  standardOutputs: [{ unit: "CUM", outputPerDay: 0.8 }, { unit: "SQM", outputPerDay: 8.0 }] },
+      { designation: "Carpenter",             skillTier: "Skilled",      sortOrder: 5,  standardOutputs: [{ unit: "SQM", outputPerDay: 8.0 }, { unit: "NOS", outputPerDay: 2.0 }] },
+      { designation: "Bar Bender / Fitter",   skillTier: "Skilled",      sortOrder: 6,  standardOutputs: [{ unit: "MT", outputPerDay: 0.4 }] },
+      { designation: "Blacksmith",            skillTier: "Skilled",      sortOrder: 7,  standardOutputs: [{ unit: "MT", outputPerDay: 0.3 }] },
+      { designation: "Welder",                skillTier: "Skilled",      sortOrder: 8,  standardOutputs: [{ unit: "MT", outputPerDay: 0.15 }, { unit: "NOS", outputPerDay: 3.0 }] },
+      { designation: "Painter",               skillTier: "Skilled",      sortOrder: 9,  standardOutputs: [{ unit: "SQM", outputPerDay: 10.0 }] },
+      { designation: "Plumber",               skillTier: "Skilled",      sortOrder: 10, standardOutputs: [{ unit: "RM", outputPerDay: 15.0 }, { unit: "NOS", outputPerDay: 5.0 }] },
+      { designation: "Electrician",           skillTier: "Skilled",      sortOrder: 11, standardOutputs: [{ unit: "RM", outputPerDay: 20.0 }, { unit: "NOS", outputPerDay: 8.0 }] },
+      { designation: "Operator (Equipment)",  skillTier: "Skilled",      sortOrder: 12, standardOutputs: [] },
+      { designation: "Foreman",               skillTier: "Supervisory",  sortOrder: 13, standardOutputs: [] },
+      { designation: "Supervisor / Mate",     skillTier: "Supervisory",  sortOrder: 14, standardOutputs: [] },
+    ];
+
+    for (const l of labourSeed) {
+      await storage.createPlanningLabourType({ designation: l.designation, skillTier: l.skillTier, sortOrder: l.sortOrder, standardOutputs: l.standardOutputs, isActive: true });
+    }
+
+    console.log(`Planning masters seeded: ${equipmentSeed.length} equipment types, ${labourSeed.length} labour types`);
+  } catch (err) {
+    console.error("seedPlanningMasters failed:", err);
   }
 }

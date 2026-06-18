@@ -240,6 +240,8 @@ import {
   boqItemMaterials,
   equipmentMaster,
   sites,
+  planningEquipmentTypes,
+  planningLabourTypes,
   type BoqProject,
   type InsertBoqProject,
   type BoqCategory,
@@ -266,6 +268,10 @@ import {
   type WorkProgramBarWithItem,
   type MonthlyTarget,
   type PlanVsActualRow,
+  type PlanningEquipmentType,
+  type InsertPlanningEquipmentType,
+  type PlanningLabourType,
+  type InsertPlanningLabourType,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -20087,6 +20093,7 @@ export class DatabaseStorage implements IStorage {
         boqItemId: boqItemEquipment.boqItemId,
         equipmentName: boqItemEquipment.equipmentName,
         equipmentMasterId: boqItemEquipment.equipmentMasterId,
+        planningEquipmentTypeId: boqItemEquipment.planningEquipmentTypeId,
         qtyPerBoqUnit: boqItemEquipment.qtyPerBoqUnit,
         count: boqItemEquipment.count,
         sortOrder: boqItemEquipment.sortOrder,
@@ -20095,13 +20102,30 @@ export class DatabaseStorage implements IStorage {
         outputUnit: equipmentMaster.outputUnit,
         outputTheoretical: equipmentMaster.outputTheoretical,
         outputEfficiency: equipmentMaster.outputEfficiency,
-        standardOutputs: equipmentMaster.standardOutputs,
+        masterStandardOutputs: equipmentMaster.standardOutputs,
+        planningStandardOutputs: planningEquipmentTypes.standardOutputs,
       })
       .from(boqItemEquipment)
       .leftJoin(equipmentMaster, eq(boqItemEquipment.equipmentMasterId, equipmentMaster.id))
+      .leftJoin(planningEquipmentTypes, eq(boqItemEquipment.planningEquipmentTypeId, planningEquipmentTypes.id))
       .where(eq(boqItemEquipment.boqItemId, boqItemId))
       .orderBy(boqItemEquipment.sortOrder, boqItemEquipment.id);
-    return rows as BoqItemEquipmentWithMaster[];
+    return rows.map((r) => ({
+      id: r.id,
+      boqItemId: r.boqItemId,
+      equipmentName: r.equipmentName,
+      equipmentMasterId: r.equipmentMasterId,
+      planningEquipmentTypeId: r.planningEquipmentTypeId,
+      qtyPerBoqUnit: r.qtyPerBoqUnit,
+      count: r.count,
+      sortOrder: r.sortOrder,
+      notes: r.notes,
+      createdAt: r.createdAt,
+      outputUnit: r.outputUnit,
+      outputTheoretical: r.outputTheoretical,
+      outputEfficiency: r.outputEfficiency,
+      standardOutputs: r.planningStandardOutputs ?? r.masterStandardOutputs,
+    }));
   }
 
   async upsertBoqItemEquipment(
@@ -20194,8 +20218,8 @@ export class DatabaseStorage implements IStorage {
 
     const itemIds = items.map((i) => i.id);
 
-    // Fetch all recipe data in 3 parallel queries
-    const [eqRows, labRows, matRows, emRows] = await Promise.all([
+    // Fetch all recipe data in 4 parallel queries
+    const [eqRows, labRows, matRows, emRows, planRows] = await Promise.all([
       db.select().from(boqItemEquipment).where(inArray(boqItemEquipment.boqItemId, itemIds)).orderBy(boqItemEquipment.sortOrder),
       db.select().from(boqItemLabour).where(inArray(boqItemLabour.boqItemId, itemIds)).orderBy(boqItemLabour.sortOrder),
       db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, itemIds)).orderBy(boqItemMaterials.sortOrder),
@@ -20206,22 +20230,28 @@ export class DatabaseStorage implements IStorage {
         outputEfficiency: equipmentMaster.outputEfficiency,
         standardOutputs: equipmentMaster.standardOutputs,
       }).from(equipmentMaster),
+      db.select({
+        id: planningEquipmentTypes.id,
+        standardOutputs: planningEquipmentTypes.standardOutputs,
+      }).from(planningEquipmentTypes),
     ]);
 
-    // Build a master lookup for productivity data
+    // Build lookups
     const masterMap = new Map(emRows.map((r) => [r.id, r]));
+    const planMap = new Map(planRows.map((r) => [r.id, r]));
 
     return items.map((item) => {
       const equipment: BoqItemEquipmentWithMaster[] = eqRows
         .filter((r) => r.boqItemId === item.id)
         .map((r) => {
+          const planType = r.planningEquipmentTypeId ? planMap.get(r.planningEquipmentTypeId) : null;
           const master = r.equipmentMasterId ? masterMap.get(r.equipmentMasterId) : null;
           return {
             ...r,
             outputUnit: master?.outputUnit ?? null,
             outputTheoretical: master?.outputTheoretical ?? null,
             outputEfficiency: master?.outputEfficiency ?? null,
-            standardOutputs: master?.standardOutputs ?? null,
+            standardOutputs: planType?.standardOutputs ?? master?.standardOutputs ?? null,
           };
         });
       return {
@@ -20231,6 +20261,54 @@ export class DatabaseStorage implements IStorage {
         materials: matRows.filter((r) => r.boqItemId === item.id),
       };
     });
+  }
+
+  // ─── Planning Masters CRUD ────────────────────────────────────────────────
+
+  async getPlanningEquipmentTypes(includeInactive = false): Promise<PlanningEquipmentType[]> {
+    const query = db.select().from(planningEquipmentTypes);
+    if (!includeInactive) {
+      return query.where(eq(planningEquipmentTypes.isActive, true)).orderBy(planningEquipmentTypes.sortOrder, planningEquipmentTypes.id);
+    }
+    return query.orderBy(planningEquipmentTypes.sortOrder, planningEquipmentTypes.id);
+  }
+
+  async createPlanningEquipmentType(data: InsertPlanningEquipmentType): Promise<PlanningEquipmentType> {
+    const [row] = await db.insert(planningEquipmentTypes).values(data).returning();
+    return row;
+  }
+
+  async updatePlanningEquipmentType(id: number, data: Partial<InsertPlanningEquipmentType>): Promise<PlanningEquipmentType | undefined> {
+    const [row] = await db.update(planningEquipmentTypes).set(data).where(eq(planningEquipmentTypes.id, id)).returning();
+    return row;
+  }
+
+  async deletePlanningEquipmentType(id: number): Promise<boolean> {
+    const result = await db.delete(planningEquipmentTypes).where(eq(planningEquipmentTypes.id, id)).returning({ id: planningEquipmentTypes.id });
+    return result.length > 0;
+  }
+
+  async getPlanningLabourTypes(includeInactive = false): Promise<PlanningLabourType[]> {
+    const query = db.select().from(planningLabourTypes);
+    if (!includeInactive) {
+      return query.where(eq(planningLabourTypes.isActive, true)).orderBy(planningLabourTypes.sortOrder, planningLabourTypes.id);
+    }
+    return query.orderBy(planningLabourTypes.sortOrder, planningLabourTypes.id);
+  }
+
+  async createPlanningLabourType(data: InsertPlanningLabourType): Promise<PlanningLabourType> {
+    const [row] = await db.insert(planningLabourTypes).values(data).returning();
+    return row;
+  }
+
+  async updatePlanningLabourType(id: number, data: Partial<InsertPlanningLabourType>): Promise<PlanningLabourType | undefined> {
+    const [row] = await db.update(planningLabourTypes).set(data).where(eq(planningLabourTypes.id, id)).returning();
+    return row;
+  }
+
+  async deletePlanningLabourType(id: number): Promise<boolean> {
+    const result = await db.delete(planningLabourTypes).where(eq(planningLabourTypes.id, id)).returning({ id: planningLabourTypes.id });
+    return result.length > 0;
   }
 }
 
