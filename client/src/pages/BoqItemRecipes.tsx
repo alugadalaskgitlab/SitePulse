@@ -254,12 +254,12 @@ function EquipmentTab({
 
 // ─── Labour Recipe Tab ──────────────────────────────────────────────────────────
 
-interface LabRow { key: string; labourCategory: string; qtyPerBoqUnit: string; notes: string; }
+interface LabRow { key: string; designation: string; qtyPerBoqUnit: string; notes: string; }
 
 function makeLabRow(r?: BoqItemLabourRow): LabRow {
   return {
     key: Math.random().toString(36).slice(2),
-    labourCategory: r?.labourCategory ?? "",
+    designation: r?.designation ?? "",
     qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "",
     notes: r?.notes ?? "",
   };
@@ -289,10 +289,10 @@ function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: InsertBoqItemLabour[] = rows
-        .filter((r) => r.labourCategory.trim())
+        .filter((r) => r.designation.trim())
         .map((r, i) => ({
           boqItemId,
-          labourCategory: r.labourCategory.trim(),
+          designation: r.designation.trim(),
           qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : null,
           notes: r.notes || null,
           sortOrder: i,
@@ -320,8 +320,8 @@ function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string 
             <Input
               className="h-8 text-xs"
               placeholder="e.g. Skilled Mason"
-              value={row.labourCategory}
-              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, labourCategory: e.target.value } : r)); setDirty(true); }}
+              value={row.designation}
+              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, designation: e.target.value } : r)); setDirty(true); }}
               data-testid={`input-labour-cat-${row.key}`}
             />
           </div>
@@ -368,13 +368,13 @@ function LabourTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: string 
 
 // ─── Materials Recipe Tab ───────────────────────────────────────────────────────
 
-interface MatRow { key: string; materialName: string; unit: string; qtyPerBoqUnit: string; notes: string; }
+interface MatRow { key: string; materialName: string; uom: string; qtyPerBoqUnit: string; notes: string; }
 
 function makeMatRow(r?: BoqItemMaterialsRow): MatRow {
   return {
     key: Math.random().toString(36).slice(2),
     materialName: r?.materialName ?? "",
-    unit: r?.unit ?? "",
+    uom: r?.uom ?? "",
     qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "",
     notes: r?.notes ?? "",
   };
@@ -408,7 +408,7 @@ function MaterialsTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: stri
         .map((r, i) => ({
           boqItemId,
           materialName: r.materialName.trim(),
-          unit: r.unit.trim() || null,
+          uom: r.uom.trim() || null,
           qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : null,
           notes: r.notes || null,
           sortOrder: i,
@@ -446,8 +446,8 @@ function MaterialsTab({ boqItemId, boqUnit }: { boqItemId: number; boqUnit: stri
             <Input
               className="h-8 text-xs"
               placeholder="MT / m3"
-              value={row.unit}
-              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, unit: e.target.value } : r)); setDirty(true); }}
+              value={row.uom}
+              onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, uom: e.target.value } : r)); setDirty(true); }}
               data-testid={`input-mat-unit-${row.key}`}
             />
           </div>
@@ -607,7 +607,7 @@ export function BoqItemRecipeBadge({
             <p key={m.id} className="text-[10px] text-muted-foreground">
               <Package className="w-2.5 h-2.5 inline mr-0.5" />
               {m.materialName}
-              {m.qtyPerBoqUnit ? ` — ${fmtQty(m.qtyPerBoqUnit, 3)} ${m.unit ?? ""}` : ""}
+              {m.qtyPerBoqUnit ? ` — ${fmtQty(m.qtyPerBoqUnit, 3)} ${m.uom ?? ""}` : ""}
             </p>
           ))}
         </div>

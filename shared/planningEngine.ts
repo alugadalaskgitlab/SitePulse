@@ -276,18 +276,22 @@ export interface BomMaterialRow {
   materialName: string;
   uom: string;
   totalQty: number;
+  monthlyQty: Record<number, number>;
   breakdown: Array<{ itemDescription: string; qtyPerUnit: number; workQty: number; lineQty: number }>;
 }
 
 export interface BomEquipmentRow {
   equipmentName: string;
+  count: number;
   totalHours: number;
+  monthlyHours: Record<number, number>;
   breakdown: Array<{ itemDescription: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
 }
 
 export interface BomLabourRow {
   designation: string;
   totalDays: number;
+  monthlyDays: Record<number, number>;
   breakdown: Array<{ itemDescription: string; daysPerUnit: number; workQty: number; lineDays: number }>;
 }
 
@@ -312,6 +316,7 @@ export interface BomInputItem {
   equipment: Array<{
     equipmentName: string;
     qtyPerBoqUnit: number; // hours per BOQ unit
+    count?: number;
     isClientSupplied?: boolean;
   }>;
   labour: Array<{
@@ -325,20 +330,23 @@ export interface BomInputBar {
   boqItemId: number;
   chainageFrom: number | null;
   chainageTo: number | null;
+  startMonth?: number;
+  endMonth?: number;
   plannedQty: number;
   isQtyOverride: boolean;
 }
 
 /**
  * Calculates BOM demand from work items and Gantt bars.
- * If bars exist for an item, uses sum of bar quantities.
- * If no bars, falls back to currentQty.
+ * If bars exist for an item, uses sum of bar quantities and distributes
+ * demand across calendar months using each bar's startMonth/endMonth.
+ * If no bars, falls back to currentQty with no monthly distribution.
  * Mirrors Road Estimator buildBomMaps() — strips all rate/cost output.
  */
 export function calculateBomDemand(
   items: BomInputItem[],
   bars: BomInputBar[],
-  roadLengthKm: number,
+  totalMonths: number = 12,
 ): BomDemand {
   const matMap = new Map<string, BomMaterialRow>();
   const eqMap = new Map<string, BomEquipmentRow>();
@@ -352,11 +360,22 @@ export function calculateBomDemand(
   }
 
   for (const item of items) {
-    // Determine effective work quantity
-    let workQty = 0;
     const itemBars = barsByItem.get(item.id) ?? [];
+
+    // Determine effective work quantity and monthly distribution
+    let workQty = 0;
+    const monthlyWork = new Map<number, number>(); // month → qty
+
     if (itemBars.length > 0) {
       workQty = itemBars.reduce((sum, b) => sum + b.plannedQty, 0);
+      for (const bar of itemBars) {
+        if (bar.startMonth != null && bar.endMonth != null && bar.plannedQty > 0) {
+          const slices = calculateMonthlyDistribution(bar.plannedQty, bar.startMonth, bar.endMonth, totalMonths);
+          for (const slice of slices) {
+            monthlyWork.set(slice.month, (monthlyWork.get(slice.month) ?? 0) + slice.qty);
+          }
+        }
+      }
     } else {
       workQty = item.currentQty;
     }
@@ -369,25 +388,33 @@ export function calculateBomDemand(
       const lineQty = effQtyPerUnit * workQty;
       const key = m.materialName;
       if (!matMap.has(key)) {
-        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, breakdown: [] });
+        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, monthlyQty: {}, breakdown: [] });
       }
       const row = matMap.get(key)!;
       row.totalQty += lineQty;
       row.uom = m.uom;
       row.breakdown.push({ itemDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty });
+      for (const [month, mwq] of monthlyWork) {
+        row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
+      }
     }
 
     // Equipment
     for (const e of item.equipment) {
       if (e.isClientSupplied) continue;
-      const lineHours = e.qtyPerBoqUnit * workQty;
+      const cnt = e.count ?? 1;
+      const lineHours = e.qtyPerBoqUnit * workQty * cnt;
       const key = e.equipmentName;
       if (!eqMap.has(key)) {
-        eqMap.set(key, { equipmentName: key, totalHours: 0, breakdown: [] });
+        eqMap.set(key, { equipmentName: key, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
       }
       const row = eqMap.get(key)!;
       row.totalHours += lineHours;
+      row.count = Math.max(row.count, cnt);
       row.breakdown.push({ itemDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      for (const [month, mwq] of monthlyWork) {
+        row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
+      }
     }
 
     // Labour
@@ -396,11 +423,14 @@ export function calculateBomDemand(
       const lineDays = l.qtyPerBoqUnit * workQty;
       const key = l.designation;
       if (!labMap.has(key)) {
-        labMap.set(key, { designation: key, totalDays: 0, breakdown: [] });
+        labMap.set(key, { designation: key, totalDays: 0, monthlyDays: {}, breakdown: [] });
       }
       const row = labMap.get(key)!;
       row.totalDays += lineDays;
       row.breakdown.push({ itemDescription: item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      for (const [month, mwq] of monthlyWork) {
+        row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
+      }
     }
   }
 

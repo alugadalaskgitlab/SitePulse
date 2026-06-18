@@ -37,11 +37,11 @@ export const modules: ModuleMap = {
   "./components/mockups/plant-reorganise/ReportsAnalysis.tsx": () => import("../components/mockups/plant-reorganise/ReportsAnalysis.tsx"),
   "./components/mockups/rmc-dispatch/RmcDispatch.tsx": () => import("../components/mockups/rmc-dispatch/RmcDispatch.tsx"),
   "./components/mockups/rmc-mix-designs/RmcMixDesigns.tsx": () => import("../components/mockups/rmc-mix-designs/RmcMixDesigns.tsx"),
+  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
+  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
+  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep1PiList.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep1PiList.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep3Handover.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep3Handover.tsx"),
-  "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx"),
-  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
-  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
-  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
+  "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx")
 };

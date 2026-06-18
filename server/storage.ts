@@ -19610,7 +19610,79 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteBoqProject(id: number): Promise<void> {
-    await db.update(boqProjects).set({ status: "closed" }).where(eq(boqProjects.id, id));
+    await db.delete(boqProjects).where(eq(boqProjects.id, id));
+  }
+
+  async duplicateBoqProject(id: number): Promise<BoqProject> {
+    return await db.transaction(async (tx) => {
+      const [src] = await tx.select().from(boqProjects).where(eq(boqProjects.id, id)).limit(1);
+      if (!src) throw new Error("BOQ project not found");
+
+      const [newProject] = await tx.insert(boqProjects).values({
+        siteId: src.siteId,
+        name: `Copy of ${src.name}`,
+        contractNo: src.contractNo,
+        client: src.client,
+        contractor: src.contractor,
+        roadLengthKm: src.roadLengthKm,
+        startDate: src.startDate,
+        totalMonths: src.totalMonths,
+        workingDaysPerMonth: src.workingDaysPerMonth,
+        workingHoursPerDay: src.workingHoursPerDay,
+        status: "draft",
+        createdBy: src.createdBy,
+      }).returning();
+
+      const cats = await tx.select().from(boqCategories).where(eq(boqCategories.boqProjectId, id));
+      const catIdMap = new Map<number, number>();
+      for (const cat of cats) {
+        const [newCat] = await tx.insert(boqCategories).values({
+          boqProjectId: newProject.id,
+          name: cat.name,
+          sortOrder: cat.sortOrder,
+        }).returning();
+        catIdMap.set(cat.id, newCat.id);
+      }
+
+      const srcItems = await tx.select().from(boqItems).where(eq(boqItems.boqProjectId, id)).orderBy(boqItems.sortOrder);
+      const itemIdMap = new Map<number, number>();
+      for (const item of srcItems) {
+        const [newItem] = await tx.insert(boqItems).values({
+          boqProjectId: newProject.id,
+          categoryId: item.categoryId != null ? (catIdMap.get(item.categoryId) ?? null) : null,
+          itemCode: item.itemCode,
+          description: item.description,
+          unit: item.unit,
+          boqQty: item.boqQty,
+          currentQty: item.currentQty,
+          clientRate: item.clientRate,
+          clientAmount: item.clientAmount,
+          sortOrder: item.sortOrder,
+        }).returning();
+        itemIdMap.set(item.id, newItem.id);
+      }
+
+      const srcBars = await tx.select().from(workProgramBars).where(eq(workProgramBars.boqProjectId, id));
+      for (const bar of srcBars) {
+        const newItemId = itemIdMap.get(bar.boqItemId);
+        if (!newItemId) continue;
+        await tx.insert(workProgramBars).values({
+          boqProjectId: newProject.id,
+          boqItemId: newItemId,
+          reachLabel: bar.reachLabel,
+          chainageFrom: bar.chainageFrom,
+          chainageTo: bar.chainageTo,
+          startMonth: bar.startMonth,
+          endMonth: bar.endMonth,
+          plannedQty: bar.plannedQty,
+          isQtyOverride: bar.isQtyOverride ?? false,
+          isDurationOverride: bar.isDurationOverride ?? false,
+          notes: bar.notes,
+        });
+      }
+
+      return newProject;
+    });
   }
 
   // --- BOQ Categories ---

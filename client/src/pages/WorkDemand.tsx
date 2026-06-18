@@ -81,7 +81,7 @@ function MaterialsTable({
           {mats.map((row) => (
             <tr key={row.materialName} className="border-b border-slate-100 hover:bg-slate-50">
               <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">{row.materialName}</td>
-              <td className="px-2 py-2 text-right text-muted-foreground">{row.unit}</td>
+              <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
               {allMonths.map((m) => {
                 const val = row.monthlyQty[m] ?? 0;
                 return (
@@ -203,8 +203,8 @@ function LabourTable({
         </thead>
         <tbody>
           {lab.map((row) => (
-            <tr key={row.labourCategory} className="border-b border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">{row.labourCategory}</td>
+            <tr key={row.designation} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">{row.designation}</td>
               {allMonths.map((m) => {
                 const val = row.monthlyDays[m] ?? 0;
                 return (
@@ -258,12 +258,7 @@ export default function WorkDemand() {
     if (!bomData || !project) return null;
     const { items, bars } = bomData;
     if (!items.length || !bars.length) return null;
-    return calculateBomDemand(
-      items,
-      bars,
-      project.workingHoursPerDay ?? 8,
-      project.workingDaysPerMonth ?? 26,
-    );
+    return calculateBomDemand(items, bars, project.totalMonths ?? 12);
   }, [bomData, project]);
 
   return (

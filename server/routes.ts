@@ -9334,6 +9334,16 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/boq/projects/:id/duplicate", async (req, res) => {
+    try {
+      const project = await storage.duplicateBoqProject(parseInt(req.params.id));
+      res.status(201).json(project);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/duplicate:", err);
+      res.status(500).json({ error: "Failed to duplicate project" });
+    }
+  });
+
   // --- BOQ Categories ---
 
   app.get("/api/boq/projects/:id/categories", async (req, res) => {
