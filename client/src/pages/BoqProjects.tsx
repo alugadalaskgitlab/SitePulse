@@ -47,8 +47,7 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/boq/projects", data),
-    onSuccess: async (res) => {
-      const project = await res.json();
+    onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] });
       toast({ title: "Project created" });
       onClose();
