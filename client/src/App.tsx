@@ -73,6 +73,8 @@ import ConcreteCalculatorV2 from "@/pages/ConcreteCalculatorV2";
 import IrnListPage from "@/pages/irn/IrnListPage";
 import IrnRaisePage from "@/pages/irn/IrnRaisePage";
 import IrnDetailPage from "@/pages/irn/IrnDetailPage";
+import BoqProjects from "@/pages/BoqProjects";
+import BoqProjectDetail from "@/pages/BoqProjectDetail";
 import StoresHome from "@/pages/StoresHome";
 import StoresItems from "@/pages/StoresItems";
 import StoresGrn from "@/pages/StoresGrn";
@@ -297,6 +299,8 @@ function AuthedShell() {
             <Route path="/irn" component={gatedEither(IrnListPage, "irn_view", "irn_raise")} />
             <Route path="/irn/new" component={gated(IrnRaisePage, "irn_raise")} />
             <Route path="/irn/:id" component={gatedEither(IrnDetailPage, "irn_view", "irn_raise")} />
+            <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />
+            <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />
