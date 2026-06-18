@@ -3966,9 +3966,9 @@ export function EquipmentMasterSection() {
   const [plantNameField, setPlantNameField] = useState(""); // form: assigned plant
   const [filterPlantName, setFilterPlantName] = useState("all"); // list filter
   const [showInactive, setShowInactive] = useState(false);
-  // Planning Output fields
-  const [outputUnit, setOutputUnit] = useState("");
-  const [outputTheoretical, setOutputTheoretical] = useState("");
+  // Planning Output — Standard Outputs table (one row per UNIT_MAP canonical key)
+  const CANONICAL_UNITS = ["CUM", "SQM", "MT", "RM", "HECT", "KL", "LS", "NOS"];
+  const [standardOutputsMap, setStandardOutputsMap] = useState<Record<string, string>>({});
   const [outputEfficiency, setOutputEfficiency] = useState("75");
   const [showPlanningOutput, setShowPlanningOutput] = useState(false);
 
@@ -4082,8 +4082,7 @@ export function EquipmentMasterSection() {
     setMeterType("hour_meter");
     setConsumptionNorm("");
     setPlantNameField("");
-    setOutputUnit("");
-    setOutputTheoretical("");
+    setStandardOutputsMap({});
     setOutputEfficiency("75");
     setShowPlanningOutput(false);
   };
@@ -4097,14 +4096,23 @@ export function EquipmentMasterSection() {
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
     setPlantNameField((equip as any).plantName || "");
-    setOutputUnit((equip as any).outputUnit || "");
-    setOutputTheoretical((equip as any).outputTheoretical?.toString() || "");
+    const stdOutputs = (equip as any).standardOutputs as Array<{ unit: string; outputPerHr: number }> | null | undefined;
+    const map: Record<string, string> = {};
+    if (Array.isArray(stdOutputs)) {
+      for (const so of stdOutputs) {
+        map[so.unit] = String(so.outputPerHr);
+      }
+    }
+    setStandardOutputsMap(map);
     setOutputEfficiency((equip as any).outputEfficiency?.toString() || "75");
-    setShowPlanningOutput(!!(equip as any).outputUnit || !!(equip as any).outputTheoretical);
+    setShowPlanningOutput(Array.isArray(stdOutputs) && stdOutputs.length > 0);
     setDialogOpen(true);
   };
 
   const handleSubmit = () => {
+    const stdOutputsArr = CANONICAL_UNITS
+      .filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0)
+      .map(u => ({ unit: u, outputPerHr: parseFloat(standardOutputsMap[u]) }));
     const data = {
       name,
       registrationNumber: registrationNumber || undefined,
@@ -4113,8 +4121,7 @@ export function EquipmentMasterSection() {
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
       plantName: plantNameField || null,
-      outputUnit: outputUnit.trim() || null,
-      outputTheoretical: outputTheoretical ? parseFloat(outputTheoretical) : null,
+      standardOutputs: stdOutputsArr.length > 0 ? stdOutputsArr : null,
       outputEfficiency: outputEfficiency ? parseFloat(outputEfficiency) : null,
     };
     if (editingEquipment) {
@@ -4249,7 +4256,7 @@ export function EquipmentMasterSection() {
                 </Select>
               </div>
 
-              {/* Planning Output — collapsible section */}
+              {/* Planning Output — Standard Outputs table (one row per UNIT_MAP key) */}
               <div className="border border-dashed border-teal-200 rounded-lg">
                 <button
                   type="button"
@@ -4258,52 +4265,59 @@ export function EquipmentMasterSection() {
                   data-testid="button-toggle-planning-output"
                 >
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Planning Output</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Standard Outputs</span>
                     <span className="text-[10px] text-muted-foreground font-normal">(for auto-duration in Work Programme)</span>
+                    {CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length > 0 && (
+                      <span className="ml-1 bg-teal-100 text-teal-700 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">
+                        {CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length} unit{CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length !== 1 ? "s" : ""} set
+                      </span>
+                    )}
                   </span>
                   {showPlanningOutput ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
                 {showPlanningOutput && (
-                  <div className="px-3 pb-3 space-y-3">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">OUTPUT UNIT</Label>
-                        <Input
-                          placeholder="m3, m2, MT, km…"
-                          value={outputUnit}
-                          onChange={e => setOutputUnit(e.target.value)}
-                          className="h-8 text-xs"
-                          data-testid="input-output-unit"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">OUTPUT / HR (theoretical)</Label>
-                        <Input
-                          type="number" step="0.1"
-                          placeholder="e.g. 150"
-                          value={outputTheoretical}
-                          onChange={e => setOutputTheoretical(e.target.value)}
-                          className="h-8 text-xs"
-                          data-testid="input-output-theoretical"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">EFFICIENCY (%)</Label>
-                        <Input
-                          type="number" min="0" max="100" step="1"
-                          placeholder="75"
-                          value={outputEfficiency}
-                          onChange={e => setOutputEfficiency(e.target.value)}
-                          className="h-8 text-xs"
-                          data-testid="input-output-efficiency"
-                        />
-                      </div>
+                  <div className="px-3 pb-3 space-y-2">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 pt-1 pb-0.5">
+                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
+                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">Output / hr</span>
+                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Daily (8 hrs)</span>
                     </div>
-                    {outputUnit && outputTheoretical && (
-                      <p className="text-[11px] text-teal-600">
-                        Effective output: {(parseFloat(outputTheoretical) * (parseFloat(outputEfficiency) || 75) / 100).toFixed(1)} {outputUnit}/hr
-                      </p>
-                    )}
+                    {/* One row per canonical unit */}
+                    {CANONICAL_UNITS.map(unit => {
+                      const val = standardOutputsMap[unit] || "";
+                      const numVal = val ? parseFloat(val) : 0;
+                      const daily = numVal > 0 ? (numVal * 8).toFixed(1) : "—";
+                      return (
+                        <div key={unit} className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 items-center">
+                          <Label className="text-xs font-semibold text-slate-600">{unit}</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            className="h-7 text-xs"
+                            value={val}
+                            onChange={e => setStandardOutputsMap(prev => ({ ...prev, [unit]: e.target.value }))}
+                            placeholder="—"
+                            data-testid={`input-std-output-${unit}`}
+                          />
+                          <span className={`text-[11px] text-right ${numVal > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
+                            {daily}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="pt-1 border-t border-teal-100 mt-1">
+                      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Efficiency (%) — applies to fallback theoretical output only</Label>
+                      <Input
+                        type="number" min="0" max="100" step="1"
+                        placeholder="75"
+                        value={outputEfficiency}
+                        onChange={e => setOutputEfficiency(e.target.value)}
+                        className="h-7 text-xs mt-1 w-24"
+                        data-testid="input-output-efficiency"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

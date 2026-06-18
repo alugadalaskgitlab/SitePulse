@@ -28,6 +28,7 @@ interface EquipmentMasterMinimal {
   outputUnit: string | null;
   outputTheoretical: number | null;
   outputEfficiency: number | null;
+  standardOutputs: Array<{ unit: string; outputPerHr: number }> | null;
 }
 
 // ─── Equipment Recipe Tab ───────────────────────────────────────────────────────
@@ -149,7 +150,8 @@ function EquipmentTab({
               outputUnit: master.outputUnit,
               outputTheoretical: master.outputTheoretical,
               outputEfficiency: master.outputEfficiency,
-              standardOutputs: null,
+              standardOutputs: master.standardOutputs,
+              count: 1,
             }, boqUnit)
           : null;
 
@@ -167,12 +169,19 @@ function EquipmentTab({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__manual__">— Enter manually —</SelectItem>
-                    {masterList.map((m) => (
-                      <SelectItem key={m.id} value={String(m.id)}>
-                        {m.name}
-                        {m.outputTheoretical ? ` (${fmtQty(m.outputTheoretical, 1)} ${m.outputUnit ?? ""}/hr)` : ""}
-                      </SelectItem>
-                    ))}
+                    {masterList.map((m) => {
+                      const stdCount = m.standardOutputs?.length ?? 0;
+                      const suffix = stdCount > 0
+                        ? ` (${stdCount} unit${stdCount !== 1 ? "s" : ""} configured)`
+                        : m.outputTheoretical
+                          ? ` (${fmtQty(m.outputTheoretical, 1)} ${m.outputUnit ?? ""}/hr)`
+                          : "";
+                      return (
+                        <SelectItem key={m.id} value={String(m.id)}>
+                          {m.name}{suffix}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {row.equipmentMasterId === "__manual__" && (
@@ -218,7 +227,7 @@ function EquipmentTab({
                 Auto output for {boqUnit}: {fmtQty(effOutput, 2)} {boqUnit}/hr
               </div>
             )}
-            {master && !master.outputTheoretical && (
+            {master && !master.outputTheoretical && !(master.standardOutputs?.length) && (
               <div className="flex items-center gap-1.5 text-[10px] text-amber-600">
                 <Info className="w-3 h-3" />
                 No productivity data on this master record — duration auto-calc unavailable.
