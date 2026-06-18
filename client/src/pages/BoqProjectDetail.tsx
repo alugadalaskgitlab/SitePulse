@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { ArrowLeft, FileSpreadsheet, Loader2, Upload, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { BoqImportWizard } from "@/components/BoqImportWizard";
 import type { BoqProject, BoqItemWithCategory } from "@shared/schema";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -15,7 +18,9 @@ const STATUS_COLORS: Record<string, string> = {
 export default function BoqProjectDetail() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const projectId = parseInt(params.id);
+  const [showImport, setShowImport] = useState(false);
 
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -27,7 +32,7 @@ export default function BoqProjectDetail() {
     enabled: !isNaN(projectId),
   });
 
-  const { data: items = [], isLoading: itemsLoading } = useQuery<BoqItemWithCategory[]>({
+  const { data: items = [], isLoading: itemsLoading, refetch: refetchItems } = useQuery<BoqItemWithCategory[]>({
     queryKey: ["/api/boq/projects", projectId, "items"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" });
@@ -48,6 +53,17 @@ export default function BoqProjectDetail() {
   }, {});
 
   const totalAmount = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
+
+  function handleImportSuccess(result: { created: number; categories: string[] }) {
+    setShowImport(false);
+    void refetchItems();
+    toast({
+      title: `BOQ Imported — ${result.created} items added`,
+      description: result.categories.length > 0
+        ? `Categories: ${result.categories.join(", ")}`
+        : "No categories detected.",
+    });
+  }
 
   if (isLoading) {
     return (
@@ -90,15 +106,26 @@ export default function BoqProjectDetail() {
             {project.contractor && <span>· {project.contractor}</span>}
           </div>
         </div>
+        {/* Import button in header */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
+          onClick={() => setShowImport(true)}
+          data-testid="button-import-boq-header"
+        >
+          <Upload className="w-3.5 h-3.5 mr-1.5" />
+          Import BOQ
+        </Button>
       </div>
 
       {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "BOQ Items", value: String(items.length), icon: ListOrdered },
-          { label: "Categories", value: String(Object.keys(grouped).length), icon: FileSpreadsheet },
-          { label: "Road Length", value: project.roadLengthKm != null ? `${project.roadLengthKm} km` : "—", icon: FileSpreadsheet },
-          { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—", icon: FileSpreadsheet },
+          { label: "BOQ Items", value: String(items.length) },
+          { label: "Categories", value: String(Object.keys(grouped).length) },
+          { label: "Road Length", value: project.roadLengthKm != null ? `${project.roadLengthKm} km` : "—" },
+          { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—" },
         ].map(({ label, value }) => (
           <Card key={label} className="border-slate-200">
             <CardContent className="py-3 px-4">
@@ -114,9 +141,13 @@ export default function BoqProjectDetail() {
         <div className="text-center py-16 space-y-3">
           <FileSpreadsheet className="w-14 h-14 text-slate-200 mx-auto" />
           <p className="font-semibold text-slate-600">No BOQ items yet</p>
-          <p className="text-sm text-muted-foreground">Go back and use "Import BOQ" on the project card to import from Excel</p>
-          <Button variant="outline" onClick={() => navigate("/work-program")} data-testid="button-go-import">
-            <Upload className="w-4 h-4 mr-1.5" /> Import BOQ
+          <p className="text-sm text-muted-foreground">Use "Import BOQ" above to load items from your Excel schedule</p>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => setShowImport(true)}
+            data-testid="button-import-boq-empty"
+          >
+            <Upload className="w-4 h-4 mr-1.5" /> Import BOQ from Excel
           </Button>
         </div>
       ) : (
@@ -179,6 +210,16 @@ export default function BoqProjectDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Import Wizard */}
+      {showImport && project && (
+        <BoqImportWizard
+          projectId={projectId}
+          projectName={project.name}
+          onClose={() => setShowImport(false)}
+          onSuccess={handleImportSuccess}
+        />
       )}
     </div>
   );
