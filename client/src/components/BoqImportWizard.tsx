@@ -139,7 +139,7 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
   const colOptions = headerRow.map((h, i) => ({ label: `Col ${i + 1}: ${cellStr(h) || "(empty)"}`, value: i }));
 
   function setMapField(field: keyof ColumnMap, val: string) {
-    setColMap(p => ({ ...p, [field]: val === "" ? null : parseInt(val) }));
+    setColMap(p => ({ ...p, [field]: val === "__unmapped__" ? null : parseInt(val) }));
   }
 
   function buildItems() {
@@ -284,14 +284,14 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
                 <div key={field}>
                   <Label className="text-xs">{label.toUpperCase()} {required && <span className="text-red-500">*</span>}</Label>
                   <Select
-                    value={colMap[field] != null ? String(colMap[field]) : ""}
+                    value={colMap[field] != null ? String(colMap[field]) : "__unmapped__"}
                     onValueChange={v => setMapField(field, v)}
                   >
                     <SelectTrigger data-testid={`select-col-${field}`}>
                       <SelectValue placeholder="— Not mapped —" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">— Not mapped —</SelectItem>
+                      <SelectItem value="__unmapped__">— Not mapped —</SelectItem>
                       {colOptions.map(o => (
                         <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
                       ))}

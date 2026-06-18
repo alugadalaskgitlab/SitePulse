@@ -110,12 +110,12 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
             <div>
               <Label className="text-xs">LINKED SITE</Label>
-              <Select value={form.siteId} onValueChange={v => set("siteId", v)}>
+              <Select value={form.siteId || "__none__"} onValueChange={v => set("siteId", v === "__none__" ? "" : v)}>
                 <SelectTrigger data-testid="select-site">
                   <SelectValue placeholder="— None —" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
+                  <SelectItem value="__none__">— None —</SelectItem>
                   {sites.map(s => (
                     <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                   ))}
