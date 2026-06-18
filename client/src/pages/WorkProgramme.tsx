@@ -97,8 +97,22 @@ function StretchRow({
   const { toast } = useToast();
   const dirty = useRef(false);
 
+  const roadLen = project.roadLengthKm ?? 0;
+  const boqQty = item.currentQty;
+
+  // Derive initial multiplier from saved data (back-calc from qty/chainage, or default to boqQty/roadLen)
+  function initMult() {
+    const cf0 = bar.chainageFrom ?? 0;
+    const ct0 = bar.chainageTo ?? 0;
+    const len = ct0 - cf0;
+    if (len > 0 && bar.plannedQty > 0) return String(+(bar.plannedQty / len).toFixed(4));
+    if (roadLen > 0 && boqQty > 0) return String(+(boqQty / roadLen).toFixed(4));
+    return "1";
+  }
+
   const [cf, setCf] = useState(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
   const [ct, setCt] = useState(bar.chainageTo != null ? String(bar.chainageTo) : "");
+  const [mult, setMult] = useState(initMult);
   const [startM, setStartM] = useState(String(Math.round(bar.startMonth)));
 
   // Sync from DB when not dirty
@@ -107,24 +121,32 @@ function StretchRow({
     setCf(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
     setCt(bar.chainageTo != null ? String(bar.chainageTo) : "");
     setStartM(String(Math.round(bar.startMonth)));
-  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth]);
+    // back-calc mult from updated bar
+    const len = (bar.chainageTo ?? 0) - (bar.chainageFrom ?? 0);
+    if (len > 0 && bar.plannedQty > 0) {
+      setMult(String(+(bar.plannedQty / len).toFixed(4)));
+    } else if (roadLen > 0 && boqQty > 0) {
+      setMult(String(+(boqQty / roadLen).toFixed(4)));
+    }
+  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.plannedQty]);
 
-  const roadLen = project.roadLengthKm ?? 0;
-  const boqQty = item.currentQty;
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
+  const multNum = parseFloat(mult);
   const smNum = parseInt(startM) || 1;
   const validCh = !isNaN(cfNum) && !isNaN(ctNum) && ctNum > cfNum;
 
-  // Auto qty from chainage
+  // Auto qty from chainage × editable multiplier
   const autoQty = useMemo(() => {
     if (!validCh) return null;
+    const stretchLen = ctNum - cfNum;
+    if (!isNaN(multNum) && multNum > 0) return +(stretchLen * multNum).toFixed(4);
     if (roadLen > 0) return calculateStretchQty(boqQty, cfNum, ctNum, roadLen);
-    return boqQty; // no road length: full qty
-  }, [validCh, cfNum, ctNum, roadLen, boqQty]);
+    return boqQty;
+  }, [validCh, cfNum, ctNum, multNum, roadLen, boqQty]);
 
-  // @ rate display (units per km)
-  const rate = roadLen > 0 ? boqQty / roadLen : null;
+  // Default multiplier (boqQty/roadLen) for display hint
+  const defaultRate = roadLen > 0 ? boqQty / roadLen : null;
 
   // Equipment recipes for auto-duration
   const workingDays = project.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
@@ -162,21 +184,25 @@ function StretchRow({
     dirty.current = false;
     const qty = autoQty ?? bar.plannedQty;
     const em = autoEnd ?? bar.endMonth;
+    const isOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
     patch.mutate({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
       chainageTo: validCh ? ctNum : bar.chainageTo,
       plannedQty: qty,
       startMonth: smNum,
       endMonth: em,
-      isQtyOverride: false,
+      isQtyOverride: isOverride,
       isDurationOverride: !autoDuration,
     });
   }
 
-  // Bar positioning (pixel-based)
-  const barLeft = Math.max(0, (bar.startMonth - 1) * MONTH_W);
-  const barWidth = Math.max(4, (bar.endMonth - bar.startMonth) * MONTH_W);
-  const durationMonths = bar.endMonth - bar.startMonth;
+  // ── Bar positioning: use LIVE local draft values for immediate visual feedback ──
+  const liveStart = smNum;
+  const liveEnd = autoEnd ?? bar.endMonth;
+  const liveQty = autoQty ?? bar.plannedQty;
+  const barLeft = Math.max(0, (liveStart - 1) * MONTH_W);
+  const barWidth = Math.max(4, (liveEnd - liveStart) * MONTH_W);
+  const durationMonths = liveEnd - liveStart;
 
   return (
     <div
@@ -222,20 +248,30 @@ function StretchRow({
           data-testid={`input-ct-${bar.id}`}
         />
 
-        {/* @ rate display */}
+        {/* @ multiplier — editable, defaults to boqQty/roadLen */}
         <span className="text-[10px] text-slate-400 flex-shrink-0">@</span>
-        <span className="text-[10px] text-slate-500 dark:text-slate-400 w-[34px] text-right flex-shrink-0 font-mono">
-          {rate != null ? fmtQty(rate, 1) : "—"}
-        </span>
+        <input
+          type="number" step="0.0001" min="0.0001"
+          value={mult}
+          onChange={e => { dirty.current = true; setMult(e.target.value); }}
+          onBlur={save}
+          className={`w-[42px] text-[11px] font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
+            defaultRate != null && !isNaN(multNum) && Math.abs(multNum - defaultRate) > 0.0001
+              ? "border-orange-400 text-orange-600 dark:text-orange-400"
+              : "border-slate-300 dark:border-slate-600"
+          }`}
+          title={defaultRate != null ? `Default rate: ${fmtQty(defaultRate, 4)} ${item.unit}/km` : "Multiplier (qty per km)"}
+          data-testid={`input-mult-${bar.id}`}
+        />
 
-        {/* Auto qty display */}
+        {/* Live qty display — orange = auto from chainage×mult */}
         <span
           className={`text-[11px] font-bold w-[54px] text-right flex-shrink-0 font-mono ${
             autoQty != null ? "text-orange-600 dark:text-orange-400" : "text-slate-600 dark:text-slate-300"
           }`}
-          title={autoQty != null ? `Auto-calculated from chainage` : "Manual quantity"}
+          title={autoQty != null ? "Auto-calculated: chainage × multiplier" : "Saved quantity"}
         >
-          {fmtQty(autoQty ?? bar.plannedQty, 1)}
+          {fmtQty(liveQty, 1)}
         </span>
 
         {/* Start month input */}
@@ -300,15 +336,15 @@ function StretchRow({
             backgroundColor: color,
             opacity: 0.88,
           }}
-          title={`Ch ${bar.chainageFrom ?? "?"} – ${bar.chainageTo ?? "?"} km | ${fmtQty(bar.plannedQty, 1)} ${bar.unit} | M${fmtQty(bar.startMonth, 1)} → M${fmtQty(bar.endMonth, 1)} (${fmtQty(durationMonths, 2)} mo)`}
+          title={`Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km | ${fmtQty(liveQty, 1)} ${bar.unit} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)`}
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
           {barWidth > 30 && (
             <span className="absolute left-1.5 top-0 bottom-0 flex items-center text-white text-[9px] font-semibold whitespace-nowrap overflow-hidden pointer-events-none leading-none">
               {barWidth > 110
-                ? `${fmtQty(bar.plannedQty, 1)} ${bar.unit} | ${fmtQty(durationMonths, 2)}mo`
+                ? `${fmtQty(liveQty, 1)} ${bar.unit} | ${fmtQty(durationMonths, 2)}mo`
                 : barWidth > 55
-                  ? `${fmtQty(bar.plannedQty, 1)}`
+                  ? `${fmtQty(liveQty, 1)}`
                   : ""}
             </span>
           )}
@@ -439,6 +475,21 @@ function InlineGanttTable({
     const item = items.find(it => it.id === itemId);
     if (!item) return;
     const itemBars = barsByItemId[itemId] ?? [];
+
+    // Gate: don't create when the clicked month is fully inside an existing bar
+    if (clickedMonth) {
+      const alreadyCovered = itemBars.some(
+        b => b.startMonth <= clickedMonth && b.endMonth > clickedMonth,
+      );
+      if (alreadyCovered) {
+        toast({
+          title: "Month already scheduled",
+          description: `M${clickedMonth} is inside an existing stretch. Use "+ add stretch" to append a new one.`,
+        });
+        return;
+      }
+    }
+
     const lastBar = itemBars[itemBars.length - 1];
     const cfVal = lastBar?.chainageTo ?? 0;
     const ctVal = roadLen > 0 ? roadLen : (cfVal + 1);
