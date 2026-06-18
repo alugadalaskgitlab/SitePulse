@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench, FlaskConical, TestTube, BarChart3, Cylinder } from "lucide-react";
+import { ChevronLeft, Plus, Users, Package, Layers, Truck, Settings, Gauge, Droplets, ChevronRight, ChevronDown, ChevronUp, Loader2, Pencil, Trash2, Download, Printer, Lock, ArrowUpRight, RotateCcw, AlertTriangle, Shield, Fuel, Power, ClipboardList, Receipt, FileText, ArrowRightLeft, Scale, Flame, X, MapPin, Check, Wrench, FlaskConical, TestTube, BarChart3, Cylinder } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as XLSX from "xlsx";
