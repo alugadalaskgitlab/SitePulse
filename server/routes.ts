@@ -9271,6 +9271,295 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // WORK PROGRAM & BOQ CONTROL
+  // ============================================================
+
+  // --- BOQ Projects ---
+
+  app.get("/api/boq/projects", async (req, res) => {
+    try {
+      const siteId = req.query.siteId ? parseInt(req.query.siteId as string) : undefined;
+      const projects = await storage.getBoqProjects(siteId);
+      res.json(projects);
+    } catch (err) {
+      console.error("GET /api/boq/projects:", err);
+      res.status(500).json({ error: "Failed to fetch BOQ projects" });
+    }
+  });
+
+  app.get("/api/boq/projects/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const project = await storage.getBoqProject(id);
+      if (!project) return res.status(404).json({ error: "BOQ project not found" });
+      res.json(project);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id:", err);
+      res.status(500).json({ error: "Failed to fetch BOQ project" });
+    }
+  });
+
+  app.post("/api/boq/projects", async (req, res) => {
+    try {
+      const data = req.body;
+      if (!data.name) return res.status(400).json({ error: "name is required" });
+      const project = await storage.createBoqProject(data);
+      res.status(201).json(project);
+    } catch (err) {
+      console.error("POST /api/boq/projects:", err);
+      res.status(500).json({ error: "Failed to create BOQ project" });
+    }
+  });
+
+  app.patch("/api/boq/projects/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateBoqProject(id, req.body);
+      if (!updated) return res.status(404).json({ error: "BOQ project not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/boq/projects/:id:", err);
+      res.status(500).json({ error: "Failed to update BOQ project" });
+    }
+  });
+
+  app.delete("/api/boq/projects/:id", async (req, res) => {
+    try {
+      await storage.deleteBoqProject(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/projects/:id:", err);
+      res.status(500).json({ error: "Failed to delete BOQ project" });
+    }
+  });
+
+  // --- BOQ Categories ---
+
+  app.get("/api/boq/projects/:id/categories", async (req, res) => {
+    try {
+      const cats = await storage.getBoqCategories(parseInt(req.params.id));
+      res.json(cats);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/categories:", err);
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  app.patch("/api/boq/categories/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateBoqCategory(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ error: "Category not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/boq/categories/:id:", err);
+      res.status(500).json({ error: "Failed to update category" });
+    }
+  });
+
+  app.delete("/api/boq/categories/:id", async (req, res) => {
+    try {
+      await storage.deleteBoqCategory(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/categories/:id:", err);
+      res.status(500).json({ error: "Failed to delete category" });
+    }
+  });
+
+  // --- BOQ Items ---
+
+  app.get("/api/boq/projects/:id/items", async (req, res) => {
+    try {
+      const items = await storage.getBoqItems(parseInt(req.params.id));
+      res.json(items);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/items:", err);
+      res.status(500).json({ error: "Failed to fetch BOQ items" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/import", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const { items } = req.body as {
+        items: Array<{
+          itemCode?: string;
+          description: string;
+          unit: string;
+          boqQty: number;
+          clientRate?: number;
+          categoryName?: string;
+          sortOrder?: number;
+        }>;
+      };
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "items array is required and must not be empty" });
+      }
+      const invalid = items.find((it) => !it.description || !it.unit);
+      if (invalid) return res.status(400).json({ error: "Each item must have description and unit" });
+      const result = await storage.importBoqItems(boqProjectId, items);
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/import:", err);
+      res.status(500).json({ error: "Failed to import BOQ items" });
+    }
+  });
+
+  app.patch("/api/boq/items/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateBoqItem(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ error: "BOQ item not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/boq/items/:id:", err);
+      res.status(500).json({ error: "Failed to update BOQ item" });
+    }
+  });
+
+  app.delete("/api/boq/items/:id", async (req, res) => {
+    try {
+      await storage.deleteBoqItem(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/items/:id:", err);
+      res.status(500).json({ error: "Failed to delete BOQ item" });
+    }
+  });
+
+  // --- BOQ Revisions ---
+
+  app.get("/api/boq/projects/:id/revisions", async (req, res) => {
+    try {
+      const revisions = await storage.getBoqRevisions(parseInt(req.params.id));
+      res.json(revisions);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/revisions:", err);
+      res.status(500).json({ error: "Failed to fetch revisions" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/revisions", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const { label, notes, createdBy, items } = req.body as {
+        label: string;
+        notes?: string;
+        createdBy?: string;
+        items: Array<{ boqItemId: number; revisedQty: number; changeReason: string }>;
+      };
+      if (!label) return res.status(400).json({ error: "label is required" });
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "items array is required" });
+      }
+      const invalid = items.find((it) => !it.changeReason?.trim());
+      if (invalid) return res.status(400).json({ error: "Each revision item must have a changeReason" });
+      const revision = await storage.createBoqRevision(boqProjectId, { label, notes, createdBy }, items);
+      res.status(201).json(revision);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/revisions:", err);
+      res.status(500).json({ error: "Failed to create revision" });
+    }
+  });
+
+  app.patch("/api/boq/revisions/:id/activate", async (req, res) => {
+    try {
+      const { approvedBy } = req.body as { approvedBy: string };
+      if (!approvedBy) return res.status(400).json({ error: "approvedBy is required" });
+      const updated = await storage.activateBoqRevision(parseInt(req.params.id), approvedBy);
+      if (!updated) return res.status(404).json({ error: "Revision not found or already superseded" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/boq/revisions/:id/activate:", err);
+      res.status(500).json({ error: "Failed to activate revision" });
+    }
+  });
+
+  app.delete("/api/boq/revisions/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteBoqRevision(parseInt(req.params.id));
+      if (!deleted) return res.status(400).json({ error: "Only draft revisions can be deleted" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/revisions/:id:", err);
+      res.status(500).json({ error: "Failed to delete revision" });
+    }
+  });
+
+  // --- Work Programme Bars ---
+
+  app.get("/api/boq/projects/:id/programme", async (req, res) => {
+    try {
+      const bars = await storage.getWorkProgramBars(parseInt(req.params.id));
+      res.json(bars);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/programme:", err);
+      res.status(500).json({ error: "Failed to fetch work programme" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/programme", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const data = { ...req.body, boqProjectId };
+      if (!data.boqItemId || !data.startMonth || !data.endMonth) {
+        return res.status(400).json({ error: "boqItemId, startMonth, endMonth are required" });
+      }
+      if (data.endMonth < data.startMonth) {
+        return res.status(400).json({ error: "endMonth must be >= startMonth" });
+      }
+      const bar = await storage.upsertWorkProgramBar(data);
+      res.status(201).json(bar);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/programme:", err);
+      res.status(500).json({ error: "Failed to create work programme bar" });
+    }
+  });
+
+  app.patch("/api/boq/programme/bars/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateWorkProgramBar(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ error: "Bar not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/boq/programme/bars/:id:", err);
+      res.status(500).json({ error: "Failed to update bar" });
+    }
+  });
+
+  app.delete("/api/boq/programme/bars/:id", async (req, res) => {
+    try {
+      await storage.deleteWorkProgramBar(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/programme/bars/:id:", err);
+      res.status(500).json({ error: "Failed to delete bar" });
+    }
+  });
+
+  // --- Monthly Targets & Plan vs Actual ---
+
+  app.get("/api/boq/projects/:id/monthly-targets", async (req, res) => {
+    try {
+      const targets = await storage.getMonthlyTargets(parseInt(req.params.id));
+      res.json(targets);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/monthly-targets:", err);
+      res.status(500).json({ error: "Failed to fetch monthly targets" });
+    }
+  });
+
+  app.get("/api/boq/projects/:id/plan-vs-actual", async (req, res) => {
+    try {
+      const asOfDate = req.query.asOf as string | undefined;
+      const rows = await storage.getPlanVsActual(parseInt(req.params.id), asOfDate);
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/plan-vs-actual:", err);
+      res.status(500).json({ error: "Failed to fetch plan vs actual" });
+    }
+  });
+
   seedDatabase();
   seedPlantMasterData();
 

@@ -43,6 +43,8 @@ export const progressEntries = pgTable("progress_entries", {
   uom: text("uom"),
   noSiteWork: boolean("no_site_work").default(false),
   noSiteWorkDescription: text("no_site_work_description"),
+  // Optional link to a BOQ item for Plan vs Actual tracking
+  boqItemId: integer("boq_item_id"),
 });
 
 // Structure DPR Items (for workType = "structure")
@@ -2274,6 +2276,137 @@ export type InsertRmcRawMaterialReceipt = z.infer<typeof insertRmcRawMaterialRec
 export type RmcBatchRecordWithDesign = RmcBatchRecord & {
   grade: string;
   targetStrength: number | null;
+};
+
+// ============================================
+// WORK PROGRAM & BOQ CONTROL
+// ============================================
+
+export const boqProjects = pgTable("boq_projects", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  contractNo: text("contract_no"),
+  client: text("client"),
+  contractor: text("contractor"),
+  roadLengthKm: real("road_length_km"),
+  startDate: date("start_date"),
+  totalMonths: integer("total_months"),
+  status: text("status").notNull().default("draft"), // draft | active | closed
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const boqCategories = pgTable("boq_categories", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const boqItems = pgTable("boq_items", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").references(() => boqCategories.id, { onDelete: "set null" }),
+  itemCode: text("item_code"),
+  description: text("description").notNull(),
+  unit: text("unit").notNull(),
+  boqQty: real("boq_qty").notNull().default(0),   // original contract quantity — never overwritten
+  currentQty: real("current_qty").notNull().default(0), // updated when a revision is activated
+  clientRate: real("client_rate"),
+  clientAmount: real("client_amount"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
+}));
+
+export const boqRevisions = pgTable("boq_revisions", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  revisionNo: integer("revision_no").notNull(),
+  label: text("label").notNull(),
+  status: text("status").notNull().default("draft"), // draft | active | superseded
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+});
+
+export const boqRevisionItems = pgTable("boq_revision_items", {
+  id: serial("id").primaryKey(),
+  revisionId: integer("revision_id").notNull().references(() => boqRevisions.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  revisedQty: real("revised_qty").notNull(),
+  changeReason: text("change_reason").notNull(),
+});
+
+export const workProgramBars = pgTable("work_program_bars", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  reachLabel: text("reach_label"),
+  chainageFrom: real("chainage_from"),
+  chainageTo: real("chainage_to"),
+  startMonth: integer("start_month").notNull(),
+  endMonth: integer("end_month").notNull(),
+  plannedQty: real("planned_qty").notNull().default(0),
+  isQtyOverride: boolean("is_qty_override").default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),
+  itemIdx: index("work_program_bars_item_idx").on(t.boqItemId),
+}));
+
+// Insert schemas
+export const insertBoqProjectSchema = createInsertSchema(boqProjects).omit({ id: true, createdAt: true });
+export const insertBoqCategorySchema = createInsertSchema(boqCategories).omit({ id: true });
+export const insertBoqItemSchema = createInsertSchema(boqItems).omit({ id: true, createdAt: true });
+export const insertBoqRevisionSchema = createInsertSchema(boqRevisions).omit({ id: true, createdAt: true, approvedAt: true });
+export const insertBoqRevisionItemSchema = createInsertSchema(boqRevisionItems).omit({ id: true });
+export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).omit({ id: true, createdAt: true });
+
+// Types
+export type BoqProject = typeof boqProjects.$inferSelect;
+export type InsertBoqProject = z.infer<typeof insertBoqProjectSchema>;
+export type BoqCategory = typeof boqCategories.$inferSelect;
+export type InsertBoqCategory = z.infer<typeof insertBoqCategorySchema>;
+export type BoqItem = typeof boqItems.$inferSelect;
+export type InsertBoqItem = z.infer<typeof insertBoqItemSchema>;
+export type BoqRevision = typeof boqRevisions.$inferSelect;
+export type InsertBoqRevision = z.infer<typeof insertBoqRevisionSchema>;
+export type BoqRevisionItem = typeof boqRevisionItems.$inferSelect;
+export type InsertBoqRevisionItem = z.infer<typeof insertBoqRevisionItemSchema>;
+export type WorkProgramBar = typeof workProgramBars.$inferSelect;
+export type InsertWorkProgramBar = z.infer<typeof insertWorkProgramBarSchema>;
+
+// Composite types for API responses
+export type BoqItemWithCategory = BoqItem & { categoryName: string | null };
+export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
+export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null };
+export type WorkProgramBarWithItem = WorkProgramBar & { itemCode: string | null; description: string; unit: string; categoryName: string | null };
+export type MonthlyTarget = {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  categoryName: string | null;
+  month: number;
+  plannedQty: number;
+};
+export type PlanVsActualRow = {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  categoryName: string | null;
+  currentQty: number;
+  totalPlanned: number;
+  totalActual: number;
+  percentComplete: number;
+  lastActivityDate: string | null;
 };
 
 export const insertUserSchema = createInsertSchema(users).omit({

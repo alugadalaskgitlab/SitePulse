@@ -229,6 +229,31 @@ import {
   type ApproveIrnRequest,
   type RecordIrnIssueRequest,
   userPermissions,
+  boqProjects,
+  boqCategories,
+  boqItems,
+  boqRevisions,
+  boqRevisionItems,
+  workProgramBars,
+  sites,
+  type BoqProject,
+  type InsertBoqProject,
+  type BoqCategory,
+  type InsertBoqCategory,
+  type BoqItem,
+  type InsertBoqItem,
+  type BoqRevision,
+  type InsertBoqRevision,
+  type BoqRevisionItem,
+  type InsertBoqRevisionItem,
+  type WorkProgramBar,
+  type InsertWorkProgramBar,
+  type BoqProjectWithCounts,
+  type BoqItemWithCategory,
+  type BoqRevisionWithItems,
+  type WorkProgramBarWithItem,
+  type MonthlyTarget,
+  type PlanVsActualRow,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -19451,6 +19476,452 @@ export class DatabaseStorage implements IStorage {
       });
 
       return this.buildIssueWithItems(issue);
+    });
+  }
+
+  // ============================================================
+  // WORK PROGRAM & BOQ CONTROL
+  // ============================================================
+
+  // --- BOQ Projects ---
+
+  async getBoqProjects(siteId?: number): Promise<BoqProjectWithCounts[]> {
+    const rows = await db
+      .select({
+        id: boqProjects.id,
+        siteId: boqProjects.siteId,
+        name: boqProjects.name,
+        contractNo: boqProjects.contractNo,
+        client: boqProjects.client,
+        contractor: boqProjects.contractor,
+        roadLengthKm: boqProjects.roadLengthKm,
+        startDate: boqProjects.startDate,
+        totalMonths: boqProjects.totalMonths,
+        status: boqProjects.status,
+        createdBy: boqProjects.createdBy,
+        createdAt: boqProjects.createdAt,
+        siteName: sites.name,
+      })
+      .from(boqProjects)
+      .leftJoin(sites, eq(boqProjects.siteId, sites.id))
+      .where(siteId ? eq(boqProjects.siteId, siteId) : undefined)
+      .orderBy(desc(boqProjects.createdAt));
+
+    const results: BoqProjectWithCounts[] = await Promise.all(
+      rows.map(async (row) => {
+        const [countRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(boqItems)
+          .where(eq(boqItems.boqProjectId, row.id));
+        const activeRev = await db
+          .select({ label: boqRevisions.label })
+          .from(boqRevisions)
+          .where(and(eq(boqRevisions.boqProjectId, row.id), eq(boqRevisions.status, "active")))
+          .limit(1);
+        return {
+          ...row,
+          siteName: row.siteName ?? null,
+          itemCount: countRow?.count ?? 0,
+          activeRevision: activeRev[0]?.label ?? null,
+        };
+      })
+    );
+    return results;
+  }
+
+  async getBoqProject(id: number): Promise<BoqProject | null> {
+    const [row] = await db.select().from(boqProjects).where(eq(boqProjects.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async createBoqProject(data: InsertBoqProject): Promise<BoqProject> {
+    const [row] = await db.insert(boqProjects).values(data).returning();
+    return row;
+  }
+
+  async updateBoqProject(id: number, data: Partial<InsertBoqProject>): Promise<BoqProject | null> {
+    const [row] = await db.update(boqProjects).set(data).where(eq(boqProjects.id, id)).returning();
+    return row ?? null;
+  }
+
+  async deleteBoqProject(id: number): Promise<void> {
+    await db.update(boqProjects).set({ status: "closed" }).where(eq(boqProjects.id, id));
+  }
+
+  // --- BOQ Categories ---
+
+  async getBoqCategories(boqProjectId: number): Promise<BoqCategory[]> {
+    return db
+      .select()
+      .from(boqCategories)
+      .where(eq(boqCategories.boqProjectId, boqProjectId))
+      .orderBy(boqCategories.sortOrder, boqCategories.name);
+  }
+
+  async upsertBoqCategory(boqProjectId: number, name: string): Promise<BoqCategory> {
+    const [existing] = await db
+      .select()
+      .from(boqCategories)
+      .where(and(eq(boqCategories.boqProjectId, boqProjectId), eq(boqCategories.name, name)))
+      .limit(1);
+    if (existing) return existing;
+    const [row] = await db.insert(boqCategories).values({ boqProjectId, name, sortOrder: 0 }).returning();
+    return row;
+  }
+
+  async updateBoqCategory(id: number, data: Partial<InsertBoqCategory>): Promise<BoqCategory | null> {
+    const [row] = await db.update(boqCategories).set(data).where(eq(boqCategories.id, id)).returning();
+    return row ?? null;
+  }
+
+  async deleteBoqCategory(id: number): Promise<void> {
+    await db.delete(boqCategories).where(eq(boqCategories.id, id));
+  }
+
+  // --- BOQ Items ---
+
+  async getBoqItems(boqProjectId: number): Promise<BoqItemWithCategory[]> {
+    const rows = await db
+      .select({
+        id: boqItems.id,
+        boqProjectId: boqItems.boqProjectId,
+        categoryId: boqItems.categoryId,
+        itemCode: boqItems.itemCode,
+        description: boqItems.description,
+        unit: boqItems.unit,
+        boqQty: boqItems.boqQty,
+        currentQty: boqItems.currentQty,
+        clientRate: boqItems.clientRate,
+        clientAmount: boqItems.clientAmount,
+        sortOrder: boqItems.sortOrder,
+        createdAt: boqItems.createdAt,
+        categoryName: boqCategories.name,
+      })
+      .from(boqItems)
+      .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+      .where(eq(boqItems.boqProjectId, boqProjectId))
+      .orderBy(boqItems.sortOrder, boqItems.id);
+
+    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null }));
+  }
+
+  async getBoqItem(id: number): Promise<BoqItem | null> {
+    const [row] = await db.select().from(boqItems).where(eq(boqItems.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async importBoqItems(
+    boqProjectId: number,
+    items: Array<{
+      itemCode?: string;
+      description: string;
+      unit: string;
+      boqQty: number;
+      clientRate?: number;
+      categoryName?: string;
+      sortOrder?: number;
+    }>
+  ): Promise<{ created: number; categories: string[] }> {
+    const categoryCache = new Map<string, number>();
+    let created = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      let categoryId: number | null = null;
+
+      if (item.categoryName?.trim()) {
+        const catName = item.categoryName.trim();
+        if (!categoryCache.has(catName)) {
+          const cat = await this.upsertBoqCategory(boqProjectId, catName);
+          categoryCache.set(catName, cat.id);
+        }
+        categoryId = categoryCache.get(catName)!;
+      }
+
+      const clientAmount =
+        item.clientRate != null && item.boqQty != null
+          ? Math.round(item.clientRate * item.boqQty * 100) / 100
+          : null;
+
+      await db.insert(boqItems).values({
+        boqProjectId,
+        categoryId,
+        itemCode: item.itemCode ?? null,
+        description: item.description,
+        unit: item.unit,
+        boqQty: item.boqQty ?? 0,
+        currentQty: item.boqQty ?? 0,
+        clientRate: item.clientRate ?? null,
+        clientAmount,
+        sortOrder: item.sortOrder ?? i,
+      });
+      created++;
+    }
+
+    return { created, categories: Array.from(categoryCache.keys()) };
+  }
+
+  async updateBoqItem(id: number, data: Partial<InsertBoqItem>): Promise<BoqItem | null> {
+    const [row] = await db.update(boqItems).set(data).where(eq(boqItems.id, id)).returning();
+    return row ?? null;
+  }
+
+  async deleteBoqItem(id: number): Promise<void> {
+    await db.delete(boqItems).where(eq(boqItems.id, id));
+  }
+
+  // --- BOQ Revisions ---
+
+  async getBoqRevisions(boqProjectId: number): Promise<BoqRevisionWithItems[]> {
+    const revs = await db
+      .select()
+      .from(boqRevisions)
+      .where(eq(boqRevisions.boqProjectId, boqProjectId))
+      .orderBy(desc(boqRevisions.revisionNo));
+
+    return Promise.all(
+      revs.map(async (rev) => {
+        const items = await db
+          .select({
+            id: boqRevisionItems.id,
+            revisionId: boqRevisionItems.revisionId,
+            boqItemId: boqRevisionItems.boqItemId,
+            revisedQty: boqRevisionItems.revisedQty,
+            changeReason: boqRevisionItems.changeReason,
+            description: boqItems.description,
+            unit: boqItems.unit,
+          })
+          .from(boqRevisionItems)
+          .innerJoin(boqItems, eq(boqRevisionItems.boqItemId, boqItems.id))
+          .where(eq(boqRevisionItems.revisionId, rev.id));
+        return { ...rev, items };
+      })
+    );
+  }
+
+  async createBoqRevision(
+    boqProjectId: number,
+    data: { label: string; notes?: string; createdBy?: string },
+    items: Array<{ boqItemId: number; revisedQty: number; changeReason: string }>
+  ): Promise<BoqRevision> {
+    return db.transaction(async (tx) => {
+      const [lastRev] = await tx
+        .select({ max: sql<number>`max(revision_no)` })
+        .from(boqRevisions)
+        .where(eq(boqRevisions.boqProjectId, boqProjectId));
+      const nextNo = (lastRev?.max ?? 0) + 1;
+
+      const [rev] = await tx
+        .insert(boqRevisions)
+        .values({
+          boqProjectId,
+          revisionNo: nextNo,
+          label: data.label,
+          notes: data.notes ?? null,
+          createdBy: data.createdBy ?? null,
+          status: "draft",
+        })
+        .returning();
+
+      if (items.length > 0) {
+        await tx.insert(boqRevisionItems).values(
+          items.map((it) => ({ revisionId: rev.id, boqItemId: it.boqItemId, revisedQty: it.revisedQty, changeReason: it.changeReason }))
+        );
+      }
+      return rev;
+    });
+  }
+
+  async activateBoqRevision(revisionId: number, approvedBy: string): Promise<BoqRevision | null> {
+    return db.transaction(async (tx) => {
+      const [rev] = await tx.select().from(boqRevisions).where(eq(boqRevisions.id, revisionId)).limit(1);
+      if (!rev || rev.status === "superseded") return null;
+
+      // Supersede any previously active revision for this project
+      await tx
+        .update(boqRevisions)
+        .set({ status: "superseded" })
+        .where(and(eq(boqRevisions.boqProjectId, rev.boqProjectId), eq(boqRevisions.status, "active")));
+
+      // Activate this revision
+      const [updated] = await tx
+        .update(boqRevisions)
+        .set({ status: "active", approvedBy, approvedAt: new Date() })
+        .where(eq(boqRevisions.id, revisionId))
+        .returning();
+
+      // Apply revised quantities to boq_items.current_qty
+      const revItems = await tx
+        .select()
+        .from(boqRevisionItems)
+        .where(eq(boqRevisionItems.revisionId, revisionId));
+      for (const ri of revItems) {
+        const clientRate = await tx
+          .select({ clientRate: boqItems.clientRate })
+          .from(boqItems)
+          .where(eq(boqItems.id, ri.boqItemId))
+          .limit(1);
+        const rate = clientRate[0]?.clientRate ?? null;
+        const clientAmount = rate != null ? Math.round(rate * ri.revisedQty * 100) / 100 : null;
+        await tx
+          .update(boqItems)
+          .set({ currentQty: ri.revisedQty, clientAmount })
+          .where(eq(boqItems.id, ri.boqItemId));
+      }
+
+      return updated ?? null;
+    });
+  }
+
+  async deleteBoqRevision(revisionId: number): Promise<boolean> {
+    const [rev] = await db.select().from(boqRevisions).where(eq(boqRevisions.id, revisionId)).limit(1);
+    if (!rev || rev.status !== "draft") return false;
+    await db.delete(boqRevisions).where(eq(boqRevisions.id, revisionId));
+    return true;
+  }
+
+  // --- Work Programme Bars ---
+
+  async getWorkProgramBars(boqProjectId: number): Promise<WorkProgramBarWithItem[]> {
+    const rows = await db
+      .select({
+        id: workProgramBars.id,
+        boqProjectId: workProgramBars.boqProjectId,
+        boqItemId: workProgramBars.boqItemId,
+        reachLabel: workProgramBars.reachLabel,
+        chainageFrom: workProgramBars.chainageFrom,
+        chainageTo: workProgramBars.chainageTo,
+        startMonth: workProgramBars.startMonth,
+        endMonth: workProgramBars.endMonth,
+        plannedQty: workProgramBars.plannedQty,
+        isQtyOverride: workProgramBars.isQtyOverride,
+        notes: workProgramBars.notes,
+        createdAt: workProgramBars.createdAt,
+        itemCode: boqItems.itemCode,
+        description: boqItems.description,
+        unit: boqItems.unit,
+        categoryName: boqCategories.name,
+      })
+      .from(workProgramBars)
+      .innerJoin(boqItems, eq(workProgramBars.boqItemId, boqItems.id))
+      .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+      .where(eq(workProgramBars.boqProjectId, boqProjectId))
+      .orderBy(boqItems.sortOrder, workProgramBars.startMonth);
+
+    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null }));
+  }
+
+  async upsertWorkProgramBar(data: InsertWorkProgramBar): Promise<WorkProgramBar> {
+    const [row] = await db.insert(workProgramBars).values(data).returning();
+    return row;
+  }
+
+  async updateWorkProgramBar(id: number, data: Partial<InsertWorkProgramBar>): Promise<WorkProgramBar | null> {
+    const [row] = await db.update(workProgramBars).set(data).where(eq(workProgramBars.id, id)).returning();
+    return row ?? null;
+  }
+
+  async deleteWorkProgramBar(id: number): Promise<void> {
+    await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
+  }
+
+  // --- Monthly Targets (derived from work programme bars) ---
+
+  async getMonthlyTargets(boqProjectId: number): Promise<MonthlyTarget[]> {
+    const bars = await this.getWorkProgramBars(boqProjectId);
+    const targets: MonthlyTarget[] = [];
+
+    for (const bar of bars) {
+      const span = bar.endMonth - bar.startMonth + 1;
+      if (span <= 0) continue;
+      const qtyPerMonth = bar.plannedQty / span;
+      for (let m = bar.startMonth; m <= bar.endMonth; m++) {
+        const existing = targets.find((t) => t.boqItemId === bar.boqItemId && t.month === m);
+        if (existing) {
+          existing.plannedQty = Math.round((existing.plannedQty + qtyPerMonth) * 1000) / 1000;
+        } else {
+          targets.push({
+            boqItemId: bar.boqItemId,
+            itemCode: bar.itemCode,
+            description: bar.description,
+            unit: bar.unit,
+            categoryName: bar.categoryName,
+            month: m,
+            plannedQty: Math.round(qtyPerMonth * 1000) / 1000,
+          });
+        }
+      }
+    }
+
+    return targets.sort((a, b) => a.month - b.month || a.boqItemId - b.boqItemId);
+  }
+
+  // --- Plan vs Actual ---
+
+  async getPlanVsActual(boqProjectId: number, asOfDate?: string): Promise<PlanVsActualRow[]> {
+    const items = await this.getBoqItems(boqProjectId);
+    const bars = await this.getWorkProgramBars(boqProjectId);
+
+    // Get project start date to calculate "planned to date"
+    const project = await this.getBoqProject(boqProjectId);
+    const startDate = project?.startDate ? new Date(project.startDate) : null;
+
+    // Calculate month number for today (or asOfDate)
+    const checkDate = asOfDate ? new Date(asOfDate) : new Date();
+    let currentMonth = 1;
+    if (startDate) {
+      const diffMs = checkDate.getTime() - startDate.getTime();
+      const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.44);
+      currentMonth = Math.max(1, Math.ceil(diffMonths));
+    }
+
+    // Get actuals from progress_entries linked to items in this project
+    const itemIds = items.map((i) => i.id);
+    type ActualRow = { boqItemId: number; totalQty: number; lastDate: string };
+    let actuals: ActualRow[] = [];
+    if (itemIds.length > 0) {
+      const dateFilter = asOfDate ? sql`AND dprs.date <= ${asOfDate}` : sql``;
+      const rawActuals = await db.execute(sql`
+        SELECT pe.boq_item_id as "boqItemId",
+               COALESCE(SUM(pe.quantity), 0) as "totalQty",
+               MAX(dprs.date) as "lastDate"
+        FROM progress_entries pe
+        JOIN dprs ON dprs.id = pe.dpr_id
+        WHERE pe.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
+          AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+          ${dateFilter}
+        GROUP BY pe.boq_item_id
+      `);
+      actuals = rawActuals.rows as ActualRow[];
+    }
+
+    // Planned to date = sum of qty from bars whose startMonth <= currentMonth
+    const plannedToDate = new Map<number, number>();
+    for (const bar of bars) {
+      const monthsInRange = Math.min(bar.endMonth, currentMonth) - bar.startMonth + 1;
+      if (monthsInRange <= 0) continue;
+      const span = bar.endMonth - bar.startMonth + 1;
+      const qty = (bar.plannedQty / span) * monthsInRange;
+      plannedToDate.set(bar.boqItemId, (plannedToDate.get(bar.boqItemId) ?? 0) + qty);
+    }
+
+    return items.map((item) => {
+      const actualRow = actuals.find((a) => a.boqItemId === item.id);
+      const totalActual = actualRow?.totalQty ?? 0;
+      const totalPlanned = Math.round((plannedToDate.get(item.id) ?? 0) * 1000) / 1000;
+      const percentComplete = item.currentQty > 0 ? Math.round((totalActual / item.currentQty) * 10000) / 100 : 0;
+      return {
+        boqItemId: item.id,
+        itemCode: item.itemCode,
+        description: item.description,
+        unit: item.unit,
+        categoryName: item.categoryName,
+        currentQty: item.currentQty,
+        totalPlanned,
+        totalActual: Math.round(totalActual * 1000) / 1000,
+        percentComplete,
+        lastActivityDate: actualRow?.lastDate ?? null,
+      };
     });
   }
 }
