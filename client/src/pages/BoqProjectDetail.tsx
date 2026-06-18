@@ -4,7 +4,7 @@ import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
-  GitBranch, CalendarDays,
+  GitBranch, CalendarDays, Package,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BoqImportWizard } from "@/components/BoqImportWizard";
+import { BoqItemRecipeDialog } from "@/pages/BoqItemRecipes";
 import type { BoqProject, BoqItemWithCategory, BoqRevisionWithItems } from "@shared/schema";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -153,6 +154,7 @@ function CategorySection({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
+  const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
 
   const subtotal = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const boqSubtotal = items.reduce((s, i) => s + (i.clientRate ?? 0) * i.boqQty, 0);
@@ -227,14 +229,24 @@ function CategorySection({
                       {fmtAmt(item.clientAmount)}
                     </td>
                     <td className="px-2 py-1.5 text-center">
-                      <button
-                        onClick={() => setEditItem(item)}
-                        className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors"
-                        title="Edit item"
-                        data-testid={`button-edit-item-${item.id}`}
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center gap-0.5 justify-center">
+                        <button
+                          onClick={() => setRecipeItem(item)}
+                          className="p-1 rounded hover:bg-teal-50 text-slate-400 hover:text-teal-600 transition-colors"
+                          title="Edit recipes (equipment / labour / materials)"
+                          data-testid={`button-recipe-item-${item.id}`}
+                        >
+                          <Package className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditItem(item)}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Edit item"
+                          data-testid={`button-edit-item-${item.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -258,6 +270,9 @@ function CategorySection({
 
       {editItem && (
         <ItemEditDialog item={editItem} projectId={projectId} onClose={() => setEditItem(null)} />
+      )}
+      {recipeItem && (
+        <BoqItemRecipeDialog item={recipeItem} onClose={() => setRecipeItem(null)} />
       )}
     </Card>
   );

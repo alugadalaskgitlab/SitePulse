@@ -235,6 +235,10 @@ import {
   boqRevisions,
   boqRevisionItems,
   workProgramBars,
+  boqItemEquipment,
+  boqItemLabour,
+  boqItemMaterials,
+  equipmentMaster,
   sites,
   type BoqProject,
   type InsertBoqProject,
@@ -248,6 +252,14 @@ import {
   type InsertBoqRevisionItem,
   type WorkProgramBar,
   type InsertWorkProgramBar,
+  type BoqItemEquipmentRow,
+  type InsertBoqItemEquipment,
+  type BoqItemLabourRow,
+  type InsertBoqItemLabour,
+  type BoqItemMaterialsRow,
+  type InsertBoqItemMaterials,
+  type BoqItemEquipmentWithMaster,
+  type BoqItemWithRecipes,
   type BoqProjectWithCounts,
   type BoqItemWithCategory,
   type BoqRevisionWithItems,
@@ -19848,12 +19860,15 @@ export class DatabaseStorage implements IStorage {
         endMonth: workProgramBars.endMonth,
         plannedQty: workProgramBars.plannedQty,
         isQtyOverride: workProgramBars.isQtyOverride,
+        isDurationOverride: workProgramBars.isDurationOverride,
         notes: workProgramBars.notes,
         createdAt: workProgramBars.createdAt,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         unit: boqItems.unit,
         categoryName: boqCategories.name,
+        categoryId: boqItems.categoryId,
+        sortOrder: boqItems.sortOrder,
       })
       .from(workProgramBars)
       .innerJoin(boqItems, eq(workProgramBars.boqItemId, boqItems.id))
@@ -19861,7 +19876,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(workProgramBars.boqProjectId, boqProjectId))
       .orderBy(boqItems.sortOrder, workProgramBars.startMonth);
 
-    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null }));
+    return rows.map((r) => ({
+      ...r,
+      categoryName: r.categoryName ?? null,
+      categoryId: r.categoryId ?? null,
+      sortOrder: r.sortOrder ?? 0,
+    }));
   }
 
   async upsertWorkProgramBar(data: InsertWorkProgramBar): Promise<WorkProgramBar> {
@@ -19878,35 +19898,43 @@ export class DatabaseStorage implements IStorage {
     await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
   }
 
-  // --- Monthly Targets (derived from work programme bars) ---
+  // --- Monthly Targets (derived from work programme bars, fractional overlap formula) ---
 
   async getMonthlyTargets(boqProjectId: number): Promise<MonthlyTarget[]> {
     const bars = await this.getWorkProgramBars(boqProjectId);
-    const targets: MonthlyTarget[] = [];
+    const project = await this.getBoqProject(boqProjectId);
+    const totalMonths = project?.totalMonths ?? 60;
+    const targetMap = new Map<string, MonthlyTarget>();
 
     for (const bar of bars) {
-      const span = bar.endMonth - bar.startMonth + 1;
-      if (span <= 0) continue;
-      const qtyPerMonth = bar.plannedQty / span;
-      for (let m = bar.startMonth; m <= bar.endMonth; m++) {
-        const existing = targets.find((t) => t.boqItemId === bar.boqItemId && t.month === m);
+      const duration = bar.endMonth - bar.startMonth;
+      if (duration <= 0 || bar.plannedQty <= 0) continue;
+      const maxM = Math.ceil(bar.endMonth);
+      for (let m = Math.floor(bar.startMonth); m < maxM; m++) {
+        const overlap = Math.max(0, Math.min(bar.endMonth, m + 1) - Math.max(bar.startMonth, m));
+        if (overlap <= 0) continue;
+        const qty = bar.plannedQty * (overlap / duration);
+        const calMonth = m + 1;
+        if (calMonth < 1 || calMonth > totalMonths) continue;
+        const key = `${bar.boqItemId}:${calMonth}`;
+        const existing = targetMap.get(key);
         if (existing) {
-          existing.plannedQty = Math.round((existing.plannedQty + qtyPerMonth) * 1000) / 1000;
+          existing.plannedQty = Math.round((existing.plannedQty + qty) * 1000) / 1000;
         } else {
-          targets.push({
+          targetMap.set(key, {
             boqItemId: bar.boqItemId,
             itemCode: bar.itemCode,
             description: bar.description,
             unit: bar.unit,
             categoryName: bar.categoryName,
-            month: m,
-            plannedQty: Math.round(qtyPerMonth * 1000) / 1000,
+            month: calMonth,
+            plannedQty: Math.round(qty * 1000) / 1000,
           });
         }
       }
     }
 
-    return targets.sort((a, b) => a.month - b.month || a.boqItemId - b.boqItemId);
+    return [...targetMap.values()].sort((a, b) => a.month - b.month || a.boqItemId - b.boqItemId);
   }
 
   // --- Plan vs Actual ---
@@ -19974,6 +20002,161 @@ export class DatabaseStorage implements IStorage {
         totalActual: Math.round(totalActual * 1000) / 1000,
         percentComplete,
         lastActivityDate: actualRow?.lastDate ?? null,
+      };
+    });
+  }
+
+  // ─── BOQ Item Recipes ────────────────────────────────────────────────────
+
+  async getBoqItemEquipment(boqItemId: number): Promise<BoqItemEquipmentWithMaster[]> {
+    const rows = await db
+      .select({
+        id: boqItemEquipment.id,
+        boqItemId: boqItemEquipment.boqItemId,
+        equipmentName: boqItemEquipment.equipmentName,
+        equipmentMasterId: boqItemEquipment.equipmentMasterId,
+        qtyPerBoqUnit: boqItemEquipment.qtyPerBoqUnit,
+        count: boqItemEquipment.count,
+        sortOrder: boqItemEquipment.sortOrder,
+        notes: boqItemEquipment.notes,
+        createdAt: boqItemEquipment.createdAt,
+        outputUnit: equipmentMaster.outputUnit,
+        outputTheoretical: equipmentMaster.outputTheoretical,
+        outputEfficiency: equipmentMaster.outputEfficiency,
+        standardOutputs: equipmentMaster.standardOutputs,
+      })
+      .from(boqItemEquipment)
+      .leftJoin(equipmentMaster, eq(boqItemEquipment.equipmentMasterId, equipmentMaster.id))
+      .where(eq(boqItemEquipment.boqItemId, boqItemId))
+      .orderBy(boqItemEquipment.sortOrder, boqItemEquipment.id);
+    return rows as BoqItemEquipmentWithMaster[];
+  }
+
+  async upsertBoqItemEquipment(
+    boqItemId: number,
+    rows: InsertBoqItemEquipment[],
+  ): Promise<BoqItemEquipmentRow[]> {
+    return await db.transaction(async (tx) => {
+      await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
+      if (!rows.length) return [];
+      const inserted = await tx
+        .insert(boqItemEquipment)
+        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
+        .returning();
+      return inserted;
+    });
+  }
+
+  async deleteBoqItemEquipmentRow(id: number): Promise<void> {
+    await db.delete(boqItemEquipment).where(eq(boqItemEquipment.id, id));
+  }
+
+  async getBoqItemLabour(boqItemId: number): Promise<BoqItemLabourRow[]> {
+    return db
+      .select()
+      .from(boqItemLabour)
+      .where(eq(boqItemLabour.boqItemId, boqItemId))
+      .orderBy(boqItemLabour.sortOrder, boqItemLabour.id);
+  }
+
+  async upsertBoqItemLabour(
+    boqItemId: number,
+    rows: InsertBoqItemLabour[],
+  ): Promise<BoqItemLabourRow[]> {
+    return await db.transaction(async (tx) => {
+      await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
+      if (!rows.length) return [];
+      return tx
+        .insert(boqItemLabour)
+        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
+        .returning();
+    });
+  }
+
+  async getBoqItemMaterials(boqItemId: number): Promise<BoqItemMaterialsRow[]> {
+    return db
+      .select()
+      .from(boqItemMaterials)
+      .where(eq(boqItemMaterials.boqItemId, boqItemId))
+      .orderBy(boqItemMaterials.sortOrder, boqItemMaterials.id);
+  }
+
+  async upsertBoqItemMaterials(
+    boqItemId: number,
+    rows: InsertBoqItemMaterials[],
+  ): Promise<BoqItemMaterialsRow[]> {
+    return await db.transaction(async (tx) => {
+      await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
+      if (!rows.length) return [];
+      return tx
+        .insert(boqItemMaterials)
+        .values(rows.map((r, i) => ({ ...r, boqItemId, sortOrder: r.sortOrder ?? i })))
+        .returning();
+    });
+  }
+
+  async getBoqItemWithRecipes(boqItemId: number): Promise<BoqItemWithRecipes | null> {
+    const item = await this.getBoqItem(boqItemId);
+    if (!item) return null;
+    // get category name
+    const cats = await db.select().from(boqCategories).where(eq(boqCategories.boqProjectId, item.boqProjectId));
+    const cat = item.categoryId ? cats.find((c) => c.id === item.categoryId) : null;
+    const [equipment, labour, materials] = await Promise.all([
+      this.getBoqItemEquipment(boqItemId),
+      this.getBoqItemLabour(boqItemId),
+      this.getBoqItemMaterials(boqItemId),
+    ]);
+    return {
+      ...item,
+      categoryName: cat?.name ?? null,
+      equipment,
+      labour,
+      materials,
+    };
+  }
+
+  // Get all BOQ items with their recipes for BOM calculation
+  async getBoqItemsWithRecipes(boqProjectId: number): Promise<BoqItemWithRecipes[]> {
+    const items = await this.getBoqItems(boqProjectId);
+    if (!items.length) return [];
+
+    const itemIds = items.map((i) => i.id);
+
+    // Fetch all recipe data in 3 parallel queries
+    const [eqRows, labRows, matRows, emRows] = await Promise.all([
+      db.select().from(boqItemEquipment).where(inArray(boqItemEquipment.boqItemId, itemIds)).orderBy(boqItemEquipment.sortOrder),
+      db.select().from(boqItemLabour).where(inArray(boqItemLabour.boqItemId, itemIds)).orderBy(boqItemLabour.sortOrder),
+      db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, itemIds)).orderBy(boqItemMaterials.sortOrder),
+      db.select({
+        id: equipmentMaster.id,
+        outputUnit: equipmentMaster.outputUnit,
+        outputTheoretical: equipmentMaster.outputTheoretical,
+        outputEfficiency: equipmentMaster.outputEfficiency,
+        standardOutputs: equipmentMaster.standardOutputs,
+      }).from(equipmentMaster),
+    ]);
+
+    // Build a master lookup for productivity data
+    const masterMap = new Map(emRows.map((r) => [r.id, r]));
+
+    return items.map((item) => {
+      const equipment: BoqItemEquipmentWithMaster[] = eqRows
+        .filter((r) => r.boqItemId === item.id)
+        .map((r) => {
+          const master = r.equipmentMasterId ? masterMap.get(r.equipmentMasterId) : null;
+          return {
+            ...r,
+            outputUnit: master?.outputUnit ?? null,
+            outputTheoretical: master?.outputTheoretical ?? null,
+            outputEfficiency: master?.outputEfficiency ?? null,
+            standardOutputs: master?.standardOutputs ?? null,
+          };
+        });
+      return {
+        ...item,
+        equipment,
+        labour: labRows.filter((r) => r.boqItemId === item.id),
+        materials: matRows.filter((r) => r.boqItemId === item.id),
       };
     });
   }

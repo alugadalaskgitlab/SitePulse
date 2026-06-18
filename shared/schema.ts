@@ -293,6 +293,11 @@ export const equipmentMaster = pgTable("equipment_master", {
   consumptionNorm: real("consumption_norm"), // Liters/hour OR liters/km
   plantName: text("plant_name"), // nullable; references plant_settings.plant_name; null = shared/unassigned
   isActive: integer("is_active").default(1),
+  // Planning/productivity fields (used by Work Programme auto-duration)
+  outputUnit: text("output_unit"),           // e.g. "CUM", "SQM", "MT", "RM"
+  outputTheoretical: real("output_theoretical"), // raw output per hour in outputUnit
+  outputEfficiency: real("output_efficiency"),   // 0–1 factor (default 0.75)
+  standardOutputs: jsonb("standard_outputs"),    // [{unit: string, outputPerHr: number}] for multi-unit machines
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2294,6 +2299,9 @@ export const boqProjects = pgTable("boq_projects", {
   totalMonths: integer("total_months"),
   status: text("status").notNull().default("draft"), // draft | active | closed
   createdBy: text("created_by"),
+  // Planning calendar parameters
+  workingDaysPerMonth: integer("working_days_per_month").default(26),
+  workingHoursPerDay: integer("working_hours_per_day").default(8),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2349,15 +2357,62 @@ export const workProgramBars = pgTable("work_program_bars", {
   reachLabel: text("reach_label"),
   chainageFrom: real("chainage_from"),
   chainageTo: real("chainage_to"),
-  startMonth: integer("start_month").notNull(),
-  endMonth: integer("end_month").notNull(),
+  startMonth: real("start_month").notNull(),   // fractional, e.g. 1.5
+  endMonth: real("end_month").notNull(),        // fractional
   plannedQty: real("planned_qty").notNull().default(0),
   isQtyOverride: boolean("is_qty_override").default(false),
+  isDurationOverride: boolean("is_duration_override").default(false),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),
   itemIdx: index("work_program_bars_item_idx").on(t.boqItemId),
+}));
+
+// ─── BOQ Item Recipe Tables (for BOM & Duration calculations) ──────────────
+
+// Equipment deployed per BOQ work item — drives auto-duration + equipment demand
+export const boqItemEquipment = pgTable("boq_item_equipment", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  equipmentName: text("equipment_name").notNull(),             // display name
+  equipmentMasterId: integer("equipment_master_id").references(() => equipmentMaster.id, { onDelete: "set null" }),
+  qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // hours per 1 BOQ unit
+  count: real("count").notNull().default(1),                   // machines deployed simultaneously
+  sortOrder: integer("sort_order").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  itemIdx: index("boq_item_equipment_item_idx").on(t.boqItemId),
+}));
+
+// Labour deployed per BOQ work item — drives labour demand
+export const boqItemLabour = pgTable("boq_item_labour", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  designation: text("designation").notNull(),                  // e.g. "Skilled Labour", "Mason"
+  qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // days per 1 BOQ unit
+  count: real("count").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  itemIdx: index("boq_item_labour_item_idx").on(t.boqItemId),
+}));
+
+// Material recipe per BOQ work item — drives BOM quantities
+export const boqItemMaterials = pgTable("boq_item_materials", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  materialName: text("material_name").notNull(),               // e.g. "20mm Aggregate", "Bitumen VG30"
+  uom: text("uom").notNull(),                                  // "MT", "KL", "CUM"
+  qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // qty per 1 BOQ unit
+  wastagePct: real("wastage_pct").notNull().default(0),        // wastage %
+  isClientSupplied: boolean("is_client_supplied").default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  itemIdx: index("boq_item_materials_item_idx").on(t.boqItemId),
 }));
 
 // Insert schemas
@@ -2367,6 +2422,9 @@ export const insertBoqItemSchema = createInsertSchema(boqItems).omit({ id: true,
 export const insertBoqRevisionSchema = createInsertSchema(boqRevisions).omit({ id: true, createdAt: true, approvedAt: true });
 export const insertBoqRevisionItemSchema = createInsertSchema(boqRevisionItems).omit({ id: true });
 export const insertWorkProgramBarSchema = createInsertSchema(workProgramBars).omit({ id: true, createdAt: true });
+export const insertBoqItemEquipmentSchema = createInsertSchema(boqItemEquipment).omit({ id: true, createdAt: true });
+export const insertBoqItemLabourSchema = createInsertSchema(boqItemLabour).omit({ id: true, createdAt: true });
+export const insertBoqItemMaterialsSchema = createInsertSchema(boqItemMaterials).omit({ id: true, createdAt: true });
 
 // Types
 export type BoqProject = typeof boqProjects.$inferSelect;
@@ -2381,12 +2439,38 @@ export type BoqRevisionItem = typeof boqRevisionItems.$inferSelect;
 export type InsertBoqRevisionItem = z.infer<typeof insertBoqRevisionItemSchema>;
 export type WorkProgramBar = typeof workProgramBars.$inferSelect;
 export type InsertWorkProgramBar = z.infer<typeof insertWorkProgramBarSchema>;
+export type BoqItemEquipmentRow = typeof boqItemEquipment.$inferSelect;
+export type InsertBoqItemEquipment = z.infer<typeof insertBoqItemEquipmentSchema>;
+export type BoqItemLabourRow = typeof boqItemLabour.$inferSelect;
+export type InsertBoqItemLabour = z.infer<typeof insertBoqItemLabourSchema>;
+export type BoqItemMaterialsRow = typeof boqItemMaterials.$inferSelect;
+export type InsertBoqItemMaterials = z.infer<typeof insertBoqItemMaterialsSchema>;
 
 // Composite types for API responses
 export type BoqItemWithCategory = BoqItem & { categoryName: string | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null };
-export type WorkProgramBarWithItem = WorkProgramBar & { itemCode: string | null; description: string; unit: string; categoryName: string | null };
+export type WorkProgramBarWithItem = WorkProgramBar & {
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  categoryName: string | null;
+  categoryId: number | null;
+  sortOrder: number;
+};
+
+// Full BOQ item with all recipe data for planning
+export type BoqItemEquipmentWithMaster = BoqItemEquipmentRow & {
+  outputUnit: string | null;
+  outputTheoretical: number | null;
+  outputEfficiency: number | null;
+  standardOutputs: unknown;
+};
+export type BoqItemWithRecipes = BoqItemWithCategory & {
+  equipment: BoqItemEquipmentWithMaster[];
+  labour: BoqItemLabourRow[];
+  materials: BoqItemMaterialsRow[];
+};
 export type MonthlyTarget = {
   boqItemId: number;
   itemCode: string | null;

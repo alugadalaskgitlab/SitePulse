@@ -9560,6 +9560,93 @@ export async function registerRoutes(
     }
   });
 
+  // --- BOQ Item Recipes (Equipment / Labour / Materials per work item) ---
+
+  app.get("/api/boq/items/:itemId/recipes", async (req, res) => {
+    try {
+      const item = await storage.getBoqItemWithRecipes(parseInt(req.params.itemId));
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      res.json(item);
+    } catch (err) {
+      console.error("GET /api/boq/items/:itemId/recipes:", err);
+      res.status(500).json({ error: "Failed to fetch item recipes" });
+    }
+  });
+
+  // Equipment recipe
+  app.get("/api/boq/items/:itemId/equipment", async (req, res) => {
+    try {
+      res.json(await storage.getBoqItemEquipment(parseInt(req.params.itemId)));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item equipment" });
+    }
+  });
+
+  app.put("/api/boq/items/:itemId/equipment", async (req, res) => {
+    try {
+      const rows = req.body.rows ?? [];
+      const saved = await storage.upsertBoqItemEquipment(parseInt(req.params.itemId), rows);
+      res.json(saved);
+    } catch (err) {
+      console.error("PUT /api/boq/items/:itemId/equipment:", err);
+      res.status(500).json({ error: "Failed to save item equipment" });
+    }
+  });
+
+  // Labour recipe
+  app.get("/api/boq/items/:itemId/labour", async (req, res) => {
+    try {
+      res.json(await storage.getBoqItemLabour(parseInt(req.params.itemId)));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item labour" });
+    }
+  });
+
+  app.put("/api/boq/items/:itemId/labour", async (req, res) => {
+    try {
+      const rows = req.body.rows ?? [];
+      const saved = await storage.upsertBoqItemLabour(parseInt(req.params.itemId), rows);
+      res.json(saved);
+    } catch (err) {
+      console.error("PUT /api/boq/items/:itemId/labour:", err);
+      res.status(500).json({ error: "Failed to save item labour" });
+    }
+  });
+
+  // Materials recipe
+  app.get("/api/boq/items/:itemId/materials", async (req, res) => {
+    try {
+      res.json(await storage.getBoqItemMaterials(parseInt(req.params.itemId)));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item materials" });
+    }
+  });
+
+  app.put("/api/boq/items/:itemId/materials", async (req, res) => {
+    try {
+      const rows = req.body.rows ?? [];
+      const saved = await storage.upsertBoqItemMaterials(parseInt(req.params.itemId), rows);
+      res.json(saved);
+    } catch (err) {
+      console.error("PUT /api/boq/items/:itemId/materials:", err);
+      res.status(500).json({ error: "Failed to save item materials" });
+    }
+  });
+
+  // BOM demand for the whole project
+  app.get("/api/boq/projects/:id/bom", async (req, res) => {
+    try {
+      const items = await storage.getBoqItemsWithRecipes(parseInt(req.params.id));
+      const bars = await storage.getWorkProgramBars(parseInt(req.params.id));
+      const project = await storage.getBoqProject(parseInt(req.params.id));
+      // Return raw data — client computes BOM using planningEngine
+      res.json({ items, bars, roadLengthKm: project?.roadLengthKm ?? 0 });
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/bom:", err);
+      res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+
   seedDatabase();
   seedPlantMasterData();
 

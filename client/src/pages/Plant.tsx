@@ -3966,6 +3966,11 @@ export function EquipmentMasterSection() {
   const [plantNameField, setPlantNameField] = useState(""); // form: assigned plant
   const [filterPlantName, setFilterPlantName] = useState("all"); // list filter
   const [showInactive, setShowInactive] = useState(false);
+  // Planning Output fields
+  const [outputUnit, setOutputUnit] = useState("");
+  const [outputTheoretical, setOutputTheoretical] = useState("");
+  const [outputEfficiency, setOutputEfficiency] = useState("75");
+  const [showPlanningOutput, setShowPlanningOutput] = useState(false);
 
   const { data: allPlantSettingsForEquip = [] } = useQuery<PlantSettingsWithSite[]>({
     queryKey: ["/api/plant-module/plant-settings"],
@@ -4077,6 +4082,10 @@ export function EquipmentMasterSection() {
     setMeterType("hour_meter");
     setConsumptionNorm("");
     setPlantNameField("");
+    setOutputUnit("");
+    setOutputTheoretical("");
+    setOutputEfficiency("75");
+    setShowPlanningOutput(false);
   };
 
   const openEdit = (equip: EquipmentMasterType) => {
@@ -4088,6 +4097,10 @@ export function EquipmentMasterSection() {
     setMeterType(equip.meterType);
     setConsumptionNorm(equip.consumptionNorm?.toString() || "");
     setPlantNameField((equip as any).plantName || "");
+    setOutputUnit((equip as any).outputUnit || "");
+    setOutputTheoretical((equip as any).outputTheoretical?.toString() || "");
+    setOutputEfficiency((equip as any).outputEfficiency?.toString() || "75");
+    setShowPlanningOutput(!!(equip as any).outputUnit || !!(equip as any).outputTheoretical);
     setDialogOpen(true);
   };
 
@@ -4100,6 +4113,9 @@ export function EquipmentMasterSection() {
       meterType,
       consumptionNorm: consumptionNorm ? parseFloat(consumptionNorm) : undefined,
       plantName: plantNameField || null,
+      outputUnit: outputUnit.trim() || null,
+      outputTheoretical: outputTheoretical ? parseFloat(outputTheoretical) : null,
+      outputEfficiency: outputEfficiency ? parseFloat(outputEfficiency) : null,
     };
     if (editingEquipment) {
       updateMutation.mutate({ id: editingEquipment.id, data });
@@ -4232,6 +4248,66 @@ export function EquipmentMasterSection() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Planning Output — collapsible section */}
+              <div className="border border-dashed border-teal-200 rounded-lg">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50/50 transition-colors rounded-lg"
+                  onClick={() => setShowPlanningOutput(p => !p)}
+                  data-testid="button-toggle-planning-output"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Planning Output</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">(for auto-duration in Work Programme)</span>
+                  </span>
+                  {showPlanningOutput ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+                {showPlanningOutput && (
+                  <div className="px-3 pb-3 space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-xs">OUTPUT UNIT</Label>
+                        <Input
+                          placeholder="m3, m2, MT, km…"
+                          value={outputUnit}
+                          onChange={e => setOutputUnit(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-output-unit"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">OUTPUT / HR (theoretical)</Label>
+                        <Input
+                          type="number" step="0.1"
+                          placeholder="e.g. 150"
+                          value={outputTheoretical}
+                          onChange={e => setOutputTheoretical(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-output-theoretical"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">EFFICIENCY (%)</Label>
+                        <Input
+                          type="number" min="0" max="100" step="1"
+                          placeholder="75"
+                          value={outputEfficiency}
+                          onChange={e => setOutputEfficiency(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-output-efficiency"
+                        />
+                      </div>
+                    </div>
+                    {outputUnit && outputTheoretical && (
+                      <p className="text-[11px] text-teal-600">
+                        Effective output: {(parseFloat(outputTheoretical) * (parseFloat(outputEfficiency) || 75) / 100).toFixed(1)} {outputUnit}/hr
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <Button 
                 onClick={handleSubmit}
                 className="w-full" 
