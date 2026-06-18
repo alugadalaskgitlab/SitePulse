@@ -4,7 +4,7 @@ import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
-  GitBranch,
+  GitBranch, CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -788,16 +788,31 @@ export default function BoqProjectDetail() {
             {project.startDate && <span>· Start: {project.startDate}</span>}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
-          onClick={() => setShowImport(true)}
-          data-testid="button-import-boq-header"
-        >
-          <Upload className="w-3.5 h-3.5 mr-1.5" />
-          Import BOQ
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href={`/work-program/${projectId}/programme`}>
+            <a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-teal-200 text-teal-700 hover:bg-teal-50 h-8"
+                data-testid="button-work-programme"
+              >
+                <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
+                Work Programme
+              </Button>
+            </a>
+          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
+            onClick={() => setShowImport(true)}
+            data-testid="button-import-boq-header"
+          >
+            <Upload className="w-3.5 h-3.5 mr-1.5" />
+            Import BOQ
+          </Button>
+        </div>
       </div>
 
       {/* Summary stats */}
