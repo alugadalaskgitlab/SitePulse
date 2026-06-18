@@ -1,0 +1,84 @@
+Please stop redesigning the Work Programme module.
+
+The Road Estimator Planning Engine should be treated as the functional specification.
+
+Goal:
+
+After importing a BOQ into SitePulse, the user experience should be substantially the same as Road Estimator.
+
+Required:
+
+1. Reuse the Road Estimator Gantt / Work Programme workflow as closely as possible.
+
+2. Reuse the same planning concepts:
+
+   * BOQ Items
+   * Chainage-based planning
+   * Stretch splitting
+   * Auto stretch quantity calculation
+   * Equipment productivity driven duration calculation
+   * Monthly planning
+   * Resource demand calculations
+   * Gantt bars
+   * Monthly distribution logic
+
+3. Reuse the same UI concepts where practical:
+
+   * Gantt planner
+   * Split stretch
+   * Duration auto-calculation
+   * Monthly planning summaries
+   * Resource summaries
+
+4. Reuse the same data model where practical:
+
+   * Bar structure
+   * Fractional month logic
+   * Duration calculation engine
+   * Monthly overlap calculations
+
+5. BOM requirement:
+
+   * Generate quantities only.
+   * No rates.
+   * No costs.
+   * No GST.
+   * No profit.
+   * No commercial outputs.
+
+6. Material demand:
+
+   * Use the existing Road Estimator logic to generate material quantities.
+   * Example:
+     WMM → Dust, 10mm, 20mm quantities.
+     BC → Bitumen and aggregate quantities.
+   * Quantity outputs only.
+
+7. Equipment demand:
+
+   * Show required equipment quantities based on the work programme.
+
+8. Labour demand:
+
+   * Show required labour quantities based on the work programme.
+
+9. SitePulse integration:
+
+   * BOQ Import (already done)
+   * Work Programme (Road Estimator style)
+   * BOM Quantities
+   * Equipment Demand
+   * Labour Demand
+   * DPR Actual
+   * Plan vs Actual
+
+Do not redesign this as a simplified manual planning screen.
+
+First provide a migration plan showing:
+
+* which Road Estimator files/modules can be reused,
+* what needs to be ported,
+* what needs to be adapted to SitePulse tables,
+* and what can remain unchanged.
+
+Do not start coding until the migration plan is reviewed.
