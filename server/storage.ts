@@ -8956,18 +8956,71 @@ export class DatabaseStorage implements IStorage {
     // 1st: stores GRN items matched by description name
     // 2nd: plant stockBalances matched by materialId (when item was picked from catalogue)
     // 3rd: plant material name match (when item was typed manually, materialId is null)
+    // UOM conversion is applied server-side using per-material conversionFactor (CFT↔MT).
     const storeGrnBalances = await this.getStoreItemsWithBalance();
-    const plantBalanceRows = await db.select().from(stockBalances);
-    const plantBalanceByMaterialId = new Map<number, number>();
+    const plantBalanceRows = await db
+      .select({
+        materialId: stockBalances.materialId,
+        balance: stockBalances.balance,
+        uom: stockBalances.uom,
+        conversionFactor: plantMaterials.conversionFactor,
+        conversionFromUom: plantMaterials.conversionFromUom,
+        conversionToUom: plantMaterials.conversionToUom,
+      })
+      .from(stockBalances)
+      .innerJoin(plantMaterials, eq(stockBalances.materialId, plantMaterials.id));
+
+    type PlantStockEntry = {
+      breakdowns: { balance: number; uom: string }[];
+      conversionFactor: number | null;
+      conversionFromUom: string | null;
+      conversionToUom: string | null;
+    };
+    const plantStockByMaterialId = new Map<number, PlantStockEntry>();
     for (const row of plantBalanceRows) {
-      plantBalanceByMaterialId.set(row.materialId, (plantBalanceByMaterialId.get(row.materialId) ?? 0) + row.balance);
+      const key = row.materialId;
+      if (!plantStockByMaterialId.has(key)) {
+        plantStockByMaterialId.set(key, {
+          breakdowns: [],
+          conversionFactor: row.conversionFactor ?? null,
+          conversionFromUom: row.conversionFromUom ?? null,
+          conversionToUom: row.conversionToUom ?? null,
+        });
+      }
+      plantStockByMaterialId.get(key)!.breakdowns.push({
+        balance: row.balance,
+        uom: (row.uom ?? "").toUpperCase().trim(),
+      });
     }
+
+    const _isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
+    const convertPlantQty = (materialId: number, requestedUom: string): number | null => {
+      const entry = plantStockByMaterialId.get(materialId);
+      if (!entry) return null;
+      const { conversionFactor: cf, conversionFromUom: cfFrom } = entry;
+      const reqU = requestedUom.toUpperCase().trim();
+      let total = 0;
+      for (const bd of entry.breakdowns) {
+        const bU = bd.uom;
+        if (bU === reqU || (_isTon(bU) && _isTon(reqU))) {
+          total += bd.balance;
+        } else if (cf && cfFrom && bU === cfFrom.toUpperCase().trim()) {
+          total += bd.balance * cf;
+        } else if (cf && cfFrom && _isTon(bU) && reqU === cfFrom.toUpperCase().trim()) {
+          total += bd.balance / cf;
+        }
+        // else: unconvertible — skip
+      }
+      return Math.max(0, total);
+    };
+
     // Load plant material names for 3rd-pass name fallback
     const allPlantMaterials = await db.select({ id: plantMaterials.id, name: plantMaterials.name })
       .from(plantMaterials).where(eq(plantMaterials.isActive, 1));
 
     const enrichedItems = (indent as any).items.map((item: any) => {
       const descLower = (item.description as string).toLowerCase().trim();
+      const requestedUom: string = (item.uom as string) || "";
 
       // 1st: stores GRN name match (exact, substring, or reverse substring)
       const storesMatch = storeGrnBalances.find(si => {
@@ -8978,11 +9031,11 @@ export class DatabaseStorage implements IStorage {
         return { ...item, liveStockQty: storesMatch.balance, liveStoreItemName: storesMatch.name };
       }
 
-      // 2nd: plant stock balance by materialId (summed across all parties)
+      // 2nd: plant stock balance by materialId (UOM-converted)
       if (item.materialId != null) {
-        const plantQty = plantBalanceByMaterialId.get(item.materialId);
-        if (plantQty !== undefined) {
-          return { ...item, liveStockQty: Math.max(0, plantQty), liveStoreItemName: null };
+        const plantQty = convertPlantQty(item.materialId, requestedUom);
+        if (plantQty !== null) {
+          return { ...item, liveStockQty: plantQty, liveStoreItemName: null };
         }
       }
 
@@ -8992,9 +9045,9 @@ export class DatabaseStorage implements IStorage {
         return nameLower === descLower || nameLower.includes(descLower) || descLower.includes(nameLower);
       });
       if (matMatch != null) {
-        const plantQty = plantBalanceByMaterialId.get(matMatch.id);
-        if (plantQty !== undefined) {
-          return { ...item, liveStockQty: Math.max(0, plantQty), liveStoreItemName: null };
+        const plantQty = convertPlantQty(matMatch.id, requestedUom);
+        if (plantQty !== null) {
+          return { ...item, liveStockQty: plantQty, liveStoreItemName: null };
         }
       }
 

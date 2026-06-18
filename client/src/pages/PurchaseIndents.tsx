@@ -883,15 +883,6 @@ export default function PurchaseIndents() {
     enabled: canCreateStores,
   });
 
-  const { data: piStockLookup = [] } = useQuery<Array<{
-    materialId: number; materialName: string; balance: number; uom: string | null;
-    partyId: number | null; conversionFactor?: number | null;
-    conversionFromUom?: string | null; conversionToUom?: string | null;
-  }>>({
-    queryKey: ["/api/irn/stock-lookup"],
-    enabled: canCreateStores,
-    staleTime: 60_000,
-  });
 
   const { data: actualStoreItems = [] } = useQuery<Array<{ id: number; name: string; uom: string; category: string }>>({
     queryKey: ["/api/stores/items"],
@@ -941,85 +932,6 @@ export default function PurchaseIndents() {
     ];
   })();
 
-  type PiStockEntry = {
-    breakdowns: { balance: number; uom: string }[];
-    conversionFactor?: number | null;
-    conversionFromUom?: string | null;
-    conversionToUom?: string | null;
-  };
-
-  const piLiveStockMap = useMemo(() => {
-    const byName = new Map<string, PiStockEntry>();
-    const byId = new Map<number, string>();
-    for (const row of piStockLookup) {
-      const key = row.materialName.toUpperCase().trim();
-      const rowUom = (row.uom || "").toUpperCase().trim();
-      if (byName.has(key)) {
-        byName.get(key)!.breakdowns.push({ balance: row.balance, uom: rowUom });
-      } else {
-        byName.set(key, {
-          breakdowns: [{ balance: row.balance, uom: rowUom }],
-          conversionFactor: row.conversionFactor,
-          conversionFromUom: row.conversionFromUom,
-          conversionToUom: row.conversionToUom,
-        });
-      }
-      byId.set(row.materialId, key);
-    }
-    return { byName, byId };
-  }, [piStockLookup]);
-
-  function findPiLiveStock(
-    description: string,
-    materialId: number | null | undefined,
-    requestedUom: string,
-  ): { balance: number; uom: string; sourceParts: string[]; hasConversionError: boolean } | null {
-    const isTon = (u: string) => { const u2 = u.toUpperCase().trim(); return u2 === "MT" || u2 === "TON"; };
-    let entry: PiStockEntry | null = null;
-    if (materialId != null) {
-      const key = piLiveStockMap.byId.get(materialId);
-      if (key) entry = piLiveStockMap.byName.get(key) || null;
-    }
-    if (!entry) {
-      const needle = description.toUpperCase().trim();
-      entry = piLiveStockMap.byName.get(needle) || null;
-      if (!entry) {
-        for (const [key, val] of piLiveStockMap.byName) {
-          const stockWords = key.split(/\s+/).filter(w => w.length >= 3);
-          if (stockWords.some(w => needle.includes(w)) || key.includes(needle) || needle.includes(key)) {
-            entry = val; break;
-          }
-        }
-      }
-    }
-    if (!entry) return null;
-    const { conversionFactor: cf, conversionFromUom: cfFrom } = entry;
-    const reqU = requestedUom.toUpperCase().trim();
-    const nonZero = entry.breakdowns.filter(b => b.balance !== 0);
-    let total = 0;
-    let hasConversionError = false;
-    const sourceParts: string[] = [];
-    for (const bd of nonZero) {
-      const bU = bd.uom.toUpperCase().trim();
-      if (bU === reqU || (isTon(bU) && isTon(reqU))) {
-        total += bd.balance;
-        continue;
-      }
-      if (cf && cfFrom && bU === cfFrom.toUpperCase().trim()) {
-        total += bd.balance * cf;
-        sourceParts.push(`${bd.balance.toFixed(3)} ${bd.uom}`);
-        continue;
-      }
-      if (cf && cfFrom && isTon(bU) && reqU === cfFrom.toUpperCase().trim()) {
-        total += bd.balance / cf;
-        sourceParts.push(`${bd.balance.toFixed(3)} ${bd.uom}`);
-        continue;
-      }
-      hasConversionError = true;
-      sourceParts.push(`${bd.balance.toFixed(3)} ${bd.uom} ⚠`);
-    }
-    return { balance: Math.max(0, total), uom: requestedUom, sourceParts, hasConversionError };
-  }
 
   useEffect(() => {
     if (view !== "stores" || !selectedIndent) return;
@@ -1028,8 +940,7 @@ export default function PurchaseIndents() {
       selectedIndent.items.forEach(item => {
         const existing = prev[item.id] || { stockStatus: "", stockAvailableQty: "", storesItemNote: "", showNote: false };
         if (existing.stockStatus) return;
-        const liveResult = findPiLiveStock(item.description as string, (item as any).materialId, item.uom);
-        const balance = liveResult ? liveResult.balance : ((item as any).liveStockQty as number | null);
+        const balance = (item as any).liveStockQty as number | null;
         if (balance == null) return;
         const requested = item.qty;
         let stockStatus = "";
@@ -1049,7 +960,7 @@ export default function PurchaseIndents() {
       return updated;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, selectedIndent?.id, piStockLookup]);
+  }, [view, selectedIndent?.id]);
 
   const storeItemsList: StoreItem[] = (rawMaterialsList || [])
     .filter((m: any) => m.isActive !== 0)
@@ -2998,20 +2909,13 @@ export default function PurchaseIndents() {
                               <span className="font-semibold text-foreground">{item.qty} {item.uom}</span>
                               {item.estRate && <span>Est. ₹{item.estRate}/{item.uom}</span>}
                               {(() => {
-                                const liveResult = findPiLiveStock(item.description as string, (item as any).materialId, item.uom);
-                                const rawFallback = (item as any).liveStockQty as number | null;
-                                const balance = liveResult ? liveResult.balance : rawFallback;
+                                const balance = (item as any).liveStockQty as number | null;
                                 if (balance == null) return null;
                                 const colour = balance >= item.qty ? "text-emerald-600 dark:text-emerald-400" : balance > 0 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
                                 return (
-                                  <span className={`inline-flex flex-col gap-0 text-xs font-medium ${colour}`}>
-                                    <span className="inline-flex items-center gap-1">
-                                      <PackageCheck className="w-3.5 h-3.5" />
-                                      Stock:{liveResult?.hasConversionError ? " ⚠" : ""} {balance.toFixed(3)} {item.uom}
-                                    </span>
-                                    {liveResult?.sourceParts && liveResult.sourceParts.length > 0 && (
-                                      <span className="text-[10px] text-muted-foreground font-normal pl-5">from {liveResult.sourceParts.join(", ")}</span>
-                                    )}
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${colour}`}>
+                                    <PackageCheck className="w-3.5 h-3.5" />
+                                    Stock: {balance.toFixed(3)} {item.uom}
                                   </span>
                                 );
                               })()}
@@ -4173,8 +4077,7 @@ export default function PurchaseIndents() {
                         ? Math.round(parseFloat(procData.rate) * approvedQty) : null;
                       const stockStatus = (item as any).stockStatus as string | null;
                       const liveStockQtyP = (item as any).liveStockQty as number | null;
-                      const piLiveResultP = findPiLiveStock(item.description as string, (item as any).materialId, item.uom);
-                      const convertedLiveP = piLiveResultP ? piLiveResultP.balance : liveStockQtyP;
+                      const convertedLiveP = liveStockQtyP;
                       const effStockStatusP = stockStatus ?? (convertedLiveP != null ? (convertedLiveP >= approvedQty ? 'in_stock' : convertedLiveP > 0 ? 'short' : 'out_of_stock') : null);
                       const isLiveP = !stockStatus && convertedLiveP != null;
                       const stockBadge = effStockStatusP ? (
