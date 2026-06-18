@@ -9314,6 +9314,7 @@ export async function registerRoutes(
 
   app.patch("/api/boq/projects/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
       const updated = await storage.updateBoqProject(id, req.body);
       if (!updated) return res.status(404).json({ error: "BOQ project not found" });
@@ -9326,6 +9327,7 @@ export async function registerRoutes(
 
   app.delete("/api/boq/projects/:id", async (req, res) => {
     try {
+      if (!assertAdmin(req, res)) return;
       await storage.deleteBoqProject(parseInt(req.params.id));
       res.json({ ok: true });
     } catch (err) {
@@ -9336,6 +9338,7 @@ export async function registerRoutes(
 
   app.post("/api/boq/projects/:id/duplicate", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const project = await storage.duplicateBoqProject(parseInt(req.params.id));
       res.status(201).json(project);
     } catch (err) {

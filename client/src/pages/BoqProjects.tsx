@@ -151,7 +151,10 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/boq/projects", data),
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/boq/projects", data);
+      return res.json() as Promise<{ id: number; name: string }>;
+    },
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] });
       toast({ title: "Project created" });
@@ -359,7 +362,7 @@ function ProjectCard({
             data-testid={`button-import-project-${project.id}`}
           >
             <Upload className="w-3.5 h-3.5 mr-1" />
-            Import
+            Import BOQ
           </Button>
           <button
             className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 transition-colors"
@@ -416,7 +419,10 @@ export default function BoqProjects() {
   });
 
   const duplicateMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/boq/projects/${id}/duplicate`, {}),
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/boq/projects/${id}/duplicate`, {});
+      return res.json() as Promise<{ id: number; name: string }>;
+    },
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] });
       toast({ title: "Project duplicated", description: `"${project.name}" created` });
