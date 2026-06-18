@@ -21,6 +21,7 @@ import {
   WORKING_DAYS_DEFAULT,
   WORKING_HRS_DEFAULT,
   type EquipmentProductivity,
+  type LayerConfig,
 } from "@shared/planningEngine";
 import type {
   BoqProject,
@@ -169,6 +170,20 @@ function StretchRow({
   }, [effectiveQty, item.unit, equipment, workingHrs, workingDays]);
 
   const autoEnd = autoDuration?.months ? +(smNum + autoDuration.months).toFixed(2) : null;
+
+  // Haul distance from bar chainage mid to source (HMP / WMM plant / quarry)
+  const haulDistanceKm = useMemo(() => {
+    if (!validCh) return null;
+    const barMidKm = (cfNum + ctNum) / 2;
+    const lc = item.layerConfig as LayerConfig | null;
+    if (!lc) return null;
+    let sourceKm: number | null = null;
+    if (lc.layerType === "bituminous") sourceKm = project.hmpChainageKm ?? null;
+    else if (lc.layerType === "granular" && lc.granularSource === "plant") sourceKm = project.wmmPlantChainageKm ?? null;
+    else if (lc.layerType === "granular") sourceKm = project.quarryChainageKm ?? null;
+    if (sourceKm == null) return null;
+    return Math.abs(barMidKm - sourceKm);
+  }, [validCh, cfNum, ctNum, item.layerConfig, project.hmpChainageKm, project.wmmPlantChainageKm, project.quarryChainageKm]);
 
   const patch = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -336,7 +351,7 @@ function StretchRow({
             backgroundColor: color,
             opacity: 0.88,
           }}
-          title={`Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km | ${fmtQty(liveQty, 1)} ${bar.unit} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)`}
+          title={`Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km | ${fmtQty(liveQty, 1)} ${bar.unit} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)${autoDuration?.bottleneckEquipment ? ` | Bottleneck: ${autoDuration.bottleneckEquipment}` : ""}${haulDistanceKm != null ? ` | Haul: ${fmtQty(haulDistanceKm, 1)} km` : ""}`}
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
           {barWidth > 30 && (

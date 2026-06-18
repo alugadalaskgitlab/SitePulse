@@ -20310,6 +20310,29 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(planningLabourTypes).where(eq(planningLabourTypes.id, id)).returning({ id: planningLabourTypes.id });
     return result.length > 0;
   }
+
+  async getRecipeMaterialsUsed(projectId: number): Promise<Array<{ materialName: string; uom: string | null; useCount: number }>> {
+    const items = await db.select({ id: boqItems.id }).from(boqItems).where(eq(boqItems.boqProjectId, projectId));
+    if (!items.length) return [];
+    const itemIds = items.map((i) => i.id);
+    const rows = await db
+      .select({ materialName: boqItemMaterials.materialName, uom: boqItemMaterials.uom })
+      .from(boqItemMaterials)
+      .where(inArray(boqItemMaterials.boqItemId, itemIds));
+    const counts = new Map<string, { uom: string | null; count: number }>();
+    for (const r of rows) {
+      const existing = counts.get(r.materialName);
+      if (!existing) {
+        counts.set(r.materialName, { uom: r.uom, count: 1 });
+      } else {
+        existing.count++;
+        if (!existing.uom && r.uom) existing.uom = r.uom;
+      }
+    }
+    return [...counts.entries()]
+      .map(([materialName, { uom, count }]) => ({ materialName, uom, useCount: count }))
+      .sort((a, b) => b.useCount - a.useCount);
+  }
 }
 
 export const storage = new DatabaseStorage();

@@ -3,3 +3,4 @@
 - [Permission System v2](permission-system-v2.md) — 85 section keys, approve as 7th action, Permission Manager flag; backward-compat gatedEither in App.tsx; self-approval prevention on PI/DR/VendorBills
 - [Tank Calibration](tank-calibration.md) — Per-plant tank calibration fully built; fallback to hardcoded dip charts when no config set
 - [Mix Calculator Separation](mix-calculator-separation.md) — Calculator is a separate product (not SiteLog commercial copy); spin-out = new Repl + standalone auth + own DB
+- [Work Programme Planning Engine](work-programme-planning.md) — Full Gantt + BOM system: schema, planningEngine.ts, Layer Config, tipper fleet, unit conversion, Plan vs Actual. T005 (Equipment Master UI "Planning Output" section) still pending.

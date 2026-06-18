@@ -442,6 +442,204 @@ export function calculateBomDemand(
   return { materials, equipment, labour };
 }
 
+// ─── Layer Config & Material Derivation ──────────────────────────────────────
+
+/** Default compacted densities in T/CUM for common road layer types */
+export const LAYER_DENSITY_DEFAULTS: Record<string, number> = {
+  BC: 2.40, SDBC: 2.40, DBM: 2.40,
+  BM: 2.35,
+  WMM: 2.20,
+  GSB: 2.00,
+  CC: 2.40, RCC: 2.40, PCC: 2.40,
+};
+
+/** Layer config stored as JSONB on boq_items */
+export interface LayerConfig {
+  layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "none";
+  // Bituminous
+  mixTemplateId?: number | null;
+  thicknessMm?: number | null;
+  densityTPerCum?: number | null;
+  // Granular
+  granularSource?: "quarry" | "plant";
+  // Spray coat
+  coverageRateKgPerSqm?: number | null;
+  coverageMaterialName?: string | null;
+}
+
+/** Context for unit conversion (set from layerConfig) */
+export interface UnitConversionContext {
+  densityTPerCum?: number | null;
+  thicknessMm?: number | null;
+}
+
+/**
+ * Returns a multiplicative factor to convert a quantity in `fromUnit` to `toUnit`.
+ * Returns `null` when conversion is impossible with the given context.
+ */
+export function getUnitConversionFactor(
+  fromUnit: string,
+  toUnit: string,
+  ctx: UnitConversionContext,
+): number | null {
+  const from = normaliseUnit(fromUnit);
+  const to = normaliseUnit(toUnit);
+  if (from === to) return 1;
+  const { densityTPerCum, thicknessMm } = ctx;
+  if (from === "MT" && to === "CUM" && densityTPerCum) return 1 / densityTPerCum;
+  if (from === "CUM" && to === "MT" && densityTPerCum) return densityTPerCum;
+  if (from === "SQM" && to === "CUM" && thicknessMm) return thicknessMm / 1000;
+  if (from === "CUM" && to === "SQM" && thicknessMm) return 1000 / thicknessMm;
+  if (from === "MT" && to === "SQM" && densityTPerCum && thicknessMm)
+    return 1 / ((thicknessMm / 1000) * densityTPerCum);
+  if (from === "SQM" && to === "MT" && densityTPerCum && thicknessMm)
+    return (thicknessMm / 1000) * densityTPerCum;
+  return null;
+}
+
+export interface ConvertedOutput {
+  outputPerHr: number;
+  nativeUnit: string | null;
+  convertedVia: "exact" | "converted" | "none";
+}
+
+/**
+ * Like `getEffectiveOutputPerHr` but falls back to unit conversion using ctx.
+ * Returns 0 when no conversion is possible.
+ */
+export function getEffectiveOutputPerHrConverted(
+  eq: EquipmentProductivity,
+  targetUnit: string,
+  ctx: UnitConversionContext,
+): ConvertedOutput {
+  // Exact match first
+  const exact = getEffectiveOutputPerHr(eq, targetUnit);
+  if (exact > 0) return { outputPerHr: exact, nativeUnit: targetUnit, convertedVia: "exact" };
+
+  // Try each standardOutput with conversion
+  if (eq.standardOutputs?.length) {
+    for (const s of eq.standardOutputs) {
+      if (s.outputPerHr > 0) {
+        const factor = getUnitConversionFactor(s.unit, targetUnit, ctx);
+        if (factor !== null) {
+          return { outputPerHr: s.outputPerHr * eq.count * factor, nativeUnit: s.unit, convertedVia: "converted" };
+        }
+      }
+    }
+  }
+
+  // Try theoretical × efficiency with conversion
+  if (eq.outputUnit && eq.outputTheoretical && eq.outputTheoretical > 0) {
+    const factor = getUnitConversionFactor(eq.outputUnit, targetUnit, ctx);
+    if (factor !== null) {
+      const eff = eq.outputEfficiency ?? 0.75;
+      return { outputPerHr: eq.outputTheoretical * eff * eq.count * factor, nativeUnit: eq.outputUnit, convertedVia: "converted" };
+    }
+  }
+
+  return { outputPerHr: 0, nativeUnit: null, convertedVia: "none" };
+}
+
+// ─── Tipper Fleet Sizing ──────────────────────────────────────────────────────
+
+export interface TipperFleetInput {
+  plantOutputMTperHr: number;
+  tipperCapacityMT: number;
+  haulDistanceKm: number;
+  avgSpeedKmHr: number;
+  loadingTimeMins: number;
+  unloadingTimeMins: number;
+}
+
+export interface TipperFleetResult {
+  cycleTimeMins: number;
+  tippersNeeded: number;
+  deliveryRateMTperHr: number;
+  isAdequate: boolean;
+}
+
+/**
+ * Calculates tipper fleet requirement for a given haul distance.
+ * Covered by unit tests.
+ */
+export function calculateTipperFleet(input: TipperFleetInput): TipperFleetResult {
+  const { plantOutputMTperHr, tipperCapacityMT, haulDistanceKm, avgSpeedKmHr, loadingTimeMins, unloadingTimeMins } = input;
+  const travelTimeMins = avgSpeedKmHr > 0 ? (haulDistanceKm * 2 / avgSpeedKmHr) * 60 : 0;
+  const cycleTimeMins = travelTimeMins + loadingTimeMins + unloadingTimeMins;
+  const tripsPerHr = cycleTimeMins > 0 ? 60 / cycleTimeMins : 0;
+  const deliveryPerTipper = tipperCapacityMT * tripsPerHr;
+  const tippersNeeded = deliveryPerTipper > 0 ? Math.ceil(plantOutputMTperHr / deliveryPerTipper) : 0;
+  const deliveryRateMTperHr = deliveryPerTipper * tippersNeeded;
+  return { cycleTimeMins, tippersNeeded, deliveryRateMTperHr, isAdequate: deliveryRateMTperHr >= plantOutputMTperHr };
+}
+
+// ─── Material Derivation from Layer Config ────────────────────────────────────
+
+export interface DerivedMaterialRow {
+  materialName: string;
+  uom: string;
+  qtyPerBoqUnit: number;
+  isAuto: true;
+}
+
+/**
+ * Derives material rows from a BOQ item's layer config.
+ * mixTemplate should include bitumen% and aggregate component list.
+ */
+export function deriveMaterialsFromLayerConfig(
+  layerConfig: LayerConfig,
+  _boqUnit: string,
+  mixTemplate?: {
+    bitumenPercent: number | null;
+    components: Array<{ materialName: string; percent: number | null }>;
+  } | null,
+): DerivedMaterialRow[] {
+  if (layerConfig.layerType === "earthwork") {
+    return [{ materialName: "Soil / Earth", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
+  }
+
+  if (layerConfig.layerType === "spray_coat") {
+    const coverage = layerConfig.coverageRateKgPerSqm ?? 0;
+    const matName = layerConfig.coverageMaterialName?.trim() || "Bitumen Emulsion";
+    if (coverage <= 0) return [];
+    return [{ materialName: matName, uom: "MT", qtyPerBoqUnit: coverage / 1000, isAuto: true }];
+  }
+
+  if (layerConfig.layerType === "granular") {
+    if (layerConfig.granularSource === "plant") {
+      return [{ materialName: "WMM (Processed)", uom: "MT", qtyPerBoqUnit: 1.0, isAuto: true }];
+    }
+    if (mixTemplate?.components?.length) {
+      return mixTemplate.components
+        .filter((c) => (c.percent ?? 0) > 0)
+        .map((c) => ({ materialName: c.materialName, uom: "CUM", qtyPerBoqUnit: (c.percent ?? 0) / 100, isAuto: true as const }));
+    }
+    return [{ materialName: "Aggregate", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
+  }
+
+  if (layerConfig.layerType === "bituminous") {
+    const thickness = layerConfig.thicknessMm ?? 0;
+    const density = layerConfig.densityTPerCum ?? 2.35;
+    if (thickness <= 0) return [];
+    const mtPerSqm = (thickness / 1000) * density;
+    const rows: DerivedMaterialRow[] = [];
+    if (mixTemplate) {
+      const bitPct = mixTemplate.bitumenPercent ?? 0;
+      if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+      for (const c of mixTemplate.components) {
+        if ((c.percent ?? 0) > 0) {
+          rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
+        }
+      }
+    } else {
+      rows.push({ materialName: "Bituminous Mix", uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+    }
+    return rows;
+  }
+
+  return [];
+}
+
 // ─── Gantt helpers ────────────────────────────────────────────────────────────
 
 /** Month label: "Jun '25" from startDate + 0-indexed offset */

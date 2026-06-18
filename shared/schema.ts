@@ -2326,6 +2326,11 @@ export const boqProjects = pgTable("boq_projects", {
   // Planning calendar parameters
   workingDaysPerMonth: integer("working_days_per_month").default(26),
   workingHoursPerDay: integer("working_hours_per_day").default(8),
+  // Location anchors for bar-aware haul distance (Task #1100)
+  hmpChainageKm: real("hmp_chainage_km"),
+  wmmPlantChainageKm: real("wmm_plant_chainage_km"),
+  quarryChainageKm: real("quarry_chainage_km"),
+  avgTipperSpeedKmHr: real("avg_tipper_speed_km_hr").default(30),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2348,6 +2353,8 @@ export const boqItems = pgTable("boq_items", {
   clientRate: real("client_rate"),
   clientAmount: real("client_amount"),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Layer config for auto material derivation (Task #1100)
+  layerConfig: jsonb("layer_config"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
@@ -2430,10 +2437,12 @@ export const boqItemMaterials = pgTable("boq_item_materials", {
   id: serial("id").primaryKey(),
   boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
   materialName: text("material_name").notNull(),               // e.g. "20mm Aggregate", "Bitumen VG30"
-  uom: text("uom").notNull(),                                  // "MT", "KL", "CUM"
+  uom: text("uom"),                                            // "MT", "KL", "CUM" (nullable)
   qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // qty per 1 BOQ unit
   wastagePct: real("wastage_pct").notNull().default(0),        // wastage %
   isClientSupplied: boolean("is_client_supplied").default(false),
+  isAuto: boolean("is_auto").default(false),                   // true = derived from layerConfig
+  notes: text("notes"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({

@@ -9646,6 +9646,16 @@ export async function registerRoutes(
     }
   });
 
+  // Materials used in recipes across all BOQ items in a project (for suggestion strip)
+  app.get("/api/boq/projects/:id/recipe-materials-used", async (req, res) => {
+    try {
+      res.json(await storage.getRecipeMaterialsUsed(parseInt(req.params.id)));
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/recipe-materials-used:", err);
+      res.status(500).json({ error: "Failed to fetch recipe materials" });
+    }
+  });
+
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
@@ -9743,6 +9753,37 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to delete planning labour type" });
+    }
+  });
+
+  // --- Planning Mix Templates (read-only view of plant mix templates for Layer Config) ---
+
+  app.get("/api/planning/mix-templates", async (req, res) => {
+    try {
+      const templates = await storage.getMixTemplates();
+      res.json(templates.map(t => ({ id: t.id, name: t.name, mixType: t.mixType, bitumenPercent: t.bitumenPercent })));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch mix templates" });
+    }
+  });
+
+  app.get("/api/planning/mix-templates/:id/components", async (req, res) => {
+    try {
+      const result = await storage.getMixTemplateWithComponents(parseInt(req.params.id));
+      if (!result) return res.status(404).json({ error: "Template not found" });
+      // Join components with plant materials to get names
+      const allMaterials = await storage.getPlantMaterials();
+      const matMap = new Map(allMaterials.map(m => [m.id, m.name]));
+      const components = result.components.map(c => ({
+        id: c.id,
+        materialId: c.materialId,
+        materialName: matMap.get(c.materialId) ?? `Material #${c.materialId}`,
+        percent: c.percent,
+        uom: c.uom,
+      }));
+      res.json({ template: { id: result.template.id, name: result.template.name, mixType: result.template.mixType, bitumenPercent: result.template.bitumenPercent }, components });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch mix template components" });
     }
   });
 
