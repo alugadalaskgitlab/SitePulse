@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   FileSpreadsheet, Plus, Upload, Loader2, Pencil, Copy, Trash2,
-  Building2, Calendar, Ruler, Tag, FolderOpen, Settings,
+  Building2, Calendar, Ruler, Tag, FolderOpen, Settings, BookOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -461,6 +461,12 @@ export default function BoqProjects() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/norms">
+            <a className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 hover:text-teal-900 px-3 py-1.5 rounded-md border border-teal-300 bg-teal-50 hover:bg-teal-100 transition-colors"
+              data-testid="link-norms-library">
+              <BookOpen className="w-3.5 h-3.5" /> Norms Library
+            </a>
+          </Link>
           <Link href="/work-program/planning-masters">
             <a className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-teal-700 px-3 py-1.5 rounded-md border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-colors"
               data-testid="link-planning-masters">
