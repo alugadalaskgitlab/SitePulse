@@ -934,7 +934,7 @@ export default function SiteEdit() {
                         setProgress(updated);
                       }}
                       className="uppercase"
-                      data-testid={`input-activity-${idx}`}
+                      data-testid={`input-nowork-activity-${idx}`}
                     />
                   </div>
                   <div>
@@ -956,6 +956,11 @@ export default function SiteEdit() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="col-span-2">
+                    {/* When site has a BOQ project:
+                        - If boqItemId is set: show BOQ dropdown pre-selected (allows switching item)
+                        - If activity is empty: show BOQ dropdown for new selection
+                        - If free-text activity exists (legacy data): show text input with option to switch to BOQ
+                        boqItemId is saved with the DPR payload and persisted to progress_entries.boq_item_id */}
                     <Label className="text-xs">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
                     {siteBoqItems.length > 0 && entry.boqItemId != null ? (
                       <Select
@@ -978,7 +983,7 @@ export default function SiteEdit() {
                           <SelectValue placeholder="Select BOQ item…" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">— Unlink —</SelectItem>
+                          <SelectItem value="__none__">— Unlink from BOQ —</SelectItem>
                           {siteBoqItems.map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
                               {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
@@ -1026,7 +1031,21 @@ export default function SiteEdit() {
                           data-testid={`input-activity-${idx}`}
                         />
                         {siteBoqItems.length > 0 && (
-                          <p className="text-[10px] text-muted-foreground">Free text — <button className="underline text-blue-600" type="button" onClick={() => { const updated = [...progress]; updated[idx].activity = ""; setProgress(updated); }}>clear to pick from BOQ</button></p>
+                          <p className="text-[10px] text-muted-foreground">
+                            Free-text entry.{" "}
+                            <button
+                              className="underline text-blue-600"
+                              type="button"
+                              onClick={() => {
+                                const updated = [...progress];
+                                updated[idx].activity = "";
+                                setProgress(updated);
+                              }}
+                              data-testid={`button-switch-to-boq-${idx}`}
+                            >
+                              Switch to BOQ item
+                            </button>
+                          </p>
                         )}
                       </div>
                     )}

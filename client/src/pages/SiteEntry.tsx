@@ -754,7 +754,7 @@ export default function SiteEntry() {
                         setProgress(updated);
                       }}
                       className="uppercase"
-                      data-testid={`input-progress-activity-${idx}`}
+                      data-testid={`input-nowork-activity-${idx}`}
                     />
                   </div>
                   <div>
@@ -776,6 +776,8 @@ export default function SiteEntry() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                   <div className="col-span-2">
+                    {/* When site has a BOQ project, Activity becomes a BOQ item selector.
+                        boqItemId is stored on the progress entry and sent with the DPR payload. */}
                     <Label className="text-xs">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
                     {siteBoqItems.length > 0 ? (
                       <Select
