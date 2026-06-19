@@ -20311,6 +20311,44 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  async seedPlanningMorthDefaults(): Promise<{ equipmentInserted: number; labourInserted: number }> {
+    const { MORTH_EQUIPMENT_SEED, MORTH_LABOUR_SEED } = await import("@shared/morthSeedData");
+
+    // Fetch existing names so we can skip duplicates (idempotent)
+    const existingEquip = await db.select({ name: planningEquipmentTypes.name }).from(planningEquipmentTypes);
+    const existingLabour = await db.select({ designation: planningLabourTypes.designation }).from(planningLabourTypes);
+    const equipNames = new Set(existingEquip.map((r) => r.name.toLowerCase()));
+    const labourNames = new Set(existingLabour.map((r) => r.designation.toLowerCase()));
+
+    let equipmentInserted = 0;
+    for (const seed of MORTH_EQUIPMENT_SEED) {
+      if (equipNames.has(seed.name.toLowerCase())) continue;
+      await db.insert(planningEquipmentTypes).values({
+        name: seed.name,
+        category: seed.category,
+        sortOrder: seed.sortOrder,
+        standardOutputs: seed.standardOutputs,
+        isActive: true,
+      });
+      equipmentInserted++;
+    }
+
+    let labourInserted = 0;
+    for (const seed of MORTH_LABOUR_SEED) {
+      if (labourNames.has(seed.designation.toLowerCase())) continue;
+      await db.insert(planningLabourTypes).values({
+        designation: seed.designation,
+        skillTier: seed.skillTier,
+        sortOrder: seed.sortOrder,
+        standardOutputs: seed.standardOutputs ?? null,
+        isActive: true,
+      });
+      labourInserted++;
+    }
+
+    return { equipmentInserted, labourInserted };
+  }
+
   async getRecipeMaterialsUsed(projectId: number): Promise<Array<{ materialName: string; uom: string | null; useCount: number }>> {
     const items = await db.select({ id: boqItems.id }).from(boqItems).where(eq(boqItems.boqProjectId, projectId));
     if (!items.length) return [];

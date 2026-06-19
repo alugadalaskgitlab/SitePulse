@@ -72,6 +72,16 @@ app.use((req, res, next) => {
   try { await storage.ensureBulkDensityColumn(); } catch (e) { console.error("Pre-routes: Failed to ensure bulk_density column:", e); }
   await registerRoutes(httpServer, app);
 
+  // Auto-seed MoRTH defaults on first deploy (if planning_equipment_types is empty)
+  try {
+    const r = await storage.seedPlanningMorthDefaults();
+    if (r.equipmentInserted > 0 || r.labourInserted > 0) {
+      console.log(`Startup: seedPlanningMorthDefaults — equipment: ${r.equipmentInserted}, labour: ${r.labourInserted}`);
+    }
+  } catch (e) {
+    console.error("Startup: seedPlanningMorthDefaults failed:", e);
+  }
+
   try {
     const r = await storage.backfillMaterialBulkDensity();
     console.log(`Startup: backfillMaterialBulkDensity — updated: ${r.updated}, skipped: ${r.skipped}`);

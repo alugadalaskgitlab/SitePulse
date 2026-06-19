@@ -9756,6 +9756,17 @@ export async function registerRoutes(
     }
   });
 
+  // --- Seed MoRTH defaults ---
+  app.post("/api/planning/seed-morth", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const result = await storage.seedPlanningMorthDefaults();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Seed failed" });
+    }
+  });
+
   // --- Planning Mix Templates (read-only view of plant mix templates for Layer Config) ---
 
   app.get("/api/planning/mix-templates", async (req, res) => {

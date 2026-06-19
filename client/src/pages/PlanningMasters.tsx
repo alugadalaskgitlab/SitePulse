@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 import type { PlanningEquipmentType, PlanningLabourType } from "@shared/schema";
 
 const CANONICAL_UNITS = ["CUM", "SQM", "MT", "RM", "HECT", "KL", "LS", "NOS"] as const;
@@ -275,6 +276,7 @@ function LabourTypeDialog({
 
 function EquipmentTypesTab() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [dialogItem, setDialogItem] = useState<PlanningEquipmentType | null | "new">(undefined as any);
 
   const { data: types = [], isLoading } = useQuery<PlanningEquipmentType[]>({
@@ -294,6 +296,22 @@ function EquipmentTypesTab() {
     onError: () => toast({ title: "Delete failed", variant: "destructive" }),
   });
 
+  const seedMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/planning/seed-morth"),
+    onSuccess: async (data: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/planning/equipment-types"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/planning/labour-types"] });
+      const eq = data?.equipmentInserted ?? 0;
+      const lb = data?.labourInserted ?? 0;
+      if (eq === 0 && lb === 0) {
+        toast({ title: "Already seeded — no new rows added" });
+      } else {
+        toast({ title: `Seeded ${eq} equipment type${eq !== 1 ? "s" : ""} and ${lb} labour type${lb !== 1 ? "s" : ""}` });
+      }
+    },
+    onError: () => toast({ title: "Seed failed", variant: "destructive" }),
+  });
+
   const grouped = EQUIP_CATEGORIES.reduce<Record<string, PlanningEquipmentType[]>>((acc, cat) => {
     acc[cat] = types.filter((t) => t.category === cat);
     return acc;
@@ -305,7 +323,24 @@ function EquipmentTypesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {isAdmin && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400"
+            onClick={() => {
+              if (confirm("Seed MoRTH 5th revision standard equipment and labour types?\n\nExisting entries with the same name are skipped — this is safe to run even if you already have data.")) {
+                seedMutation.mutate();
+              }
+            }}
+            disabled={seedMutation.isPending}
+            data-testid="button-seed-morth"
+          >
+            {seedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Sprout className="w-3.5 h-3.5 mr-1" />}
+            Seed MoRTH Defaults
+          </Button>
+        )}
         <Button
           size="sm"
           className="bg-teal-700 hover:bg-teal-800 text-white"
