@@ -109,7 +109,7 @@ export const MORTH_EQUIPMENT_SEED: MorthEquipmentSeed[] = [
     name: "Concrete Paver (slip-form)",
     category: "Concrete",
     sortOrder: 140,
-    standardOutputs: [{ unit: "CUM", outputPerHr: 15 }],
+    standardOutputs: [{ unit: "CUM", outputPerHr: 150 }],
   },
   {
     name: "Transit Mixer (6 CUM)",

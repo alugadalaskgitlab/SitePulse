@@ -297,8 +297,11 @@ function EquipmentTypesTab() {
   });
 
   const seedMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/planning/seed-morth"),
-    onSuccess: async (data: any) => {
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/planning/seed-morth");
+      return res.json() as Promise<{ equipmentInserted: number; labourInserted: number }>;
+    },
+    onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/planning/equipment-types"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/planning/labour-types"] });
       const eq = data?.equipmentInserted ?? 0;
