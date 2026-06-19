@@ -607,6 +607,15 @@ function EquipmentTab({
                 {co.convertedVia === "converted" && (
                   <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-blue-600 border-blue-300">unit-converted</Badge>
                 )}
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors"
+                  title={`Auto-fill: 1 ÷ ${fmtQty(co.outputPerHr, 2)} = ${(1 / co.outputPerHr).toFixed(5)} hr/${boqUnit}`}
+                  onClick={() => { updateRow(row.key, "qtyPerBoqUnit", (1 / co.outputPerHr).toFixed(5)); setDirty(true); }}
+                  data-testid={`button-autofill-equip-${row.key}`}
+                >
+                  <Zap className="w-2.5 h-2.5" /> Auto-fill
+                </button>
               </div>
             )}
             {planType && !(planType.standardOutputs?.length) && (

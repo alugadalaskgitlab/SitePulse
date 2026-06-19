@@ -176,8 +176,27 @@ export default function SiteEntry() {
   });
   const activeSites = sitesList.filter(s => s.isActive);
 
-  const { data: allBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string; projectId: number; projectName: string }>>({
-    queryKey: ["/api/boq/all-items"],
+  // Resolve numeric siteId from selected site name
+  const selectedSiteId = useMemo(() => {
+    if (!header.site) return null;
+    return sitesList.find((s) => s.name === header.site)?.id ?? null;
+  }, [header.site, sitesList]);
+
+  // Find the BOQ project linked to this site (if any)
+  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/boq/projects", selectedSiteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!selectedSiteId,
+  });
+  const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
+
+  // Fetch items of that BOQ project
+  const { data: siteBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string }>>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
+    enabled: !!siteBoqProjectId,
   });
 
   // Filter to only active equipment
@@ -757,18 +776,49 @@ export default function SiteEntry() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                   <div className="col-span-2">
-                    <Label className="text-xs">Activity</Label>
-                    <Input
-                      placeholder="Activity name"
-                      value={entry.activity}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].activity = e.target.value.toUpperCase();
-                        setProgress(updated);
-                      }}
-                      className="uppercase"
-                      data-testid={`input-progress-activity-${idx}`}
-                    />
+                    <Label className="text-xs">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteBoqItems.length > 0 ? (
+                      <Select
+                        value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
+                        onValueChange={(val) => {
+                          const updated = [...progress];
+                          if (val === "__none__") {
+                            updated[idx].boqItemId = null;
+                            updated[idx].activity = "";
+                          } else {
+                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
+                            updated[idx].boqItemId = parseInt(val);
+                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                          }
+                          setProgress(updated);
+                        }}
+                        data-testid={`select-boq-item-${idx}`}
+                      >
+                        <SelectTrigger className="uppercase text-xs">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Select activity —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="Activity name"
+                        value={entry.activity}
+                        onChange={(e) => {
+                          const updated = [...progress];
+                          updated[idx].activity = e.target.value.toUpperCase();
+                          setProgress(updated);
+                        }}
+                        className="uppercase"
+                        data-testid={`input-progress-activity-${idx}`}
+                      />
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Side</Label>
@@ -901,31 +951,6 @@ export default function SiteEntry() {
                 </div>
               )}
 
-              {!entry.noSiteWork && allBoqItems.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Label className="text-xs text-muted-foreground whitespace-nowrap">BOQ Link:</Label>
-                  <Select
-                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
-                    onValueChange={(val) => {
-                      const updated = [...progress];
-                      updated[idx].boqItemId = val === "__none__" ? null : parseInt(val);
-                      setProgress(updated);
-                    }}
-                  >
-                    <SelectTrigger className="h-7 text-xs max-w-sm" data-testid={`select-boq-item-${idx}`}>
-                      <SelectValue placeholder="Link to BOQ item (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— Not linked —</SelectItem>
-                      {allBoqItems.map(item => (
-                        <SelectItem key={item.id} value={String(item.id)}>
-                          {item.itemCode ? `${item.itemCode} · ` : ""}{item.description} ({item.unit})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
 
               <div className="flex items-center gap-2 flex-wrap">
                 <Label className="text-xs text-muted-foreground">Personnel:</Label>

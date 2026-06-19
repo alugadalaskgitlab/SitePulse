@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
@@ -34,6 +34,7 @@ interface ProgressEntry {
   noSiteWork: boolean;
   noSiteWorkDescription: string;
   personnelIds: number[];
+  boqItemId: number | null;
 }
 
 interface EquipmentEntry {
@@ -172,8 +173,9 @@ function mapDprToFormState(dpr: any) {
         noSiteWork: p.noSiteWork || false,
         noSiteWorkDescription: p.noSiteWorkDescription || "",
         personnelIds: p.personnelIds || [],
+        boqItemId: p.boqItemId ?? null,
       }))
-    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }];
+    : [{ activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }];
 
   const equipment: EquipmentEntry[] = dpr.equipment?.length
     ? dpr.equipment.map((e: any) => ({
@@ -311,6 +313,29 @@ export default function SiteEdit() {
     engineer: "",
   });
 
+  // Resolve numeric siteId from the selected site name
+  const selectedSiteId = useMemo(() => {
+    if (!header.site) return null;
+    return sitesList.find((s) => s.name === header.site)?.id ?? null;
+  }, [header.site, sitesList]);
+
+  // BOQ project linked to this site
+  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/boq/projects", selectedSiteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!selectedSiteId,
+  });
+  const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
+
+  // Items of that BOQ project
+  const { data: siteBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string }>>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
+    enabled: !!siteBoqProjectId,
+  });
+
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
@@ -334,7 +359,7 @@ export default function SiteEdit() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -500,7 +525,7 @@ export default function SiteEdit() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -931,18 +956,80 @@ export default function SiteEdit() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="col-span-2">
-                    <Label className="text-xs">Activity</Label>
-                    <Input
-                      placeholder="Activity description"
-                      value={entry.activity}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].activity = e.target.value.toUpperCase();
-                        setProgress(updated);
-                      }}
-                      className="uppercase"
-                      data-testid={`input-activity-${idx}`}
-                    />
+                    <Label className="text-xs">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteBoqItems.length > 0 && entry.boqItemId != null ? (
+                      <Select
+                        value={String(entry.boqItemId)}
+                        onValueChange={(val) => {
+                          const updated = [...progress];
+                          if (val === "__none__") {
+                            updated[idx].boqItemId = null;
+                            updated[idx].activity = "";
+                          } else {
+                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
+                            updated[idx].boqItemId = parseInt(val);
+                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                          }
+                          setProgress(updated);
+                        }}
+                        data-testid={`select-boq-item-${idx}`}
+                      >
+                        <SelectTrigger className="uppercase text-xs">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Unlink —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : siteBoqItems.length > 0 && !entry.activity ? (
+                      <Select
+                        value="__none__"
+                        onValueChange={(val) => {
+                          const updated = [...progress];
+                          if (val !== "__none__") {
+                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
+                            updated[idx].boqItemId = parseInt(val);
+                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                          }
+                          setProgress(updated);
+                        }}
+                        data-testid={`select-boq-item-${idx}`}
+                      >
+                        <SelectTrigger className="uppercase text-xs">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Select activity —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="space-y-1">
+                        <Input
+                          placeholder="Activity description"
+                          value={entry.activity}
+                          onChange={(e) => {
+                            const updated = [...progress];
+                            updated[idx].activity = e.target.value.toUpperCase();
+                            setProgress(updated);
+                          }}
+                          className="uppercase"
+                          data-testid={`input-activity-${idx}`}
+                        />
+                        {siteBoqItems.length > 0 && (
+                          <p className="text-[10px] text-muted-foreground">Free text — <button className="underline text-blue-600" type="button" onClick={() => { const updated = [...progress]; updated[idx].activity = ""; setProgress(updated); }}>clear to pick from BOQ</button></p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Side</Label>

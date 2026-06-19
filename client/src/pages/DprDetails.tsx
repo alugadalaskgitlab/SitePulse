@@ -231,7 +231,12 @@ export default function DprDetails() {
                   
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
-                      <TableCell className="font-medium">{item.activity}</TableCell>
+                      <TableCell className="font-medium">
+                        {item.activity}
+                        {item.boqItemId && (
+                          <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
+                        )}
+                      </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
                       <TableCell>{item.chainageFrom || '-'}</TableCell>
                       <TableCell>{item.chainageTo || '-'}</TableCell>
