@@ -172,7 +172,13 @@ function StretchRow({
     return calculateAutoDurationFull(effectiveQty, item.unit, equipment, workingHrs, workingDays);
   }, [effectiveQty, item.unit, equipment, workingHrs, workingDays]);
 
-  const autoEnd = autoDuration?.months ? +(smNum + autoDuration.months).toFixed(2) : null;
+  // ── Duration preservation (Rule 4) ────────────────────────────────────────
+  // Priority: auto-calculated from equipment > preserved saved duration from DB
+  // Moving start MUST NOT shrink duration — end = start + duration always.
+  const autoDurationMonths = (autoDuration?.months ?? 0) > 0 ? autoDuration!.months : null;
+  const savedDurationMonths = bar.endMonth - bar.startMonth;
+  // Use auto-duration if available; else preserve the saved duration; else default 1 month
+  const effectiveDurationMonths = autoDurationMonths ?? (savedDurationMonths > 0 ? savedDurationMonths : 1);
 
   // Haul distance from bar chainage mid to source (HMP / WMM plant / quarry)
   const haulDistanceKm = useMemo(() => {
@@ -201,22 +207,25 @@ function StretchRow({
   function save() {
     dirty.current = false;
     const qty = autoQty ?? bar.plannedQty;
-    const em = autoEnd ?? bar.endMonth;
-    const isOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
+    // End = start + effective duration (duration is never shortened by moving start)
+    const em = +(smNum + effectiveDurationMonths).toFixed(2);
+    const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
+    // isDurationOverride only when user manually set an end that differs from auto
+    const isDurationOverride = autoDurationMonths == null && bar.isDurationOverride === true;
     patch.mutate({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
       chainageTo: validCh ? ctNum : bar.chainageTo,
       plannedQty: qty,
       startMonth: smNum,
       endMonth: em,
-      isQtyOverride: isOverride,
-      isDurationOverride: !autoDuration,
+      isQtyOverride,
+      isDurationOverride,
     });
   }
 
-  // ── Bar positioning: use LIVE local draft values for immediate visual feedback ──
+  // ── Bar positioning: uses live draft start + effective duration ─────────────
   const liveStart = smNum;
-  const liveEnd = autoEnd ?? bar.endMonth;
+  const liveEnd = +(smNum + effectiveDurationMonths).toFixed(2);
   const liveQty = autoQty ?? bar.plannedQty;
   const barLeft = Math.max(0, (liveStart - 1) * colW);
   const barWidth = Math.max(4, (liveEnd - liveStart) * colW);
@@ -357,30 +366,23 @@ function StretchRow({
           title={`Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km | ${fmtQty(liveQty, 1)} ${bar.unit} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)${autoDuration?.bottleneckEquipment ? ` | Bottleneck: ${autoDuration.bottleneckEquipment}` : ""}${haulDistanceKm != null ? ` | Haul: ${fmtQty(haulDistanceKm, 1)} km` : ""}`}
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
-          {barWidth > 30 && (
-            <span className="absolute left-1.5 top-0 bottom-0 flex items-center text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden pointer-events-none leading-none">
-              {barWidth > 110
-                ? `${fmtQty(liveQty, 1)} ${bar.unit}`
-                : barWidth > 55
-                  ? `${fmtQty(liveQty, 1)}`
-                  : ""}
-            </span>
-          )}
         </div>
 
-        {/* Duration label below bar */}
-        {barWidth > 20 && (
+        {/* Road Estimator–style label: "qty unit | X.XXd" below the bar */}
+        {barWidth > 8 && (
           <div
-            className="absolute text-[11px] font-semibold pointer-events-none select-none whitespace-nowrap overflow-hidden text-center"
+            className="absolute pointer-events-none select-none whitespace-nowrap text-[10px] font-semibold leading-tight"
             style={{
               left: barLeft,
-              width: Math.max(barWidth, 36),
-              top: 33,
+              top: 34,
               color: color,
-              opacity: 0.85,
+              opacity: 0.9,
             }}
           >
-            {Math.round(durationMonths * workingDays)}d
+            {`${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d`}
+            {autoDuration?.bottleneckEquipment && (
+              <span className="opacity-60 font-normal"> · {autoDuration.bottleneckEquipment}</span>
+            )}
           </div>
         )}
       </div>
