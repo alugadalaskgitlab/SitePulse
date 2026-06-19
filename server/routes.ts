@@ -9815,6 +9815,129 @@ export async function registerRoutes(
     }
   });
 
+  // ─── STANDARD NORMS LIBRARY (SNL) ──────────────────────────────────────
+
+  app.get("/api/snl/sources", async (req, res) => {
+    try {
+      res.json(await storage.getSnlSources());
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch SNL sources" });
+    }
+  });
+
+  app.get("/api/snl/sources/:id", async (req, res) => {
+    try {
+      const src = await storage.getSnlSource(parseInt(req.params.id));
+      if (!src) return res.status(404).json({ error: "Not found" });
+      res.json(src);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch source" });
+    }
+  });
+
+  app.get("/api/snl/sources/:id/items", async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      res.json(await storage.getSnlItems(parseInt(req.params.id), category));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch SNL items" });
+    }
+  });
+
+  app.get("/api/snl/items/:id", async (req, res) => {
+    try {
+      const item = await storage.getSnlItem(parseInt(req.params.id));
+      if (!item) return res.status(404).json({ error: "Not found" });
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch SNL item" });
+    }
+  });
+
+  app.get("/api/snl/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const category = req.query.category as string | undefined;
+      const sourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
+      res.json(await storage.searchSnlItems(q, category, sourceId));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to search SNL" });
+    }
+  });
+
+  app.get("/api/snl/mappings/:boqItemId", async (req, res) => {
+    try {
+      const mapping = await storage.getSnlMapping(parseInt(req.params.boqItemId));
+      res.json(mapping ?? null);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch mapping" });
+    }
+  });
+
+  app.post("/api/snl/mappings", async (req, res) => {
+    try {
+      const { boqItemId, snlItemId, projectCategory, gradingVariant, notes } = req.body;
+      if (!boqItemId || !snlItemId) return res.status(400).json({ error: "boqItemId and snlItemId required" });
+      const mapping = await storage.setSnlMapping(boqItemId, {
+        boqItemId, snlItemId,
+        projectCategory: projectCategory ?? "MEDIUM",
+        gradingVariant: gradingVariant ?? null,
+        mappedBy: (req as any).user?.username ?? "unknown",
+        isAutoMapped: false,
+        confidenceScore: null,
+        notes: notes ?? null,
+      });
+      res.json(mapping);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to save mapping" });
+    }
+  });
+
+  app.post("/api/snl/mappings/:boqItemId/apply", async (req, res) => {
+    try {
+      const boqItemId = parseInt(req.params.boqItemId);
+      const { snlItemId, projectCategory, gradingVariant } = req.body;
+      if (!snlItemId) return res.status(400).json({ error: "snlItemId required" });
+      const user = (req as any).user?.username ?? "unknown";
+      await storage.setSnlMapping(boqItemId, {
+        boqItemId, snlItemId,
+        projectCategory: projectCategory ?? "MEDIUM",
+        gradingVariant: gradingVariant ?? null,
+        mappedBy: user,
+        isAutoMapped: false,
+        confidenceScore: null,
+        notes: null,
+      });
+      await storage.applySnlMappingToRecipes(boqItemId, snlItemId, projectCategory ?? "MEDIUM", gradingVariant ?? null, user);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/snl/mappings/:boqItemId/apply:", err);
+      res.status(500).json({ error: "Failed to apply mapping" });
+    }
+  });
+
+  app.delete("/api/snl/mappings/:boqItemId", async (req, res) => {
+    try {
+      const ok = await storage.deleteSnlMapping(parseInt(req.params.boqItemId));
+      res.json({ success: ok });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete mapping" });
+    }
+  });
+
+  app.post("/api/snl/seed", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const result = await storage.seedSnlMorthSdb();
+      res.json({ success: true, source: result.source.code, items: result.items });
+    } catch (err) {
+      console.error("POST /api/snl/seed:", err);
+      res.status(500).json({ error: "Seed failed" });
+    }
+  });
+
+  // ─── END SNL ────────────────────────────────────────────────────────────
+
   seedDatabase();
   seedPlantMasterData();
   seedPlanningMasters();

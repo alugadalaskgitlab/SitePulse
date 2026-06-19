@@ -78,6 +78,7 @@ import BoqProjectDetail from "@/pages/BoqProjectDetail";
 import WorkProgramme from "@/pages/WorkProgramme";
 import WorkDemand from "@/pages/WorkDemand";
 import PlanningMasters from "@/pages/PlanningMasters";
+import NormsLibrary from "@/pages/NormsLibrary";
 import StoresHome from "@/pages/StoresHome";
 import StoresItems from "@/pages/StoresItems";
 import StoresGrn from "@/pages/StoresGrn";
@@ -307,6 +308,7 @@ function AuthedShell() {
             <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />
             <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "qto_boq")} />
             <Route path="/work-program/:id/demand" component={gated(WorkDemand, "qto_boq")} />
+            <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />
             <Route path="/stores" component={gated(StoresHome, "stores_inventory")} />
             <Route path="/stores/items" component={gated(StoresItems, "stores_inventory")} />
             <Route path="/stores/grns" component={gated(StoresGrn, "stores_inventory")} />

@@ -272,6 +272,27 @@ import {
   type InsertPlanningEquipmentType,
   type PlanningLabourType,
   type InsertPlanningLabourType,
+  // SNL
+  snlSources,
+  snlItems,
+  snlItemProductivity,
+  snlItemEquipment,
+  snlItemLabour,
+  snlItemMaterials,
+  snlBoqMappings,
+  snlMixOverrides,
+  snlMixOverrideMaterials,
+  snlImportLog,
+  type SnlSource,
+  type SnlItem,
+  type SnlItemProductivity,
+  type SnlItemEquipment,
+  type SnlItemLabour,
+  type SnlItemMaterials,
+  type SnlBoqMapping,
+  type SnlItemFull,
+  type SnlSourceWithCounts,
+  type SnlSearchResult,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
@@ -20377,6 +20398,250 @@ export class DatabaseStorage implements IStorage {
     return [...counts.entries()]
       .map(([materialName, { uom, count }]) => ({ materialName, uom, useCount: count }))
       .sort((a, b) => b.useCount - a.useCount);
+  }
+
+  // ─── STANDARD NORMS LIBRARY ─────────────────────────────────────────────
+
+  async getSnlSources(): Promise<SnlSourceWithCounts[]> {
+    const rows = await db
+      .select({
+        ...getTableColumns(snlSources),
+        itemCount: sql<number>`count(${snlItems.id})::int`,
+      })
+      .from(snlSources)
+      .leftJoin(snlItems, and(eq(snlItems.sourceId, snlSources.id), eq(snlItems.isActive, true)))
+      .where(eq(snlSources.isActive, true))
+      .groupBy(snlSources.id)
+      .orderBy(snlSources.year, snlSources.name);
+    return rows;
+  }
+
+  async getSnlSource(id: number): Promise<SnlSource | null> {
+    const [row] = await db.select().from(snlSources).where(eq(snlSources.id, id));
+    return row ?? null;
+  }
+
+  async upsertSnlSource(data: Omit<SnlSource, "id" | "createdAt">): Promise<SnlSource> {
+    const [row] = await db
+      .insert(snlSources)
+      .values(data)
+      .onConflictDoUpdate({ target: snlSources.code, set: { ...data } })
+      .returning();
+    return row;
+  }
+
+  async getSnlItems(sourceId: number, category?: string): Promise<SnlItem[]> {
+    const conds = [eq(snlItems.sourceId, sourceId), eq(snlItems.isActive, true)];
+    if (category) conds.push(eq(snlItems.workCategory, category));
+    return db.select().from(snlItems).where(and(...conds)).orderBy(snlItems.chapterNo, snlItems.itemCode);
+  }
+
+  async getSnlItem(id: number): Promise<SnlItemFull | null> {
+    const [item] = await db.select().from(snlItems).where(eq(snlItems.id, id));
+    if (!item) return null;
+    const [source] = await db.select({ code: snlSources.code, name: snlSources.name, authority: snlSources.authority, year: snlSources.year })
+      .from(snlSources).where(eq(snlSources.id, item.sourceId));
+    const [productivity, equipment, labour, materials] = await Promise.all([
+      db.select().from(snlItemProductivity).where(eq(snlItemProductivity.itemId, id)).orderBy(snlItemProductivity.projectCategory),
+      db.select().from(snlItemEquipment).where(eq(snlItemEquipment.itemId, id)).orderBy(snlItemEquipment.projectCategory, snlItemEquipment.sortOrder),
+      db.select().from(snlItemLabour).where(eq(snlItemLabour.itemId, id)).orderBy(snlItemLabour.projectCategory, snlItemLabour.sortOrder),
+      db.select().from(snlItemMaterials).where(eq(snlItemMaterials.itemId, id)).orderBy(snlItemMaterials.gradingVariant, snlItemMaterials.sortOrder),
+    ]);
+    return { ...item, source, productivity, equipment, labour, materials };
+  }
+
+  async searchSnlItems(q: string, category?: string, sourceId?: number): Promise<SnlSearchResult[]> {
+    const conds: ReturnType<typeof eq>[] = [eq(snlItems.isActive, true)];
+    if (q.trim()) {
+      conds.push(
+        sql`(${snlItems.itemCode} ilike ${'%' + q + '%'} or ${snlItems.description} ilike ${'%' + q + '%'} or ${snlItems.shortLabel} ilike ${'%' + q + '%'})`
+      );
+    }
+    if (category) conds.push(eq(snlItems.workCategory, category));
+    if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
+
+    const rows = await db
+      .select({
+        id: snlItems.id,
+        itemCode: snlItems.itemCode,
+        shortLabel: snlItems.shortLabel,
+        description: snlItems.description,
+        unit: snlItems.unit,
+        workCategory: snlItems.workCategory,
+        isMixSpecific: snlItems.isMixSpecific,
+        hasGradingVariants: snlItems.hasGradingVariants,
+        sourceName: snlSources.name,
+        sourceCode: snlSources.code,
+        shiftOutput: sql<number | null>`(select shift_output from snl_item_productivity p where p.item_id = ${snlItems.id} and p.project_category = 'MEDIUM' limit 1)`,
+        outputUnit: sql<string | null>`(select output_unit from snl_item_productivity p where p.item_id = ${snlItems.id} and p.project_category = 'MEDIUM' limit 1)`,
+      })
+      .from(snlItems)
+      .innerJoin(snlSources, eq(snlSources.id, snlItems.sourceId))
+      .where(and(...conds))
+      .orderBy(snlItems.chapterNo, snlItems.itemCode)
+      .limit(50);
+    return rows;
+  }
+
+  async upsertSnlItem(data: Omit<SnlItem, "id" | "createdAt">): Promise<SnlItem> {
+    const [row] = await db
+      .insert(snlItems)
+      .values(data)
+      .onConflictDoUpdate({ target: [snlItems.sourceId, snlItems.itemCode], set: { ...data } })
+      .returning();
+    return row;
+  }
+
+  async replaceSnlItemNorms(itemId: number, opts: {
+    productivity?: Omit<SnlItemProductivity, "id">[];
+    equipment?: Omit<SnlItemEquipment, "id">[];
+    labour?: Omit<SnlItemLabour, "id">[];
+    materials?: Omit<SnlItemMaterials, "id">[];
+  }) {
+    return db.transaction(async (tx) => {
+      if (opts.productivity) {
+        await tx.delete(snlItemProductivity).where(eq(snlItemProductivity.itemId, itemId));
+        if (opts.productivity.length) await tx.insert(snlItemProductivity).values(opts.productivity);
+      }
+      if (opts.equipment) {
+        await tx.delete(snlItemEquipment).where(eq(snlItemEquipment.itemId, itemId));
+        if (opts.equipment.length) await tx.insert(snlItemEquipment).values(opts.equipment);
+      }
+      if (opts.labour) {
+        await tx.delete(snlItemLabour).where(eq(snlItemLabour.itemId, itemId));
+        if (opts.labour.length) await tx.insert(snlItemLabour).values(opts.labour);
+      }
+      if (opts.materials) {
+        await tx.delete(snlItemMaterials).where(eq(snlItemMaterials.itemId, itemId));
+        if (opts.materials.length) await tx.insert(snlItemMaterials).values(opts.materials);
+      }
+    });
+  }
+
+  async getSnlMapping(boqItemId: number): Promise<SnlBoqMapping | null> {
+    const [row] = await db.select().from(snlBoqMappings).where(eq(snlBoqMappings.boqItemId, boqItemId));
+    return row ?? null;
+  }
+
+  async setSnlMapping(boqItemId: number, data: Omit<SnlBoqMapping, "id" | "mappedAt">): Promise<SnlBoqMapping> {
+    const [row] = await db
+      .insert(snlBoqMappings)
+      .values(data)
+      .onConflictDoUpdate({ target: snlBoqMappings.boqItemId, set: { ...data, mappedAt: new Date() } })
+      .returning();
+    return row;
+  }
+
+  async deleteSnlMapping(boqItemId: number): Promise<boolean> {
+    const rows = await db.delete(snlBoqMappings).where(eq(snlBoqMappings.boqItemId, boqItemId)).returning();
+    return rows.length > 0;
+  }
+
+  async applySnlMappingToRecipes(boqItemId: number, snlItemId: number, projectCategory: string, gradingVariant: string | null, appliedBy: string): Promise<void> {
+    const itemFull = await this.getSnlItem(snlItemId);
+    if (!itemFull) throw new Error("SNL item not found");
+
+    const catPri = (cat: string) => cat === projectCategory ? 0 : cat === "ALL" ? 1 : 2;
+
+    const pickRows = <T extends { projectCategory: string }>(rows: T[]): T[] => {
+      const filtered = rows.filter(r => r.projectCategory === projectCategory || r.projectCategory === "ALL");
+      return filtered;
+    };
+
+    const equipment = pickRows(itemFull.equipment);
+    const labour = pickRows(itemFull.labour);
+    const gradingMaterials = gradingVariant
+      ? itemFull.materials.filter(m => m.gradingVariant === gradingVariant)
+      : itemFull.materials.filter(m => !m.gradingVariant);
+
+    await db.transaction(async (tx) => {
+      // Populate boqItemEquipment
+      await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
+      if (equipment.length) {
+        await tx.insert(boqItemEquipment).values(
+          equipment.map((e, i) => ({
+            boqItemId,
+            sortOrder: e.sortOrder ?? i,
+            equipmentName: e.equipmentType + (e.equipmentSpec ? ` (${e.equipmentSpec})` : ""),
+            qtyPerBoqUnit: e.derivedPerUnit ?? 0,
+            count: 1,
+            notes: e.notes ?? `SNL ${itemFull.itemCode} [${projectCategory}]`,
+          }))
+        );
+      }
+      // Populate boqItemLabour
+      await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
+      if (labour.length) {
+        await tx.insert(boqItemLabour).values(
+          labour.map((l, i) => ({
+            boqItemId,
+            sortOrder: l.sortOrder ?? i,
+            designation: l.designation,
+            qtyPerBoqUnit: l.derivedPerUnit ?? 0,
+            count: 1,
+            notes: `SNL ${itemFull.itemCode} [${projectCategory}]`,
+          }))
+        );
+      }
+      // Populate boqItemMaterials
+      await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
+      if (gradingMaterials.length) {
+        await tx.insert(boqItemMaterials).values(
+          gradingMaterials.map((m, i) => ({
+            boqItemId,
+            sortOrder: m.sortOrder ?? i,
+            materialName: m.materialName,
+            uom: m.unit,
+            qtyPerBoqUnit: m.derivedPerUnit ?? 0,
+            isAuto: false,
+            notes: m.notes ?? null,
+          }))
+        );
+      }
+    });
+  }
+
+  async seedSnlMorthSdb(): Promise<{ source: SnlSource; items: number }> {
+    const {
+      MORTH_SDB_SOURCE,
+      EMBANKMENT_ITEM, EMBANKMENT_PRODUCTIVITY, EMBANKMENT_LABOUR, EMBANKMENT_EQUIPMENT, EMBANKMENT_MATERIALS,
+      GSB_ITEM, GSB_PRODUCTIVITY, GSB_LABOUR, GSB_EQUIPMENT, GSB_MATERIALS,
+      WMM_ITEM, WMM_PRODUCTIVITY, WMM_LABOUR, WMM_EQUIPMENT, WMM_MATERIALS,
+      DBM_ITEM, DBM_PRODUCTIVITY, DBM_LABOUR, DBM_EQUIPMENT, DBM_MATERIALS,
+      BC_ITEM, BC_PRODUCTIVITY, BC_LABOUR, BC_EQUIPMENT, BC_MATERIALS,
+    } = await import("@shared/snlSeedData");
+
+    const source = await this.upsertSnlSource({ ...MORTH_SDB_SOURCE, isActive: true });
+
+    const itemDefs = [
+      { item: EMBANKMENT_ITEM, prod: EMBANKMENT_PRODUCTIVITY, lab: EMBANKMENT_LABOUR, equip: EMBANKMENT_EQUIPMENT, mat: EMBANKMENT_MATERIALS },
+      { item: GSB_ITEM,        prod: GSB_PRODUCTIVITY,        lab: GSB_LABOUR,        equip: GSB_EQUIPMENT,        mat: GSB_MATERIALS },
+      { item: WMM_ITEM,        prod: WMM_PRODUCTIVITY,        lab: WMM_LABOUR,        equip: WMM_EQUIPMENT,        mat: WMM_MATERIALS },
+      { item: DBM_ITEM,        prod: DBM_PRODUCTIVITY,        lab: DBM_LABOUR,        equip: DBM_EQUIPMENT,        mat: DBM_MATERIALS },
+      { item: BC_ITEM,         prod: BC_PRODUCTIVITY,         lab: BC_LABOUR,         equip: BC_EQUIPMENT,         mat: BC_MATERIALS },
+    ];
+
+    let count = 0;
+    for (const { item, prod, lab, equip, mat } of itemDefs) {
+      const inserted = await this.upsertSnlItem({ ...item, sourceId: source.id, isActive: true });
+      await this.replaceSnlItemNorms(inserted.id, {
+        productivity: prod.map(p => ({ ...p, itemId: inserted.id })),
+        equipment: equip.map(e => ({ ...e, itemId: inserted.id })),
+        labour: lab.map(l => ({ ...l, itemId: inserted.id })),
+        materials: mat.map(m => ({ ...m, itemId: inserted.id })),
+      });
+      count++;
+    }
+
+    const [logRow] = await db.insert(snlImportLog).values({
+      sourceId: source.id,
+      importedBy: "system",
+      itemCount: count,
+      method: "MANUAL",
+      notes: "Initial seed — 5 validated MoRTH SDB 2019 items",
+    }).returning();
+
+    return { source, items: count };
   }
 }
 

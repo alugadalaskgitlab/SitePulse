@@ -2538,6 +2538,200 @@ export type PlanVsActualRow = {
   lastActivityDate: string | null;
 };
 
+// ============================================
+// STANDARD NORMS LIBRARY (SNL)
+// Universal multi-source norms engine.
+// MoRTH SDB is the first seeded source.
+// Supports CPWD DSR, State SSR, Irrigation,
+// Electrical, Buildings, company-specific norms.
+// ============================================
+
+export const snlSources = pgTable("snl_sources", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  authority: text("authority").notNull(),
+  department: text("department"),
+  year: integer("year"),
+  version: text("version"),
+  country: text("country").default("India"),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const snlItems = pgTable("snl_items", {
+  id: serial("id").primaryKey(),
+  sourceId: integer("source_id").notNull().references(() => snlSources.id, { onDelete: "cascade" }),
+  volume: text("volume"),
+  chapterNo: text("chapter_no"),
+  chapterTitle: text("chapter_title"),
+  itemCode: text("item_code").notNull(),
+  description: text("description").notNull(),
+  shortLabel: text("short_label"),
+  unit: text("unit").notNull(),
+  workCategory: text("work_category").notNull(),
+  workSubCategory: text("work_sub_category"),
+  sourcePage: text("source_page"),
+  specClause: text("spec_clause"),
+  isMixSpecific: boolean("is_mix_specific").notNull().default(false),
+  hasGradingVariants: boolean("has_grading_variants").notNull().default(false),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  sourceItemIdx: uniqueIndex("snl_items_source_code_idx").on(t.sourceId, t.itemCode),
+  categoryIdx: index("snl_items_category_idx").on(t.workCategory),
+}));
+
+export const snlItemProductivity = pgTable("snl_item_productivity", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => snlItems.id, { onDelete: "cascade" }),
+  projectCategory: text("project_category").notNull().default("ALL"),
+  shiftOutput: real("shift_output").notNull(),
+  shiftHours: real("shift_hours").notNull().default(8),
+  outputUnit: text("output_unit").notNull(),
+  derivedPerHour: real("derived_per_hour"),
+  notes: text("notes"),
+}, (t) => ({
+  itemCatIdx: uniqueIndex("snl_productivity_item_cat_idx").on(t.itemId, t.projectCategory),
+}));
+
+export const snlItemEquipment = pgTable("snl_item_equipment", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => snlItems.id, { onDelete: "cascade" }),
+  projectCategory: text("project_category").notNull().default("ALL"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  equipmentType: text("equipment_type").notNull(),
+  equipmentSpec: text("equipment_spec"),
+  purpose: text("purpose"),
+  unit: text("unit").notNull().default("hrs"),
+  quantityPerShift: real("quantity_per_shift"),
+  formulaType: text("formula_type").notNull().default("FIXED"),
+  formulaExpr: text("formula_expr"),
+  shiftOutputRef: real("shift_output_ref").notNull(),
+  derivedPerUnit: real("derived_per_unit"),
+  notes: text("notes"),
+});
+
+export const snlItemLabour = pgTable("snl_item_labour", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => snlItems.id, { onDelete: "cascade" }),
+  projectCategory: text("project_category").notNull().default("ALL"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  designation: text("designation").notNull(),
+  skillTier: text("skill_tier").notNull().default("UNSKILLED"),
+  unit: text("unit").notNull().default("day"),
+  quantityPerShift: real("quantity_per_shift").notNull(),
+  shiftOutputRef: real("shift_output_ref").notNull(),
+  derivedPerUnit: real("derived_per_unit"),
+});
+
+export const snlItemMaterials = pgTable("snl_item_materials", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => snlItems.id, { onDelete: "cascade" }),
+  projectCategory: text("project_category").notNull().default("ALL"),
+  gradingVariant: text("grading_variant"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  materialName: text("material_name").notNull(),
+  materialCategory: text("material_category").notNull().default("OTHER"),
+  sieveFromMm: real("sieve_from_mm"),
+  sieveToMm: real("sieve_to_mm"),
+  pctByWeight: real("pct_by_weight"),
+  unit: text("unit").notNull(),
+  quantityPerShift: real("quantity_per_shift").notNull(),
+  shiftOutputRef: real("shift_output_ref").notNull(),
+  derivedPerUnit: real("derived_per_unit"),
+  isDesignSpecific: boolean("is_design_specific").notNull().default(false),
+  notes: text("notes"),
+});
+
+export const snlBoqMappings = pgTable("snl_boq_mappings", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().unique().references(() => boqItems.id, { onDelete: "cascade" }),
+  snlItemId: integer("snl_item_id").notNull().references(() => snlItems.id, { onDelete: "restrict" }),
+  projectCategory: text("project_category").notNull().default("MEDIUM"),
+  gradingVariant: text("grading_variant"),
+  mappedBy: text("mapped_by"),
+  mappedAt: timestamp("mapped_at").defaultNow(),
+  isAutoMapped: boolean("is_auto_mapped").notNull().default(false),
+  confidenceScore: real("confidence_score"),
+  notes: text("notes"),
+});
+
+export const snlMixOverrides = pgTable("snl_mix_overrides", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  overrideLabel: text("override_label").notNull(),
+  overrideReason: text("override_reason"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const snlMixOverrideMaterials = pgTable("snl_mix_override_materials", {
+  id: serial("id").primaryKey(),
+  overrideId: integer("override_id").notNull().references(() => snlMixOverrides.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  materialName: text("material_name").notNull(),
+  materialCategory: text("material_category").notNull().default("OTHER"),
+  unit: text("unit").notNull(),
+  derivedPerUnit: real("derived_per_unit").notNull(),
+  notes: text("notes"),
+});
+
+export const snlImportLog = pgTable("snl_import_log", {
+  id: serial("id").primaryKey(),
+  sourceId: integer("source_id").notNull().references(() => snlSources.id, { onDelete: "cascade" }),
+  importedBy: text("imported_by"),
+  importedAt: timestamp("imported_at").defaultNow(),
+  itemCount: integer("item_count").notNull().default(0),
+  method: text("method").notNull().default("MANUAL"),
+  notes: text("notes"),
+});
+
+// SNL insert schemas
+export const insertSnlSourceSchema = createInsertSchema(snlSources).omit({ id: true, createdAt: true });
+export const insertSnlItemSchema = createInsertSchema(snlItems).omit({ id: true, createdAt: true });
+export const insertSnlItemProductivitySchema = createInsertSchema(snlItemProductivity).omit({ id: true });
+export const insertSnlItemEquipmentSchema = createInsertSchema(snlItemEquipment).omit({ id: true });
+export const insertSnlItemLabourSchema = createInsertSchema(snlItemLabour).omit({ id: true });
+export const insertSnlItemMaterialsSchema = createInsertSchema(snlItemMaterials).omit({ id: true });
+export const insertSnlBoqMappingSchema = createInsertSchema(snlBoqMappings).omit({ id: true, mappedAt: true });
+export const insertSnlMixOverrideSchema = createInsertSchema(snlMixOverrides).omit({ id: true, createdAt: true });
+export const insertSnlMixOverrideMaterialsSchema = createInsertSchema(snlMixOverrideMaterials).omit({ id: true });
+
+// SNL types
+export type SnlSource = typeof snlSources.$inferSelect;
+export type InsertSnlSource = z.infer<typeof insertSnlSourceSchema>;
+export type SnlItem = typeof snlItems.$inferSelect;
+export type InsertSnlItem = z.infer<typeof insertSnlItemSchema>;
+export type SnlItemProductivity = typeof snlItemProductivity.$inferSelect;
+export type SnlItemEquipment = typeof snlItemEquipment.$inferSelect;
+export type SnlItemLabour = typeof snlItemLabour.$inferSelect;
+export type SnlItemMaterials = typeof snlItemMaterials.$inferSelect;
+export type SnlBoqMapping = typeof snlBoqMappings.$inferSelect;
+export type SnlMixOverride = typeof snlMixOverrides.$inferSelect;
+
+// Composite SNL types for API
+export type SnlItemFull = SnlItem & {
+  source: Pick<SnlSource, "code" | "name" | "authority" | "year">;
+  productivity: SnlItemProductivity[];
+  equipment: SnlItemEquipment[];
+  labour: SnlItemLabour[];
+  materials: SnlItemMaterials[];
+};
+export type SnlSourceWithCounts = SnlSource & { itemCount: number };
+export type SnlSearchResult = Pick<SnlItem, "id" | "itemCode" | "shortLabel" | "description" | "unit" | "workCategory" | "isMixSpecific" | "hasGradingVariants"> & {
+  sourceName: string;
+  sourceCode: string;
+  shiftOutput: number | null;
+  outputUnit: string | null;
+};
+
+// ============================================
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,

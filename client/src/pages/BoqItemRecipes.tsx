@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Plus, Trash2, Loader2, Wrench, Users, Package, Info, Zap,
   ChevronDown, ChevronUp, CheckSquare, Square, List, Sparkles,
-  Layers, AlertTriangle, CheckCircle2, Settings2,
+  Layers, AlertTriangle, CheckCircle2, Settings2, BookOpen, Search,
+  CheckCircle, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -919,11 +920,244 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
   );
 }
 
+// ─── Map to Norm Modal ──────────────────────────────────────────────────────────
+
+interface SnlSearchResult {
+  id: number;
+  itemCode: string;
+  shortLabel: string;
+  description: string;
+  unit: string;
+  workCategory: string;
+  sourceName: string;
+  sourceCode: string;
+  shiftOutput: number | null;
+  outputUnit: string | null;
+  hasGradingVariants: boolean;
+  isMixSpecific: boolean;
+}
+
+interface SnlMapping {
+  id: number;
+  boqItemId: number;
+  snlItemId: number;
+  projectCategory: string;
+  gradingVariant: string | null;
+  mappedBy: string;
+  mappedAt: string;
+}
+
+const CATEGORY_LABELS = ["LARGE", "MEDIUM", "SMALL"];
+const GRADING_OPTIONS: Record<string, string[]> = {
+  "4.01A": ["Grading I", "Grading II", "Grading III"],
+  "4.14":  ["Grading I", "Grading II", "Grading III", "Grading IV"],
+  "5.04B": ["Grading I", "Grading II"],
+  "5.05":  ["Grading A", "Grading B", "Grading C"],
+};
+
+function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose: () => void }) {
+  const { toast } = useToast();
+  const [q, setQ] = useState("");
+  const [selectedSnlId, setSelectedSnlId] = useState<number | null>(null);
+  const [projectCategory, setProjectCategory] = useState("MEDIUM");
+  const [gradingVariant, setGradingVariant] = useState("");
+
+  const { data: existingMapping } = useQuery<SnlMapping | null>({
+    queryKey: ["/api/snl/mappings", item.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/snl/mappings/${item.id}`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+  });
+
+  const { data: results = [], isFetching } = useQuery<SnlSearchResult[]>({
+    queryKey: ["/api/snl/search", q],
+    queryFn: async () => {
+      const res = await fetch(`/api/snl/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: q.trim().length > 1 || q === "",
+  });
+
+  const selectedItem = results.find(r => r.id === selectedSnlId);
+  const codePrefix = selectedItem?.itemCode?.split(".").slice(0, 2).join(".") ?? "";
+  const gradingOptions = GRADING_OPTIONS[codePrefix] ?? [];
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/snl/mappings/${item.id}/apply`, {
+        snlItemId: selectedSnlId,
+        projectCategory,
+        gradingVariant: gradingVariant || null,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/mappings", item.id] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "equipment"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "labour"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
+      toast({ title: "Norms applied — equipment, labour & materials populated from SNL" });
+      onClose();
+    },
+    onError: () => toast({ title: "Failed to apply norms", variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async () => apiRequest("DELETE", `/api/snl/mappings/${item.id}`, undefined),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/mappings", item.id] });
+      toast({ title: "Norm mapping removed" });
+    },
+    onError: () => toast({ title: "Remove failed", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-teal-600" />
+            Map to Standard Norm
+            <span className="text-xs font-normal text-muted-foreground truncate max-w-[220px]">— {item.description}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto space-y-3">
+          {/* Current mapping banner */}
+          {existingMapping && (
+            <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2">
+              <CheckCircle className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+              <span className="text-xs flex-1 text-teal-700">
+                Currently mapped · SNL item #{existingMapping.snlItemId} · {existingMapping.projectCategory}{existingMapping.gradingVariant ? ` · ${existingMapping.gradingVariant}` : ""}
+              </span>
+              <button
+                onClick={() => removeMutation.mutate()}
+                disabled={removeMutation.isPending}
+                className="text-[10px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
+                data-testid="button-remove-snl-mapping"
+              >
+                {removeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Remove
+              </button>
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              className="pl-8 h-8 text-xs"
+              placeholder="Search by item code or description (e.g. DBM, WMM, embankment)…"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              data-testid="input-norm-search"
+            />
+            {isFetching && <Loader2 className="absolute right-2.5 top-2.5 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          </div>
+
+          {/* Results */}
+          {results.length > 0 && (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {results.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => { setSelectedSnlId(r.id === selectedSnlId ? null : r.id); setGradingVariant(""); }}
+                  className={`w-full text-left rounded-lg border p-2.5 transition-colors ${selectedSnlId === r.id ? "border-teal-500 bg-teal-50/60" : "border-slate-200 hover:border-teal-300 hover:bg-slate-50/50"}`}
+                  data-testid={`norm-result-${r.id}`}
+                >
+                  <div className="flex items-center gap-2 justify-between">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[10px] font-mono font-semibold text-teal-700 shrink-0">{r.itemCode}</span>
+                      <span className="text-xs font-medium truncate">{r.shortLabel}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[9px] text-muted-foreground">{r.sourceCode}</span>
+                      {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
+                    </div>
+                  </div>
+                  {r.shiftOutput && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {q.length > 1 && !isFetching && results.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">No norms found for "{q}".</p>
+          )}
+          {q.length === 0 && results.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">Type to search the norms library (e.g. "WMM", "5.04", "embankment")</p>
+          )}
+
+          {/* Apply options — shown when an item is selected */}
+          {selectedItem && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3 space-y-3">
+              <p className="text-[10px] font-semibold text-teal-700">Apply Options for {selectedItem.itemCode} — {selectedItem.shortLabel}</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[10px]">PROJECT CATEGORY</Label>
+                  <select
+                    value={projectCategory}
+                    onChange={e => setProjectCategory(e.target.value)}
+                    className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 mt-0.5"
+                    data-testid="select-project-category"
+                  >
+                    {CATEGORY_LABELS.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="ALL">ALL (average)</option>
+                  </select>
+                </div>
+
+                {gradingOptions.length > 0 && (
+                  <div>
+                    <Label className="text-[10px]">GRADING VARIANT</Label>
+                    <select
+                      value={gradingVariant}
+                      onChange={e => setGradingVariant(e.target.value)}
+                      className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 mt-0.5"
+                      data-testid="select-grading-variant"
+                    >
+                      <option value="">— None / Default —</option>
+                      {gradingOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-amber-200 bg-amber-50/40 px-2.5 py-1.5">
+                <p className="text-[10px] text-amber-700">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />
+                  Applying will <strong>replace</strong> all current equipment, labour and materials on this item with norms from {selectedItem.sourceCode}.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="pt-2 border-t gap-2">
+          <Button variant="outline" onClick={onClose} size="sm">Cancel</Button>
+          <Button
+            size="sm"
+            disabled={!selectedSnlId || applyMutation.isPending}
+            onClick={() => applyMutation.mutate()}
+            className="bg-teal-600 hover:bg-teal-700 text-white"
+            data-testid="button-apply-norm"
+          >
+            {applyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+            Apply Norms
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Dialog ────────────────────────────────────────────────────────────────
 
 export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCategory; onClose: () => void }) {
   const [tab, setTab] = useState("layer-config");
   const [localLayerConfig, setLocalLayerConfig] = useState<LayerConfig | null>((item.layerConfig as LayerConfig | null) ?? null);
+  const [showMapToNorm, setShowMapToNorm] = useState(false);
 
   const { data: masterList = [] } = useQuery<PlanningEquipTypeMinimal[]>({
     queryKey: ["/api/planning/equipment-types"],
@@ -934,35 +1168,61 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
     queryFn: async () => { const res = await fetch("/api/planning/labour-types", { credentials: "include" }); return res.ok ? res.json() : []; },
   });
 
+  const { data: existingMapping } = useQuery<{ snlItemId: number; projectCategory: string } | null>({
+    queryKey: ["/api/snl/mappings", item.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/snl/mappings/${item.id}`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+  });
+
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-base flex items-center gap-2">
-            <Package className="w-4 h-4 text-teal-600" />
-            Item Recipes — {item.description}
-            <span className="text-xs font-normal text-muted-foreground">({item.unit})</span>
-          </DialogTitle>
-        </DialogHeader>
-        <div className="flex-1 overflow-y-auto">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="mb-3">
-              <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-xs"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
-              <TabsTrigger value="equipment" className="flex items-center gap-1.5 text-xs"><Wrench className="w-3.5 h-3.5" />Equipment</TabsTrigger>
-              <TabsTrigger value="labour" className="flex items-center gap-1.5 text-xs"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
-              <TabsTrigger value="materials" className="flex items-center gap-1.5 text-xs"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
-            </TabsList>
-            <TabsContent value="layer-config"><LayerConfigTab item={item} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
-            <TabsContent value="equipment"><EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} layerConfig={localLayerConfig} /></TabsContent>
-            <TabsContent value="labour"><LabourTab boqItemId={item.id} boqUnit={item.unit} labourTypeList={labourTypeList} /></TabsContent>
-            <TabsContent value="materials"><MaterialsTab boqItemId={item.id} boqUnit={item.unit} projectId={item.boqProjectId} /></TabsContent>
-          </Tabs>
-        </div>
-        <DialogFooter className="pt-2 border-t">
-          <Button variant="outline" onClick={onClose} size="sm">Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      {showMapToNorm && <MapToNormModal item={item} onClose={() => setShowMapToNorm(false)} />}
+      <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <Package className="w-4 h-4 text-teal-600" />
+              Item Recipes — {item.description}
+              <span className="text-xs font-normal text-muted-foreground">({item.unit})</span>
+              {existingMapping && (
+                <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-teal-300 text-teal-700 ml-1">
+                  <BookOpen className="w-2.5 h-2.5 mr-0.5" />SNL
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList className="mb-3">
+                <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-xs"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
+                <TabsTrigger value="equipment" className="flex items-center gap-1.5 text-xs"><Wrench className="w-3.5 h-3.5" />Equipment</TabsTrigger>
+                <TabsTrigger value="labour" className="flex items-center gap-1.5 text-xs"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
+                <TabsTrigger value="materials" className="flex items-center gap-1.5 text-xs"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
+              </TabsList>
+              <TabsContent value="layer-config"><LayerConfigTab item={item} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
+              <TabsContent value="equipment"><EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} layerConfig={localLayerConfig} /></TabsContent>
+              <TabsContent value="labour"><LabourTab boqItemId={item.id} boqUnit={item.unit} labourTypeList={labourTypeList} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={item.id} boqUnit={item.unit} projectId={item.boqProjectId} /></TabsContent>
+            </Tabs>
+          </div>
+          <DialogFooter className="pt-2 border-t flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMapToNorm(true)}
+              className="text-teal-700 border-teal-300 hover:bg-teal-50"
+              data-testid="button-map-to-norm"
+            >
+              <BookOpen className="w-3.5 h-3.5 mr-1" />
+              Map to Norm
+            </Button>
+            <Button variant="outline" onClick={onClose} size="sm">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

@@ -4,7 +4,7 @@ import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
-  RefreshCw, Database, ClipboardList, FileSpreadsheet,
+  RefreshCw, Database, ClipboardList, FileSpreadsheet, BookOpen,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
@@ -90,6 +90,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
     ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+    ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
     { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
   ];
 
