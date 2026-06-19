@@ -377,7 +377,7 @@ function StretchRow({
               opacity: 0.85,
             }}
           >
-            {fmtQty(durationMonths, 1)} mo
+            {Math.round(durationMonths * workingDays)}d
           </div>
         )}
       </div>
