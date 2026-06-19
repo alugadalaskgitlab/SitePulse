@@ -2443,6 +2443,7 @@ export const boqItemMaterials = pgTable("boq_item_materials", {
   isClientSupplied: boolean("is_client_supplied").default(false),
   isAuto: boolean("is_auto").default(false),                   // true = derived from layerConfig
   notes: text("notes"),
+  applicationNote: text("application_note"),                   // e.g. "Dilute 1:1 before spraying"
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({

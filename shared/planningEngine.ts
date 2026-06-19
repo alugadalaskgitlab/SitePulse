@@ -595,7 +595,17 @@ export interface DerivedMaterialRow {
   uom: string;
   qtyPerBoqUnit: number;
   isAuto: true;
+  applicationNote?: string;
 }
+
+/** Standard spray coat application rates (kg/SQM) per MoRTH guidelines */
+export const SPRAY_RATES_KG_M2: Record<string, number> = {
+  "Prime Coat": 0.90,
+  "Tack Coat": 0.30,
+  "Fog Seal": 0.25,
+  "Modified Tack Coat": 0.40,
+  "CRMB Tack Coat": 0.40,
+};
 
 /**
  * Derives material rows from a BOQ item's layer config.
@@ -617,7 +627,12 @@ export function deriveMaterialsFromLayerConfig(
     const coverage = layerConfig.coverageRateKgPerSqm ?? 0;
     const matName = layerConfig.coverageMaterialName?.trim() || "Bitumen Emulsion";
     if (coverage <= 0) return [];
-    return [{ materialName: matName, uom: "MT", qtyPerBoqUnit: coverage / 1000, isAuto: true }];
+    const note = matName.toLowerCase().includes("emulsion")
+      ? "Dilute 1:1 with water before spraying (RS-1 / SS-1)"
+      : matName.toLowerCase().includes("prime")
+      ? "Apply @ 60–70°C; cure for 24 hrs before overlay"
+      : undefined;
+    return [{ materialName: matName, uom: "MT", qtyPerBoqUnit: coverage / 1000, isAuto: true, applicationNote: note }];
   }
 
   if (layerConfig.layerType === "granular") {

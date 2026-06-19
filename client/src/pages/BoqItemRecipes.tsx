@@ -260,6 +260,7 @@ function LayerConfigTab({
         qtyPerBoqUnit: r.qtyPerBoqUnit,
         wastagePct: 0,
         isAuto: true,
+        applicationNote: r.applicationNote ?? null,
         sortOrder: i,
       }));
       await apiRequest("PUT", `/api/boq/items/${item.id}/materials`, { rows: payload });
@@ -786,10 +787,10 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList }: { boqItemId: number; 
 
 // ─── Materials Recipe Tab ───────────────────────────────────────────────────────
 
-interface MatRow { key: string; materialName: string; uom: string; qtyPerBoqUnit: string; notes: string; isAuto: boolean; }
+interface MatRow { key: string; materialName: string; uom: string; qtyPerBoqUnit: string; notes: string; applicationNote: string; isAuto: boolean; }
 
 function makeMatRow(r?: BoqItemMaterialsRow): MatRow {
-  return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", isAuto: r?.isAuto ?? false };
+  return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", applicationNote: r?.applicationNote ?? "", isAuto: r?.isAuto ?? false };
 }
 
 function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; boqUnit: string; projectId: number }) {
@@ -811,7 +812,7 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
     mutationFn: async () => {
       const payload: InsertBoqItemMaterials[] = rows.filter((r) => r.materialName.trim()).map((r, i) => ({
         boqItemId, materialName: r.materialName.trim(), uom: r.uom.trim() || null, qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : 0,
-        notes: r.notes || null, isAuto: r.isAuto, sortOrder: i,
+        notes: r.notes || null, applicationNote: r.applicationNote || null, isAuto: r.isAuto, sortOrder: i,
       }));
       await apiRequest("PUT", `/api/boq/items/${boqItemId}/materials`, { rows: payload });
     },
@@ -860,16 +861,23 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
         <div>
           <p className="text-[9px] font-semibold uppercase tracking-wide text-teal-600 mb-1.5 flex items-center gap-1"><Zap className="w-2.5 h-2.5" /> Auto-derived from Layer Config</p>
           {autoRows.map((row) => (
-            <div key={row.key} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center mb-1.5 opacity-80">
-              <div className="flex items-center gap-1.5">
-                <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-teal-700 border-teal-300 shrink-0">⚙ Auto</Badge>
-                <span className="text-[11px] text-slate-700">{row.materialName}</span>
+            <div key={row.key} className="rounded border border-teal-100 bg-teal-50/30 px-2.5 py-1.5 mb-1.5">
+              <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-teal-700 border-teal-300 shrink-0">⚙ Auto</Badge>
+                  <span className="text-[11px] text-slate-700 truncate">{row.materialName}</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground">{row.uom}</span>
+                <span className="text-[11px] font-mono text-right">{row.qtyPerBoqUnit ? fmtQty(parseFloat(row.qtyPerBoqUnit), 4) : "—"}</span>
+                <button className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} title="Remove auto row" data-testid={`button-remove-auto-mat-${row.key}`}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <span className="text-[11px] text-muted-foreground">{row.uom}</span>
-              <span className="text-[11px] font-mono text-right">{row.qtyPerBoqUnit ? fmtQty(parseFloat(row.qtyPerBoqUnit), 4) : "—"}</span>
-              <button className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} title="Remove auto row" data-testid={`button-remove-auto-mat-${row.key}`}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {row.applicationNote && (
+                <p className="text-[10px] text-blue-600 mt-0.5 flex items-center gap-1">
+                  <Info className="w-3 h-3 shrink-0" />{row.applicationNote}
+                </p>
+              )}
             </div>
           ))}
         </div>
