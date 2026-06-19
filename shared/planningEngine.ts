@@ -598,13 +598,12 @@ export interface DerivedMaterialRow {
   applicationNote?: string;
 }
 
-/** Standard spray coat application rates (kg/SQM) per MoRTH guidelines */
+/** Standard spray coat application rates (kg/SQM) per IRC SP-20 guidelines */
 export const SPRAY_RATES_KG_M2: Record<string, number> = {
-  "Prime Coat": 0.90,
-  "Tack Coat": 0.30,
-  "Fog Seal": 0.25,
-  "Modified Tack Coat": 0.40,
-  "CRMB Tack Coat": 0.40,
+  PC: 0.7,   // Prime Coat
+  TC: 0.2,   // Tack Coat
+  FS: 0.25,  // Fog Seal
+  TC_MOD: 0.35, // Modified / CRMB Tack Coat
 };
 
 /**

@@ -829,7 +829,7 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
     if (rows.some((r) => r.materialName.toLowerCase() === s.materialName.toLowerCase())) {
       toast({ title: "Already in recipe", variant: "destructive" }); return;
     }
-    setRows((prev) => [...prev, { key: Math.random().toString(36).slice(2), materialName: s.materialName, uom: s.uom ?? "", qtyPerBoqUnit: "", notes: "", isAuto: false }]);
+    setRows((prev) => [...prev, { key: Math.random().toString(36).slice(2), materialName: s.materialName, uom: s.uom ?? "", qtyPerBoqUnit: "", notes: "", applicationNote: "", isAuto: false }]);
     setDirty(true);
   }
 
