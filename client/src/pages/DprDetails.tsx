@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { ChevronLeft, Loader2, Printer, Edit, Trash2 } from "lucide-react";
@@ -11,7 +12,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { EquipmentMasterType } from "@shared/schema";
+import type { EquipmentMasterType, Site } from "@shared/schema";
 
 export default function DprDetails() {
   const [, params] = useRoute("/dpr/:id");
@@ -30,6 +31,47 @@ export default function DprDetails() {
       return res.json();
     },
   });
+
+  // BOQ item lookup for progress entries — chain: sites → boq project → items
+  const { data: sites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites"],
+    enabled: !!dpr,
+  });
+
+  const dprSiteId = useMemo(() => {
+    if (!dpr || !sites.length) return null;
+    return sites.find((s) => s.name === dpr.site)?.id ?? null;
+  }, [dpr, sites]);
+
+  const { data: siteBoqProjects = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", { siteId: dprSiteId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects?siteId=${dprSiteId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: dprSiteId != null,
+  });
+
+  const boqProjectId = siteBoqProjects[0]?.id ?? null;
+
+  const { data: siteBoqItems = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", boqProjectId, "items"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${boqProjectId}/items`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: boqProjectId != null,
+  });
+
+  const boqItemMap = useMemo(() => {
+    const map = new Map<number, { itemCode: string | null; description: string }>();
+    for (const item of siteBoqItems) {
+      map.set(item.id, { itemCode: item.itemCode ?? null, description: item.description });
+    }
+    return map;
+  }, [siteBoqItems]);
 
   const cloneMutation = useMutation({
     mutationFn: async () => {
@@ -232,9 +274,22 @@ export default function DprDetails() {
                   return (
                     <TableRow key={i} data-testid={`row-progress-${i}`}>
                       <TableCell className="font-medium">
-                        {item.activity}
-                        {item.boqItemId && (
-                          <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
+                        {item.boqItemId && boqItemMap.has(item.boqItemId) ? (
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            {boqItemMap.get(item.boqItemId)!.itemCode && (
+                              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono text-teal-700 border-teal-300 bg-teal-50 shrink-0">
+                                {boqItemMap.get(item.boqItemId)!.itemCode}
+                              </Badge>
+                            )}
+                            <span>{boqItemMap.get(item.boqItemId)!.description}</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            {item.activity}
+                            {item.boqItemId && (
+                              <Badge variant="outline" className="text-[10px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
+                            )}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
