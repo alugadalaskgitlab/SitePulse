@@ -9392,6 +9392,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/boq/all-items", async (req, res) => {
+    try {
+      const projects = await storage.getBoqProjects();
+      const all: Array<Record<string, unknown>> = [];
+      for (const project of projects) {
+        const items = await storage.getBoqItems(project.id);
+        for (const item of items) {
+          all.push({ ...item, projectId: project.id, projectName: project.name });
+        }
+      }
+      res.json(all);
+    } catch (err) {
+      console.error("GET /api/boq/all-items:", err);
+      res.status(500).json({ error: "Failed to fetch all BOQ items" });
+    }
+  });
+
   app.post("/api/boq/projects/:id/import", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);

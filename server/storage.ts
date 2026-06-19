@@ -20054,14 +20054,21 @@ export class DatabaseStorage implements IStorage {
       actuals = rawActuals.rows as ActualRow[];
     }
 
-    // Planned to date = sum of qty from bars whose startMonth <= currentMonth
+    // Planned to date — fractional-month overlap up to currentMonth.
+    // Mirrors calculateMonthlyDistribution so the two views are always consistent.
     const plannedToDate = new Map<number, number>();
     for (const bar of bars) {
-      const monthsInRange = Math.min(bar.endMonth, currentMonth) - bar.startMonth + 1;
-      if (monthsInRange <= 0) continue;
-      const span = bar.endMonth - bar.startMonth + 1;
-      const qty = (bar.plannedQty / span) * monthsInRange;
-      plannedToDate.set(bar.boqItemId, (plannedToDate.get(bar.boqItemId) ?? 0) + qty);
+      const duration = bar.endMonth - bar.startMonth;
+      if (duration <= 0 || bar.plannedQty <= 0) continue;
+      // Clip bar to [startMonth, currentMonth+1) so the whole of currentMonth is included
+      const effectiveEnd = Math.min(bar.endMonth, currentMonth + 1);
+      if (effectiveEnd <= bar.startMonth) continue;
+      let cumQty = 0;
+      for (let m = Math.floor(bar.startMonth); m < Math.ceil(effectiveEnd); m++) {
+        const overlap = Math.max(0, Math.min(effectiveEnd, m + 1) - Math.max(bar.startMonth, m));
+        if (overlap > 0) cumQty += bar.plannedQty * (overlap / duration);
+      }
+      plannedToDate.set(bar.boqItemId, (plannedToDate.get(bar.boqItemId) ?? 0) + cumQty);
     }
 
     return items.map((item) => {

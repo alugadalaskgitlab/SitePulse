@@ -818,7 +818,7 @@ function MonthlyPlanView({
       for (let m = Math.floor(b.startMonth); m < Math.ceil(b.endMonth); m++) {
         const overlap = Math.max(0, Math.min(b.endMonth, m + 1) - Math.max(b.startMonth, m));
         const qty = b.plannedQty * (overlap / duration);
-        const calMonth = m + 1;
+        const calMonth = m; // m is 1-indexed project month — no +1
         grid[b.boqItemId][calMonth] = (grid[b.boqItemId][calMonth] ?? 0) + qty;
       }
     }

@@ -37,6 +37,7 @@ interface ProgressEntry {
   noSiteWork: boolean;
   noSiteWorkDescription: string;
   personnelIds: number[];
+  boqItemId: number | null;
 }
 
 interface EquipmentEntry {
@@ -175,6 +176,10 @@ export default function SiteEntry() {
   });
   const activeSites = sitesList.filter(s => s.isActive);
 
+  const { data: allBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string; projectId: number; projectName: string }>>({
+    queryKey: ["/api/boq/all-items"],
+  });
+
   // Filter to only active equipment
   const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
 
@@ -207,7 +212,7 @@ export default function SiteEntry() {
   });
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
-    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }
+    { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
@@ -326,7 +331,7 @@ export default function SiteEntry() {
 
   const addRow = (section: 'progress' | 'equipment' | 'labour') => {
     if (section === 'progress') {
-      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [] }]);
+      setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
     } else if (section === 'labour') {
@@ -893,6 +898,32 @@ export default function SiteEntry() {
                       data-testid={`input-progress-qty-${idx}`}
                     />
                   </div>
+                </div>
+              )}
+
+              {!entry.noSiteWork && allBoqItems.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">BOQ Link:</Label>
+                  <Select
+                    value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
+                    onValueChange={(val) => {
+                      const updated = [...progress];
+                      updated[idx].boqItemId = val === "__none__" ? null : parseInt(val);
+                      setProgress(updated);
+                    }}
+                  >
+                    <SelectTrigger className="h-7 text-xs max-w-sm" data-testid={`select-boq-item-${idx}`}>
+                      <SelectValue placeholder="Link to BOQ item (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Not linked —</SelectItem>
+                      {allBoqItems.map(item => (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          {item.itemCode ? `${item.itemCode} · ` : ""}{item.description} ({item.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 

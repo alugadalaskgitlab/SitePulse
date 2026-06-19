@@ -195,8 +195,9 @@ export function calculateMonthlyDistribution(
     const overlap = Math.max(0, Math.min(endMonth, m + 1) - Math.max(startMonth, m));
     if (overlap <= 0) continue;
     const qty = plannedQty * (overlap / duration);
-    if (qty > 0 && m + 1 <= totalMonths) {
-      result.push({ month: m + 1, qty });
+    // m is already the 1-indexed project month — no +1
+    if (qty > 0 && m <= totalMonths) {
+      result.push({ month: m, qty });
     }
   }
 

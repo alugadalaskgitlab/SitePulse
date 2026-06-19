@@ -19,9 +19,15 @@ export default function SiteSuccess() {
           </div>
           
           <h1 className="text-2xl font-bold mb-2">Report Saved Successfully</h1>
-          <p className="text-muted-foreground mb-8">
+          <p className="text-muted-foreground mb-2">
             Your site report has been submitted and saved.
           </p>
+          {reportId && (
+            <div className="inline-flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-full px-4 py-1.5 mb-6">
+              <span className="text-xs text-green-600 dark:text-green-400 font-medium">DPR Reference:</span>
+              <span className="text-sm font-bold text-green-700 dark:text-green-300">#{reportId}</span>
+            </div>
+          )}
           
           <div className="flex flex-col gap-3">
             {reportId && (
