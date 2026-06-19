@@ -34,7 +34,7 @@ import type {
 
 const LEFT_W = 420;  // px left sticky panel
 const MONTH_W = 72;  // px per month column
-const ROW_H = 36;    // px stretch row height
+const ROW_H = 52;    // px stretch row height (extra space for duration label below bar)
 const ITEM_H = 42;   // px item header row height
 const CAT_H = 28;    // px category row height
 
@@ -114,14 +114,14 @@ function StretchRow({
   const [cf, setCf] = useState(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
   const [ct, setCt] = useState(bar.chainageTo != null ? String(bar.chainageTo) : "");
   const [mult, setMult] = useState(initMult);
-  const [startM, setStartM] = useState(String(Math.round(bar.startMonth)));
+  const [startM, setStartM] = useState(String(+(bar.startMonth).toFixed(1)));
 
   // Sync from DB when not dirty
   useEffect(() => {
     if (dirty.current) return;
     setCf(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
     setCt(bar.chainageTo != null ? String(bar.chainageTo) : "");
-    setStartM(String(Math.round(bar.startMonth)));
+    setStartM(String(+(bar.startMonth).toFixed(1)));
     // back-calc mult from updated bar
     const len = (bar.chainageTo ?? 0) - (bar.chainageFrom ?? 0);
     if (len > 0 && bar.plannedQty > 0) {
@@ -134,7 +134,7 @@ function StretchRow({
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
   const multNum = parseFloat(mult);
-  const smNum = parseInt(startM) || 1;
+  const smNum = parseFloat(startM) || 1;
   const validCh = !isNaN(cfNum) && !isNaN(ctNum) && ctNum > cfNum;
 
   // Auto qty from chainage × editable multiplier
@@ -238,33 +238,33 @@ function StretchRow({
           style={{ backgroundColor: isFirst ? "transparent" : color, opacity: 0.5 }}
         />
         {!isFirst && (
-          <span className="text-[9px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
+          <span className="text-[10px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
         )}
 
         {/* Chainage inputs */}
-        <span className="text-[10px] text-slate-400 flex-shrink-0">Ch</span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0">Ch</span>
         <input
           type="number" step="0.001"
           value={cf}
           onChange={e => { dirty.current = true; setCf(e.target.value); }}
           onBlur={save}
-          className="w-[44px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+          className="w-[52px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-cf-${bar.id}`}
         />
-        <span className="text-[10px] text-slate-400 flex-shrink-0">to</span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0">to</span>
         <input
           type="number" step="0.001"
           value={ct}
           onChange={e => { dirty.current = true; setCt(e.target.value); }}
           onBlur={save}
-          className="w-[44px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+          className="w-[52px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-ct-${bar.id}`}
         />
 
         {/* @ multiplier — editable, defaults to boqQty/roadLen */}
-        <span className="text-[10px] text-slate-400 flex-shrink-0">@</span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0">@</span>
         <input
           type="number" step="0.0001" min="0.0001"
           value={mult}
@@ -290,14 +290,14 @@ function StretchRow({
         </span>
 
         {/* Start month input */}
-        <span className="text-[9px] text-slate-400 flex-shrink-0 ml-1">M</span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0 ml-1">M</span>
         <input
-          type="number" min="1" max="120" step="1"
+          type="number" min="0.1" max="120" step="0.1"
           value={startM}
           onChange={e => { dirty.current = true; setStartM(e.target.value); }}
           onBlur={save}
-          className="w-[28px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
-          title="Start month"
+          className="w-[36px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+          title="Start month (decimal OK, e.g. 1.5)"
           data-testid={`input-sm-${bar.id}`}
         />
 
@@ -347,7 +347,7 @@ function StretchRow({
             top: 7,
             left: barLeft,
             width: barWidth,
-            height: 22,
+            height: 24,
             backgroundColor: color,
             opacity: 0.88,
           }}
@@ -355,15 +355,31 @@ function StretchRow({
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
           {barWidth > 30 && (
-            <span className="absolute left-1.5 top-0 bottom-0 flex items-center text-white text-[9px] font-semibold whitespace-nowrap overflow-hidden pointer-events-none leading-none">
+            <span className="absolute left-1.5 top-0 bottom-0 flex items-center text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden pointer-events-none leading-none">
               {barWidth > 110
-                ? `${fmtQty(liveQty, 1)} ${bar.unit} | ${fmtQty(durationMonths, 2)}mo`
+                ? `${fmtQty(liveQty, 1)} ${bar.unit}`
                 : barWidth > 55
                   ? `${fmtQty(liveQty, 1)}`
                   : ""}
             </span>
           )}
         </div>
+
+        {/* Duration label below bar */}
+        {barWidth > 20 && (
+          <div
+            className="absolute text-[11px] font-semibold pointer-events-none select-none whitespace-nowrap overflow-hidden text-center"
+            style={{
+              left: barLeft,
+              width: Math.max(barWidth, 36),
+              top: 33,
+              color: color,
+              opacity: 0.85,
+            }}
+          >
+            {fmtQty(durationMonths, 1)} mo
+          </div>
+        )}
       </div>
     </div>
   );

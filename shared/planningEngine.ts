@@ -497,6 +497,17 @@ export function getUnitConversionFactor(
     return 1 / ((thicknessMm / 1000) * densityTPerCum);
   if (from === "SQM" && to === "MT" && densityTPerCum && thicknessMm)
     return (thicknessMm / 1000) * densityTPerCum;
+  // Hectare ↔ SQM (1 HA = 10,000 SQM)
+  if (from === "HECT" && to === "SQM") return 10000;
+  if (from === "SQM" && to === "HECT") return 1 / 10000;
+  // Hectare ↔ CUM (via thickness)
+  if (from === "HECT" && to === "CUM" && thicknessMm) return 10000 * (thicknessMm / 1000);
+  if (from === "CUM" && to === "HECT" && thicknessMm) return 1 / (10000 * (thicknessMm / 1000));
+  // Hectare ↔ MT (via density + thickness)
+  if (from === "HECT" && to === "MT" && densityTPerCum && thicknessMm)
+    return 10000 * (thicknessMm / 1000) * densityTPerCum;
+  if (from === "MT" && to === "HECT" && densityTPerCum && thicknessMm)
+    return 1 / (10000 * (thicknessMm / 1000) * densityTPerCum);
   return null;
 }
 

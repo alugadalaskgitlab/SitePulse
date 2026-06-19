@@ -64,6 +64,31 @@ describe("getUnitConversionFactor", () => {
   it("returns null for completely incompatible units (KG → KM)", () => {
     expect(getUnitConversionFactor("KG", "KM", { densityTPerCum: 2.35 })).toBeNull();
   });
+
+  it("converts SQM → HA (1 HA = 10,000 SQM)", () => {
+    const factor = getUnitConversionFactor("SQM", "HA", {});
+    expect(factor).toBeCloseTo(1 / 10000, 8);
+  });
+
+  it("converts HA → SQM", () => {
+    const factor = getUnitConversionFactor("HA", "SQM", {});
+    expect(factor).toBe(10000);
+  });
+
+  it("converts HA → CUM using thickness (grader 150mm subgrade)", () => {
+    // 1 HA = 10,000 SQM × 0.15 m = 1500 CUM
+    const factor = getUnitConversionFactor("HA", "CUM", { thicknessMm: 150 });
+    expect(factor).toBeCloseTo(10000 * 0.15, 6);
+  });
+
+  it("converts SQM → HA using Hectare normalisation alias (sqm lowercase)", () => {
+    const factor = getUnitConversionFactor("sqm", "hectare", {});
+    expect(factor).toBeCloseTo(1 / 10000, 8);
+  });
+
+  it("returns null for HA → CUM when thickness is missing", () => {
+    expect(getUnitConversionFactor("HA", "CUM", {})).toBeNull();
+  });
 });
 
 // ─── calculateTipperFleet ────────────────────────────────────────────────────
