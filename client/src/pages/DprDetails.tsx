@@ -40,7 +40,13 @@ export default function DprDetails() {
 
   const dprSiteId = useMemo(() => {
     if (!dpr || !sites.length) return null;
-    return sites.find((s) => s.name === dpr.site)?.id ?? null;
+    // Strip decoration added to site name on edit/clone:
+    // e.g. "SITE NAME – Edited by Admin – 19 Jun 2026 08:00" → "SITE NAME"
+    const baseSite = dpr.site
+      .replace(/\s*[-–—:]\s*(Edited by|Copy by)\s+.*/i, "")
+      .trim()
+      .toUpperCase();
+    return sites.find((s) => s.name.toUpperCase() === baseSite)?.id ?? null;
   }, [dpr, sites]);
 
   const { data: siteBoqProjects = [] } = useQuery<any[]>({
