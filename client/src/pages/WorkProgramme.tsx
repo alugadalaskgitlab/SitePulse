@@ -32,11 +32,13 @@ import type {
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const LEFT_W = 420;  // px left sticky panel
-const MONTH_W = 72;  // px per month column
-const ROW_H = 52;    // px stretch row height (extra space for duration label below bar)
-const ITEM_H = 42;   // px item header row height
-const CAT_H = 28;    // px category row height
+const LEFT_W = 420;       // px left sticky panel
+const MONTH_W_DEFAULT = 110; // px per month column (default, user-resizable)
+const ROW_H = 52;         // px stretch row height (extra space for duration label below bar)
+const ITEM_H = 42;        // px item header row height
+const CAT_H = 28;         // px category row height
+const MIN_COL_W = 55;     // minimum column width when resizing
+const MAX_COL_W = 300;    // maximum column width when resizing
 
 const CAT_COLORS = [
   "#0f766e", "#1d4ed8", "#7c3aed", "#b45309", "#be185d",
@@ -88,12 +90,13 @@ interface StretchRowProps {
   color: string;
   isFirst: boolean;
   totalMonths: number;
+  colW: number;
   onDelete: (id: number) => void;
   onSplit: (bar: WorkProgramBarWithItem) => void;
 }
 
 function StretchRow({
-  bar, item, project, recipesMap, projectId, color, isFirst, totalMonths, onDelete, onSplit,
+  bar, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
 }: StretchRowProps) {
   const { toast } = useToast();
   const dirty = useRef(false);
@@ -215,8 +218,8 @@ function StretchRow({
   const liveStart = smNum;
   const liveEnd = autoEnd ?? bar.endMonth;
   const liveQty = autoQty ?? bar.plannedQty;
-  const barLeft = Math.max(0, (liveStart - 1) * MONTH_W);
-  const barWidth = Math.max(4, (liveEnd - liveStart) * MONTH_W);
+  const barLeft = Math.max(0, (liveStart - 1) * colW);
+  const barWidth = Math.max(4, (liveEnd - liveStart) * colW);
   const durationMonths = liveEnd - liveStart;
 
   return (
@@ -328,7 +331,7 @@ function StretchRow({
 
       {/* ── Right: Gantt cells ── */}
       <div
-        style={{ width: totalMonths * MONTH_W, minWidth: totalMonths * MONTH_W, position: "relative", flexShrink: 0 }}
+        style={{ width: totalMonths * colW, minWidth: totalMonths * colW, position: "relative", flexShrink: 0 }}
         className="bg-slate-50/20 dark:bg-slate-900/10"
       >
         {/* Month column grid lines */}
@@ -336,7 +339,7 @@ function StretchRow({
           <div
             key={i}
             className="absolute top-0 bottom-0 border-r border-slate-100 dark:border-slate-800"
-            style={{ left: i * MONTH_W, width: MONTH_W }}
+            style={{ left: i * colW, width: colW }}
           />
         ))}
 
@@ -405,6 +408,29 @@ function InlineGanttTable({
   const roadLen = project.roadLengthKm ?? 0;
   const workingDays = project.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
   const workingHrs = project.workingHoursPerDay ?? WORKING_HRS_DEFAULT;
+
+  // ── Resizable column width ─────────────────────────────────────────────────
+  const [colW, setColW] = useState(MONTH_W_DEFAULT);
+  const resizeDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeDragRef.current = { startX: e.clientX, startW: colW };
+
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeDragRef.current) return;
+      const dx = ev.clientX - resizeDragRef.current.startX;
+      setColW(Math.min(MAX_COL_W, Math.max(MIN_COL_W, resizeDragRef.current.startW + dx)));
+    };
+    const onUp = () => {
+      resizeDragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [colW]);
 
   const [deleteBarId, setDeleteBarId] = useState<number | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
@@ -555,7 +581,7 @@ function InlineGanttTable({
     });
   }
 
-  const totalRightW = totalMonths * MONTH_W;
+  const totalRightW = totalMonths * colW;
 
   return (
     <div className="rounded-xl border overflow-hidden bg-white dark:bg-gray-950">
@@ -573,6 +599,9 @@ function InlineGanttTable({
             <span className="text-[11px] font-bold uppercase tracking-wider text-white">
               BOQ Item / Stretch
             </span>
+            <span className="ml-auto text-[9px] text-white/50 font-normal normal-case tracking-normal">
+              Drag month edge to resize
+            </span>
           </div>
           {/* Month headers */}
           <div
@@ -581,10 +610,16 @@ function InlineGanttTable({
             {monthHeaders.map(m => (
               <div
                 key={m.num}
-                style={{ width: MONTH_W, minWidth: MONTH_W }}
-                className="flex items-center justify-center text-[10px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0"
+                style={{ width: colW, minWidth: colW }}
+                className="relative flex items-center justify-center text-[10px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none"
               >
                 {m.label}
+                {/* Drag-to-resize handle — right edge of every month header */}
+                <div
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/25 active:bg-white/40 z-10"
+                  onMouseDown={handleResizeStart}
+                  title="Drag to resize month columns"
+                />
               </div>
             ))}
           </div>
@@ -678,7 +713,7 @@ function InlineGanttTable({
                         {monthHeaders.map(m => (
                           <div
                             key={m.num}
-                            style={{ width: MONTH_W, minWidth: MONTH_W }}
+                            style={{ width: colW, minWidth: colW }}
                             onClick={() => addStretch(item.id, m.num)}
                             className="flex-shrink-0 border-r border-slate-100 dark:border-slate-800 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 cursor-pointer transition-colors"
                             title={`Add stretch starting at ${m.label}`}
@@ -700,6 +735,7 @@ function InlineGanttTable({
                         color={color}
                         isFirst={i === 0}
                         totalMonths={totalMonths}
+                        colW={colW}
                         onDelete={setDeleteBarId}
                         onSplit={bar => splitMutation.mutate(bar)}
                       />
