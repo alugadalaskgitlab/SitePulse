@@ -185,6 +185,8 @@ function EquipmentTable({
   project: BoqProject;
 }) {
   const equip = demand.equipment;
+  const [expandedEq, setExpandedEq] = useState<string | null>(null);
+
   if (!equip.length) return <EmptyState label="No equipment demand. Configure equipment recipes on BOQ items first." />;
 
   const allMonths = useMemo(() => {
@@ -193,47 +195,90 @@ function EquipmentTable({
     return [...ms].sort((a, b) => a - b);
   }, [equip]);
 
+  const colSpan = 2 + allMonths.length + 1;
+
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
+      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Equipment</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Count</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Equipment</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
                 {monthLabel(m, project.startDate)}
               </th>
             ))}
-            <th className="px-3 py-2 font-semibold text-white text-right min-w-[100px]">Total (hrs)</th>
+            <th className="px-3 py-2 font-semibold text-white text-right min-w-[110px]">Total</th>
           </tr>
         </thead>
         <tbody>
-          {equip.map((row) => (
-            <tr key={row.equipmentName} className="border-b border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">
-                {row.equipmentName}
-                {row.count > 1 && (
-                  <span className="ml-1 text-[10px] text-teal-600 font-mono">×{row.count}</span>
-                )}
-              </td>
-              <td className="px-2 py-2 text-right text-muted-foreground">{row.count}</td>
-              {allMonths.map((m) => {
-                const val = row.monthlyHours[m] ?? 0;
-                return (
-                  <td
-                    key={m}
-                    className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-blue-700 font-semibold bg-blue-50/50" : "text-slate-300"}`}
-                  >
-                    {val > 0 ? fmtQty(val, 1) : "—"}
+          {equip.map((row) => {
+            const isExpanded = expandedEq === row.equipmentName;
+            return (
+              <Fragment key={row.equipmentName}>
+                <tr
+                  className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
+                  onClick={() => setExpandedEq(isExpanded ? null : row.equipmentName)}
+                  data-testid={`eq-row-${row.equipmentName}`}
+                >
+                  <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-blue-50" : "bg-white"}`}>
+                    <div className="flex items-center gap-1.5">
+                      {isExpanded
+                        ? <ChevronUp className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                        : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      }
+                      <span className="font-medium text-slate-700">{row.equipmentName}</span>
+                    </div>
                   </td>
-                );
-              })}
-              <td className="px-3 py-2 text-right font-semibold font-mono text-blue-800">
-                {fmtQty(row.totalHours, 1)} hrs
-              </td>
-            </tr>
-          ))}
+                  <td className="px-2 py-2 text-right text-muted-foreground">hr</td>
+                  {allMonths.map((m) => {
+                    const val = row.monthlyHours[m] ?? 0;
+                    return (
+                      <td
+                        key={m}
+                        className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-blue-700 font-semibold bg-blue-50/50" : "text-slate-300"}`}
+                      >
+                        {val > 0 ? fmtQty(val, 1) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-right font-semibold font-mono text-blue-800">
+                    {fmtQty(row.totalHours, 1)} hr
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${row.equipmentName}__drill`} className="bg-blue-50/40">
+                    <td colSpan={colSpan} className="px-4 py-2">
+                      <p className="text-[10px] font-semibold text-blue-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: hr/unit × work qty = hours</p>
+                      <div className="rounded-lg border border-blue-100 bg-white overflow-hidden">
+                        <table className="text-[11px] w-full border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">hr/Unit</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Hours</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.breakdown.map((b, i) => (
+                              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate">{b.itemDescription}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.hrsPerUnit, 4)}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-blue-700">{fmtQty(b.lineHours, 1)} hr</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -250,6 +295,8 @@ function LabourTable({
   project: BoqProject;
 }) {
   const lab = demand.labour;
+  const [expandedLab, setExpandedLab] = useState<string | null>(null);
+
   if (!lab.length) return <EmptyState label="No labour demand. Configure labour recipes on BOQ items first." />;
 
   const allMonths = useMemo(() => {
@@ -258,40 +305,90 @@ function LabourTable({
     return [...ms].sort((a, b) => a - b);
   }, [lab]);
 
+  const colSpan = 2 + allMonths.length + 1;
+
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
+      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Labour Category</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour Category</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
                 {monthLabel(m, project.startDate)}
               </th>
             ))}
-            <th className="px-3 py-2 font-semibold text-white text-right min-w-[100px]">Total (days)</th>
+            <th className="px-3 py-2 font-semibold text-white text-right min-w-[110px]">Total</th>
           </tr>
         </thead>
         <tbody>
-          {lab.map((row) => (
-            <tr key={row.designation} className="border-b border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white z-10">{row.designation}</td>
-              {allMonths.map((m) => {
-                const val = row.monthlyDays[m] ?? 0;
-                return (
-                  <td
-                    key={m}
-                    className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-purple-700 font-semibold bg-purple-50/50" : "text-slate-300"}`}
-                  >
-                    {val > 0 ? fmtQty(val, 1) : "—"}
+          {lab.map((row) => {
+            const isExpanded = expandedLab === row.designation;
+            return (
+              <Fragment key={row.designation}>
+                <tr
+                  className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-purple-50/60" : "hover:bg-slate-50"}`}
+                  onClick={() => setExpandedLab(isExpanded ? null : row.designation)}
+                  data-testid={`lab-row-${row.designation}`}
+                >
+                  <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-purple-50" : "bg-white"}`}>
+                    <div className="flex items-center gap-1.5">
+                      {isExpanded
+                        ? <ChevronUp className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                        : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      }
+                      <span className="font-medium text-slate-700">{row.designation}</span>
+                    </div>
                   </td>
-                );
-              })}
-              <td className="px-3 py-2 text-right font-semibold font-mono text-purple-800">
-                {fmtQty(row.totalDays, 1)} days
-              </td>
-            </tr>
-          ))}
+                  <td className="px-2 py-2 text-right text-muted-foreground">day</td>
+                  {allMonths.map((m) => {
+                    const val = row.monthlyDays[m] ?? 0;
+                    return (
+                      <td
+                        key={m}
+                        className={`px-2 py-2 text-right font-mono ${val > 0 ? "text-purple-700 font-semibold bg-purple-50/50" : "text-slate-300"}`}
+                      >
+                        {val > 0 ? fmtQty(val, 1) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-right font-semibold font-mono text-purple-800">
+                    {fmtQty(row.totalDays, 1)} day
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${row.designation}__drill`} className="bg-purple-50/40">
+                    <td colSpan={colSpan} className="px-4 py-2">
+                      <p className="text-[10px] font-semibold text-purple-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: day/unit × work qty = days</p>
+                      <div className="rounded-lg border border-purple-100 bg-white overflow-hidden">
+                        <table className="text-[11px] w-full border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">day/Unit</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Days</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.breakdown.map((b, i) => (
+                              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-purple-50/30">
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate">{b.itemDescription}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.daysPerUnit, 4)}</td>
+                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-purple-700">{fmtQty(b.lineDays, 1)} day</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -305,15 +402,26 @@ interface ItemDemandRow {
   itemCode?: string | null;
   unit: string;
   workQty: number;
-  materials: Array<{ name: string; uom: string; qty: number }>;
-  equipment: Array<{ name: string; hours: number }>;
-  labour: Array<{ name: string; days: number }>;
+  isProgrammed: boolean;
+  materials: Array<{ name: string; uom: string; qty: number; qtyPerUnit: number }>;
+  equipment: Array<{ name: string; hours: number; hrsPerUnit: number }>;
+  labour: Array<{ name: string; days: number; daysPerUnit: number }>;
 }
 
-function computeItemDemand(demand: BomDemand): ItemDemandRow[] {
+function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<string>): ItemDemandRow[] {
   const map = new Map<string, ItemDemandRow>();
-  const get = (desc: string, itemCode?: string | null, unit = "", workQty = 0): ItemDemandRow => {
-    if (!map.has(desc)) map.set(desc, { description: desc, itemCode, unit, workQty, materials: [], equipment: [], labour: [] });
+  const get = (desc: string): ItemDemandRow => {
+    if (!map.has(desc)) {
+      map.set(desc, {
+        description: desc,
+        unit: "",
+        workQty: 0,
+        isProgrammed: !unprogrammedDescriptions.has(desc),
+        materials: [],
+        equipment: [],
+        labour: [],
+      });
+    }
     return map.get(desc)!;
   };
   for (const mat of demand.materials) {
@@ -321,29 +429,32 @@ function computeItemDemand(demand: BomDemand): ItemDemandRow[] {
       const row = get(bd.itemDescription);
       row.workQty = Math.max(row.workQty, bd.workQty);
       const ex = row.materials.find(m => m.name === mat.materialName);
-      if (ex) ex.qty += bd.lineQty; else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty });
+      if (ex) { ex.qty += bd.lineQty; }
+      else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty, qtyPerUnit: bd.qtyPerUnit });
     }
   }
   for (const eq of demand.equipment) {
     for (const bd of eq.breakdown) {
       const row = get(bd.itemDescription);
       const ex = row.equipment.find(e => e.name === eq.equipmentName);
-      if (ex) ex.hours += bd.lineHours; else row.equipment.push({ name: eq.equipmentName, hours: bd.lineHours });
+      if (ex) { ex.hours += bd.lineHours; }
+      else row.equipment.push({ name: eq.equipmentName, hours: bd.lineHours, hrsPerUnit: bd.hrsPerUnit });
     }
   }
   for (const lb of demand.labour) {
     for (const bd of lb.breakdown) {
       const row = get(bd.itemDescription);
       const ex = row.labour.find(l => l.name === lb.designation);
-      if (ex) ex.days += bd.lineDays; else row.labour.push({ name: lb.designation, days: bd.lineDays });
+      if (ex) { ex.days += bd.lineDays; }
+      else row.labour.push({ name: lb.designation, days: bd.lineDays, daysPerUnit: bd.daysPerUnit });
     }
   }
   return [...map.values()];
 }
 
-function ItemWiseTable({ demand }: { demand: BomDemand }) {
+function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand; unprogrammedDescriptions: Set<string> }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const rows = useMemo(() => computeItemDemand(demand), [demand]);
+  const rows = useMemo(() => computeItemDemand(demand, unprogrammedDescriptions), [demand, unprogrammedDescriptions]);
 
   if (!rows.length) return <EmptyState label="No item demand. Add recipes and work programme bars first." />;
 
@@ -355,112 +466,145 @@ function ItemWiseTable({ demand }: { demand: BomDemand }) {
     });
   };
 
-  return (
-    <div className="space-y-2">
-      {rows.map(row => {
-        const open = expanded.has(row.description);
-        const totalRes = row.materials.length + row.equipment.length + row.labour.length;
-        return (
-          <div key={row.description} className="rounded-xl border overflow-hidden">
-            <div
-              className={`flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors ${open ? "bg-slate-100 dark:bg-slate-800" : "bg-white dark:bg-gray-950 hover:bg-slate-50 dark:hover:bg-slate-900"}`}
-              onClick={() => toggle(row.description)}
-            >
-              {open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                  {row.itemCode ? <span className="font-mono text-[10px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
-                  {row.description}
-                </span>
-              </div>
-              <span className="text-[11px] font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
-                {fmtQty(row.workQty, 1)} {row.unit}
+  const programmed = rows.filter(r => r.isProgrammed);
+  const unprogrammed = rows.filter(r => !r.isProgrammed);
+
+  const renderRows = (rowList: ItemDemandRow[]) => rowList.map(row => {
+    const open = expanded.has(row.description);
+    const totalRes = row.materials.length + row.equipment.length + row.labour.length;
+    return (
+      <div key={row.description} className="rounded-xl border overflow-hidden">
+        <div
+          className={`flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors ${open ? "bg-slate-100" : "bg-white hover:bg-slate-50"}`}
+          onClick={() => toggle(row.description)}
+        >
+          {open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-semibold text-slate-700 truncate">
+              {row.itemCode ? <span className="font-mono text-[10px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
+              {row.description}
+            </span>
+          </div>
+          <span className="text-[11px] font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
+            {fmtQty(row.workQty, 1)} {row.unit || "unit"}
+          </span>
+          <div className="flex gap-1 flex-shrink-0">
+            {row.materials.length > 0 && (
+              <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                <Package className="w-2.5 h-2.5" />{row.materials.length}
               </span>
-              <div className="flex gap-1 flex-shrink-0">
-                {row.materials.length > 0 && (
-                  <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
-                    <Package className="w-2.5 h-2.5" />{row.materials.length}
-                  </span>
-                )}
-                {row.equipment.length > 0 && (
-                  <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
-                    <Wrench className="w-2.5 h-2.5" />{row.equipment.length}
-                  </span>
-                )}
-                {row.labour.length > 0 && (
-                  <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
-                    <Users className="w-2.5 h-2.5" />{row.labour.length}
-                  </span>
-                )}
-                {totalRes === 0 && <span className="text-[10px] text-muted-foreground">no recipes</span>}
+            )}
+            {row.equipment.length > 0 && (
+              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                <Wrench className="w-2.5 h-2.5" />{row.equipment.length}
+              </span>
+            )}
+            {row.labour.length > 0 && (
+              <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                <Users className="w-2.5 h-2.5" />{row.labour.length}
+              </span>
+            )}
+            {totalRes === 0 && <span className="text-[10px] text-muted-foreground">no recipes</span>}
+          </div>
+        </div>
+        {open && (
+          <div className="border-t px-3 py-2 space-y-3 bg-white">
+            {row.materials.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-teal-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Package className="w-3 h-3" /> Materials
+                </p>
+                <table className="w-full text-[11px]">
+                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                    <th className="text-left py-0.5 font-medium">Material</th>
+                    <th className="text-right py-0.5 font-medium">Rate/Unit</th>
+                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Total</th>
+                    <th className="text-right py-0.5 font-medium">UOM</th>
+                  </tr></thead>
+                  <tbody>{row.materials.map(m => (
+                    <tr key={m.name} className="border-b border-slate-50">
+                      <td className="py-1 text-slate-700">{m.name}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(m.qtyPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono font-semibold text-teal-700">{fmtQty(m.qty, 2)}</td>
+                      <td className="py-1 text-right text-muted-foreground">{m.uom}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </div>
-            </div>
-            {open && (
-              <div className="border-t px-3 py-2 space-y-2 bg-white dark:bg-gray-950">
-                {row.materials.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-semibold text-teal-700 uppercase tracking-wide mb-1 flex items-center gap-1">
-                      <Package className="w-3 h-3" /> Materials
-                    </p>
-                    <table className="w-full text-[11px]">
-                      <thead><tr className="text-[10px] text-muted-foreground border-b">
-                        <th className="text-left py-0.5 font-medium">Material</th>
-                        <th className="text-right py-0.5 font-medium">Qty</th>
-                        <th className="text-right py-0.5 font-medium">UOM</th>
-                      </tr></thead>
-                      <tbody>{row.materials.map(m => (
-                        <tr key={m.name} className="border-b border-slate-50">
-                          <td className="py-1 text-slate-700">{m.name}</td>
-                          <td className="py-1 text-right font-mono font-semibold text-teal-700">{fmtQty(m.qty, 2)}</td>
-                          <td className="py-1 text-right text-muted-foreground">{m.uom}</td>
-                        </tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                )}
-                {row.equipment.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1 flex items-center gap-1">
-                      <Wrench className="w-3 h-3" /> Equipment
-                    </p>
-                    <table className="w-full text-[11px]">
-                      <thead><tr className="text-[10px] text-muted-foreground border-b">
-                        <th className="text-left py-0.5 font-medium">Equipment</th>
-                        <th className="text-right py-0.5 font-medium">Hours</th>
-                      </tr></thead>
-                      <tbody>{row.equipment.map(e => (
-                        <tr key={e.name} className="border-b border-slate-50">
-                          <td className="py-1 text-slate-700">{e.name}</td>
-                          <td className="py-1 text-right font-mono font-semibold text-blue-700">{fmtQty(e.hours, 1)} hrs</td>
-                        </tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                )}
-                {row.labour.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-semibold text-purple-700 uppercase tracking-wide mb-1 flex items-center gap-1">
-                      <Users className="w-3 h-3" /> Labour
-                    </p>
-                    <table className="w-full text-[11px]">
-                      <thead><tr className="text-[10px] text-muted-foreground border-b">
-                        <th className="text-left py-0.5 font-medium">Category</th>
-                        <th className="text-right py-0.5 font-medium">Days</th>
-                      </tr></thead>
-                      <tbody>{row.labour.map(l => (
-                        <tr key={l.name} className="border-b border-slate-50">
-                          <td className="py-1 text-slate-700">{l.name}</td>
-                          <td className="py-1 text-right font-mono font-semibold text-purple-700">{fmtQty(l.days, 1)} days</td>
-                        </tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                )}
+            )}
+            {row.equipment.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Wrench className="w-3 h-3" /> Equipment
+                </p>
+                <table className="w-full text-[11px]">
+                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                    <th className="text-left py-0.5 font-medium">Equipment</th>
+                    <th className="text-right py-0.5 font-medium">hr/Unit</th>
+                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Total hrs</th>
+                  </tr></thead>
+                  <tbody>{row.equipment.map(e => (
+                    <tr key={e.name} className="border-b border-slate-50">
+                      <td className="py-1 text-slate-700">{e.name}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(e.hrsPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono font-semibold text-blue-700">{fmtQty(e.hours, 1)} hr</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {row.labour.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-purple-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Users className="w-3 h-3" /> Labour
+                </p>
+                <table className="w-full text-[11px]">
+                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                    <th className="text-left py-0.5 font-medium">Category</th>
+                    <th className="text-right py-0.5 font-medium">day/Unit</th>
+                    <th className="text-right py-0.5 font-medium">Work Qty</th>
+                    <th className="text-right py-0.5 font-medium">Total days</th>
+                  </tr></thead>
+                  <tbody>{row.labour.map(l => (
+                    <tr key={l.name} className="border-b border-slate-50">
+                      <td className="py-1 text-slate-700">{l.name}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(l.daysPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono font-semibold text-purple-700">{fmtQty(l.days, 1)} day</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </div>
             )}
           </div>
-        );
-      })}
+        )}
+      </div>
+    );
+  });
+
+  return (
+    <div className="space-y-3">
+      {programmed.length > 0 && (
+        <div className="space-y-2">
+          {renderRows(programmed)}
+        </div>
+      )}
+      {unprogrammed.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+            <p className="text-[11px] text-amber-800">
+              <span className="font-semibold">Not programmed ({unprogrammed.length} item{unprogrammed.length > 1 ? "s" : ""}):</span>{" "}
+              demand calculated from full BOQ quantity. Add work programme bars to distribute across months.
+            </p>
+          </div>
+          {renderRows(unprogrammed)}
+        </div>
+      )}
     </div>
   );
 }
@@ -617,7 +761,12 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId),
   });
 
-  const { data: bomData, isLoading } = useQuery<{ items: BomInputItem[]; bars: BomInputBar[]; roadLengthKm: number }>({
+  const { data: bomData, isLoading } = useQuery<{
+    items: BomInputItem[];
+    bars: BomInputBar[];
+    roadLengthKm: number;
+    unprogrammedItemIds?: number[];
+  }>({
     queryKey: ["/api/boq/projects", projectId, "bom"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/bom`, { credentials: "include" });
@@ -640,9 +789,21 @@ export default function WorkDemand() {
   const demand = useMemo((): BomDemand | null => {
     if (!bomData || !project) return null;
     const { items, bars } = bomData;
-    if (!items.length || !bars.length) return null;
-    return calculateBomDemand(items, bars, project.totalMonths ?? 12);
+    if (!items.length) return null;
+    // Allow demand even with no bars — items without bars use their currentQty
+    return calculateBomDemand(items, bars ?? [], project.totalMonths ?? 12);
   }, [bomData, project]);
+
+  // Build set of descriptions for items that have no programme bars
+  const unprogrammedDescriptions = useMemo((): Set<string> => {
+    if (!bomData?.unprogrammedItemIds?.length || !bomData.items.length) return new Set();
+    const unprogrammedIds = new Set(bomData.unprogrammedItemIds);
+    const descs = new Set<string>();
+    for (const item of bomData.items) {
+      if (unprogrammedIds.has(item.id)) descs.add(item.description);
+    }
+    return descs;
+  }, [bomData]);
 
   const shortageAlertCount = shortageData?.rows.filter(r => r.shortfall > 0).length ?? 0;
 
@@ -816,7 +977,7 @@ export default function WorkDemand() {
 
             <TabsContent value="by-item" className="mt-3">
               <SectionHeader icon={LayoutList} title="Demand by BOQ Item" />
-              <ItemWiseTable demand={demand} />
+              <ItemWiseTable demand={demand} unprogrammedDescriptions={unprogrammedDescriptions} />
             </TabsContent>
 
             <TabsContent value="procurement" className="mt-3">

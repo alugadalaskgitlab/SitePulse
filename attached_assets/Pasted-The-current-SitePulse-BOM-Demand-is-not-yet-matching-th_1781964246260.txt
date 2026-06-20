@@ -1,0 +1,130 @@
+The current SitePulse BOM & Demand is not yet matching the Road Estimator Bill of Materials behaviour.
+
+Please stop doing small patches and implement Road Estimator parity for BOM & Demand.
+
+Reference behaviour:
+
+Road Estimator Bill of Materials:
+
+* builds material, equipment and labour demand from every work item
+* if Work Programme/Gantt bars exist, uses each bar/stretch quantity
+* groups resources by material/equipment/labour
+* shows expandable source BOQ item lines
+* shows formula: qty per unit × work qty = total demand
+* supports total and monthly views
+* shows individual material components, aggregate fractions, bitumen, diesel, LDO, equipment hours and labour days
+
+Required SitePulse behaviour:
+
+### 1. Rebuild BOM & Demand from programmed bars
+
+For every Work Programme bar/stretch:
+BOQ item
+→ stretch qty
+→ mapped SNL norm / project recipe / mix template
+→ material demand
+→ equipment demand
+→ labour demand
+→ month-wise distribution
+
+If an item has no programme bar, show it under “Unprogrammed / Not Planned Yet” instead of silently excluding it.
+
+### 2. Materials must expand fully
+
+Do not show only generic “Aggregate”.
+
+For DBM/BC/WMM/GSB and similar items, show the actual material components:
+
+* aggregate fractions such as 40mm, 20mm, 10mm, 6mm, dust
+* bitumen
+* emulsion
+* filler
+* cement
+* sand
+* steel
+* water
+* diesel/HSD
+* LDO/process fuel
+* any other mapped material
+
+For mix-specific items, use project mix templates/JMF material coefficients where available. Use SNL material defaults only as fallback.
+
+### 3. Equipment demand
+
+Do not show “Count = 1” as the main demand. That is misleading.
+
+For now, equipment demand should be in hours:
+equipment hrs/unit × programmed work qty = required equipment hours.
+
+Show:
+
+* equipment name
+* unit = hr
+* month-wise hours
+* total hours
+* source BOQ item breakdown
+* formula line for each source item
+
+Equipment physical count/readiness will be handled later, not now.
+
+### 4. Labour demand
+
+Labour demand should be in mandays/days:
+labour days/unit × programmed work qty = required labour days.
+
+Show:
+
+* labour category/designation
+* unit = day
+* month-wise days
+* total days
+* source BOQ item breakdown
+* formula line for each source item
+
+### 5. Monthly view
+
+Add Road Estimator-style monthly view for each section:
+
+Material:
+Item | Unit | M1 Qty | M2 Qty | M3 Qty | Total
+
+Equipment:
+Item | Unit(hr) | M1 Hours | M2 Hours | M3 Hours | Total Hours
+
+Labour:
+Item | Unit(day) | M1 Days | M2 Days | M3 Days | Total Days
+
+Monthly distribution must use the Work Programme bar overlap logic, not just item totals.
+
+### 6. By Item view
+
+By Item view should show each BOQ item and all its derived:
+
+* materials
+* equipment
+* labour
+
+with quantities and formulas.
+
+### 7. Procurement tab
+
+Procurement shortage logic should use the expanded material demand list, not generic rolled-up “Aggregate”.
+
+Compare current stock against each material:
+
+* bitumen
+* emulsion
+* aggregate fractions
+* cement
+* steel
+* diesel
+* LDO
+* etc.
+
+Do not disturb existing manual IRN/PI flows.
+
+### 8. Remove misleading count display
+
+Remove or de-emphasise the current equipment “Count = 1” column unless it represents actual required machine count. For now, show hours only.
+
+Please compare with Road Estimator BillOfMaterials.js and port/adapt the same BOM grouping and monthly distribution logic into SitePulse, excluding costs/rates/GST/profit.

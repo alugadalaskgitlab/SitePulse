@@ -16,7 +16,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, type LayerConfig } from "@shared/planningEngine";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9677,11 +9677,91 @@ export async function registerRoutes(
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
-      const items = await storage.getBoqItemsWithRecipes(parseInt(req.params.id));
-      const bars = await storage.getWorkProgramBars(parseInt(req.params.id));
-      const project = await storage.getBoqProject(parseInt(req.params.id));
-      // Return raw data — client computes BOM using planningEngine
-      res.json({ items, bars, roadLengthKm: project?.roadLengthKm ?? 0 });
+      const projectId = parseInt(req.params.id);
+      const [items, bars, project, allMaterials] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getWorkProgramBars(projectId),
+        storage.getBoqProject(projectId),
+        storage.getPlantMaterials(), // for mix template component name resolution
+      ]);
+
+      // Build materialId → name map for resolving mix template component names
+      const matNameById = new Map(allMaterials.map(m => [m.id, m.name]));
+
+      // Collect unique mix template IDs referenced by layerConfigs
+      const mixTemplateIds = new Set<number>();
+      for (const item of items) {
+        const lc = (item as any).layerConfig as LayerConfig | null;
+        if (lc?.mixTemplateId) mixTemplateIds.add(Number(lc.mixTemplateId));
+      }
+
+      // Fetch mix template data and resolve component material names in parallel
+      const mixTemplateMap = new Map<number, {
+        bitumenPercent: number | null;
+        components: Array<{ materialName: string; percent: number | null }>;
+      }>();
+      await Promise.all([...mixTemplateIds].map(async (mtId) => {
+        const mt = await storage.getMixTemplateWithComponents(mtId);
+        if (mt) {
+          mixTemplateMap.set(mtId, {
+            bitumenPercent: mt.template.bitumenPercent ?? null,
+            components: mt.components.map(c => ({
+              materialName: matNameById.get(c.materialId) ?? `Material #${c.materialId}`,
+              percent: c.percent ?? null,
+            })),
+          });
+        }
+      }));
+
+      const barItemIds = new Set(bars.map(b => b.boqItemId));
+
+      // For each item, resolve the best possible material list:
+      //   Priority 1 — manual (non-auto) recipe rows entered by user
+      //   Priority 2 — layerConfig derivation (gives detailed fractions e.g. bitumen%, 20mm, 10mm, dust)
+      //   Priority 3 — existing auto rows as-is (from SNL mappings or earlier auto-derivation)
+      const expandedItems = items.map(item => {
+        const lc = (item as any).layerConfig as LayerConfig | null;
+        const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
+
+        if (manualMaterials.length > 0) {
+          // User has manually specified materials — trust those
+          return { ...item, materials: manualMaterials, isProgrammed: barItemIds.has(item.id) };
+        }
+
+        // Try layerConfig expansion for richer component breakdown
+        if (lc && lc.layerType && lc.layerType !== "none") {
+          const mixTemplate = lc.mixTemplateId ? mixTemplateMap.get(Number(lc.mixTemplateId)) : null;
+          const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
+          if (derived.length > 0) {
+            return {
+              ...item,
+              materials: derived.map(dm => ({
+                id: 0,
+                boqItemId: item.id,
+                materialName: dm.materialName,
+                uom: dm.uom,
+                qtyPerBoqUnit: dm.qtyPerBoqUnit,
+                wastagePct: 0,
+                isClientSupplied: false,
+                isAuto: true as const,
+                sortOrder: 0,
+                createdAt: null,
+              })),
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+        }
+
+        // Fallback: keep existing auto rows unchanged
+        return { ...item, isProgrammed: barItemIds.has(item.id) };
+      });
+
+      res.json({
+        items: expandedItems,
+        bars,
+        roadLengthKm: project?.roadLengthKm ?? 0,
+        unprogrammedItemIds: items.filter(it => !barItemIds.has(it.id)).map(it => it.id),
+      });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);
       res.status(500).json({ error: "Failed to fetch BOM data" });
