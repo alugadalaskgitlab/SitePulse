@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+.pi-dashboard {
+  --pi-bg: 224 71% 4%;
+  --pi-surface: 224 71% 8%;
+  --pi-border: 224 71% 15%;
+  --pi-text: 210 40% 98%;
+  --pi-muted: 215 20.2% 65.1%;
+  
+  --pi-accent: 43 96% 58%; /* Gold/amber */
+  --pi-accent-bg: 43 96% 58% / 0.1;
+  --pi-accent-fg: 24 9.8% 10%;
+  
+  --pi-success: 142 71% 45%;
+  --pi-warning: 43 96% 58%;
+  --pi-danger: 0 84% 60%;
+  --pi-info: 217 91% 60%;
+  
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: hsl(var(--pi-bg));
+  color: hsl(var(--pi-text));
+}
+
+.pi-dashboard .font-display {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.pi-dashboard .card-glass {
+  background: linear-gradient(145deg, hsl(var(--pi-surface) / 0.8) 0%, hsl(var(--pi-surface) / 0.4) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--pi-border));
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.pi-dashboard .text-accent {
+  color: hsl(var(--pi-accent));
+}
+
+.pi-dashboard .bg-accent {
+  background-color: hsl(var(--pi-accent));
+  color: hsl(var(--pi-accent-fg));
+}
+
+/* Gauge Animation */
+@keyframes dash {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.pi-dashboard .gauge-progress {
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  animation: dash 1.5s ease-out forwards;
+}

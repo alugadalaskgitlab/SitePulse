@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+.site-engineer-dashboard {
+  font-family: 'Inter', sans-serif;
+  background-color: #050505;
+  color: #e5e5e5;
+}
+
+.site-engineer-dashboard .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.se-card {
+  background-color: #121212;
+  border: 1px solid #262626;
+  border-radius: 0.5rem;
+}
+
+.se-glass {
+  background: rgba(20, 20, 20, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.se-progress-bar-bg {
+  background-color: #262626;
+}
+.se-progress-bar-fill {
+  background-color: #f97316;
+}
+
+/* Custom scrollbar for dense data tables */
+.se-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.se-scrollbar::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+.se-scrollbar::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 3px;
+}
+.se-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+.glow-orange {
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.15);
+}

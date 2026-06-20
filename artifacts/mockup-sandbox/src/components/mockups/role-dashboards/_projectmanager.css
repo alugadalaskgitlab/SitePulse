@@ -1,0 +1,25 @@
+.pm-dashboard {
+  --pm-bg: #f8fafc;
+  --pm-card: #ffffff;
+  --pm-border: #e2e8f0;
+  --pm-text: #334155;
+  --pm-text-muted: #64748b;
+  --pm-primary: #15803d; /* Corporate Green */
+  --pm-primary-hover: #166534;
+  --pm-danger: #ef4444;
+  --pm-warning: #f59e0b;
+  --pm-success: #22c55e;
+}
+
+.pm-dashboard {
+  background-color: var(--pm-bg);
+  color: var(--pm-text);
+  min-height: 100vh;
+}
+
+.pm-card {
+  background-color: var(--pm-card);
+  border: 1px solid var(--pm-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}

@@ -1,0 +1,78 @@
+Please proceed with the next focused SitePulse stabilisation scope.
+
+### 1. Work Programme regression check only
+
+The Work Programme logic is mostly fixed. Please re-test and confirm there are no remaining bugs in:
+
+* Add Stretch
+* Split Stretch
+* Editing one stretch should not alter other stretch rows
+* Chainage gaps should be allowed
+* Overlaps should warn, not auto-correct
+* Start Month should move the bar without reducing auto-calculated duration
+* Qty and duration should display correctly on/under the bar
+* Saved bars should reload exactly as entered
+
+Do not redesign the Work Programme unless a bug is found.
+
+### 2. Demand generation finalisation
+
+Please ensure Work Programme generates correct demand outputs:
+
+* Material demand
+* Equipment demand
+* Labour demand
+
+Demand should be available:
+
+* item-wise
+* material/equipment/labour-wise
+* month-wise
+* project-wise
+
+Equipment and labour demand are only demand reports for now. Do not build shortage/readiness logic for equipment/labour yet.
+
+### 3. Material demand → stock/procurement intelligence
+
+Please add planning-based material shortage intelligence without disturbing existing IRN/PI workflows.
+
+Important:
+
+* Existing manual IRN/PI creation must continue exactly as it works today.
+* Users must still be able to raise IRN/PI for any material, stores item, spare, tool, consumable, or other requirement.
+* The new feature should only add suggestions based on Work Programme material demand.
+
+Expected behaviour:
+
+Work Programme material demand
+→ compare with current stock / available stock
+→ identify projected shortage
+→ show suggested action:
+
+* raise IRN
+* raise PI
+* plan procurement
+
+Do not block or limit existing manual IRN/PI usage.
+
+### 4. Dashboard readiness planning
+
+After the above is stable, prepare a dashboard redesign plan.
+
+Dashboard should be role-based and driven by:
+
+* Work Programme
+* Demand
+* Stock
+* IRN
+* PI
+* DPR
+* Plan vs Actual
+
+Do not implement dashboard redesign yet. First propose the dashboard structure for:
+
+* Site Engineer
+* Senior Engineer
+* Project Manager
+* Project Incharge
+* Management/Owner

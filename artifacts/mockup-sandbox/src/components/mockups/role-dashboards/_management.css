@@ -1,0 +1,44 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+  --mgt-bg: 210 20% 98%; /* light grey bg */
+  --mgt-card: 0 0% 100%;
+  --mgt-primary: 175 75% 25%; /* Deep teal */
+  --mgt-primary-foreground: 0 0% 100%;
+  --mgt-muted: 210 20% 94%;
+  --mgt-muted-foreground: 215 16% 47%;
+  --mgt-border: 214 32% 91%;
+  
+  --mgt-danger: 0 84% 60%;
+  --mgt-danger-bg: 0 84% 96%;
+  --mgt-warning: 38 92% 50%;
+  --mgt-warning-bg: 38 92% 96%;
+  --mgt-success: 142 71% 45%;
+}
+
+.mgt-theme {
+  background-color: hsl(var(--mgt-bg));
+  color: hsl(222 47% 11%);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.mgt-card {
+  background-color: hsl(var(--mgt-card));
+  border: 1px solid hsl(var(--mgt-border));
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.mgt-text-teal {
+  color: hsl(var(--mgt-primary));
+}
+
+.mgt-bg-teal {
+  background-color: hsl(var(--mgt-primary));
+}
+
+.mgt-border-teal {
+  border-color: hsl(var(--mgt-primary));
+}
