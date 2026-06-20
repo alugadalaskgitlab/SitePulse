@@ -16,6 +16,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
+import { calculateBomDemand } from "@shared/planningEngine";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9684,6 +9685,86 @@ export async function registerRoutes(
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);
       res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+
+  // Material shortage intelligence — compares WP demand vs current stock
+  app.get("/api/boq/projects/:id/shortage-check", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getBoqProject(projectId);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+
+      const [items, bars, allStockBalances, allMaterials] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getWorkProgramBars(projectId),
+        storage.getStockBalances(), // all parties
+        storage.getPlantMaterials(),
+      ]);
+
+      // Build name → current stock lookup (sum across all parties)
+      const stockByName = new Map<string, { balance: number; uom: string }>();
+      for (const mat of allMaterials) {
+        const balRows = allStockBalances.filter(sb => sb.materialId === mat.id);
+        const totalBalance = balRows.reduce((sum, sb) => sum + (sb.balance ?? 0), 0);
+        const key = mat.name.trim().toLowerCase();
+        const existing = stockByName.get(key);
+        if (existing) {
+          existing.balance += totalBalance;
+        } else {
+          stockByName.set(key, { balance: totalBalance, uom: mat.uom ?? "" });
+        }
+      }
+
+      // Compute demand server-side
+      const demand = items.length && bars.length
+        ? calculateBomDemand(items, bars, project.totalMonths ?? 12)
+        : { materials: [], equipment: [], labour: [] };
+
+      // Build shortage rows
+      const shortageRows = demand.materials.map(matRow => {
+        const nameKey = matRow.materialName.trim().toLowerCase();
+        const stock = stockByName.get(nameKey);
+        const currentStock = stock?.balance ?? 0;
+        const stockMatched = stockByName.has(nameKey);
+        const shortfall = Math.max(0, matRow.totalQty - currentStock);
+
+        let suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi";
+        if (shortfall <= 0) {
+          suggestion = "adequate";
+        } else if (shortfall <= matRow.totalQty * 0.1) {
+          suggestion = "monitor";
+        } else if (matRow.totalQty <= 500) {
+          suggestion = "raise_irn";
+        } else {
+          suggestion = "raise_pi";
+        }
+
+        return {
+          materialName: matRow.materialName,
+          uom: matRow.uom,
+          totalDemand: matRow.totalQty,
+          monthlyDemand: matRow.monthlyQty,
+          currentStock,
+          stockMatched,
+          shortfall,
+          suggestion,
+        };
+      });
+
+      // Sort: shortage first, then adequate
+      shortageRows.sort((a, b) => b.shortfall - a.shortfall);
+
+      res.json({
+        projectId,
+        projectName: project.name,
+        rows: shortageRows,
+        hasBars: bars.length > 0,
+        hasRecipes: items.some(it => it.materials.length > 0),
+      });
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/shortage-check:", err);
+      res.status(500).json({ error: "Failed to compute shortage check" });
     }
   });
 

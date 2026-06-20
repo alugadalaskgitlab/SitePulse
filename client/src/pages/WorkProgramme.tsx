@@ -83,6 +83,7 @@ function CoverageBadge({ planned, boqQty, unit }: { planned: number; boqQty: num
 
 interface StretchRowProps {
   bar: WorkProgramBarWithItem;
+  itemBars: WorkProgramBarWithItem[];
   item: BoqItemWithCategory;
   project: BoqProject;
   recipesMap: Map<number, BoqItemEquipmentWithMaster[]>;
@@ -96,7 +97,7 @@ interface StretchRowProps {
 }
 
 function StretchRow({
-  bar, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
+  bar, itemBars, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
 }: StretchRowProps) {
   const { toast } = useToast();
   const dirty = useRef(false);
@@ -171,6 +172,19 @@ function StretchRow({
     if (effectiveQty <= 0 || !equipment.length) return null;
     return calculateAutoDurationFull(effectiveQty, item.unit, equipment, workingHrs, workingDays);
   }, [effectiveQty, item.unit, equipment, workingHrs, workingDays]);
+
+  // ── Chainage overlap detection ────────────────────────────────────────────
+  const hasChainageOverlap = useMemo(() => {
+    if (!validCh) return false;
+    return itemBars.some(b => {
+      if (b.id === bar.id) return false;
+      const bcf = b.chainageFrom ?? 0;
+      const bct = b.chainageTo ?? 0;
+      if (bct <= bcf) return false;
+      // Two intervals [cfNum, ctNum) and [bcf, bct) overlap if bcf < ctNum && bct > cfNum
+      return bcf < ctNum && bct > cfNum;
+    });
+  }, [itemBars, bar.id, validCh, cfNum, ctNum]);
 
   // ── Duration preservation (Rule 4) ────────────────────────────────────────
   // Priority: auto-calculated from equipment > preserved saved duration from DB
@@ -274,6 +288,16 @@ function StretchRow({
           placeholder="0.000"
           data-testid={`input-ct-${bar.id}`}
         />
+
+        {/* Chainage overlap warning */}
+        {hasChainageOverlap && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
+            title="Chainage overlaps with another stretch on this item. Adjust from/to values."
+          >
+            <AlertTriangle className="w-2.5 h-2.5" />overlap
+          </span>
+        )}
 
         {/* @ multiplier — editable, defaults to boqQty/roadLen */}
         <span className="text-[11px] text-slate-400 flex-shrink-0">@</span>
@@ -504,8 +528,9 @@ function InlineGanttTable({
       const leftFraction = totalLen > 0 ? (mid - cf) / totalLen : 0.5;
       const totalDur = bar.endMonth - bar.startMonth;
       const leftEnd = +(bar.startMonth + totalDur * leftFraction).toFixed(2);
-      const leftQty = roadLen > 0 ? calculateStretchQty(bar.boqItem?.currentQty ?? bar.plannedQty * 2, cf, mid, roadLen) : bar.plannedQty * leftFraction;
-      const rightQty = roadLen > 0 ? calculateStretchQty(bar.boqItem?.currentQty ?? bar.plannedQty * 2, mid, ct, roadLen) : bar.plannedQty * (1 - leftFraction);
+      const boqQty = items.find(it => it.id === bar.boqItemId)?.currentQty ?? bar.plannedQty * 2;
+      const leftQty = roadLen > 0 ? calculateStretchQty(boqQty, cf, mid, roadLen) : bar.plannedQty * leftFraction;
+      const rightQty = roadLen > 0 ? calculateStretchQty(boqQty, mid, ct, roadLen) : bar.plannedQty * (1 - leftFraction);
 
       await apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, {
         chainageFrom: cf, chainageTo: mid,
@@ -730,6 +755,7 @@ function InlineGanttTable({
                       <StretchRow
                         key={bar.id}
                         bar={bar}
+                        itemBars={itemBars}
                         item={item}
                         project={project}
                         recipesMap={recipesMap}
@@ -941,7 +967,7 @@ function MonthlyPlanView({
               if (duration <= 0) continue;
               for (let m = Math.floor(b.startMonth); m < Math.ceil(b.endMonth); m++) {
                 const overlap = Math.max(0, Math.min(b.endMonth, m + 1) - Math.max(b.startMonth, m));
-                const calMonth = m + 1;
+                const calMonth = m; // m is already 1-indexed project month — no +1
                 grandMonthly[calMonth] = (grandMonthly[calMonth] ?? 0) + b.plannedQty * (overlap / duration);
               }
               grand += b.plannedQty;
