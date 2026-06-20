@@ -1,7 +1,3 @@
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
-
 :root {
   --mgt-bg: 210 20% 98%; /* light grey bg */
   --mgt-card: 0 0% 100%;
