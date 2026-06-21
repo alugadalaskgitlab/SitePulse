@@ -608,10 +608,12 @@ function InlineGanttTable({
       standardOutputs: e.standardOutputs as Array<{ unit: string; outputPerHr: number }> | null,
       count: e.count ?? 1,
     }));
-    const itemLayerType = (item.layerConfig as LayerConfig | null)?.layerType ?? null;
+    // Prefer specific mix type (BC/DBM/WMM) over generic layerType — same resolution as StretchRow
+    const _addLc = item.layerConfig as LayerConfig | null;
+    const addItemType = (_addLc?.mixType ?? _addLc?.layerType) ?? null;
     const dur = qty > 0 && (equipment.length || productivitySettings?.mode === "project")
       ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays,
-          productivitySettings, itemLayerType)
+          productivitySettings, addItemType)
       : null;
     const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;
 

@@ -202,22 +202,34 @@ function LayerConfigTab({
     },
   });
 
+  // Mix types compatible with each layer category — used for type-safe link filtering
+  const LAYER_COMPAT_MIX_TYPES: Record<string, string[]> = {
+    bituminous: ["BC", "DBM", "SDBC", "BM"],
+    granular:   ["WMM", "WBM", "GSB", "EG"],
+    spray_coat: ["BC"],
+  };
+
   const { data: mixLinks = [] } = useQuery<BoqMixTemplateLink[]>({
     queryKey: ["/api/boq/projects", projectId, "mix-links"],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects/${projectId}/mix-links`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
-    enabled: !!projectId && layerType === "bituminous",
+    enabled: !!projectId && ["bituminous", "granular", "spray_coat"].includes(layerType),
   });
 
-  // Auto-select: when bituminous type is chosen and no template is selected,
-  // pre-populate mixTemplateId from the first available project mix link.
+  // Auto-select: when a layer type is chosen and no template is selected, pre-populate
+  // mixTemplateId from the project mix link whose mixType is compatible with this layer —
+  // but only when exactly ONE compatible link exists to avoid incorrect guesses.
   useEffect(() => {
-    if (layerType !== "bituminous" || mixTemplateId || !mixLinks.length) return;
-    const firstLink = mixLinks.find(lnk => lnk.mixTemplateId != null);
-    if (firstLink?.mixTemplateId) {
-      setMixTemplateId(String(firstLink.mixTemplateId));
+    if (mixTemplateId || !mixLinks.length) return;
+    const compatTypes = LAYER_COMPAT_MIX_TYPES[layerType] ?? [];
+    if (!compatTypes.length) return;
+    const compatLinks = mixLinks.filter(
+      lnk => lnk.mixTemplateId != null && compatTypes.includes((lnk.mixType ?? "").toUpperCase())
+    );
+    if (compatLinks.length === 1) {
+      setMixTemplateId(String(compatLinks[0].mixTemplateId));
     }
   }, [mixLinks, layerType, mixTemplateId]);
 
@@ -249,13 +261,24 @@ function LayerConfigTab({
       lc.thicknessMm = thicknessMm ? parseFloat(thicknessMm) : null;
       lc.densityTPerCum = densityTPerCum ? parseFloat(densityTPerCum) : null;
     }
-    if (layerType === "granular") lc.granularSource = granularSource;
+    if (layerType === "granular") {
+      lc.granularSource = granularSource;
+      // Resolve WMM/WBM/GSB mix type from a project mix link compatible with granular
+      const granularCompatTypes = ["WMM", "WBM", "GSB", "EG"];
+      const granularLink = mixLinks.find(
+        lnk => lnk.mixTemplateId != null && granularCompatTypes.includes((lnk.mixType ?? "").toUpperCase())
+      );
+      if (granularLink) {
+        lc.mixType = granularLink.mixType?.toUpperCase() ?? null;
+        lc.mixTemplateId = granularLink.mixTemplateId ?? null;
+      }
+    }
     if (layerType === "spray_coat") {
       lc.coverageRateKgPerSqm = coverageRate ? parseFloat(coverageRate) : null;
       lc.coverageMaterialName = coverageMaterial || null;
     }
     return lc;
-  }, [layerType, mixTemplateId, thicknessMm, densityTPerCum, granularSource, coverageRate, coverageMaterial]);
+  }, [layerType, mixTemplateId, thicknessMm, densityTPerCum, granularSource, coverageRate, coverageMaterial, mixLinks, templateDetail]);
 
   const derivedRows = useMemo(() => {
     if (!layerConfig) return [];
