@@ -19898,6 +19898,11 @@ export class DatabaseStorage implements IStorage {
     // Column migrations: add shift_hours/productivity_overrides if table was created with old schema
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS shift_hours real NOT NULL DEFAULT 8`));
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS productivity_overrides jsonb`));
+    // Task #1127: real calendar date support
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS project_start_date date`));
+    await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS start_date date`));
+    await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS end_date date`));
+    await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_mode text DEFAULT 'auto'`));
     // Copy old working_hours_per_day → shift_hours if old column exists
     await db.execute(sql.raw(`
       DO $$ BEGIN

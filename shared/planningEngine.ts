@@ -768,6 +768,52 @@ export function deriveMaterialsFromLayerConfig(
 
 // ─── Gantt helpers ────────────────────────────────────────────────────────────
 
+// ─── Calendar date ↔ month-index conversions ──────────────────────────────────
+
+/**
+ * Convert a real calendar date to a 1-based fractional month index relative to
+ * projectStartDate (month 1 = first calendar month of the project).
+ *
+ * Examples (projectStartDate = 2025-06-01):
+ *   "2025-06-01" → 1.0   (start of month 1)
+ *   "2025-06-16" → 1.5   (roughly mid-month 1)
+ *   "2025-07-01" → 2.0   (start of month 2)
+ */
+export function dateToMonthIndex(d: string | Date, projectStartDate: string | Date): number {
+  const start = new Date(typeof projectStartDate === "string" ? projectStartDate + "T00:00:00" : projectStartDate);
+  const target = new Date(typeof d === "string" ? d + "T00:00:00" : d);
+  const yearDiff = target.getFullYear() - start.getFullYear();
+  const monthDiff = target.getMonth() - start.getMonth();
+  const totalMonthOffset = yearDiff * 12 + monthDiff;
+  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const dayFraction = (target.getDate() - 1) / daysInTargetMonth;
+  return +(1 + totalMonthOffset + dayFraction).toFixed(2);
+}
+
+/**
+ * Convert a 1-based fractional month index back to a real calendar date.
+ * The day of month is proportional to the fractional part.
+ */
+export function monthIndexToDate(idx: number, projectStartDate: string | Date): Date {
+  const start = new Date(typeof projectStartDate === "string" ? projectStartDate + "T00:00:00" : projectStartDate);
+  const monthOffset = Math.floor(idx - 1);
+  const fraction = (idx - 1) - monthOffset;
+  const d = new Date(start);
+  d.setMonth(d.getMonth() + monthOffset);
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const day = Math.round(fraction * daysInMonth) + 1;
+  d.setDate(Math.min(day, daysInMonth));
+  return d;
+}
+
+/** Format a Date as YYYY-MM-DD for HTML date inputs */
+export function formatDateForInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** Month label: "Jun '25" from startDate + 0-indexed offset */
 export function monthLabel(month: number, startDate: string | null | undefined): string {
   if (!startDate) return `M${month}`;

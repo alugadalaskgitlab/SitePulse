@@ -24,6 +24,7 @@ import { WORKING_DAYS_DEFAULT, WORKING_HRS_DEFAULT } from "@shared/planningEngin
 // ─── Zod Schema ──────────────────────────────────────────────────────────────
 
 const formSchema = z.object({
+  projectStartDate: z.string().nullable().optional(),
   workingDaysPerMonth: z.coerce.number().int().min(1).max(31),
   shiftHours: z.coerce.number().min(1).max(24),
   doubleShift: z.boolean(),
@@ -49,6 +50,7 @@ type FormValues = z.infer<typeof formSchema>;
 interface ProgramSettings {
   id: number | null;
   projectId: number;
+  projectStartDate: string | null;
   workingDaysPerMonth: number;
   shiftHours: number;
   doubleShift: boolean;
@@ -369,6 +371,7 @@ export default function BoqProgramSettings() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      projectStartDate: null,
       workingDaysPerMonth: WORKING_DAYS_DEFAULT,
       shiftHours: WORKING_HRS_DEFAULT,
       doubleShift: false,
@@ -390,6 +393,7 @@ export default function BoqProgramSettings() {
   // Populate form once settings loads (only once — preserves subsequent user edits)
   if (settings && !formPopulated) {
     form.reset({
+      projectStartDate: settings.projectStartDate ?? project?.startDate ?? null,
       workingDaysPerMonth: settings.workingDaysPerMonth,
       shiftHours: settings.shiftHours,
       doubleShift: Boolean(settings.doubleShift),
@@ -496,6 +500,24 @@ export default function BoqProgramSettings() {
           title="Schedule Defaults"
           subtitle="Auto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month"
         >
+          <FormField control={form.control} name="projectStartDate" render={({ field }) => (
+            <FormItem className="mb-4">
+              <FormLabel className="text-xs">PROJECT START DATE</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  className="h-9 w-auto"
+                  value={field.value ?? ""}
+                  onChange={e => field.onChange(e.target.value || null)}
+                  onBlur={() => { field.onBlur(); handleBlurSave(); }}
+                  data-testid="input-project-start-date"
+                />
+              </FormControl>
+              <FormDescription className="text-[10px]">
+                Sets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. "Jun '25")
+              </FormDescription>
+            </FormItem>
+          )} />
           <div className="grid grid-cols-2 gap-4">
             <FormField control={form.control} name="workingDaysPerMonth" render={({ field }) => (
               <FormItem>

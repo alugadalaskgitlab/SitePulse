@@ -9352,7 +9352,7 @@ export async function registerRoutes(
           tipperCapacityT: 8, avgTipperSpeedKmHr: 30, loadTimeMin: 5, unloadTimeMin: 5,
           hmpChainageKm: null, wmmPlantChainageKm: null, quarryChainageKm: null,
           borrowChainageKm: null, disposalChainageKm: null, rmcChainageKm: null,
-          productivityMode: "snl", productivityOverrides: null, updatedAt: null,
+          productivityMode: "snl", productivityOverrides: null, projectStartDate: null, updatedAt: null,
         });
       }
       res.json(settings);
@@ -9367,6 +9367,10 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
       const settings = await storage.upsertBoqProgramSettings(projectId, req.body);
+      // Sync projectStartDate → boqProjects.startDate so monthLabel picks it up everywhere
+      if (req.body.projectStartDate != null) {
+        await storage.updateBoqProject(projectId, { startDate: req.body.projectStartDate });
+      }
       res.json(settings);
     } catch (err) {
       console.error("PUT /api/boq/projects/:id/program-settings:", err);

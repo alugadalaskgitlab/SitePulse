@@ -2392,6 +2392,9 @@ export const workProgramBars = pgTable("work_program_bars", {
   chainageTo: real("chainage_to"),
   startMonth: real("start_month").notNull(),   // fractional, e.g. 1.5
   endMonth: real("end_month").notNull(),        // fractional
+  startDate: date("start_date"),               // real calendar date (nullable; derived from startMonth + projectStartDate)
+  endDate: date("end_date"),                   // real calendar date (nullable)
+  durationMode: text("duration_mode").default("auto"), // 'auto' | 'fixed'
   plannedQty: real("planned_qty").notNull().default(0),
   isQtyOverride: boolean("is_qty_override").default(false),
   isDurationOverride: boolean("is_duration_override").default(false),
@@ -2472,6 +2475,8 @@ export const boqProgramSettings = pgTable("boq_program_settings", {
   borrowChainageKm: real("borrow_chainage_km"),
   disposalChainageKm: real("disposal_chainage_km"),
   rmcChainageKm: real("rmc_chainage_km"),
+  // Project start date — sets the calendar date for Month 1 in the Work Programme Gantt
+  projectStartDate: date("project_start_date"),
   // Productivity mode: snl = SNL/standard norms, company = company norms, project = per-item overrides
   productivityMode: text("productivity_mode").notNull().default("snl"),
   productivityOverrides: jsonb("productivity_overrides"),

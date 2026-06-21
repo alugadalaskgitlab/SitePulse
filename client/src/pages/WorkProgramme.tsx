@@ -17,6 +17,9 @@ import {
   calculateStretchQty,
   calculateAutoDurationFull,
   monthLabel,
+  dateToMonthIndex,
+  monthIndexToDate,
+  formatDateForInput,
   fmtQty,
   WORKING_DAYS_DEFAULT,
   WORKING_HRS_DEFAULT,
@@ -241,6 +244,13 @@ function StretchRow({
     const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
     // isDurationOverride only when user manually set an end that differs from auto
     const isDurationOverride = autoDurationMonths == null && bar.isDurationOverride === true;
+    // Compute real calendar dates if project has a start date
+    const startDateVal = project.startDate
+      ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
+      : null;
+    const endDateVal = project.startDate
+      ? formatDateForInput(monthIndexToDate(em, project.startDate))
+      : null;
     patch.mutate({
       chainageFrom: validCh ? cfNum : bar.chainageFrom,
       chainageTo: validCh ? ctNum : bar.chainageTo,
@@ -249,6 +259,7 @@ function StretchRow({
       endMonth: em,
       isQtyOverride,
       isDurationOverride,
+      ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal, durationMode: "auto" } : {}),
     });
   }
 
@@ -340,17 +351,41 @@ function StretchRow({
           {fmtQty(liveQty, 1)}
         </span>
 
-        {/* Start month input */}
-        <span className="text-[11px] text-slate-400 flex-shrink-0 ml-1">M</span>
-        <input
-          type="number" min="0.1" max="120" step="0.1"
-          value={startM}
-          onChange={e => { dirty.current = true; setStartM(e.target.value); }}
-          onBlur={save}
-          className="w-[36px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
-          title="Start month (decimal OK, e.g. 1.5)"
-          data-testid={`input-sm-${bar.id}`}
-        />
+        {/* Start: date picker when project has a start date, otherwise numeric month input */}
+        {project.startDate ? (
+          <input
+            type="date"
+            value={
+              !isNaN(smNum) && project.startDate
+                ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
+                : ""
+            }
+            onChange={e => {
+              dirty.current = true;
+              if (e.target.value && project.startDate) {
+                const idx = dateToMonthIndex(e.target.value, project.startDate);
+                setStartM(String(+idx.toFixed(2)));
+              }
+            }}
+            onBlur={save}
+            className="w-[108px] text-[11px] border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
+            title="Stretch start date"
+            data-testid={`input-date-${bar.id}`}
+          />
+        ) : (
+          <>
+            <span className="text-[11px] text-slate-400 flex-shrink-0 ml-1">M</span>
+            <input
+              type="number" min="0.1" max="120" step="0.1"
+              value={startM}
+              onChange={e => { dirty.current = true; setStartM(e.target.value); }}
+              onBlur={save}
+              className="w-[36px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+              title="Start month (decimal OK, e.g. 1.5)"
+              data-testid={`input-sm-${bar.id}`}
+            />
+          </>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -402,7 +437,18 @@ function StretchRow({
             backgroundColor: color,
             opacity: 0.88,
           }}
-          title={`Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km | ${fmtQty(liveQty, 1)} ${bar.unit} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)${autoDuration?.bottleneckEquipment ? ` | Bottleneck: ${autoDuration.bottleneckEquipment}` : ""}${haulDistanceKm != null ? ` | Haul: ${fmtQty(haulDistanceKm, 1)} km` : ""}`}
+          title={(() => {
+            const ch = `Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km`;
+            const qty = `${fmtQty(liveQty, 1)} ${bar.unit}`;
+            const span = project.startDate
+              ? `${formatDateForInput(monthIndexToDate(liveStart, project.startDate))} → ${formatDateForInput(monthIndexToDate(liveEnd, project.startDate))} (${fmtQty(durationMonths, 2)} mo)`
+              : `M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)`;
+            const extras = [
+              autoDuration?.bottleneckEquipment ? `Bottleneck: ${autoDuration.bottleneckEquipment}` : null,
+              haulDistanceKm != null ? `Haul: ${fmtQty(haulDistanceKm, 1)} km` : null,
+            ].filter(Boolean).join(" | ");
+            return [ch, qty, span, extras].filter(Boolean).join(" | ");
+          })()}
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
         </div>
