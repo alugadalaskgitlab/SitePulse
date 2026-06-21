@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   calculateStretchQty,
   calculateAutoDurationFull,
+  calculateRequiredOutput,
   monthLabel,
   dateToMonthIndex,
   monthIndexToDate,
@@ -125,6 +126,10 @@ function StretchRow({
   const [ct, setCt] = useState(bar.chainageTo != null ? String(bar.chainageTo) : "");
   const [mult, setMult] = useState(initMult);
   const [startM, setStartM] = useState(String(+(bar.startMonth).toFixed(1)));
+  const [endM, setEndM] = useState(String(+(bar.endMonth).toFixed(1)));
+  const [durationModeState, setDurationModeState] = useState<"auto" | "fixed">(
+    (bar.durationMode as "auto" | "fixed") ?? "auto",
+  );
 
   // Sync from DB when not dirty
   useEffect(() => {
@@ -132,6 +137,8 @@ function StretchRow({
     setCf(bar.chainageFrom != null ? String(bar.chainageFrom) : "");
     setCt(bar.chainageTo != null ? String(bar.chainageTo) : "");
     setStartM(String(+(bar.startMonth).toFixed(1)));
+    setEndM(String(+(bar.endMonth).toFixed(1)));
+    setDurationModeState((bar.durationMode as "auto" | "fixed") ?? "auto");
     // back-calc mult from updated bar
     const len = (bar.chainageTo ?? 0) - (bar.chainageFrom ?? 0);
     if (len > 0 && bar.plannedQty > 0) {
@@ -139,7 +146,7 @@ function StretchRow({
     } else if (roadLen > 0 && boqQty > 0) {
       setMult(String(+(boqQty / roadLen).toFixed(4)));
     }
-  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.plannedQty]);
+  }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty]);
 
   const cfNum = parseFloat(cf);
   const ctNum = parseFloat(ct);
@@ -202,12 +209,25 @@ function StretchRow({
   }, [itemBars, bar.id, validCh, cfNum, ctNum]);
 
   // ── Duration preservation (Rule 4) ────────────────────────────────────────
-  // Priority: auto-calculated from equipment > preserved saved duration from DB
-  // Moving start MUST NOT shrink duration — end = start + duration always.
   const autoDurationMonths = (autoDuration?.months ?? 0) > 0 ? autoDuration!.months : null;
   const savedDurationMonths = bar.endMonth - bar.startMonth;
-  // Use auto-duration if available; else preserve the saved duration; else default 1 month
-  const effectiveDurationMonths = autoDurationMonths ?? (savedDurationMonths > 0 ? savedDurationMonths : 1);
+  const endMNum = parseFloat(endM) || (smNum + 1);
+
+  // Fixed-duration mode: user controls the end month/date directly
+  // Auto-duration mode: system calculates from qty ÷ equipment output
+  const effectiveDurationMonths = durationModeState === "fixed"
+    ? Math.max(0.1, endMNum - smNum)
+    : (autoDurationMonths ?? (savedDurationMonths > 0 ? savedDurationMonths : 1));
+
+  // Required-output warning for fixed-duration mode
+  const requiredOutput = useMemo(() => {
+    if (durationModeState !== "fixed" || !project.startDate) return null;
+    const qty = autoQty ?? bar.plannedQty;
+    if (qty <= 0) return null;
+    const startDateStr = formatDateForInput(monthIndexToDate(smNum, project.startDate));
+    const endDateStr = formatDateForInput(monthIndexToDate(endMNum, project.startDate));
+    return calculateRequiredOutput(qty, startDateStr, endDateStr, workingDays);
+  }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays]);
 
   // Haul distance: the stored values (hmpChainageKm, etc.) are per-project haul distances
   // from source to site — use them directly as distance, not chainage math.
@@ -239,11 +259,9 @@ function StretchRow({
   function save() {
     dirty.current = false;
     const qty = autoQty ?? bar.plannedQty;
-    // End = start + effective duration (duration is never shortened by moving start)
     const em = +(smNum + effectiveDurationMonths).toFixed(2);
     const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
-    // isDurationOverride only when user manually set an end that differs from auto
-    const isDurationOverride = autoDurationMonths == null && bar.isDurationOverride === true;
+    const isDurationOverride = durationModeState === "fixed" || (autoDurationMonths == null && bar.isDurationOverride === true);
     // Compute real calendar dates if project has a start date
     const startDateVal = project.startDate
       ? formatDateForInput(monthIndexToDate(smNum, project.startDate))
@@ -259,7 +277,8 @@ function StretchRow({
       endMonth: em,
       isQtyOverride,
       isDurationOverride,
-      ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal, durationMode: "auto" } : {}),
+      durationMode: durationModeState,
+      ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
     });
   }
 
@@ -385,6 +404,67 @@ function StretchRow({
               data-testid={`input-sm-${bar.id}`}
             />
           </>
+        )}
+
+        {/* Mode toggle: auto ↔ fixed */}
+        {project.startDate && (
+          <button
+            onClick={() => {
+              dirty.current = true;
+              const next = durationModeState === "auto" ? "fixed" : "auto";
+              setDurationModeState(next);
+              // When switching to fixed, seed endM from current end
+              if (next === "fixed") {
+                setEndM(String(+(smNum + effectiveDurationMonths).toFixed(1)));
+              }
+            }}
+            className={`ml-1 px-1 rounded text-[9px] font-semibold flex-shrink-0 border ${
+              durationModeState === "fixed"
+                ? "bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300"
+                : "bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
+            }`}
+            title={durationModeState === "fixed" ? "Fixed duration — click to switch to auto" : "Auto duration — click to lock end date"}
+            data-testid={`button-dur-mode-${bar.id}`}
+          >
+            {durationModeState === "fixed" ? "FIX" : "AUTO"}
+          </button>
+        )}
+
+        {/* End date (fixed mode only) */}
+        {durationModeState === "fixed" && project.startDate && (
+          <>
+            <span className="text-[11px] text-slate-400 flex-shrink-0 ml-0.5">→</span>
+            <input
+              type="date"
+              value={
+                !isNaN(endMNum) && project.startDate
+                  ? formatDateForInput(monthIndexToDate(endMNum, project.startDate))
+                  : ""
+              }
+              onChange={e => {
+                dirty.current = true;
+                if (e.target.value && project.startDate) {
+                  const idx = dateToMonthIndex(e.target.value, project.startDate);
+                  setEndM(String(+idx.toFixed(2)));
+                }
+              }}
+              onBlur={save}
+              className="w-[108px] text-[11px] border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
+              title="Stretch end date (fixed duration)"
+              data-testid={`input-end-date-${bar.id}`}
+            />
+          </>
+        )}
+
+        {/* Required output warning for fixed-duration mode */}
+        {requiredOutput && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1 py-0.5 flex-shrink-0 ml-0.5"
+            title={`Requires ${fmtQty(requiredOutput.monthlyOutput, 1)} ${bar.unit}/month (${fmtQty(requiredOutput.dailyOutput, 1)}/day) over ${fmtQty(requiredOutput.durationWorkingDays, 0)} working days`}
+          >
+            <AlertTriangle className="w-2.5 h-2.5" />
+            {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
+          </span>
         )}
 
         {/* Spacer */}
@@ -1268,7 +1348,8 @@ export default function WorkProgramme() {
             )}
           </p>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Click cell to add · Ch inputs auto-calculate qty · M# = start month
+            Click cell to add · Ch inputs auto-calculate qty
+            {effectiveProject?.startDate ? " · Date pickers active — AUTO stretches the bar to fit output; FIX locks the window" : " · M# = start month (set a start date in Settings for date pickers)"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -1291,6 +1372,29 @@ export default function WorkProgramme() {
           </Link>
         </div>
       </div>
+
+      {/* Project start date prompt — shown when no start date is set */}
+      {project && !effectiveProject?.startDate && (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+          <CalendarDays className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Set a project start date to use real calendar dates</p>
+            <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
+              Gantt bars show "M1, M2…" until you set a start date. Once set, all inputs switch to date pickers and month headers show real month names (e.g. "Jun '25").
+            </p>
+          </div>
+          <Link href={`/work-program/${projectId}/settings`}>
+            <a>
+              <Button size="sm" variant="outline"
+                className="border-blue-300 text-blue-700 hover:bg-blue-100 flex-shrink-0"
+                data-testid="button-set-start-date">
+                <Settings2 className="w-3.5 h-3.5 mr-1" />
+                Set in Settings
+              </Button>
+            </a>
+          </Link>
+        </div>
+      )}
 
       {/* Warning banner */}
       {(warnings.missing + warnings.under + warnings.over) > 0 && (

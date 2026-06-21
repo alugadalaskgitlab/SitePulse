@@ -772,38 +772,63 @@ export function deriveMaterialsFromLayerConfig(
 
 /**
  * Convert a real calendar date to a 1-based fractional month index relative to
- * projectStartDate (month 1 = first calendar month of the project).
+ * projectStartDate (M1 = project start date exactly).
  *
- * Examples (projectStartDate = 2025-06-01):
- *   "2025-06-01" → 1.0   (start of month 1)
- *   "2025-06-16" → 1.5   (roughly mid-month 1)
- *   "2025-07-01" → 2.0   (start of month 2)
+ * Uses average-days-per-month (365.25/12 ≈ 30.4375) so the conversion is
+ * perfectly reversible and dateToMonthIndex(projectStartDate, projectStartDate)
+ * always returns exactly 1.0 regardless of which day of the month the project starts.
+ *
+ * Examples (projectStartDate = 2025-06-15):
+ *   "2025-06-15" → 1.0   (project start = M1)
+ *   "2025-07-15" → 2.0   (1 avg-month later = M2)
+ *   "2025-07-01" → ~1.54  (≈16 cal-days into M1)
  */
+const AVG_DAYS_PER_MONTH = 365.25 / 12; // ≈ 30.4375
+
+function parseLocalDate(d: string | Date): Date {
+  if (d instanceof Date) return d;
+  // Append time to avoid UTC midnight → local prev-day shift
+  return new Date(d + "T00:00:00");
+}
+
 export function dateToMonthIndex(d: string | Date, projectStartDate: string | Date): number {
-  const start = new Date(typeof projectStartDate === "string" ? projectStartDate + "T00:00:00" : projectStartDate);
-  const target = new Date(typeof d === "string" ? d + "T00:00:00" : d);
-  const yearDiff = target.getFullYear() - start.getFullYear();
-  const monthDiff = target.getMonth() - start.getMonth();
-  const totalMonthOffset = yearDiff * 12 + monthDiff;
-  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-  const dayFraction = (target.getDate() - 1) / daysInTargetMonth;
-  return +(1 + totalMonthOffset + dayFraction).toFixed(2);
+  const start = parseLocalDate(projectStartDate);
+  const target = parseLocalDate(d);
+  const diffMs = target.getTime() - start.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return +(1 + diffDays / AVG_DAYS_PER_MONTH).toFixed(4);
 }
 
 /**
  * Convert a 1-based fractional month index back to a real calendar date.
- * The day of month is proportional to the fractional part.
+ * M1 = projectStartDate exactly. Uses average-days-per-month for symmetry
+ * with dateToMonthIndex.
  */
 export function monthIndexToDate(idx: number, projectStartDate: string | Date): Date {
-  const start = new Date(typeof projectStartDate === "string" ? projectStartDate + "T00:00:00" : projectStartDate);
-  const monthOffset = Math.floor(idx - 1);
-  const fraction = (idx - 1) - monthOffset;
-  const d = new Date(start);
-  d.setMonth(d.getMonth() + monthOffset);
-  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const day = Math.round(fraction * daysInMonth) + 1;
-  d.setDate(Math.min(day, daysInMonth));
-  return d;
+  const start = parseLocalDate(projectStartDate);
+  const daysOffset = (idx - 1) * AVG_DAYS_PER_MONTH;
+  return new Date(start.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Fixed-duration back-calculation: given a quantity, start date, and end date,
+ * returns the daily and monthly output required to complete within that window.
+ */
+export function calculateRequiredOutput(
+  qty: number,
+  startDate: string | Date,
+  endDate: string | Date,
+  workingDaysPerMonth: number,
+): { dailyOutput: number; monthlyOutput: number; durationMonths: number; durationWorkingDays: number } {
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  const diffMs = end.getTime() - start.getTime();
+  const calDays = diffMs / (1000 * 60 * 60 * 24);
+  const durationMonths = calDays / AVG_DAYS_PER_MONTH;
+  const durationWorkingDays = durationMonths * workingDaysPerMonth;
+  const dailyOutput = durationWorkingDays > 0 ? qty / durationWorkingDays : 0;
+  const monthlyOutput = dailyOutput * workingDaysPerMonth;
+  return { dailyOutput, monthlyOutput, durationMonths, durationWorkingDays };
 }
 
 /** Format a Date as YYYY-MM-DD for HTML date inputs */
