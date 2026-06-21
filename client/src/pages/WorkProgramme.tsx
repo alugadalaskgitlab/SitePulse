@@ -922,7 +922,7 @@ function InlineGanttTable({
                               className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate"
                               title={item.description}
                             >
-                              {(item as any).itemName || item.description}
+                              {(item as any).itemName || item.description.slice(0, 40)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1147,7 +1147,7 @@ function MonthlyPlanView({
                     >
                       <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10"
                         title={item.description}>
-                        {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description}
+                        {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description.slice(0, 40)}
                       </td>
                       <td className="px-2 py-1.5 text-right text-muted-foreground">{item.unit}</td>
                       {months.map(m => {

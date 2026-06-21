@@ -256,8 +256,8 @@ function CategorySection({
                     <td className="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap">
                       {item.itemCode ?? "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-slate-700 max-w-[200px]">
-                      <span className="line-clamp-2">{item.description}</span>
+                    <td className="px-3 py-1.5 text-slate-700 max-w-[200px]" title={item.description}>
+                      <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
                     </td>
                     <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">
@@ -451,8 +451,8 @@ function NewRevisionDialog({
                           data-testid={`row-rev-item-${item.id}`}
                         >
                           <td className="px-3 py-1.5 font-mono text-slate-500">{item.itemCode ?? "—"}</td>
-                          <td className="px-3 py-1.5 text-slate-700 max-w-[180px]">
-                            <span className="line-clamp-2">{item.description}</span>
+                          <td className="px-3 py-1.5 text-slate-700 max-w-[180px]" title={item.description}>
+                            <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
                           </td>
                           <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                           <td className="px-3 py-1.5 text-right text-slate-700 font-medium">
@@ -629,7 +629,7 @@ function SnlMappingPanel({
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] font-mono text-slate-500">{item.itemCode ?? "—"}</p>
-                        <p className="text-xs text-slate-700 line-clamp-2">{item.description}</p>
+                        <p className="text-xs text-slate-700 line-clamp-2" title={item.description}>{(item as any).itemName || item.description.slice(0, 40)}</p>
                         {item.snlItemCode && (
                           <p className="text-[10px] text-amber-700 mt-0.5">
                             Suggestion: <span className="font-mono font-semibold">{item.snlItemCode}</span>
@@ -683,7 +683,7 @@ function SnlMappingPanel({
                     data-testid={`row-unmapped-${item.id}`}>
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] font-mono text-muted-foreground">{item.itemCode ?? "—"}</p>
-                      <p className="text-xs text-slate-600 line-clamp-1">{item.description}</p>
+                      <p className="text-xs text-slate-600 line-clamp-1" title={item.description}>{(item as any).itemName || item.description.slice(0, 40)}</p>
                     </div>
                     <button
                       onClick={() => { setSearchItem(item); setSearchQ(item.description.slice(0, 30)); }}

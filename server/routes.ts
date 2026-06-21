@@ -9872,11 +9872,17 @@ export async function registerRoutes(
 
         // Try layerConfig expansion for richer component breakdown
         if (lc && lc.layerType && lc.layerType !== "none") {
-          // Resolve mix template: prefer explicit layerConfig.mixTemplateId, then fall back to
-          // project-level mix-template links keyed by mixType (e.g. "BC", "DBM", "WMM")
+          // Resolve mix template priority:
+          // 1. explicit layerConfig.mixTemplateId
+          // 2. lc.mixType mapped via project mix-links (e.g. "BC", "DBM", "WMM")
+          // 3. item.workCategory mapped via project mix-links (same key space)
+          // 4. single-link generic fallback when project has exactly one bituminous link
           let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
           if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
             resolvedMixTemplateId = mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ?? null;
+          }
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && (item as any).workCategory) {
+            resolvedMixTemplateId = mixTypeToTemplateId.get(((item as any).workCategory as string).toUpperCase()) ?? null;
           }
           if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
             // Generic fallback: if there is exactly one bituminous mix-link for this project use it
