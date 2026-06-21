@@ -769,7 +769,7 @@ function InlineGanttTable({
                         bar={bar}
                         itemBars={itemBars}
                         item={item}
-                        project={effectiveProject ?? project!}
+                        project={project}
                         recipesMap={recipesMap}
                         projectId={projectId}
                         color={color}
