@@ -918,8 +918,11 @@ function InlineGanttTable({
                             {item.itemCode && (
                               <span className="text-[9px] font-mono text-muted-foreground">{item.itemCode}</span>
                             )}
-                            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
-                              {item.description}
+                            <span
+                              className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate"
+                              title={item.description}
+                            >
+                              {(item as any).itemName || item.description}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -1142,8 +1145,9 @@ function MonthlyPlanView({
                       className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                       data-testid={`monthly-row-${item.id}`}
                     >
-                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10">
-                        {item.itemCode ? `[${item.itemCode}] ` : ""}{item.description}
+                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10"
+                        title={item.description}>
+                        {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description}
                       </td>
                       <td className="px-2 py-1.5 text-right text-muted-foreground">{item.unit}</td>
                       {months.map(m => {

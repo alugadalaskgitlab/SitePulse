@@ -67,6 +67,7 @@ function ItemEditDialog({
   const { toast } = useToast();
   const [form, setForm] = useState({
     description: item.description,
+    itemName: (item as any).itemName ?? "",
     unit: item.unit,
     itemCode: item.itemCode ?? "",
     clientRate: item.clientRate != null ? String(item.clientRate) : "",
@@ -93,6 +94,7 @@ function ItemEditDialog({
     const clientAmount = rate != null ? Math.round(rate * item.currentQty * 100) / 100 : null;
     patchMutation.mutate({
       description: form.description.trim(),
+      itemName: form.itemName.trim() || null,
       unit: form.unit.trim(),
       itemCode: form.itemCode.trim() || null,
       clientRate: rate,
@@ -118,6 +120,15 @@ function ItemEditDialog({
               onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               rows={2}
               data-testid="input-edit-description"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">SHORT NAME <span className="text-slate-400 font-normal">(for Gantt/tables — auto-filled if blank)</span></Label>
+            <Input
+              value={form.itemName}
+              onChange={e => setForm(p => ({ ...p, itemName: e.target.value }))}
+              placeholder="e.g. BC 40mm, DBM, WMM"
+              data-testid="input-edit-item-name"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

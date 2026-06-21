@@ -2354,6 +2354,7 @@ export const boqItems = pgTable("boq_items", {
   clientAmount: real("client_amount"),
   sortOrder: integer("sort_order").notNull().default(0),
   workCategory: text("work_category"),
+  itemName: text("item_name"),
   mappingStatus: text("mapping_status").notNull().default("unmapped"),
   // Layer config for auto material derivation (Task #1100)
   layerConfig: jsonb("layer_config"),

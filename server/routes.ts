@@ -9828,6 +9828,15 @@ export async function registerRoutes(
         if (lc?.mixTemplateId) mixTemplateIds.add(Number(lc.mixTemplateId));
       }
 
+      // Fetch mix-template links for this project (fallback for bituminous items without a direct mixTemplateId)
+      const mixLinks = await storage.getBoqMixLinks(projectId);
+      const mixTypeToTemplateId = new Map<string, number>();
+      for (const link of mixLinks) {
+        if (link.mixTemplateId) mixTypeToTemplateId.set(link.mixType.toUpperCase(), link.mixTemplateId);
+      }
+      // Also add link template IDs to the fetch set
+      for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
+
       // Fetch mix template data and resolve component material names in parallel
       const mixTemplateMap = new Map<number, {
         bitumenPercent: number | null;
@@ -9863,7 +9872,18 @@ export async function registerRoutes(
 
         // Try layerConfig expansion for richer component breakdown
         if (lc && lc.layerType && lc.layerType !== "none") {
-          const mixTemplate = lc.mixTemplateId ? mixTemplateMap.get(Number(lc.mixTemplateId)) : null;
+          // Resolve mix template: prefer explicit layerConfig.mixTemplateId, then fall back to
+          // project-level mix-template links keyed by mixType (e.g. "BC", "DBM", "WMM")
+          let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
+            resolvedMixTemplateId = mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ?? null;
+          }
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
+            // Generic fallback: if there is exactly one bituminous mix-link for this project use it
+            const bitLinks = mixLinks.filter(l => l.mixTemplateId);
+            if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
+          }
+          const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
           const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
           if (derived.length > 0) {
             return {
@@ -10249,6 +10269,7 @@ export async function registerRoutes(
   seedPlantMasterData();
   seedPlanningMasters();
   seedSnlItems();
+  ensureBoqItemNameColumn();
 
   return httpServer;
 }
@@ -10560,5 +10581,26 @@ async function seedSnlItems() {
     console.log(`SNL seed complete: ${result.items} items from ${result.source.code}`);
   } catch (err) {
     console.error("seedSnlItems failed:", err);
+  }
+}
+
+async function ensureBoqItemNameColumn() {
+  try {
+    // Idempotent DDL — safe to run on every startup
+    await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS item_name text`));
+    // Backfill item_name from the first 3–4 significant words of description for rows that are still null
+    await db.execute(sql.raw(`
+      UPDATE boq_items
+      SET item_name = regexp_replace(
+        trim(regexp_replace(description, '\\s+', ' ', 'g')),
+        '^(\\S+(?:\\s+\\S+){0,3}).*$', '\\1', 'i'
+      )
+      WHERE item_name IS NULL
+        AND description IS NOT NULL
+        AND description <> ''
+    `));
+    console.log("boq_items: item_name column ensured and backfilled");
+  } catch (err) {
+    console.error("ensureBoqItemNameColumn failed:", err);
   }
 }

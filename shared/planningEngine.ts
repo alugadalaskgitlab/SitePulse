@@ -399,6 +399,7 @@ export interface BomDemand {
 export interface BomInputItem {
   id: number;
   description: string;
+  itemName?: string | null;
   unit: string;
   currentQty: number; // total BOQ qty
   materials: Array<{
@@ -490,7 +491,7 @@ export function calculateBomDemand(
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
-      row.breakdown.push({ itemDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }
@@ -508,7 +509,7 @@ export function calculateBomDemand(
       const row = eqMap.get(key)!;
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
-      row.breakdown.push({ itemDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
       }
@@ -524,7 +525,7 @@ export function calculateBomDemand(
       }
       const row = labMap.get(key)!;
       row.totalDays += lineDays;
-      row.breakdown.push({ itemDescription: item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
