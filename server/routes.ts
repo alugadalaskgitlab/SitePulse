@@ -10544,13 +10544,19 @@ async function seedPlanningMasters() {
   }
 }
 
+// Bump this version string whenever the SNL seed data changes (shortLabels, new items, etc.)
+// The function checks the stored version and only re-seeds when the constant differs.
+const SNL_SEED_VERSION = "v2-earthwork-shortlabels";
+
 async function seedSnlItems() {
   try {
+    const storedVersion = await storage.getSetting("snl_seed_version");
+    if (storedVersion === SNL_SEED_VERSION) return;
     const sources = await storage.getSnlSources();
     const totalItems = sources.reduce((sum, s) => sum + (s.itemCount ?? 0), 0);
-    if (totalItems >= 18) return;
-    console.log(`SNL: only ${totalItems} items found, seeding MoRTH SDB 2019 library...`);
+    console.log(`SNL: seed version mismatch (have "${storedVersion}", want "${SNL_SEED_VERSION}"), re-seeding ${totalItems} → latest...`);
     const result = await storage.seedSnlMorthSdb();
+    await storage.setSetting("snl_seed_version", SNL_SEED_VERSION);
     console.log(`SNL seed complete: ${result.items} items from ${result.source.code}`);
   } catch (err) {
     console.error("seedSnlItems failed:", err);

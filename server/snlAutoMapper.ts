@@ -4,14 +4,18 @@
  *
  * Score breakdown (0–1):
  *   0.40 — item code / chapter prefix match
- *   0.30 — work category exact match
- *   0.25 — description keyword (Jaccard) overlap
+ *   0.30 — work category exact match (or inferred when BOQ has none)
+ *   0.10 — description keyword (Jaccard) overlap
+ *   0.15 — shortLabel keyword coverage (fraction of SNL shortLabel words present in BOQ)
  *   0.05 — unit normalization match
+ *   +0.40 trifecta bonus — fires when category matches AND shortLabel coverage > 0.40 AND unit matches
+ *          This bonus pushes items with strong category+label alignment into the confident-mapped tier
+ *          even when BOQ item codes are absent.
  *
  * Thresholds:
  *   >= 0.80 → mapped   (auto-apply recipes)
- *   0.40–0.79 → needs_review (save candidate mapping only)
- *   < 0.40  → unmapped
+ *   0.35–0.79 → needs_review (save candidate mapping only)
+ *   < 0.35  → unmapped
  */
 
 import { db } from "./db";
@@ -66,6 +70,22 @@ function chapterOf(code: string | null | undefined): string | null {
   return d ? d[1] : null;
 }
 
+/**
+ * Infer a work category from the BOQ description when the BOQ item has no workCategory set.
+ * Returns null if no inference can be made.
+ */
+function inferWorkCategory(desc: string): string | null {
+  const d = desc.toLowerCase();
+  if (/\b(excavat|earthwork|earthen|embankment|subgrade|sub.?grade|borrow.?pit|cutting|formation)\b/.test(d)) return "EARTHWORK";
+  if (/\b(gsb|wmm|wet.?mix|granular|sub.?base|base.?course|crusher.?run)\b/.test(d)) return "GRANULAR";
+  if (/\b(bituminous|bitumen|asphalt|\bdbm\b|\bbc\b|wearing.?course|binder.?course|prime.?coat|tack.?coat|seal.?coat)\b/.test(d)) return "BITUMINOUS";
+  if (/\b(concrete|rcc|pcc|cement.?concrete|reinforced|pavement.?quality)\b/.test(d)) return "CONCRETE";
+  if (/\b(clear|grub|dismantl|demolish|scarif|site.?clear|vegetation)\b/.test(d)) return "SITE_CLEARANCE";
+  if (/\b(drain|culvert|pipe|catch.?pit|kerb|median)\b/.test(d)) return "DRAINAGE";
+  if (/\b(struct|bridge|retaining.?wall|abutment|pier|slab)\b/.test(d)) return "STRUCTURES";
+  return null;
+}
+
 // ─── Scorer ───────────────────────────────────────────────────────────────────
 
 interface ScoredCandidate {
@@ -76,7 +96,7 @@ interface ScoredCandidate {
 
 function scoreCandidate(
   boq: { itemCode: string | null; description: string; unit: string; workCategory: string | null },
-  snl: { id: number; itemCode: string; description: string; unit: string; workCategory: string }
+  snl: { id: number; itemCode: string; description: string; shortLabel: string | null; unit: string; workCategory: string }
 ): number {
   let score = 0;
 
@@ -97,18 +117,43 @@ function scoreCandidate(
   }
 
   // ── 2. Work category match (weight 0.30) ──
-  if (boq.workCategory && boq.workCategory === snl.workCategory) {
+  // Use the BOQ's explicit category first; fall back to inference from its description.
+  const effectiveBoqCategory = boq.workCategory ?? inferWorkCategory(boq.description);
+  const categoryMatches = !!effectiveBoqCategory && effectiveBoqCategory === snl.workCategory;
+  if (categoryMatches) {
     score += 0.30;
   }
 
-  // ── 3. Description keyword overlap (weight 0.25) ──
+  // ── 3. Description keyword overlap (weight 0.10, reduced to make room for shortLabel) ──
   const boqTokens = tokenize(boq.description);
-  const snlTokens = tokenize(snl.description);
-  score += 0.25 * jaccard(boqTokens, snlTokens);
+  const snlDescTokens = tokenize(snl.description);
+  score += 0.10 * jaccard(boqTokens, snlDescTokens);
 
-  // ── 4. Unit match (weight 0.05) ──
-  if (normalizeUnit(boq.unit) === normalizeUnit(snl.unit)) {
+  // ── 4. ShortLabel keyword coverage (weight 0.15) ──
+  // Measures what fraction of the SNL shortLabel's distinctive keywords appear in the BOQ description.
+  // More focused than full Jaccard: shortLabels are intentionally seeded with BOQ-typical vocabulary.
+  const snlLabelTokens = tokenize(snl.shortLabel ?? "");
+  let shortLabelCoverage = 0;
+  if (snlLabelTokens.size > 0) {
+    let hits = 0;
+    for (const t of snlLabelTokens) if (boqTokens.has(t)) hits++;
+    shortLabelCoverage = hits / snlLabelTokens.size;
+    score += 0.15 * shortLabelCoverage;
+  }
+
+  // ── 5. Unit match (weight 0.05) ──
+  const unitMatches = normalizeUnit(boq.unit) === normalizeUnit(snl.unit);
+  if (unitMatches) {
     score += 0.05;
+  }
+
+  // ── 6. Trifecta bonus (+0.40) ──
+  // Fires when all three soft signals align: category, shortLabel keyword presence, and unit.
+  // This pushes items with strong non-code evidence into the confident-mapped tier (≥ 0.80)
+  // even when BOQ item codes are absent — designed specifically for earthwork-style items
+  // where MoRTH SNL language differs from typical tender BOQ language.
+  if (categoryMatches && shortLabelCoverage > 0.40 && unitMatches) {
+    score += 0.40;
   }
 
   return Math.min(score, 1);
@@ -143,6 +188,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       id: snlItems.id,
       itemCode: snlItems.itemCode,
       description: snlItems.description,
+      shortLabel: snlItems.shortLabel,
       unit: snlItems.unit,
       workCategory: snlItems.workCategory,
     })
@@ -156,9 +202,13 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
   for (const boqRow of boqRows) {
     try {
+      // Determine effective category — explicit or inferred from description keywords.
+      // This lets us narrow the candidate pool even when BOQ items lack a workCategory field.
+      const effectiveCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
+
       // Score all SNL candidates in the same work category first (faster, more relevant)
-      const sameCatCandidates = boqRow.workCategory
-        ? snlRows.filter(s => s.workCategory === boqRow.workCategory)
+      const sameCatCandidates = effectiveCat
+        ? snlRows.filter(s => s.workCategory === effectiveCat)
         : snlRows;
 
       const sameCatSorted: ScoredCandidate[] = (sameCatCandidates.length > 0 ? sameCatCandidates : snlRows)
@@ -172,9 +222,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // If the best same-category match is below 0.35, try cross-category search
       // (e.g. SITE_CLEARANCE scarifying may match EARTHWORK SNL items on keywords)
       let candidates = sameCatSorted;
-      if (boqRow.workCategory && sameCatCandidates.length > 0 && (!sameCatSorted[0] || sameCatSorted[0].score < 0.35)) {
+      if (effectiveCat && sameCatCandidates.length > 0 && (!sameCatSorted[0] || sameCatSorted[0].score < 0.35)) {
         const crossCatCandidates = snlRows
-          .filter(s => s.workCategory !== boqRow.workCategory)
+          .filter(s => s.workCategory !== effectiveCat)
           .map(snl => ({
             snlItemId: snl.id,
             snlItemCode: snl.itemCode,

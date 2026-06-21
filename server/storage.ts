@@ -20674,9 +20674,16 @@ export class DatabaseStorage implements IStorage {
   async searchSnlItems(q: string, category?: string, sourceId?: number): Promise<SnlSearchResult[]> {
     const conds: ReturnType<typeof eq>[] = [eq(snlItems.isActive, true)];
     if (q.trim()) {
-      conds.push(
-        sql`(${snlItems.itemCode} ilike ${'%' + q + '%'} or ${snlItems.description} ilike ${'%' + q + '%'} or ${snlItems.shortLabel} ilike ${'%' + q + '%'})`
-      );
+      // Split on whitespace and require ALL words to appear somewhere in code|description|shortLabel.
+      // This way "EARTHWORK EXCAVATION IN ROAD" finds rows containing "earthwork" AND "excavation"
+      // AND "road" — even if no single column contains the full phrase verbatim.
+      const words = q.trim().split(/\s+/).filter(Boolean);
+      for (const word of words) {
+        const pat = '%' + word + '%';
+        conds.push(
+          sql`(${snlItems.itemCode} ilike ${pat} or ${snlItems.description} ilike ${pat} or ${snlItems.shortLabel} ilike ${pat})`
+        );
+      }
     }
     if (category) conds.push(eq(snlItems.workCategory, category));
     if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));

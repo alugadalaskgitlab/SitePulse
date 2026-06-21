@@ -18,7 +18,7 @@ export const MORTH_SDB_SOURCE = {
 export const EMBANKMENT_ITEM = {
   itemCode: "3.16",
   description: "Construction of embankment with approved material obtained from borrow pits including clearing of borrow areas, excavation in all types of soils, carriage, spreading in layers and compacting to achieve the desired compaction for embankment as per Table 300-2.",
-  shortLabel: "Embankment (Borrow Pit)",
+  shortLabel: "Embankment Construction | forming embankment excavated material borrow fill compaction",
   unit: "CUM",
   workCategory: "EARTHWORK",
   workSubCategory: "Embankment",
@@ -422,7 +422,7 @@ export const DISMANTLING_PAVEMENT_MATERIALS: never[] = [];
 export const FORMATION_EXCAVATION_ITEM = {
   itemCode: "3.01",
   description: "Roadway excavation including cutting in all types of soils, excavating in cutting including trimming of slopes, spreading in uniform layers or loading into tippers for disposal/embankment filling as directed, all complete.",
-  shortLabel: "Formation Excavation (Cut)",
+  shortLabel: "Formation Excavation (Cut) | earthwork excavation road soils roadway mechanical cutting",
   unit: "CUM",
   workCategory: "EARTHWORK",
   workSubCategory: "Formation Cutting",
@@ -464,7 +464,7 @@ export const FORMATION_EXCAVATION_MATERIALS: never[] = [];
 export const SUBGRADE_PREPARATION_ITEM = {
   itemCode: "3.10",
   description: "Preparation and consolidation of sub-grade: scarifying the existing ground to a depth of 50mm, adding water as necessary, mixing, grading and compacting to achieve specified density as per Table 300-2. Includes trimming of slopes and dressing.",
-  shortLabel: "Sub-grade Preparation",
+  shortLabel: "Sub-grade Preparation | sub grade subgrade construction consolidation compaction preparation",
   unit: "SQM",
   workCategory: "EARTHWORK",
   workSubCategory: "Sub-grade Preparation",
