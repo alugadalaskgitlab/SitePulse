@@ -819,7 +819,17 @@ export function calculateRequiredOutput(
   startDate: string | Date,
   endDate: string | Date,
   workingDaysPerMonth: number,
-): { dailyOutput: number; monthlyOutput: number; durationMonths: number; durationWorkingDays: number } {
+  capacityMonthlyOutput?: number,
+): {
+  dailyOutput: number;
+  monthlyOutput: number;
+  durationMonths: number;
+  durationWorkingDays: number;
+  /** How many "standard equipment sets" are needed to hit this target.
+   *  1.0 = exactly one set; 1.5 = 50% more than one set, etc.
+   *  Null when capacityMonthlyOutput is not provided or is zero. */
+  requiredResourceMultiplier: number | null;
+} {
   const start = parseLocalDate(startDate);
   const end = parseLocalDate(endDate);
   const diffMs = end.getTime() - start.getTime();
@@ -828,7 +838,11 @@ export function calculateRequiredOutput(
   const durationWorkingDays = durationMonths * workingDaysPerMonth;
   const dailyOutput = durationWorkingDays > 0 ? qty / durationWorkingDays : 0;
   const monthlyOutput = dailyOutput * workingDaysPerMonth;
-  return { dailyOutput, monthlyOutput, durationMonths, durationWorkingDays };
+  const requiredResourceMultiplier =
+    capacityMonthlyOutput != null && capacityMonthlyOutput > 0
+      ? monthlyOutput / capacityMonthlyOutput
+      : null;
+  return { dailyOutput, monthlyOutput, durationMonths, durationWorkingDays, requiredResourceMultiplier };
 }
 
 /** Format a Date as YYYY-MM-DD for HTML date inputs */

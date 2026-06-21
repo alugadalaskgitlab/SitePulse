@@ -130,6 +130,8 @@ function StretchRow({
   const [durationModeState, setDurationModeState] = useState<"auto" | "fixed">(
     (bar.durationMode as "auto" | "fixed") ?? "auto",
   );
+  // Locked duration (months) for fixed mode: set when entering FIX, preserved when start shifts.
+  const lockedDurationRef = useRef<number>(bar.endMonth - bar.startMonth);
 
   // Sync from DB when not dirty
   useEffect(() => {
@@ -234,11 +236,12 @@ function StretchRow({
     const startDateStr = formatDateForInput(monthIndexToDate(smNum, project.startDate));
     const endDateStr = formatDateForInput(monthIndexToDate(endMNum, project.startDate));
     if (endMNum <= smNum) return null;
-    const result = calculateRequiredOutput(qty, startDateStr, endDateStr, workingDays);
-    // Only show warning when required output exceeds equipment capacity
-    const exceedsCapacity = capacityMonthlyOutput != null && result.monthlyOutput > capacityMonthlyOutput * 1.0;
-    const capacityPct = capacityMonthlyOutput != null && capacityMonthlyOutput > 0
-      ? Math.round((result.monthlyOutput / capacityMonthlyOutput) * 100)
+    // Pass capacityMonthlyOutput so calculateRequiredOutput can derive requiredResourceMultiplier
+    const result = calculateRequiredOutput(qty, startDateStr, endDateStr, workingDays, capacityMonthlyOutput ?? undefined);
+    // Only show warning badge as red when required output exceeds equipment capacity
+    const exceedsCapacity = result.requiredResourceMultiplier != null && result.requiredResourceMultiplier > 1.0;
+    const capacityPct = result.requiredResourceMultiplier != null
+      ? Math.round(result.requiredResourceMultiplier * 100)
       : null;
     return { ...result, exceedsCapacity, capacityPct };
   }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays, capacityMonthlyOutput]);
@@ -398,6 +401,11 @@ function StretchRow({
               if (e.target.value && project.startDate) {
                 const idx = dateToMonthIndex(e.target.value, project.startDate);
                 setStartM(String(+idx.toFixed(2)));
+                // In fixed mode: shift end by the locked duration (preserve window length)
+                if (durationModeState === "fixed") {
+                  const shiftedEnd = +(idx + lockedDurationRef.current).toFixed(2);
+                  setEndM(String(shiftedEnd));
+                }
               }
             }}
             onBlur={save}
@@ -424,12 +432,35 @@ function StretchRow({
         {project.startDate && (
           <button
             onClick={() => {
-              dirty.current = true;
               const next = durationModeState === "auto" ? "fixed" : "auto";
               setDurationModeState(next);
-              // When switching to fixed, seed endM from current end
+              // When switching to fixed, seed endM from current auto end and lock the duration
               if (next === "fixed") {
-                setEndM(String(+(smNum + effectiveDurationMonths).toFixed(1)));
+                const seedEnd = +(smNum + effectiveDurationMonths).toFixed(1);
+                lockedDurationRef.current = effectiveDurationMonths;
+                setEndM(String(seedEnd));
+                // Persist mode immediately so the toggle is never silently lost
+                const qty = autoQty ?? bar.plannedQty;
+                const em = +seedEnd;
+                const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
+                const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
+                const endDateVal = project.startDate ? formatDateForInput(monthIndexToDate(em, project.startDate)) : null;
+                patch.mutate({
+                  plannedQty: qty, startMonth: smNum, endMonth: em,
+                  isQtyOverride, isDurationOverride: true, durationMode: "fixed",
+                  ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
+                });
+              } else {
+                // Switching back to auto: persist immediately
+                const qty = autoQty ?? bar.plannedQty;
+                const em = +(smNum + (autoDurationMonths ?? effectiveDurationMonths)).toFixed(2);
+                const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
+                const endDateVal = project.startDate ? formatDateForInput(monthIndexToDate(em, project.startDate)) : null;
+                patch.mutate({
+                  plannedQty: qty, startMonth: smNum, endMonth: em,
+                  isQtyOverride: false, isDurationOverride: false, durationMode: "auto",
+                  ...(startDateVal != null ? { startDate: startDateVal, endDate: endDateVal } : {}),
+                });
               }
             }}
             className={`ml-1 px-1 rounded text-[9px] font-semibold flex-shrink-0 border ${
@@ -460,6 +491,8 @@ function StretchRow({
                 if (e.target.value && project.startDate) {
                   const idx = dateToMonthIndex(e.target.value, project.startDate);
                   setEndM(String(+idx.toFixed(2)));
+                  // Update locked duration so subsequent start shifts use new window length
+                  lockedDurationRef.current = Math.max(0.1, idx - smNum);
                 }
               }}
               onBlur={save}
