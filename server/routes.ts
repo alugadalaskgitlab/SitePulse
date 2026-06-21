@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError } from "./storage";
+import { autoMapBoqItems, remapBoqProject } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -9439,6 +9440,11 @@ export async function registerRoutes(
       }
       const result = await storage.importBoqItems(boqProjectId, items);
       res.status(201).json(result);
+      // Fire-and-forget auto-mapping (does not block the response)
+      storage.getBoqItems(boqProjectId).then(rows => {
+        const newIds = rows.slice(-result.created).map(r => r.id);
+        autoMapBoqItems(newIds).catch(err => console.error("[autoMapper] post-import error:", err));
+      }).catch(() => {});
     } catch (err) {
       console.error("POST /api/boq/projects/:id/import:", err);
       res.status(500).json({ error: "Failed to import BOQ items" });
@@ -10078,6 +10084,8 @@ export async function registerRoutes(
         notes: null,
       });
       await storage.applySnlMappingToRecipes(boqItemId, snlItemId, projectCategory ?? "MEDIUM", gradingVariant ?? null, user);
+      // Mark item as manually mapped
+      await storage.updateBoqItemMappingStatus(boqItemId, "mapped");
       res.json({ success: true });
     } catch (err) {
       console.error("POST /api/snl/mappings/:boqItemId/apply:", err);
@@ -10091,6 +10099,17 @@ export async function registerRoutes(
       res.json({ success: ok });
     } catch (err) {
       res.status(500).json({ error: "Failed to delete mapping" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/remap", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const result = await remapBoqProject(boqProjectId);
+      res.json(result);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/remap:", err);
+      res.status(500).json({ error: "Failed to remap project" });
     }
   });
 

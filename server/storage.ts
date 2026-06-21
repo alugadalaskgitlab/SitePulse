@@ -19759,16 +19759,30 @@ export class DatabaseStorage implements IStorage {
         clientAmount: boqItems.clientAmount,
         sortOrder: boqItems.sortOrder,
         workCategory: boqItems.workCategory,
+        mappingStatus: boqItems.mappingStatus,
         layerConfig: boqItems.layerConfig,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
+        snlItemId: snlBoqMappings.snlItemId,
+        snlItemCode: snlItems.itemCode,
+        snlConfidence: snlBoqMappings.confidenceScore,
       })
       .from(boqItems)
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
+      .leftJoin(snlBoqMappings, eq(snlBoqMappings.boqItemId, boqItems.id))
+      .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
       .where(eq(boqItems.boqProjectId, boqProjectId))
       .orderBy(boqItems.sortOrder, boqItems.id);
 
-    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null, workCategory: r.workCategory ?? null }));
+    return rows.map((r) => ({
+      ...r,
+      categoryName: r.categoryName ?? null,
+      workCategory: r.workCategory ?? null,
+      snlMappingStatus: r.mappingStatus ?? "unmapped",
+      snlItemId: r.snlItemId ?? null,
+      snlItemCode: r.snlItemCode ?? null,
+      snlConfidence: r.snlConfidence ?? null,
+    }));
   }
 
   async getBoqItem(id: number): Promise<BoqItem | null> {
@@ -19832,6 +19846,10 @@ export class DatabaseStorage implements IStorage {
   async updateBoqItem(id: number, data: Partial<InsertBoqItem>): Promise<BoqItem | null> {
     const [row] = await db.update(boqItems).set(data).where(eq(boqItems.id, id)).returning();
     return row ?? null;
+  }
+
+  async updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void> {
+    await db.update(boqItems).set({ mappingStatus: status }).where(eq(boqItems.id, boqItemId));
   }
 
   async deleteBoqItem(id: number): Promise<void> {
