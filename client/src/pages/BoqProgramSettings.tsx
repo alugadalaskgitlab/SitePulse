@@ -271,7 +271,38 @@ function MixLinksSection({ projectId }: { projectId: number }) {
   );
 }
 
-// ─── Productivity Overrides section (for "project" mode) ──────────────────────
+// ─── Plant-level productivity inputs (HMP / WMM / RMC) ───────────────────────
+// Replaces the old per-mix-type table. Three plant-level outputs cover all layer types:
+//   HMP   → Bituminous: BC, DBM, BM, SDBC  (T/hr)
+//   WMM   → Granular: WMM, GSB, WBM        (CUM/hr)
+//   RMC   → Concrete: M20, M25, M30, M35   (CUM/hr)
+
+const PLANT_PRODUCTIVITY_DEFS = [
+  {
+    key: "HMP",
+    label: "HMP Productivity",
+    sublabel: "Hot Mix Plant — BC / DBM / BM / SDBC",
+    unit: "T/hr",
+    placeholder: "e.g. 100",
+    color: "amber",
+  },
+  {
+    key: "WMM",
+    label: "WMM / Granular Productivity",
+    sublabel: "WMM Plant or Direct — WMM / GSB / WBM",
+    unit: "CUM/hr",
+    placeholder: "e.g. 50",
+    color: "teal",
+  },
+  {
+    key: "RMC",
+    label: "RMC Productivity",
+    sublabel: "Ready-Mix Concrete — M20 / M25 / M30 / M35",
+    unit: "CUM/hr",
+    placeholder: "e.g. 20",
+    color: "blue",
+  },
+] as const;
 
 function ProductivityOverridesSection({
   overrides,
@@ -282,65 +313,54 @@ function ProductivityOverridesSection({
 }) {
   const current = overrides ?? {};
 
-  function updateRow(type: string, outputPerHr: string) {
-    const val = parseFloat(outputPerHr);
+  function updatePlant(key: string, unit: string, rawVal: string) {
+    const val = parseFloat(rawVal);
     const updated = {
       ...current,
-      [type]: {
-        ...current[type],
+      [key]: {
         outputPerHr: isNaN(val) ? undefined : val,
-        unit: DEFAULT_PRODUCTIVITY[type as StdMixType]?.unit,
+        unit,
       },
     };
     onChange(updated);
   }
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-3 space-y-3">
       <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-        Per-Type Output Rates (used instead of SNL norms when mode = Project)
+        Plant Output Rates (override SNL norms when mode = Project)
       </p>
-      <div className="rounded-md border border-slate-200 overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-20">TYPE</th>
-              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">LAYER</th>
-              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-16">UNIT</th>
-              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-32">OUTPUT / HR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STD_MIX_TYPES.map(type => (
-              <tr key={type} className="border-b border-slate-100 last:border-0">
-                <td className="px-3 py-1.5">
-                  <span className="font-mono font-bold text-violet-700">{type}</span>
-                </td>
-                <td className="px-3 py-1.5 text-muted-foreground text-[10px]">
-                  {DEFAULT_PRODUCTIVITY[type]?.hint}
-                </td>
-                <td className="px-3 py-1.5 text-muted-foreground">
-                  {DEFAULT_PRODUCTIVITY[type]?.unit}
-                </td>
-                <td className="px-3 py-1.5">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className="h-7 text-xs w-28"
-                    placeholder="leave blank = SNL"
-                    value={current[type]?.outputPerHr ?? ""}
-                    onChange={e => updateRow(type, e.target.value)}
-                    data-testid={`input-output-${type}`}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-3 gap-3">
+        {PLANT_PRODUCTIVITY_DEFS.map(({ key, label, sublabel, unit, placeholder, color }) => (
+          <div key={key} className={`rounded-lg border p-3 space-y-1.5 ${
+            color === "amber" ? "border-amber-200 bg-amber-50/40" :
+            color === "teal"  ? "border-teal-200 bg-teal-50/40" :
+                                "border-blue-200 bg-blue-50/40"
+          }`}>
+            <p className={`text-[10px] font-bold uppercase tracking-wide ${
+              color === "amber" ? "text-amber-700" :
+              color === "teal"  ? "text-teal-700" :
+                                  "text-blue-700"
+            }`}>{label}</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">{sublabel}</p>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                className="h-8 text-xs flex-1"
+                placeholder={placeholder}
+                value={current[key]?.outputPerHr ?? ""}
+                onChange={e => updatePlant(key, unit.split("/")[0], e.target.value)}
+                data-testid={`input-output-${key.toLowerCase()}`}
+              />
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">{unit}</span>
+            </div>
+          </div>
+        ))}
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Leave blank to fall back to SNL standard norms for that type. Values here take precedence only when Productivity Mode is set to "Project".
+        Leave blank to fall back to SNL standard norms. Values here apply only when Productivity Mode is "Project".
       </p>
     </div>
   );

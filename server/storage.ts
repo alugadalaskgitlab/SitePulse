@@ -19919,16 +19919,20 @@ export class DatabaseStorage implements IStorage {
       UPDATE boq_program_settings SET productivity_mode = 'snl'
       WHERE productivity_mode NOT IN ('snl', 'company', 'project')
     `));
-    // Fix double_shift column type: older installations used integer instead of boolean
+    // Fix double_shift column type: older installations used integer instead of boolean.
+    // Must drop default first, change type, then restore default — PostgreSQL cannot
+    // auto-cast an integer default value to boolean.
     await db.execute(sql.raw(`
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_name = 'boq_program_settings'
                    AND column_name = 'double_shift'
                    AND data_type = 'integer') THEN
+          ALTER TABLE boq_program_settings ALTER COLUMN double_shift DROP DEFAULT;
           ALTER TABLE boq_program_settings
-          ALTER COLUMN double_shift TYPE boolean
-          USING CASE WHEN double_shift = 0 OR double_shift IS NULL THEN false ELSE true END;
+            ALTER COLUMN double_shift TYPE boolean
+            USING CASE WHEN double_shift = 0 OR double_shift IS NULL THEN false ELSE true END;
+          ALTER TABLE boq_program_settings ALTER COLUMN double_shift SET DEFAULT false;
         END IF;
       END $$
     `));

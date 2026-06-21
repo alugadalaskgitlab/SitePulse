@@ -9342,7 +9342,6 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
-      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
       const projectId = parseInt(req.params.id);
       const settings = await storage.getBoqProgramSettings(projectId);
       if (!settings) {
@@ -9367,7 +9366,6 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
-      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
       const projectId = parseInt(req.params.id);
 
       // Read existing settings to detect project-start-date transition (null → date)
@@ -9409,7 +9407,6 @@ export async function registerRoutes(
 
   app.get("/api/boq/projects/:id/mix-links", async (req, res) => {
     try {
-      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
       const links = await storage.getBoqMixLinks(parseInt(req.params.id));
       res.json(links);
     } catch (err) {
