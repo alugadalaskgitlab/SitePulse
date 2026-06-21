@@ -59,5 +59,5 @@ function mapChapterToCategory(ch: number): string | null {
   if (ch === 11) return "BUILDINGS";
   if (ch === 12) return "ELECTRICAL";
   if (ch === 13) return "ENVIRONMENTAL";
-  return "MISCELLANEOUS";
+  return null;
 }
