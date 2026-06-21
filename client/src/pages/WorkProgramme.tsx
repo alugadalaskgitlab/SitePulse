@@ -5,7 +5,7 @@ import {
   ChevronRight, FileSpreadsheet, Plus, Trash2,
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
-  GanttChartSquare, TableProperties, ArrowLeftRight,
+  GanttChartSquare, TableProperties, ArrowLeftRight, Settings2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1178,6 +1178,15 @@ export default function WorkProgramme() {
               <Button variant="outline" size="sm" data-testid="button-bom-demand">
                 <BookOpen className="w-4 h-4 mr-1" />
                 BOM &amp; Demand
+              </Button>
+            </a>
+          </Link>
+          <Link href={`/work-program/${projectId}/settings`}>
+            <a>
+              <Button variant="outline" size="sm" data-testid="button-programme-settings"
+                className="border-teal-200 text-teal-700 hover:bg-teal-50">
+                <Settings2 className="w-4 h-4 mr-1" />
+                Settings
               </Button>
             </a>
           </Link>

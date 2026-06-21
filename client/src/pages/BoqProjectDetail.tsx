@@ -983,6 +983,8 @@ function ProjectSettingsDialog({
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const [workingDays, setWorkingDays] = useState(project.workingDaysPerMonth != null ? String(project.workingDaysPerMonth) : "26");
+  const [workingHrs, setWorkingHrs] = useState(project.workingHoursPerDay != null ? String(project.workingHoursPerDay) : "8");
   const [hmp, setHmp] = useState(project.hmpChainageKm != null ? String(project.hmpChainageKm) : "");
   const [wmm, setWmm] = useState(project.wmmPlantChainageKm != null ? String(project.wmmPlantChainageKm) : "");
   const [quarry, setQuarry] = useState(project.quarryChainageKm != null ? String(project.quarryChainageKm) : "");
@@ -991,6 +993,8 @@ function ProjectSettingsDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/boq/projects/${project.id}`, {
+        workingDaysPerMonth: parseInt(workingDays) || 26,
+        workingHoursPerDay: parseInt(workingHrs) || 8,
         hmpChainageKm: hmp ? parseFloat(hmp) : null,
         wmmPlantChainageKm: wmm ? parseFloat(wmm) : null,
         quarryChainageKm: quarry ? parseFloat(quarry) : null,
@@ -1011,13 +1015,41 @@ function ProjectSettingsDialog({
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-teal-600" />
-            Planning Source Settings
+            Planning Settings
           </DialogTitle>
         </DialogHeader>
         <p className="text-[11px] text-muted-foreground -mt-1">
-          Chainage distances from mid-project to each supply source, used to auto-compute tipper fleet size in the Work Programme.
+          Schedule defaults and source chainages for Work Programme calculations.
         </p>
         <div className="space-y-3 pt-1">
+          {/* Schedule defaults */}
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Schedule Defaults</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[10px]">WORKING DAYS / MONTH</Label>
+              <Input
+                type="number" step="1" min="1" max="31"
+                className="h-8 text-xs mt-0.5"
+                placeholder="26"
+                value={workingDays}
+                onChange={(e) => setWorkingDays(e.target.value)}
+                data-testid="input-working-days"
+              />
+            </div>
+            <div>
+              <Label className="text-[10px]">WORKING HOURS / DAY</Label>
+              <Input
+                type="number" step="0.5" min="1" max="24"
+                className="h-8 text-xs mt-0.5"
+                placeholder="8"
+                value={workingHrs}
+                onChange={(e) => setWorkingHrs(e.target.value)}
+                data-testid="input-working-hours"
+              />
+            </div>
+          </div>
+          {/* Source chainages */}
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mt-1">Source Chainages</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-[10px]">HMP CHAINAGE (km)</Label>
@@ -1029,7 +1061,6 @@ function ProjectSettingsDialog({
                 onChange={(e) => setHmp(e.target.value)}
                 data-testid="input-hmp-chainage"
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">Hot Mix Plant → site</p>
             </div>
             <div>
               <Label className="text-[10px]">WMM PLANT CHAINAGE (km)</Label>
@@ -1041,7 +1072,6 @@ function ProjectSettingsDialog({
                 onChange={(e) => setWmm(e.target.value)}
                 data-testid="input-wmm-chainage"
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">WMM Plant → site</p>
             </div>
             <div>
               <Label className="text-[10px]">QUARRY CHAINAGE (km)</Label>
@@ -1053,7 +1083,6 @@ function ProjectSettingsDialog({
                 onChange={(e) => setQuarry(e.target.value)}
                 data-testid="input-quarry-chainage"
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">Quarry → site</p>
             </div>
             <div>
               <Label className="text-[10px]">AVG TIPPER SPEED (km/hr)</Label>
@@ -1065,11 +1094,10 @@ function ProjectSettingsDialog({
                 onChange={(e) => setSpeed(e.target.value)}
                 data-testid="input-tipper-speed"
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">Default: 30 km/hr</p>
             </div>
           </div>
         </div>
-        <DialogFooter className="pt-2">
+        <DialogFooter className="pt-2 gap-2">
           <Button variant="outline" size="sm" onClick={onClose} className="text-xs">Cancel</Button>
           <Button
             size="sm"
@@ -1079,7 +1107,7 @@ function ProjectSettingsDialog({
             data-testid="button-save-project-settings"
           >
             {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-            Save Settings
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>
