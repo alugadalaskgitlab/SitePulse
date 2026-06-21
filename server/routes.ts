@@ -9366,11 +9366,35 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
+
+      // Read existing settings to detect project-start-date transition (null → date)
+      const existing = await storage.getBoqProgramSettings(projectId);
+      const previousStartDate = (existing as any)?.projectStartDate ?? null;
+      const newStartDate: string | null = req.body.projectStartDate ?? null;
+      const startDateFirstSet = !previousStartDate && newStartDate;
+
       const settings = await storage.upsertBoqProgramSettings(projectId, req.body);
-      // Sync projectStartDate → boqProjects.startDate so monthLabel picks it up everywhere
-      if (req.body.projectStartDate != null) {
-        await storage.updateBoqProject(projectId, { startDate: req.body.projectStartDate });
+
+      // Sync projectStartDate → boqProjects.startDate so monthLabel works everywhere
+      if (newStartDate != null) {
+        await storage.updateBoqProject(projectId, { startDate: newStartDate });
       }
+
+      // Bulk backfill: when projectStartDate is set for the first time (or changed),
+      // derive and persist real calendar dates for all existing bars from their startMonth/endMonth.
+      if (newStartDate && (startDateFirstSet || (previousStartDate && previousStartDate !== newStartDate))) {
+        const bars = await storage.getWorkProgramBars(projectId);
+        const { dateToMonthIndex: _dmi, monthIndexToDate, formatDateForInput } = await import("../shared/planningEngine.js");
+        let backfilled = 0;
+        for (const bar of bars) {
+          const startDate = formatDateForInput(monthIndexToDate(bar.startMonth, newStartDate));
+          const endDate = formatDateForInput(monthIndexToDate(bar.endMonth, newStartDate));
+          await storage.updateWorkProgramBar(bar.id, { startDate, endDate, durationMode: bar.durationMode ?? "auto" });
+          backfilled++;
+        }
+        console.log(`[backfillBarDates] project ${projectId}: backfilled ${backfilled} bars with real dates from startDate ${newStartDate}`);
+      }
+
       res.json(settings);
     } catch (err) {
       console.error("PUT /api/boq/projects/:id/program-settings:", err);

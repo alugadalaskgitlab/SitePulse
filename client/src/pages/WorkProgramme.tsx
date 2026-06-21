@@ -219,15 +219,29 @@ function StretchRow({
     ? Math.max(0.1, endMNum - smNum)
     : (autoDurationMonths ?? (savedDurationMonths > 0 ? savedDurationMonths : 1));
 
-  // Required-output warning for fixed-duration mode
+  // Max feasible monthly output from equipment (auto-duration denominator)
+  const capacityMonthlyOutput = useMemo(() => {
+    if (!autoDuration || autoDuration.months <= 0) return null;
+    const qty = autoQty ?? bar.plannedQty;
+    return qty / autoDuration.months; // qty/month at normal equipment intensity
+  }, [autoDuration, autoQty, bar.plannedQty]);
+
+  // Required-output calculation for fixed-duration mode
   const requiredOutput = useMemo(() => {
     if (durationModeState !== "fixed" || !project.startDate) return null;
     const qty = autoQty ?? bar.plannedQty;
     if (qty <= 0) return null;
     const startDateStr = formatDateForInput(monthIndexToDate(smNum, project.startDate));
     const endDateStr = formatDateForInput(monthIndexToDate(endMNum, project.startDate));
-    return calculateRequiredOutput(qty, startDateStr, endDateStr, workingDays);
-  }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays]);
+    if (endMNum <= smNum) return null;
+    const result = calculateRequiredOutput(qty, startDateStr, endDateStr, workingDays);
+    // Only show warning when required output exceeds equipment capacity
+    const exceedsCapacity = capacityMonthlyOutput != null && result.monthlyOutput > capacityMonthlyOutput * 1.0;
+    const capacityPct = capacityMonthlyOutput != null && capacityMonthlyOutput > 0
+      ? Math.round((result.monthlyOutput / capacityMonthlyOutput) * 100)
+      : null;
+    return { ...result, exceedsCapacity, capacityPct };
+  }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays, capacityMonthlyOutput]);
 
   // Haul distance: the stored values (hmpChainageKm, etc.) are per-project haul distances
   // from source to site — use them directly as distance, not chainage math.
@@ -456,14 +470,28 @@ function StretchRow({
           </>
         )}
 
-        {/* Required output warning for fixed-duration mode */}
+        {/* Required output intensity badge — always shown in fixed mode; red when exceeds capacity */}
         {requiredOutput && (
           <span
-            className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1 py-0.5 flex-shrink-0 ml-0.5"
-            title={`Requires ${fmtQty(requiredOutput.monthlyOutput, 1)} ${bar.unit}/month (${fmtQty(requiredOutput.dailyOutput, 1)}/day) over ${fmtQty(requiredOutput.durationWorkingDays, 0)} working days`}
+            className={`inline-flex items-center gap-0.5 text-[9px] font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border ${
+              requiredOutput.exceedsCapacity
+                ? "text-red-700 bg-red-50 border-red-300 dark:bg-red-950/30 dark:text-red-400"
+                : "text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400"
+            }`}
+            title={[
+              `Requires ${fmtQty(requiredOutput.monthlyOutput, 1)} ${bar.unit}/month`,
+              `(${fmtQty(requiredOutput.dailyOutput, 2)}/day over ${fmtQty(requiredOutput.durationWorkingDays, 0)} working days)`,
+              requiredOutput.capacityPct != null
+                ? `= ${requiredOutput.capacityPct}% of equipment capacity`
+                : "",
+              requiredOutput.exceedsCapacity ? "⚠ Exceeds normal equipment capacity!" : "",
+            ].filter(Boolean).join(" ")}
           >
-            <AlertTriangle className="w-2.5 h-2.5" />
+            {requiredOutput.exceedsCapacity && <AlertTriangle className="w-2.5 h-2.5" />}
             {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
+            {requiredOutput.capacityPct != null && (
+              <span className="opacity-75"> ({requiredOutput.capacityPct}%)</span>
+            )}
           </span>
         )}
 
@@ -1198,6 +1226,63 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
   );
 }
 
+// ─── StartDateBanner ─────────────────────────────────────────────────────────
+// Inline prompt shown in WorkProgramme when no project start date is set.
+// Saves directly via the program-settings PUT — no navigation required.
+
+function StartDateBanner({ projectId }: { projectId: number }) {
+  const [dateVal, setDateVal] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  async function handleSave() {
+    if (!dateVal) return;
+    setSaving(true);
+    try {
+      await apiRequest("PUT", `/api/boq/projects/${projectId}/program-settings`, { projectStartDate: dateVal });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({ title: "Project start date saved", description: "Gantt bars now show real calendar dates." });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 flex-wrap">
+      <CalendarDays className="w-4 h-4 text-blue-600 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Set a project start date to use real calendar dates</p>
+        <p className="text-[11px] text-blue-600 dark:text-blue-400">
+          Gantt inputs will switch to date pickers and month headers will show real month names (e.g. "Jun '25").
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <input
+          type="date"
+          value={dateVal}
+          onChange={e => setDateVal(e.target.value)}
+          className="h-8 rounded border border-blue-300 text-xs px-2 bg-white dark:bg-gray-900 dark:border-blue-700 dark:text-slate-200"
+          data-testid="input-project-start-date-banner"
+        />
+        <Button
+          size="sm"
+          disabled={!dateVal || saving}
+          onClick={handleSave}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+          data-testid="button-save-start-date-banner"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CalendarDays className="w-3.5 h-3.5 mr-1" />}
+          Set Start Date
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WorkProgramme() {
@@ -1373,27 +1458,9 @@ export default function WorkProgramme() {
         </div>
       </div>
 
-      {/* Project start date prompt — shown when no start date is set */}
+      {/* Project start date prompt — inline date input to set directly from this page */}
       {project && !effectiveProject?.startDate && (
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
-          <CalendarDays className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Set a project start date to use real calendar dates</p>
-            <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
-              Gantt bars show "M1, M2…" until you set a start date. Once set, all inputs switch to date pickers and month headers show real month names (e.g. "Jun '25").
-            </p>
-          </div>
-          <Link href={`/work-program/${projectId}/settings`}>
-            <a>
-              <Button size="sm" variant="outline"
-                className="border-blue-300 text-blue-700 hover:bg-blue-100 flex-shrink-0"
-                data-testid="button-set-start-date">
-                <Settings2 className="w-3.5 h-3.5 mr-1" />
-                Set in Settings
-              </Button>
-            </a>
-          </Link>
-        </div>
+        <StartDateBanner projectId={projectId} />
       )}
 
       {/* Warning banner */}
