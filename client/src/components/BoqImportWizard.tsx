@@ -1,18 +1,18 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { useMutation } from "@tanstack/react-query";
 import {
   FileSpreadsheet, Upload, ArrowRight, Check, Loader2,
-  AlertCircle, X,
+  AlertCircle, X, Tags,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { BOQ_WORK_CATEGORIES, suggestWorkCategory, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,15 +22,21 @@ interface ColumnMap {
   boqQty: number | null;
   itemCode: number | null;
   clientRate: number | null;
-  category: number | null;
-  fixedCategory: string;
 }
 
 const EMPTY_COL_MAP: ColumnMap = {
   description: null, unit: null, boqQty: null,
-  itemCode: null, clientRate: null, category: null,
-  fixedCategory: "",
+  itemCode: null, clientRate: null,
 };
+
+interface ParsedItem {
+  description: string;
+  unit: string;
+  boqQty: number;
+  itemCode?: string;
+  clientRate?: number;
+  sortOrder: number;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +64,10 @@ function cellStr(v: string | number | null): string {
   return String(v).trim();
 }
 
+// ─── Step indicator labels ─────────────────────────────────────────────────────
+
+const STEPS = ["Upload File", "Map Columns", "Work Categories", "Confirm & Import"];
+
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
 interface BoqImportWizardProps {
@@ -71,12 +81,17 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [fileName, setFileName] = useState("");
   const [rawRows, setRawRows] = useState<(string | number | null)[][]>([]);
   const [colMap, setColMap] = useState<ColumnMap>(EMPTY_COL_MAP);
   const [parseError, setParseError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+
+  // Step 2 state: work category per item index
+  const [itemWorkCats, setItemWorkCats] = useState<string[]>([]);
+  // Bulk assign
+  const [bulkCat, setBulkCat] = useState("");
 
   const importMutation = useMutation({
     mutationFn: (items: any[]) =>
@@ -101,7 +116,6 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
       }
       setRawRows(nonEmpty);
       setFileName(file.name);
-      // Auto-detect header columns from first row
       const header = nonEmpty[0].map(cellStr);
       const autoMap: ColumnMap = { ...EMPTY_COL_MAP };
       header.forEach((h, i) => {
@@ -111,7 +125,6 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
         else if (autoMap.boqQty == null && (lh.includes("qty") || lh.includes("quantity") || lh === "nos" || lh.includes("boq"))) autoMap.boqQty = i;
         else if (autoMap.itemCode == null && (lh.includes("code") || lh.includes("sl") || lh === "no." || lh === "sno" || lh === "s.no" || lh === "item no")) autoMap.itemCode = i;
         else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price") || lh.includes("amount"))) autoMap.clientRate = i;
-        else if (autoMap.category == null && (lh.includes("category") || lh.includes("chapter") || lh.includes("head") || lh.includes("section"))) autoMap.category = i;
       });
       setColMap(autoMap);
       setStep(1);
@@ -142,7 +155,7 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
     setColMap(p => ({ ...p, [field]: val === "__unmapped__" ? null : parseInt(val) }));
   }
 
-  function buildItems() {
+  const parsedItems: ParsedItem[] = useMemo(() => {
     return dataRows
       .filter(row => {
         const desc = colMap.description != null ? cellStr(row[colMap.description]) : "";
@@ -154,24 +167,49 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
         const unit = colMap.unit != null ? cellStr(row[colMap.unit]) : "";
         const qtyRaw = colMap.boqQty != null ? row[colMap.boqQty] : null;
         const rateRaw = colMap.clientRate != null ? row[colMap.clientRate] : null;
-        const catCell = colMap.category != null ? cellStr(row[colMap.category]) : null;
         return {
           description: desc,
           unit,
           boqQty: typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw ?? "0")) || 0,
           itemCode: colMap.itemCode != null ? (cellStr(row[colMap.itemCode]) || undefined) : undefined,
           clientRate: rateRaw != null ? (typeof rateRaw === "number" ? rateRaw : parseFloat(String(rateRaw))) || undefined : undefined,
-          categoryName: catCell?.trim() || colMap.fixedCategory.trim() || undefined,
           sortOrder: i,
         };
       });
+  }, [dataRows, colMap]);
+
+  function enterStep2() {
+    const cats = parsedItems.map(item => suggestWorkCategory(item.itemCode) ?? "");
+    setItemWorkCats(cats);
+    setBulkCat("");
+    setStep(2);
   }
 
-  const mappedItems = step >= 1 ? buildItems() : [];
-  const categorySet = new Set(mappedItems.map(i => i.categoryName).filter(Boolean));
+  function applyBulkCat() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(c => c === "" ? bulkCat : c));
+  }
+
+  function applyBulkCatAll() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(() => bulkCat));
+  }
+
   const canProceedStep1 = colMap.description != null && colMap.unit != null && colMap.boqQty != null;
+  const unassignedCount = itemWorkCats.filter(c => c === "").length;
+  const canProceedStep2 = unassignedCount === 0;
 
   const mappedColIndices = Object.values(colMap).filter((v): v is number => typeof v === "number");
+
+  function buildFinalItems() {
+    return parsedItems.map((item, idx) => ({
+      ...item,
+      workCategory: itemWorkCats[idx] || undefined,
+    }));
+  }
+
+  const finalItems = step >= 3 ? buildFinalItems() : [];
+  const workCatSet = new Set(itemWorkCats.filter(Boolean));
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
@@ -185,10 +223,10 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
         </DialogHeader>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-4">
-          {["Upload File", "Map Columns", "Confirm & Import"].map((label, i) => (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {STEPS.map((label, i) => (
             <div key={i} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors flex-shrink-0 ${
                 step > i ? "bg-emerald-500 text-white" :
                 step === i ? "bg-blue-600 text-white" :
                 "bg-slate-200 text-slate-500"
@@ -196,7 +234,7 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
                 {step > i ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className={`text-xs font-medium ${step === i ? "text-blue-700" : "text-muted-foreground"}`}>{label}</span>
-              {i < 2 && <ArrowRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />}
+              {i < STEPS.length - 1 && <ArrowRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />}
             </div>
           ))}
         </div>
@@ -258,8 +296,7 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Expected columns (in any order): Item Code, Description, Unit, BOQ Qty, Client Rate, Category.
-              The wizard will help you map them in the next step.
+              Expected columns: Item Code, Description, Unit, BOQ Qty, Client Rate. The wizard will help you map them.
             </p>
           </div>
         )}
@@ -269,7 +306,7 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
           <div className="space-y-4">
             <div className="text-xs text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-blue-500 flex-shrink-0" />
-              <span>Loaded <strong>{dataRows.length} data rows</strong> from <strong>{fileName}</strong>. Map each target field to its Excel column below.</span>
+              <span>Loaded <strong>{dataRows.length} data rows</strong> from <strong>{fileName}</strong>. Map each field to its Excel column below.</span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -279,7 +316,6 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
                 { field: "boqQty", label: "BOQ Quantity", required: true },
                 { field: "itemCode", label: "Item Code", required: false },
                 { field: "clientRate", label: "Client Rate (₹)", required: false },
-                { field: "category", label: "Category Column", required: false },
               ] as { field: keyof ColumnMap; label: string; required: boolean }[]).map(({ field, label, required }) => (
                 <div key={field}>
                   <Label className="text-xs">{label.toUpperCase()} {required && <span className="text-red-500">*</span>}</Label>
@@ -299,16 +335,6 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
                   </Select>
                 </div>
               ))}
-            </div>
-
-            <div>
-              <Label className="text-xs">FIXED CATEGORY (if no category column)</Label>
-              <Input
-                value={colMap.fixedCategory}
-                onChange={e => setColMap(p => ({ ...p, fixedCategory: e.target.value }))}
-                placeholder="e.g. Earthwork — applied to all rows if no category column mapped"
-                data-testid="input-fixed-category"
-              />
             </div>
 
             <div>
@@ -353,34 +379,155 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
           </div>
         )}
 
-        {/* ── Step 2: Confirm ── */}
+        {/* ── Step 2: Work Category Assignment ── */}
         {step === 2 && (
+          <div className="space-y-4">
+            <div className="text-xs text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-start gap-2">
+              <Tags className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+              <span>
+                Assign each item to a standard MoRTH/NHAI work category. Items with standard item codes (like 3.xx, 5.xx) are auto-suggested.
+                All items must have a category before you can proceed.
+              </span>
+            </div>
+
+            {/* Bulk assign */}
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+              <span className="text-xs font-medium text-amber-800 flex-shrink-0">
+                Bulk assign:
+              </span>
+              <Select value={bulkCat} onValueChange={setBulkCat}>
+                <SelectTrigger className="h-7 text-xs flex-1" data-testid="select-bulk-category">
+                  <SelectValue placeholder="Select category…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BOQ_WORK_CATEGORIES.map(cat => (
+                    <SelectItem key={cat.code} value={cat.code} className="text-xs">{cat.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                onClick={applyBulkCat}
+                disabled={!bulkCat}
+                data-testid="button-bulk-assign-unassigned"
+              >
+                Set unassigned ({unassignedCount})
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                onClick={applyBulkCatAll}
+                disabled={!bulkCat}
+                data-testid="button-bulk-assign-all"
+              >
+                Set all
+              </Button>
+            </div>
+
+            {/* Per-item table */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-slate-800 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-14">Code</th>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300">Description</th>
+                      <th className="px-2 py-2 text-right font-semibold text-slate-300 w-12">Unit</th>
+                      <th className="px-2 py-2 text-right font-semibold text-slate-300 w-16">Qty</th>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-48">Work Category <span className="text-red-400">*</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedItems.map((item, idx) => {
+                      const cat = itemWorkCats[idx] ?? "";
+                      const isUnassigned = cat === "";
+                      return (
+                        <tr
+                          key={idx}
+                          className={`border-b border-slate-100 last:border-0 ${isUnassigned ? "bg-red-50/40" : idx % 2 === 1 ? "bg-slate-50/40" : ""}`}
+                          data-testid={`row-cat-assign-${idx}`}
+                        >
+                          <td className="px-2 py-1.5 font-mono text-slate-500 whitespace-nowrap">
+                            {item.itemCode ?? "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-slate-700 max-w-[200px]">
+                            <span className="line-clamp-2">{item.description}</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-slate-500">{item.unit}</td>
+                          <td className="px-2 py-1.5 text-right text-slate-600 font-medium">
+                            {item.boqQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <Select
+                              value={cat || "__none__"}
+                              onValueChange={v => {
+                                const next = [...itemWorkCats];
+                                next[idx] = v === "__none__" ? "" : v;
+                                setItemWorkCats(next);
+                              }}
+                            >
+                              <SelectTrigger
+                                className={`h-7 text-xs ${isUnassigned ? "border-red-300 text-red-600" : "border-slate-200"}`}
+                                data-testid={`select-item-cat-${idx}`}
+                              >
+                                <SelectValue placeholder="— Select —" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__" className="text-xs text-muted-foreground">— Select category —</SelectItem>
+                                {BOQ_WORK_CATEGORIES.map(cat => (
+                                  <SelectItem key={cat.code} value={cat.code} className="text-xs">{cat.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {unassignedCount > 0 && (
+              <p className="text-xs text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {unassignedCount} item{unassignedCount !== 1 ? "s" : ""} still need a work category assigned before you can continue.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 3: Confirm ── */}
+        {step === 3 && (
           <div className="space-y-4">
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
               <p className="text-sm font-semibold text-emerald-800">Ready to import</p>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
-                  <p className="text-2xl font-bold text-emerald-700">{mappedItems.length}</p>
+                  <p className="text-2xl font-bold text-emerald-700">{parsedItems.length}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">BOQ Items</p>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
-                  <p className="text-2xl font-bold text-emerald-700">{categorySet.size}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Categories</p>
+                  <p className="text-2xl font-bold text-emerald-700">{workCatSet.size}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Work Categories</p>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
                   <p className="text-2xl font-bold text-emerald-700">
-                    {mappedItems.filter(i => i.clientRate).length}
+                    {parsedItems.filter(i => i.clientRate).length}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">Items with Rate</p>
                 </div>
               </div>
-              {categorySet.size > 0 && (
+              {workCatSet.size > 0 && (
                 <div>
-                  <p className="text-xs text-emerald-700 font-medium mb-1">Categories detected:</p>
+                  <p className="text-xs text-emerald-700 font-medium mb-1">Work categories in this import:</p>
                   <div className="flex flex-wrap gap-1">
-                    {Array.from(categorySet).map(cat => (
-                      <Badge key={cat} variant="outline" className="text-xs bg-white border-emerald-200 text-emerald-700">
-                        {cat}
+                    {Array.from(workCatSet).map(code => (
+                      <Badge key={code} variant="outline" className="text-xs bg-white border-emerald-200 text-emerald-700">
+                        {getWorkCategoryLabel(code)}
                       </Badge>
                     ))}
                   </div>
@@ -391,27 +538,29 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-1.5">FIRST 5 ITEMS TO IMPORT</p>
               <div className="space-y-1.5">
-                {mappedItems.slice(0, 5).map((item, i) => (
+                {parsedItems.slice(0, 5).map((item, i) => (
                   <div key={i} className="flex items-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
                     {item.itemCode && <span className="font-mono text-slate-500 w-16 flex-shrink-0 truncate">{item.itemCode}</span>}
                     <span className="flex-1 truncate font-medium">{item.description}</span>
                     <span className="text-slate-500 flex-shrink-0">{item.boqQty} {item.unit}</span>
                     {item.clientRate && <span className="text-slate-500 flex-shrink-0">₹{item.clientRate}</span>}
-                    {item.categoryName && (
-                      <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.categoryName}</Badge>
+                    {itemWorkCats[i] && (
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0 border-blue-200 text-blue-700">
+                        {getWorkCategoryLabel(itemWorkCats[i])}
+                      </Badge>
                     )}
                   </div>
                 ))}
-                {mappedItems.length > 5 && (
-                  <p className="text-xs text-center text-muted-foreground">…and {mappedItems.length - 5} more items</p>
+                {parsedItems.length > 5 && (
+                  <p className="text-xs text-center text-muted-foreground">…and {parsedItems.length - 5} more items</p>
                 )}
               </div>
             </div>
 
-            {mappedItems.length === 0 && (
+            {parsedItems.length === 0 && (
               <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                No valid rows found. Go back and verify the column mapping — every row needs a Description and Unit.
+                No valid rows found. Go back and verify the column mapping.
               </div>
             )}
           </div>
@@ -421,8 +570,10 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-import">
             <X className="w-4 h-4 mr-1" /> Cancel
           </Button>
+
+          {/* Back buttons */}
           {step === 1 && (
-            <Button variant="outline" onClick={() => setStep(0)} data-testid="button-import-back">
+            <Button variant="outline" onClick={() => setStep(0)} data-testid="button-import-back-1">
               ← Back
             </Button>
           )}
@@ -431,6 +582,13 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
               ← Back
             </Button>
           )}
+          {step === 3 && (
+            <Button variant="outline" onClick={() => setStep(2)} data-testid="button-import-back-3">
+              ← Back
+            </Button>
+          )}
+
+          {/* Next / Confirm buttons */}
           {step === 0 && rawRows.length > 0 && (
             <Button onClick={() => setStep(1)} className="bg-blue-600 hover:bg-blue-700 text-white"
               data-testid="button-import-next-1">
@@ -438,21 +596,27 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
             </Button>
           )}
           {step === 1 && (
-            <Button onClick={() => setStep(2)} disabled={!canProceedStep1}
+            <Button onClick={enterStep2} disabled={!canProceedStep1}
               className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-import-next-2">
-              Next: Review <ArrowRight className="w-4 h-4 ml-1" />
+              Next: Work Categories <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           )}
           {step === 2 && (
+            <Button onClick={() => setStep(3)} disabled={!canProceedStep2}
+              className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-import-next-3">
+              Next: Review <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          )}
+          {step === 3 && (
             <Button
-              onClick={() => importMutation.mutate(mappedItems)}
-              disabled={importMutation.isPending || mappedItems.length === 0}
+              onClick={() => importMutation.mutate(buildFinalItems())}
+              disabled={importMutation.isPending || parsedItems.length === 0}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               data-testid="button-import-confirm"
             >
               {importMutation.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Importing…</>
-                : <><Check className="w-4 h-4 mr-1" /> Import {mappedItems.length} Items</>
+                : <><Check className="w-4 h-4 mr-1" /> Import {parsedItems.length} Items</>
               }
             </Button>
           )}

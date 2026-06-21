@@ -19758,6 +19758,8 @@ export class DatabaseStorage implements IStorage {
         clientRate: boqItems.clientRate,
         clientAmount: boqItems.clientAmount,
         sortOrder: boqItems.sortOrder,
+        workCategory: boqItems.workCategory,
+        layerConfig: boqItems.layerConfig,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
       })
@@ -19766,7 +19768,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(boqItems.boqProjectId, boqProjectId))
       .orderBy(boqItems.sortOrder, boqItems.id);
 
-    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null }));
+    return rows.map((r) => ({ ...r, categoryName: r.categoryName ?? null, workCategory: r.workCategory ?? null }));
   }
 
   async getBoqItem(id: number): Promise<BoqItem | null> {
@@ -19783,6 +19785,7 @@ export class DatabaseStorage implements IStorage {
       boqQty: number;
       clientRate?: number;
       categoryName?: string;
+      workCategory?: string;
       sortOrder?: number;
     }>
   ): Promise<{ created: number; categories: string[] }> {
@@ -19818,6 +19821,7 @@ export class DatabaseStorage implements IStorage {
         clientRate: item.clientRate ?? null,
         clientAmount,
         sortOrder: item.sortOrder ?? i,
+        workCategory: item.workCategory ?? null,
       });
       created++;
     }

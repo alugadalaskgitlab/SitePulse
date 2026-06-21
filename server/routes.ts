@@ -9421,6 +9421,7 @@ export async function registerRoutes(
           boqQty: number;
           clientRate?: number;
           categoryName?: string;
+          workCategory?: string;
           sortOrder?: number;
         }>;
       };

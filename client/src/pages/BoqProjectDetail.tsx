@@ -6,6 +6,7 @@ import {
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2,
 } from "lucide-react";
+import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -147,12 +148,14 @@ function CategorySection({
   name,
   items,
   projectId,
+  defaultCollapsed = false,
 }: {
   name: string;
   items: BoqItemWithCategory[];
   projectId: number;
+  defaultCollapsed?: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
   const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
 
@@ -831,18 +834,26 @@ export default function BoqProjectDetail() {
   });
 
   // ── Derived values ──
-  const grouped = useMemo(() => {
+  const groupedByWorkCat = useMemo(() => {
     const map: Record<string, BoqItemWithCategory[]> = {};
     for (const item of items) {
-      const cat = item.categoryName ?? "__uncategorised__";
-      if (!map[cat]) map[cat] = [];
-      map[cat].push(item);
+      const key = item.workCategory ?? "__uncategorised__";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
     }
     return map;
   }, [items]);
 
-  const categoryKeys = Object.keys(grouped).filter(k => k !== "__uncategorised__").sort();
-  const hasUncategorised = !!grouped["__uncategorised__"]?.length;
+  // Standard categories that have items — plus always show all 15 in fixed order
+  const workCatSections = useMemo(() => {
+    return BOQ_WORK_CATEGORIES.map(cat => ({
+      code: cat.code,
+      label: cat.label,
+      items: groupedByWorkCat[cat.code] ?? [],
+    }));
+  }, [groupedByWorkCat]);
+
+  const hasUncategorised = !!groupedByWorkCat["__uncategorised__"]?.length;
 
   const totalAmount = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const activeRevision = revisions.find(r => r.status === "active");
@@ -960,7 +971,7 @@ export default function BoqProjectDetail() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "BOQ Items", value: String(items.length) },
-          { label: "Categories", value: String(categoryKeys.length + (hasUncategorised ? 1 : 0)) },
+          { label: "Work Categories", value: String(workCatSections.filter(s => s.items.length > 0).length + (hasUncategorised ? 1 : 0)) },
           { label: "Revisions", value: String(revisions.length) },
           { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—" },
         ].map(({ label, value }) => (
@@ -1001,14 +1012,21 @@ export default function BoqProjectDetail() {
               </p>
             </div>
 
-            {categoryKeys.map(cat => (
-              <CategorySection key={cat} name={cat} items={grouped[cat]} projectId={projectId} />
+            {workCatSections.map(sec => (
+              <CategorySection
+                key={sec.code}
+                name={sec.label}
+                items={sec.items}
+                projectId={projectId}
+                defaultCollapsed={sec.items.length === 0}
+              />
             ))}
             {hasUncategorised && (
               <CategorySection
-                name="Uncategorised"
-                items={grouped["__uncategorised__"]}
+                name="Uncategorized"
+                items={groupedByWorkCat["__uncategorised__"]}
                 projectId={projectId}
+                defaultCollapsed={false}
               />
             )}
 

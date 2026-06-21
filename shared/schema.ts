@@ -2353,6 +2353,7 @@ export const boqItems = pgTable("boq_items", {
   clientRate: real("client_rate"),
   clientAmount: real("client_amount"),
   sortOrder: integer("sort_order").notNull().default(0),
+  workCategory: text("work_category"),
   // Layer config for auto material derivation (Task #1100)
   layerConfig: jsonb("layer_config"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2492,7 +2493,7 @@ export type BoqItemMaterialsRow = typeof boqItemMaterials.$inferSelect;
 export type InsertBoqItemMaterials = z.infer<typeof insertBoqItemMaterialsSchema>;
 
 // Composite types for API responses
-export type BoqItemWithCategory = BoqItem & { categoryName: string | null };
+export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null };
 export type WorkProgramBarWithItem = WorkProgramBar & {
