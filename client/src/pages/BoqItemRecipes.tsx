@@ -211,6 +211,16 @@ function LayerConfigTab({
     enabled: !!projectId && layerType === "bituminous",
   });
 
+  // Auto-select: when bituminous type is chosen and no template is selected,
+  // pre-populate mixTemplateId from the first available project mix link.
+  useEffect(() => {
+    if (layerType !== "bituminous" || mixTemplateId || !mixLinks.length) return;
+    const firstLink = mixLinks.find(lnk => lnk.mixTemplateId != null);
+    if (firstLink?.mixTemplateId) {
+      setMixTemplateId(String(firstLink.mixTemplateId));
+    }
+  }, [mixLinks, layerType, mixTemplateId]);
+
   const { data: templateDetail } = useQuery<MixTemplateWithComponents>({
     queryKey: ["/api/planning/mix-templates", mixTemplateId, "components"],
     queryFn: async () => {

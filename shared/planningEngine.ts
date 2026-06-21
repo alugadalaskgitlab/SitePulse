@@ -232,7 +232,9 @@ export function resolveProductivityForType(
   settings: ProductivitySettings | null | undefined,
   itemType: string | null | undefined,
 ): number | null {
-  if (!settings || settings.mode !== "project" || !settings.overrides || !itemType) return null;
+  // Both "company" and "project" modes apply overrides from productivityOverrides JSONB.
+  // "snl" mode exclusively uses equipment-master norms with no override.
+  if (!settings || settings.mode === "snl" || !settings.overrides || !itemType) return null;
   const raw = itemType.trim();
   const up = raw.toUpperCase();
   const ov = settings.overrides;

@@ -202,19 +202,22 @@ function StretchRow({
   // Use auto-duration if available; else preserve the saved duration; else default 1 month
   const effectiveDurationMonths = autoDurationMonths ?? (savedDurationMonths > 0 ? savedDurationMonths : 1);
 
-  // Haul distance from bar chainage mid to source (HMP / WMM plant / quarry)
+  // Haul distance: the stored values (hmpChainageKm, etc.) are per-project haul distances
+  // from source to site — use them directly as distance, not chainage math.
   const haulDistanceKm = useMemo(() => {
-    if (!validCh) return null;
-    const barMidKm = (cfNum + ctNum) / 2;
     const lc = item.layerConfig as LayerConfig | null;
     if (!lc) return null;
-    let sourceKm: number | null = null;
-    if (lc.layerType === "bituminous") sourceKm = project.hmpChainageKm ?? null;
-    else if (lc.layerType === "granular" && lc.granularSource === "plant") sourceKm = project.wmmPlantChainageKm ?? null;
-    else if (lc.layerType === "granular") sourceKm = project.quarryChainageKm ?? null;
-    if (sourceKm == null) return null;
-    return Math.abs(barMidKm - sourceKm);
-  }, [validCh, cfNum, ctNum, item.layerConfig, project.hmpChainageKm, project.wmmPlantChainageKm, project.quarryChainageKm]);
+    let dist: number | null = null;
+    if (lc.layerType === "bituminous") dist = project.hmpChainageKm ?? null;
+    else if (lc.layerType === "spray_coat") dist = project.hmpChainageKm ?? null;
+    else if (lc.layerType === "granular" && (lc as any).granularSource === "plant") dist = project.wmmPlantChainageKm ?? null;
+    else if (lc.layerType === "granular") dist = project.quarryChainageKm ?? null;
+    else if (lc.layerType === "earthwork" && (lc as any).earthworkType === "cut") dist = (project as any).disposalChainageKm ?? null;
+    else if (lc.layerType === "earthwork") dist = (project as any).borrowChainageKm ?? (project as any).disposalChainageKm ?? null;
+    else if (lc.layerType === "concrete") dist = (project as any).rmcChainageKm ?? null;
+    return dist != null && dist > 0 ? dist : null;
+  }, [item.layerConfig, project.hmpChainageKm, project.wmmPlantChainageKm, project.quarryChainageKm,
+      (project as any).borrowChainageKm, (project as any).disposalChainageKm, (project as any).rmcChainageKm]);
 
   const patch = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
