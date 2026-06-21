@@ -72,7 +72,7 @@ export const GSB_ITEM = {
   description: "Granular Sub-Base with Graded Material (Table 400-1) — Plant Mix Method: providing close graded material, mixing in a mechanical mix plant at OMC, carriage of mixed material to work site, spreading in uniform layers with motor grader on prepared surface and compacting with vibratory power roller to achieve the desired density as per Clause 401.",
   shortLabel: "GSB — Plant Mix Method",
   unit: "CUM",
-  workCategory: "SUBBASE",
+  workCategory: "SUBBASE_BASE",
   workSubCategory: "Granular Sub-Base",
   chapterNo: "4",
   chapterTitle: "Sub-Bases, Bases (Non-Bituminous) and Shoulders",
@@ -153,7 +153,7 @@ export const WMM_ITEM = {
   description: "Wet Mix Macadam (Plant Mix Method) — Providing, laying, spreading and compacting graded stone aggregate to wet mix macadam specification including premixing the material with water at OMC in mechanical mix plant, carriage of mixed material by tipper to site, laying in uniform layers with grader in sub-base/base course on prepared surface and compacting with vibratory roller to achieve the desired density. Laying using Grader.",
   shortLabel: "WMM — Plant Mix Method",
   unit: "CUM",
-  workCategory: "BASE_COURSE",
+  workCategory: "SUBBASE_BASE",
   workSubCategory: "Wet Mix Macadam",
   chapterNo: "4",
   chapterTitle: "Sub-Bases, Bases (Non-Bituminous) and Shoulders",
@@ -339,4 +339,424 @@ export const BC_MATERIALS = [
   { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 3, materialName: "Aggregate 10–5mm @ 17%",     materialCategory: "AGGREGATE", sieveFromMm: 10,   sieveToMm: 5,    pctByWeight: 17, unit: "CUM", quantityPerShift: 48.327,  shiftOutputRef: 191, derivedPerUnit: 48.327 / 191, isDesignSpecific: true },
   { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 4, materialName: "Aggregate <5mm @ 60%",        materialCategory: "AGGREGATE", sieveFromMm: null, sieveToMm: 5,    pctByWeight: 60, unit: "CUM", quantityPerShift: 170.568, shiftOutputRef: 191, derivedPerUnit: 170.568 / 191, isDesignSpecific: true },
   { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 5, materialName: "Filler @ 2% of aggregate wt", materialCategory: "FILLER",   unit: "CUM", quantityPerShift: 8.528,  shiftOutputRef: 191, derivedPerUnit: 8.528 / 191, isDesignSpecific: true },
+];
+
+// ─── ITEM 6: CLEARING & GRUBBING 2.01 ──────────────────────────────────────
+export const CLEARING_GRUBBING_ITEM = {
+  itemCode: "2.01",
+  description: "Clearing and grubbing road land including uprooting rank vegetation, grass, brushwood, trees of girth upto 300mm, stumps, removal of rubbish, and disposal of unserviceable material and stacking of serviceable material as directed, up to a lead of 1000m, by mechanical means.",
+  shortLabel: "Clearing & Grubbing",
+  unit: "SQM",
+  workCategory: "SITE_CLEARANCE",
+  workSubCategory: "Clearing and Grubbing",
+  chapterNo: "2",
+  chapterTitle: "Site Clearance",
+  sourcePage: "36",
+  specClause: "Clause 201",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Output per shift depends on vegetation density. Medium = 5000 SQM/8-hr shift for light-medium vegetation with dozer.",
+};
+
+export const CLEARING_GRUBBING_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 6000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 750 },
+  { projectCategory: "MEDIUM", shiftOutput: 5000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 625 },
+  { projectCategory: "SMALL",  shiftOutput: 3500, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 437.5 },
+];
+
+export const CLEARING_GRUBBING_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",    skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.100, shiftOutputRef: 5000, derivedPerUnit: 0.100 / 5000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor", skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 4.000, shiftOutputRef: 5000, derivedPerUnit: 4.000 / 5000 },
+];
+
+export const CLEARING_GRUBBING_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Dozer", equipmentSpec: "D7 class 180HP",  purpose: "clearing", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 6000, derivedPerUnit: 8.0 / 6000 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Dozer", equipmentSpec: "D6 class 130HP",  purpose: "clearing", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 5000, derivedPerUnit: 8.0 / 5000 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Dozer", equipmentSpec: "D5 class 105HP",  purpose: "clearing", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 3500, derivedPerUnit: 8.0 / 3500 },
+  { projectCategory: "LARGE",  sortOrder: 2, equipmentType: "Tipper", equipmentSpec: "10 CUM (debris)", purpose: "disposal", unit: "hrs", quantityPerShift: 4.0, formulaType: "FIXED", shiftOutputRef: 6000, derivedPerUnit: 4.0 / 6000 },
+  { projectCategory: "MEDIUM", sortOrder: 2, equipmentType: "Tipper", equipmentSpec: "10 CUM (debris)", purpose: "disposal", unit: "hrs", quantityPerShift: 4.0, formulaType: "FIXED", shiftOutputRef: 5000, derivedPerUnit: 4.0 / 5000 },
+  { projectCategory: "SMALL",  sortOrder: 2, equipmentType: "Tipper", equipmentSpec: "10 CUM (debris)", purpose: "disposal", unit: "hrs", quantityPerShift: 3.0, formulaType: "FIXED", shiftOutputRef: 3500, derivedPerUnit: 3.0 / 3500 },
+];
+
+export const CLEARING_GRUBBING_MATERIALS: never[] = [];
+
+// ─── ITEM 7: DISMANTLING EXISTING PAVEMENT 2.04 ────────────────────────────
+export const DISMANTLING_PAVEMENT_ITEM = {
+  itemCode: "2.04",
+  description: "Dismantling existing flexible/rigid pavement including breaking, removal, loading of dismantled materials into tippers and disposal upto a lead of 1000m, including stacking of serviceable materials as directed.",
+  shortLabel: "Dismantling Existing Pavement",
+  unit: "SQM",
+  workCategory: "SITE_CLEARANCE",
+  workSubCategory: "Dismantling Pavement",
+  chapterNo: "2",
+  chapterTitle: "Site Clearance",
+  sourcePage: "38",
+  specClause: "Clause 202",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Output = 2000 SQM/8-hr shift using backhoe loader for scarification and debris removal.",
+};
+
+export const DISMANTLING_PAVEMENT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 2500, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 312.5 },
+  { projectCategory: "MEDIUM", shiftOutput: 2000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 250 },
+  { projectCategory: "SMALL",  shiftOutput: 1200, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 150 },
+];
+
+export const DISMANTLING_PAVEMENT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.100, shiftOutputRef: 2000, derivedPerUnit: 0.100 / 2000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 2.000, shiftOutputRef: 2000, derivedPerUnit: 2.000 / 2000 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 5.000, shiftOutputRef: 2000, derivedPerUnit: 5.000 / 2000 },
+];
+
+export const DISMANTLING_PAVEMENT_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Backhoe Loader", equipmentSpec: "1.0 CUM", purpose: "breaking", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 2500, derivedPerUnit: 8.0 / 2500 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Backhoe Loader", equipmentSpec: "0.9 CUM", purpose: "breaking", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 2000, derivedPerUnit: 8.0 / 2000 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Backhoe Loader", equipmentSpec: "0.6 CUM", purpose: "breaking", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 1200, derivedPerUnit: 8.0 / 1200 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Tipper",         equipmentSpec: "10 CUM",  purpose: "disposal", unit: "hrs", quantityPerShift: 5.0, formulaType: "FIXED", shiftOutputRef: 2000, derivedPerUnit: 5.0 / 2000 },
+];
+
+export const DISMANTLING_PAVEMENT_MATERIALS: never[] = [];
+
+// ─── ITEM 8: FORMATION EXCAVATION 3.01 ─────────────────────────────────────
+export const FORMATION_EXCAVATION_ITEM = {
+  itemCode: "3.01",
+  description: "Roadway excavation including cutting in all types of soils, excavating in cutting including trimming of slopes, spreading in uniform layers or loading into tippers for disposal/embankment filling as directed, all complete.",
+  shortLabel: "Formation Excavation (Cut)",
+  unit: "CUM",
+  workCategory: "EARTHWORK",
+  workSubCategory: "Formation Cutting",
+  chapterNo: "3",
+  chapterTitle: "Earthwork, Erosion Control and Drainage",
+  sourcePage: "58",
+  specClause: "Clause 301",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Same equipment as Embankment 3.16. Output 450 CUM/shift. Material = excavated soil disposed or used for embankment — no material cost.",
+};
+
+export const FORMATION_EXCAVATION_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 450, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 56.25 },
+  { projectCategory: "MEDIUM", shiftOutput: 450, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 56.25 },
+  { projectCategory: "SMALL",  shiftOutput: 450, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 56.25 },
+];
+
+export const FORMATION_EXCAVATION_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",    skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.040, shiftOutputRef: 450, derivedPerUnit: 0.040 / 450 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor", skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 450, derivedPerUnit: 2.000 / 450 },
+];
+
+export const FORMATION_EXCAVATION_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Hydraulic Excavator", equipmentSpec: "1.2 CUM bucket", purpose: "excavation", unit: "hrs", quantityPerShift: 5.048,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 5.048 / 450 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Hydraulic Excavator", equipmentSpec: "1.1 CUM bucket", purpose: "excavation", unit: "hrs", quantityPerShift: 5.813,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 5.813 / 450 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Hydraulic Excavator", equipmentSpec: "0.9 CUM bucket", purpose: "excavation", unit: "hrs", quantityPerShift: 8.127,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 8.127 / 450 },
+  { projectCategory: "LARGE",  sortOrder: 2, equipmentType: "Tipper",              equipmentSpec: "18 CUM",         purpose: "transport",  unit: "t.km", quantityPerShift: null,  formulaType: "LEAD_VARIABLE", formulaExpr: "450*1.80*L2", shiftOutputRef: 450, derivedPerUnit: null },
+  { projectCategory: "MEDIUM", sortOrder: 2, equipmentType: "Tipper",              equipmentSpec: "14 CUM",         purpose: "transport",  unit: "t.km", quantityPerShift: null,  formulaType: "LEAD_VARIABLE", formulaExpr: "450*1.80*L2", shiftOutputRef: 450, derivedPerUnit: null },
+  { projectCategory: "SMALL",  sortOrder: 2, equipmentType: "Tipper",              equipmentSpec: "10 CUM",         purpose: "transport",  unit: "t.km", quantityPerShift: null,  formulaType: "LEAD_VARIABLE", formulaExpr: "450*1.80*L2", shiftOutputRef: 450, derivedPerUnit: null },
+  { projectCategory: "LARGE",  sortOrder: 3, equipmentType: "Tipper",              equipmentSpec: "18 CUM (L/U)",   purpose: "loading",    unit: "hrs", quantityPerShift: 5.048,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 5.048 / 450 },
+  { projectCategory: "MEDIUM", sortOrder: 3, equipmentType: "Tipper",              equipmentSpec: "14 CUM (L/U)",   purpose: "loading",    unit: "hrs", quantityPerShift: 5.813,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 5.813 / 450 },
+  { projectCategory: "SMALL",  sortOrder: 3, equipmentType: "Tipper",              equipmentSpec: "10 CUM (L/U)",   purpose: "loading",    unit: "hrs", quantityPerShift: 8.127,  formulaType: "FIXED",         shiftOutputRef: 450, derivedPerUnit: 8.127 / 450 },
+];
+
+export const FORMATION_EXCAVATION_MATERIALS: never[] = [];
+
+// ─── ITEM 9: SUB-GRADE PREPARATION 3.10 ────────────────────────────────────
+export const SUBGRADE_PREPARATION_ITEM = {
+  itemCode: "3.10",
+  description: "Preparation and consolidation of sub-grade: scarifying the existing ground to a depth of 50mm, adding water as necessary, mixing, grading and compacting to achieve specified density as per Table 300-2. Includes trimming of slopes and dressing.",
+  shortLabel: "Sub-grade Preparation",
+  unit: "SQM",
+  workCategory: "EARTHWORK",
+  workSubCategory: "Sub-grade Preparation",
+  chapterNo: "3",
+  chapterTitle: "Earthwork, Erosion Control and Drainage",
+  sourcePage: "75",
+  specClause: "Clause 309",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Output = 5000 SQM/8-hr shift. Grader trims, roller compacts.",
+};
+
+export const SUBGRADE_PREPARATION_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 6000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 750 },
+  { projectCategory: "MEDIUM", shiftOutput: 5000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 625 },
+  { projectCategory: "SMALL",  shiftOutput: 3500, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 437.5 },
+];
+
+export const SUBGRADE_PREPARATION_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",    skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.040, shiftOutputRef: 5000, derivedPerUnit: 0.040 / 5000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor", skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 5000, derivedPerUnit: 2.000 / 5000 },
+];
+
+export const SUBGRADE_PREPARATION_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "4.30m blade",  purpose: "grading",    unit: "hrs", quantityPerShift: 3.000, formulaType: "FIXED", shiftOutputRef: 6000, derivedPerUnit: 3.000 / 6000 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "3.70m blade",  purpose: "grading",    unit: "hrs", quantityPerShift: 3.000, formulaType: "FIXED", shiftOutputRef: 5000, derivedPerUnit: 3.000 / 5000 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "3.35m blade",  purpose: "grading",    unit: "hrs", quantityPerShift: 3.500, formulaType: "FIXED", shiftOutputRef: 3500, derivedPerUnit: 3.500 / 3500 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Vibratory Roller", equipmentSpec: "11T",          purpose: "compaction", unit: "hrs", quantityPerShift: 2.500, formulaType: "FIXED", shiftOutputRef: 5000, derivedPerUnit: 2.500 / 5000 },
+  { projectCategory: "LARGE",  sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "16 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.273*L1+0.945", shiftOutputRef: 5000, derivedPerUnit: null },
+  { projectCategory: "MEDIUM", sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "12 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.365*L1+1.260", shiftOutputRef: 5000, derivedPerUnit: null },
+  { projectCategory: "SMALL",  sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "6 KL",         purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.729*L1+2.520", shiftOutputRef: 3500, derivedPerUnit: null },
+];
+
+export const SUBGRADE_PREPARATION_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Water", materialCategory: "WATER", unit: "KL", quantityPerShift: 12.500, shiftOutputRef: 5000, derivedPerUnit: 12.500 / 5000, isDesignSpecific: false },
+];
+
+// ─── ITEM 10: PRIME COAT 5.01 ───────────────────────────────────────────────
+export const PRIME_COAT_ITEM = {
+  itemCode: "5.01",
+  description: "Providing and applying primer coat with low viscosity bituminous material on prepared granular surface (GSB/WMM) including cleaning of road surface and spraying of primer @ 0.70–1.00 kg/SQM using a mechanical distributor, as per Clause 502.",
+  shortLabel: "Prime Coat (Emulsion SS-1)",
+  unit: "SQM",
+  workCategory: "BITUMINOUS",
+  workSubCategory: "Prime Coat",
+  chapterNo: "5",
+  chapterTitle: "Bases and Surface Courses (Bituminous)",
+  sourcePage: "133",
+  specClause: "Clause 502",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Application rate 0.90 kg/SQM of SS-1 emulsion (includes 30% dilution). Output = 10000 SQM/shift.",
+};
+
+export const PRIME_COAT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 12000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 1500 },
+  { projectCategory: "MEDIUM", shiftOutput: 10000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 1250 },
+  { projectCategory: "SMALL",  shiftOutput: 7000,  shiftHours: 8, outputUnit: "SQM", derivedPerHour: 875 },
+];
+
+export const PRIME_COAT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.200, shiftOutputRef: 10000, derivedPerUnit: 0.200 / 10000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 1.000, shiftOutputRef: 10000, derivedPerUnit: 1.000 / 10000 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 10000, derivedPerUnit: 2.000 / 10000 },
+];
+
+export const PRIME_COAT_EQUIPMENT = [
+  { projectCategory: "ALL", sortOrder: 1, equipmentType: "Bitumen Pressure Distributor", equipmentSpec: "4000 L tank",  purpose: "spraying",  unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 10000, derivedPerUnit: 8.0 / 10000 },
+  { projectCategory: "ALL", sortOrder: 2, equipmentType: "Air Compressor",               equipmentSpec: "250 CFM",       purpose: "cleaning",  unit: "hrs", quantityPerShift: 1.5, formulaType: "FIXED", shiftOutputRef: 10000, derivedPerUnit: 1.5 / 10000 },
+  { projectCategory: "ALL", sortOrder: 3, equipmentType: "Mechanical Broom",             equipmentSpec: "2.1m width",    purpose: "cleaning",  unit: "hrs", quantityPerShift: 1.5, formulaType: "FIXED", shiftOutputRef: 10000, derivedPerUnit: 1.5 / 10000 },
+];
+
+export const PRIME_COAT_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Bituminous Emulsion SS-1 @ 0.90 kg/SQM", materialCategory: "BINDER", unit: "MT", quantityPerShift: 9.000, shiftOutputRef: 10000, derivedPerUnit: 9.000 / 10000, isDesignSpecific: false, notes: "@ 0.90 kg/SQM including 30% dilution" },
+];
+
+// ─── ITEM 11: TACK COAT 5.02 ────────────────────────────────────────────────
+export const TACK_COAT_ITEM = {
+  itemCode: "5.02",
+  description: "Providing and applying tack coat with bituminous emulsion (RS-1) @ 0.25–0.30 kg/SQM on previously prepared bituminous or granular surface using mechanical distributor, complete as per Clause 503.",
+  shortLabel: "Tack Coat (Emulsion RS-1)",
+  unit: "SQM",
+  workCategory: "BITUMINOUS",
+  workSubCategory: "Tack Coat",
+  chapterNo: "5",
+  chapterTitle: "Bases and Surface Courses (Bituminous)",
+  sourcePage: "134",
+  specClause: "Clause 503",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Application rate 0.30 kg/SQM of RS-1 emulsion. Output = 15000 SQM/shift.",
+};
+
+export const TACK_COAT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 18000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 2250 },
+  { projectCategory: "MEDIUM", shiftOutput: 15000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 1875 },
+  { projectCategory: "SMALL",  shiftOutput: 10000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 1250 },
+];
+
+export const TACK_COAT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",    skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.100, shiftOutputRef: 15000, derivedPerUnit: 0.100 / 15000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor", skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 15000, derivedPerUnit: 2.000 / 15000 },
+];
+
+export const TACK_COAT_EQUIPMENT = [
+  { projectCategory: "ALL", sortOrder: 1, equipmentType: "Bitumen Pressure Distributor", equipmentSpec: "4000 L tank", purpose: "spraying", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 15000, derivedPerUnit: 8.0 / 15000 },
+];
+
+export const TACK_COAT_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Bituminous Emulsion RS-1 @ 0.30 kg/SQM", materialCategory: "BINDER", unit: "MT", quantityPerShift: 4.500, shiftOutputRef: 15000, derivedPerUnit: 4.500 / 15000, isDesignSpecific: false, notes: "@ 0.30 kg/SQM undiluted" },
+];
+
+// ─── ITEM 12: BITUMINOUS MACADAM (BM) 5.01B ─────────────────────────────────
+export const BM_ITEM = {
+  itemCode: "5.01B",
+  description: "Bituminous Macadam — Providing and laying bituminous macadam with crushed aggregates and bituminous binder @ 3.5% by weight of total mix, mixed in hot mix plant, transported to site, laid with mechanical paver and compacted with smooth wheeled roller as per Clause 504.",
+  shortLabel: "Bituminous Macadam (BM)",
+  unit: "CUM",
+  workCategory: "BITUMINOUS",
+  workSubCategory: "Bituminous Macadam",
+  chapterNo: "5",
+  chapterTitle: "Bases and Surface Courses (Bituminous)",
+  sourcePage: "140",
+  specClause: "Clause 504",
+  isMixSpecific: true,
+  hasGradingVariants: true,
+  notes: "Base course binder layer. Binder content lower than DBM (~3.5%). Grading-I (40mm nominal) and Grading-II (26.5mm nominal).",
+};
+
+export const BM_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 210, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 26.25 },
+  { projectCategory: "MEDIUM", shiftOutput: 210, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 26.25 },
+  { projectCategory: "SMALL",  shiftOutput: 170, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 21.25 },
+];
+
+export const BM_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.440, shiftOutputRef: 210, derivedPerUnit: 0.440 / 210 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 6.000, shiftOutputRef: 210, derivedPerUnit: 6.000 / 210 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 4.000, shiftOutputRef: 210, derivedPerUnit: 4.000 / 210 },
+];
+
+export const BM_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Hot Mix Plant",      equipmentSpec: "200 TPH",            purpose: "mixing",     unit: "hrs", quantityPerShift: 2.800, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 2.800 / 210 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Hot Mix Plant",      equipmentSpec: "160 TPH",            purpose: "mixing",     unit: "hrs", quantityPerShift: 3.500, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 3.500 / 210 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Hot Mix Plant",      equipmentSpec: "120 TPH",            purpose: "mixing",     unit: "hrs", quantityPerShift: 4.700, formulaType: "FIXED", shiftOutputRef: 170, derivedPerUnit: 4.700 / 170 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Air Compressor",     equipmentSpec: "250 CFM",            purpose: "cleaning",   unit: "hrs", quantityPerShift: 0.500, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 0.500 / 210 },
+  { projectCategory: "LARGE",  sortOrder: 3, equipmentType: "Paver Finisher",     equipmentSpec: "240 HP hydrostatic", purpose: "laying",     unit: "hrs", quantityPerShift: 2.800, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 2.800 / 210 },
+  { projectCategory: "MEDIUM", sortOrder: 3, equipmentType: "Paver Finisher",     equipmentSpec: "174 HP hydrostatic", purpose: "laying",     unit: "hrs", quantityPerShift: 3.500, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 3.500 / 210 },
+  { projectCategory: "SMALL",  sortOrder: 3, equipmentType: "Paver Finisher",     equipmentSpec: "174 HP hydrostatic", purpose: "laying",     unit: "hrs", quantityPerShift: 4.700, formulaType: "FIXED", shiftOutputRef: 170, derivedPerUnit: 4.700 / 170 },
+  { projectCategory: "ALL",    sortOrder: 4, equipmentType: "Tipper",             equipmentSpec: "transport",          purpose: "transport",  unit: "t.km", quantityPerShift: null, formulaType: "LEAD_VARIABLE", formulaExpr: "430*L1", shiftOutputRef: 210, derivedPerUnit: null },
+  { projectCategory: "LARGE",  sortOrder: 5, equipmentType: "Tipper",             equipmentSpec: "18 CUM (L/U)",      purpose: "loading",    unit: "hrs", quantityPerShift: 5.600, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 5.600 / 210 },
+  { projectCategory: "MEDIUM", sortOrder: 5, equipmentType: "Tipper",             equipmentSpec: "14 CUM (L/U)",      purpose: "loading",    unit: "hrs", quantityPerShift: 7.000, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 7.000 / 210 },
+  { projectCategory: "SMALL",  sortOrder: 5, equipmentType: "Tipper",             equipmentSpec: "10 CUM (L/U)",      purpose: "loading",    unit: "hrs", quantityPerShift: 9.400, formulaType: "FIXED", shiftOutputRef: 170, derivedPerUnit: 9.400 / 170 },
+  { projectCategory: "ALL",    sortOrder: 6, equipmentType: "Smooth Steel Tandem Roller", equipmentSpec: "static+vibratory", purpose: "compaction", unit: "hrs", quantityPerShift: 8.400, formulaType: "FIXED", shiftOutputRef: 210, derivedPerUnit: 8.400 / 210 },
+];
+
+export const BM_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 1, materialName: "Bitumen @ 3.5% of mix",       materialCategory: "BINDER",    unit: "MT",  quantityPerShift: 16.100, shiftOutputRef: 210, derivedPerUnit: 16.100 / 210, isDesignSpecific: true },
+  { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 2, materialName: "Aggregate 25–10mm @ 30%",     materialCategory: "AGGREGATE", sieveFromMm: 25, sieveToMm: 10, pctByWeight: 30, unit: "CUM", quantityPerShift: 88.200, shiftOutputRef: 210, derivedPerUnit: 88.200 / 210, isDesignSpecific: true },
+  { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 3, materialName: "Aggregate 10–4.75mm @ 30%",   materialCategory: "AGGREGATE", sieveFromMm: 10, sieveToMm: 4.75, pctByWeight: 30, unit: "CUM", quantityPerShift: 88.200, shiftOutputRef: 210, derivedPerUnit: 88.200 / 210, isDesignSpecific: true },
+  { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 4, materialName: "Aggregate <4.75mm @ 38%",     materialCategory: "AGGREGATE", sieveFromMm: null, sieveToMm: 4.75, pctByWeight: 38, unit: "CUM", quantityPerShift: 111.720, shiftOutputRef: 210, derivedPerUnit: 111.720 / 210, isDesignSpecific: true },
+  { projectCategory: "ALL", gradingVariant: "Grading-II", sortOrder: 5, materialName: "Filler @ 2%",                 materialCategory: "FILLER",    unit: "CUM", quantityPerShift: 7.800, shiftOutputRef: 210, derivedPerUnit: 7.800 / 210, isDesignSpecific: true },
+];
+
+// ─── ITEM 13: PCC M10 6.01 ──────────────────────────────────────────────────
+export const PCC_M10_ITEM = {
+  itemCode: "6.01",
+  description: "Providing and laying plain cement concrete M10 (nominal mix 1:3:6 using OPC 43 grade cement) in foundations, bed concrete, lean concrete and unreinforced slabs including formwork, placing, vibrating and curing as per relevant IS codes.",
+  shortLabel: "PCC M10 (Lean/Bed Concrete)",
+  unit: "CUM",
+  workCategory: "CONCRETE",
+  workSubCategory: "Plain Cement Concrete",
+  chapterNo: "6",
+  chapterTitle: "Cement Concrete Pavement and Related Works",
+  sourcePage: "165",
+  specClause: "IS 456 / IRC:44",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Nominal mix 1:3:6. Cement: ~220 kg/CUM (4.4 bags). Sand 0.46 CUM, CA 20mm 0.92 CUM. Output = 60 CUM/8-hr shift.",
+};
+
+export const PCC_M10_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 80, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 10 },
+  { projectCategory: "MEDIUM", shiftOutput: 60, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 7.5 },
+  { projectCategory: "SMALL",  shiftOutput: 40, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 5 },
+];
+
+export const PCC_M10_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.400, shiftOutputRef: 60, derivedPerUnit: 0.400 / 60 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason",           skillTier: "SKILLED",     unit: "day", quantityPerShift: 2.000, shiftOutputRef: 60, derivedPerUnit: 2.000 / 60 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 4.000, shiftOutputRef: 60, derivedPerUnit: 4.000 / 60 },
+  { projectCategory: "ALL", sortOrder: 4, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 8.000, shiftOutputRef: 60, derivedPerUnit: 8.000 / 60 },
+];
+
+export const PCC_M10_EQUIPMENT = [
+  { projectCategory: "ALL", sortOrder: 1, equipmentType: "Concrete Mixer",    equipmentSpec: "10/7 (0.28 CUM)", purpose: "mixing",     unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 60, derivedPerUnit: 7.0 / 60 },
+  { projectCategory: "ALL", sortOrder: 2, equipmentType: "Needle Vibrator",   equipmentSpec: "40mm dia",        purpose: "compaction", unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 60, derivedPerUnit: 7.0 / 60 },
+  { projectCategory: "ALL", sortOrder: 3, equipmentType: "Water Pump",        equipmentSpec: "5 HP",            purpose: "curing",     unit: "hrs", quantityPerShift: 2.0, formulaType: "FIXED", shiftOutputRef: 60, derivedPerUnit: 2.0 / 60 },
+];
+
+export const PCC_M10_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "OPC 43 Cement",        materialCategory: "CEMENT",    unit: "MT",  quantityPerShift: 13.200, shiftOutputRef: 60, derivedPerUnit: 13.200 / 60, isDesignSpecific: false, notes: "220 kg/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Fine Aggregate (Sand)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 27.600, shiftOutputRef: 60, derivedPerUnit: 27.600 / 60, isDesignSpecific: false, notes: "0.46 CUM/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "Coarse Aggregate 20mm", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 55.200, shiftOutputRef: 60, derivedPerUnit: 55.200 / 60, isDesignSpecific: false, notes: "0.92 CUM/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Water",                 materialCategory: "WATER",     unit: "KL",  quantityPerShift: 6.600,  shiftOutputRef: 60, derivedPerUnit: 6.600 / 60,  isDesignSpecific: false, notes: "0.11 KL/CUM (w/c ~0.50)" },
+];
+
+// ─── ITEM 14: RCC M25 6.02 ──────────────────────────────────────────────────
+export const RCC_M25_ITEM = {
+  itemCode: "6.02",
+  description: "Providing and laying reinforced cement concrete M25 (design mix using OPC 43/53 grade cement) in structures including formwork, reinforcement binding, concreting, vibrating and curing as per IS 456 and project drawings.",
+  shortLabel: "RCC M25 (Structural Concrete)",
+  unit: "CUM",
+  workCategory: "CONCRETE",
+  workSubCategory: "Reinforced Cement Concrete",
+  chapterNo: "6",
+  chapterTitle: "Cement Concrete Pavement and Related Works",
+  sourcePage: "170",
+  specClause: "IS 456 / IRC:112",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Design mix M25: Cement 400 kg/CUM, FA 0.44 CUM, CA 20mm 0.77 CUM. Output = 45 CUM/8-hr shift including formwork and reinforcement activities.",
+};
+
+export const RCC_M25_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 55, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 6.875 },
+  { projectCategory: "MEDIUM", shiftOutput: 45, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 5.625 },
+  { projectCategory: "SMALL",  shiftOutput: 30, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 3.75 },
+];
+
+export const RCC_M25_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.400, shiftOutputRef: 45, derivedPerUnit: 0.400 / 45 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason",           skillTier: "SKILLED",     unit: "day", quantityPerShift: 3.000, shiftOutputRef: 45, derivedPerUnit: 3.000 / 45 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Bar Bender",      skillTier: "SKILLED",     unit: "day", quantityPerShift: 2.000, shiftOutputRef: 45, derivedPerUnit: 2.000 / 45 },
+  { projectCategory: "ALL", sortOrder: 4, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 5.000, shiftOutputRef: 45, derivedPerUnit: 5.000 / 45 },
+  { projectCategory: "ALL", sortOrder: 5, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 10.000, shiftOutputRef: 45, derivedPerUnit: 10.000 / 45 },
+];
+
+export const RCC_M25_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Transit Mixer",  equipmentSpec: "7 CUM",  purpose: "mixing",     unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 55, derivedPerUnit: 7.0 / 55 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Concrete Mixer", equipmentSpec: "10/7",   purpose: "mixing",     unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 45, derivedPerUnit: 7.0 / 45 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Concrete Mixer", equipmentSpec: "10/7",   purpose: "mixing",     unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 30, derivedPerUnit: 7.0 / 30 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Needle Vibrator", equipmentSpec: "40mm",  purpose: "compaction", unit: "hrs", quantityPerShift: 7.0, formulaType: "FIXED", shiftOutputRef: 45, derivedPerUnit: 7.0 / 45 },
+  { projectCategory: "ALL",    sortOrder: 3, equipmentType: "Water Pump",      equipmentSpec: "5 HP",  purpose: "curing",     unit: "hrs", quantityPerShift: 3.0, formulaType: "FIXED", shiftOutputRef: 45, derivedPerUnit: 3.0 / 45 },
+];
+
+export const RCC_M25_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "OPC 43/53 Cement",     materialCategory: "CEMENT",    unit: "MT",  quantityPerShift: 18.000, shiftOutputRef: 45, derivedPerUnit: 18.000 / 45, isDesignSpecific: false, notes: "400 kg/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Fine Aggregate (Sand)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 19.800, shiftOutputRef: 45, derivedPerUnit: 19.800 / 45, isDesignSpecific: false, notes: "0.44 CUM/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "Coarse Aggregate 20mm", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 34.650, shiftOutputRef: 45, derivedPerUnit: 34.650 / 45, isDesignSpecific: false, notes: "0.77 CUM/CUM" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Water",                 materialCategory: "WATER",     unit: "KL",  quantityPerShift: 7.200,  shiftOutputRef: 45, derivedPerUnit: 7.200 / 45,  isDesignSpecific: false, notes: "0.16 KL/CUM (w/c ~0.40)" },
+];
+
+// ─── ITEM 15: PIPE CULVERT (RCC NP3 600mm) 7.09.1 ──────────────────────────
+export const PIPE_CULVERT_ITEM = {
+  itemCode: "7.09.1",
+  description: "Providing and laying NP3 class RCC hume pipe 600mm internal diameter including jointing with cement mortar 1:2, laying on PCC M10 bedding, backfilling and compaction, all complete as per drawings and IS 458.",
+  shortLabel: "RCC Hume Pipe 600mm NP3",
+  unit: "RM",
+  workCategory: "DRAINAGE",
+  workSubCategory: "Pipe Culvert",
+  chapterNo: "7",
+  chapterTitle: "Drainage, Erosion Control and Waterways",
+  sourcePage: "210",
+  specClause: "IS 458 / Clause 701",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Output = 40 RM/8-hr shift including trenching, bedding, laying and jointing. Excavator does trenching.",
+};
+
+export const PIPE_CULVERT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 50, shiftHours: 8, outputUnit: "RM", derivedPerHour: 6.25 },
+  { projectCategory: "MEDIUM", shiftOutput: 40, shiftHours: 8, outputUnit: "RM", derivedPerHour: 5 },
+  { projectCategory: "SMALL",  shiftOutput: 25, shiftHours: 8, outputUnit: "RM", derivedPerHour: 3.125 },
+];
+
+export const PIPE_CULVERT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.200, shiftOutputRef: 40, derivedPerUnit: 0.200 / 40 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mason",           skillTier: "SKILLED",     unit: "day", quantityPerShift: 2.000, shiftOutputRef: 40, derivedPerUnit: 2.000 / 40 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 3.000, shiftOutputRef: 40, derivedPerUnit: 3.000 / 40 },
+  { projectCategory: "ALL", sortOrder: 4, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 6.000, shiftOutputRef: 40, derivedPerUnit: 6.000 / 40 },
+];
+
+export const PIPE_CULVERT_EQUIPMENT = [
+  { projectCategory: "ALL", sortOrder: 1, equipmentType: "Hydraulic Excavator", equipmentSpec: "0.9 CUM (trench)", purpose: "excavation", unit: "hrs", quantityPerShift: 4.0, formulaType: "FIXED", shiftOutputRef: 40, derivedPerUnit: 4.0 / 40 },
+  { projectCategory: "ALL", sortOrder: 2, equipmentType: "Crane/Pipe Layer",    equipmentSpec: "5T capacity",      purpose: "laying",     unit: "hrs", quantityPerShift: 6.0, formulaType: "FIXED", shiftOutputRef: 40, derivedPerUnit: 6.0 / 40 },
+  { projectCategory: "ALL", sortOrder: 3, equipmentType: "Concrete Mixer",      equipmentSpec: "10/7",             purpose: "bedding",    unit: "hrs", quantityPerShift: 2.0, formulaType: "FIXED", shiftOutputRef: 40, derivedPerUnit: 2.0 / 40 },
+];
+
+export const PIPE_CULVERT_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "RCC Hume Pipe NP3 600mm dia", materialCategory: "PIPE",    unit: "RM",  quantityPerShift: 40.000, shiftOutputRef: 40, derivedPerUnit: 1.000, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "OPC 43 Cement (bedding)",     materialCategory: "CEMENT",  unit: "MT",  quantityPerShift: 0.900,  shiftOutputRef: 40, derivedPerUnit: 0.900 / 40, isDesignSpecific: false, notes: "PCC M10 bedding + joint mortar" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 3, materialName: "Fine Aggregate (Sand)",       materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 0.600, shiftOutputRef: 40, derivedPerUnit: 0.600 / 40, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Coarse Aggregate 20mm",       materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 1.200, shiftOutputRef: 40, derivedPerUnit: 1.200 / 40, isDesignSpecific: false },
 ];

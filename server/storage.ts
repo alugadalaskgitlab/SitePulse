@@ -20804,16 +20804,42 @@ export class DatabaseStorage implements IStorage {
       WMM_ITEM, WMM_PRODUCTIVITY, WMM_LABOUR, WMM_EQUIPMENT, WMM_MATERIALS,
       DBM_ITEM, DBM_PRODUCTIVITY, DBM_LABOUR, DBM_EQUIPMENT, DBM_MATERIALS,
       BC_ITEM, BC_PRODUCTIVITY, BC_LABOUR, BC_EQUIPMENT, BC_MATERIALS,
+      CLEARING_GRUBBING_ITEM, CLEARING_GRUBBING_PRODUCTIVITY, CLEARING_GRUBBING_LABOUR, CLEARING_GRUBBING_EQUIPMENT, CLEARING_GRUBBING_MATERIALS,
+      DISMANTLING_PAVEMENT_ITEM, DISMANTLING_PAVEMENT_PRODUCTIVITY, DISMANTLING_PAVEMENT_LABOUR, DISMANTLING_PAVEMENT_EQUIPMENT, DISMANTLING_PAVEMENT_MATERIALS,
+      FORMATION_EXCAVATION_ITEM, FORMATION_EXCAVATION_PRODUCTIVITY, FORMATION_EXCAVATION_LABOUR, FORMATION_EXCAVATION_EQUIPMENT, FORMATION_EXCAVATION_MATERIALS,
+      SUBGRADE_PREPARATION_ITEM, SUBGRADE_PREPARATION_PRODUCTIVITY, SUBGRADE_PREPARATION_LABOUR, SUBGRADE_PREPARATION_EQUIPMENT, SUBGRADE_PREPARATION_MATERIALS,
+      PRIME_COAT_ITEM, PRIME_COAT_PRODUCTIVITY, PRIME_COAT_LABOUR, PRIME_COAT_EQUIPMENT, PRIME_COAT_MATERIALS,
+      TACK_COAT_ITEM, TACK_COAT_PRODUCTIVITY, TACK_COAT_LABOUR, TACK_COAT_EQUIPMENT, TACK_COAT_MATERIALS,
+      BM_ITEM, BM_PRODUCTIVITY, BM_LABOUR, BM_EQUIPMENT, BM_MATERIALS,
+      PCC_M10_ITEM, PCC_M10_PRODUCTIVITY, PCC_M10_LABOUR, PCC_M10_EQUIPMENT, PCC_M10_MATERIALS,
+      RCC_M25_ITEM, RCC_M25_PRODUCTIVITY, RCC_M25_LABOUR, RCC_M25_EQUIPMENT, RCC_M25_MATERIALS,
+      PIPE_CULVERT_ITEM, PIPE_CULVERT_PRODUCTIVITY, PIPE_CULVERT_LABOUR, PIPE_CULVERT_EQUIPMENT, PIPE_CULVERT_MATERIALS,
     } = await import("@shared/snlSeedData");
 
     const source = await this.upsertSnlSource({ ...MORTH_SDB_SOURCE, isActive: true });
 
     const itemDefs = [
-      { item: EMBANKMENT_ITEM, prod: EMBANKMENT_PRODUCTIVITY, lab: EMBANKMENT_LABOUR, equip: EMBANKMENT_EQUIPMENT, mat: EMBANKMENT_MATERIALS },
-      { item: GSB_ITEM,        prod: GSB_PRODUCTIVITY,        lab: GSB_LABOUR,        equip: GSB_EQUIPMENT,        mat: GSB_MATERIALS },
-      { item: WMM_ITEM,        prod: WMM_PRODUCTIVITY,        lab: WMM_LABOUR,        equip: WMM_EQUIPMENT,        mat: WMM_MATERIALS },
-      { item: DBM_ITEM,        prod: DBM_PRODUCTIVITY,        lab: DBM_LABOUR,        equip: DBM_EQUIPMENT,        mat: DBM_MATERIALS },
-      { item: BC_ITEM,         prod: BC_PRODUCTIVITY,         lab: BC_LABOUR,         equip: BC_EQUIPMENT,         mat: BC_MATERIALS },
+      // Chapter 2 — Site Clearance
+      { item: CLEARING_GRUBBING_ITEM,    prod: CLEARING_GRUBBING_PRODUCTIVITY,    lab: CLEARING_GRUBBING_LABOUR,    equip: CLEARING_GRUBBING_EQUIPMENT,    mat: CLEARING_GRUBBING_MATERIALS },
+      { item: DISMANTLING_PAVEMENT_ITEM, prod: DISMANTLING_PAVEMENT_PRODUCTIVITY, lab: DISMANTLING_PAVEMENT_LABOUR, equip: DISMANTLING_PAVEMENT_EQUIPMENT, mat: DISMANTLING_PAVEMENT_MATERIALS },
+      // Chapter 3 — Earthwork
+      { item: EMBANKMENT_ITEM,           prod: EMBANKMENT_PRODUCTIVITY,           lab: EMBANKMENT_LABOUR,           equip: EMBANKMENT_EQUIPMENT,           mat: EMBANKMENT_MATERIALS },
+      { item: FORMATION_EXCAVATION_ITEM, prod: FORMATION_EXCAVATION_PRODUCTIVITY, lab: FORMATION_EXCAVATION_LABOUR, equip: FORMATION_EXCAVATION_EQUIPMENT, mat: FORMATION_EXCAVATION_MATERIALS },
+      { item: SUBGRADE_PREPARATION_ITEM, prod: SUBGRADE_PREPARATION_PRODUCTIVITY, lab: SUBGRADE_PREPARATION_LABOUR, equip: SUBGRADE_PREPARATION_EQUIPMENT, mat: SUBGRADE_PREPARATION_MATERIALS },
+      // Chapter 4 — Sub-Bases & Bases
+      { item: GSB_ITEM,                  prod: GSB_PRODUCTIVITY,                  lab: GSB_LABOUR,                  equip: GSB_EQUIPMENT,                  mat: GSB_MATERIALS },
+      { item: WMM_ITEM,                  prod: WMM_PRODUCTIVITY,                  lab: WMM_LABOUR,                  equip: WMM_EQUIPMENT,                  mat: WMM_MATERIALS },
+      // Chapter 5 — Bituminous
+      { item: PRIME_COAT_ITEM,           prod: PRIME_COAT_PRODUCTIVITY,           lab: PRIME_COAT_LABOUR,           equip: PRIME_COAT_EQUIPMENT,           mat: PRIME_COAT_MATERIALS },
+      { item: TACK_COAT_ITEM,            prod: TACK_COAT_PRODUCTIVITY,            lab: TACK_COAT_LABOUR,            equip: TACK_COAT_EQUIPMENT,            mat: TACK_COAT_MATERIALS },
+      { item: BM_ITEM,                   prod: BM_PRODUCTIVITY,                   lab: BM_LABOUR,                   equip: BM_EQUIPMENT,                   mat: BM_MATERIALS },
+      { item: DBM_ITEM,                  prod: DBM_PRODUCTIVITY,                  lab: DBM_LABOUR,                  equip: DBM_EQUIPMENT,                  mat: DBM_MATERIALS },
+      { item: BC_ITEM,                   prod: BC_PRODUCTIVITY,                   lab: BC_LABOUR,                   equip: BC_EQUIPMENT,                   mat: BC_MATERIALS },
+      // Chapter 6 — Concrete
+      { item: PCC_M10_ITEM,              prod: PCC_M10_PRODUCTIVITY,              lab: PCC_M10_LABOUR,              equip: PCC_M10_EQUIPMENT,              mat: PCC_M10_MATERIALS },
+      { item: RCC_M25_ITEM,              prod: RCC_M25_PRODUCTIVITY,              lab: RCC_M25_LABOUR,              equip: RCC_M25_EQUIPMENT,              mat: RCC_M25_MATERIALS },
+      // Chapter 7 — Drainage
+      { item: PIPE_CULVERT_ITEM,         prod: PIPE_CULVERT_PRODUCTIVITY,         lab: PIPE_CULVERT_LABOUR,         equip: PIPE_CULVERT_EQUIPMENT,         mat: PIPE_CULVERT_MATERIALS },
     ];
 
     let count = 0;
@@ -20823,17 +20849,17 @@ export class DatabaseStorage implements IStorage {
         productivity: prod.map(p => ({ ...p, itemId: inserted.id })),
         equipment: equip.map(e => ({ ...e, itemId: inserted.id })),
         labour: lab.map(l => ({ ...l, itemId: inserted.id })),
-        materials: mat.map(m => ({ ...m, itemId: inserted.id })),
+        materials: (mat as any[]).map(m => ({ ...m, itemId: inserted.id })),
       });
       count++;
     }
 
-    const [logRow] = await db.insert(snlImportLog).values({
+    await db.insert(snlImportLog).values({
       sourceId: source.id,
       importedBy: "system",
       itemCount: count,
       method: "MANUAL",
-      notes: "Initial seed — 5 validated MoRTH SDB 2019 items",
+      notes: `SNL seed v2 — ${count} MoRTH SDB 2019 items (Ch.2–7)`,
     }).returning();
 
     return { source, items: count };
