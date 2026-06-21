@@ -2486,7 +2486,7 @@ export const boqMixTemplateLinks = pgTable("boq_mix_template_links", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
   mixType: text("mix_type").notNull(),
-  mixTemplateId: integer("mix_template_id").notNull(),
+  mixTemplateId: integer("mix_template_id"),
   mixTemplateName: text("mix_template_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });

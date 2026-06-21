@@ -205,10 +205,28 @@ export interface ProductivitySettings {
 }
 
 /**
+ * Layer-type alias map: items report layerType keys (e.g. "bituminous") while
+ * the settings UI stores overrides under industry mix-type keys (e.g. "BC", "DBM").
+ * This table gives the ordered alias list to try when a direct lookup misses.
+ * First alias with an outputPerHr override wins (most-specific first).
+ */
+const LAYER_TYPE_ALIASES: Record<string, string[]> = {
+  BITUMINOUS: ["BC", "SDBC", "DBM", "BM"],
+  GRANULAR:   ["WMM", "WBM", "GSB", "EG"],
+  CONCRETE:   ["M20", "M25", "M30", "M35", "M40", "RMC"],
+  EARTHWORK:  ["EG"],
+  SPRAY_COAT: ["BC"],
+};
+
+/**
  * Resolves an outputPerHr project-mode override for `itemType`.
  * Returns the override value (>0) or null when no match / wrong mode.
  *
- * Lookup is case-insensitive on both exact key and UPPERCASE key.
+ * Resolution order (first match wins):
+ * 1. Direct key lookup — case-insensitive exact match against override keys.
+ * 2. Layer-type alias expansion — maps "BITUMINOUS" → tries ["BC","DBM","SDBC","BM"]
+ *    in order. This bridges the gap between item.layerConfig.layerType keys stored in
+ *    BOQ items and the industry mix-type keys (BC / WMM / M20) used in the settings UI.
  */
 export function resolveProductivityForType(
   settings: ProductivitySettings | null | undefined,
@@ -217,9 +235,24 @@ export function resolveProductivityForType(
   if (!settings || settings.mode !== "project" || !settings.overrides || !itemType) return null;
   const raw = itemType.trim();
   const up = raw.toUpperCase();
-  const override = settings.overrides[up] ?? settings.overrides[raw];
-  const val = override?.outputPerHr;
-  return typeof val === "number" && val > 0 ? val : null;
+  const ov = settings.overrides;
+
+  // 1. Direct lookup (case-insensitive)
+  const direct = ov[up] ?? ov[raw];
+  const directVal = direct?.outputPerHr;
+  if (typeof directVal === "number" && directVal > 0) return directVal;
+
+  // 2. Layer-type alias expansion
+  const aliases = LAYER_TYPE_ALIASES[up];
+  if (aliases) {
+    for (const alias of aliases) {
+      const aliased = ov[alias] ?? ov[alias.toLowerCase()];
+      const aliasedVal = aliased?.outputPerHr;
+      if (typeof aliasedVal === "number" && aliasedVal > 0) return aliasedVal;
+    }
+  }
+
+  return null;
 }
 
 // ─── Monthly Distribution ─────────────────────────────────────────────────────

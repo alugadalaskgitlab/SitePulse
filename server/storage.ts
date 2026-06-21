@@ -1200,6 +1200,7 @@ export interface IStorage {
   upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings>;
   getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]>;
   createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink>;
+  upsertBoqMixLink(projectId: number, data: { mixType: string; mixTemplateId?: number | null; mixTemplateName?: string | null }): Promise<BoqMixTemplateLink>;
   deleteBoqMixLink(id: number): Promise<void>;
 }
 
@@ -19926,12 +19927,17 @@ export class DatabaseStorage implements IStorage {
         id serial PRIMARY KEY,
         boq_project_id integer NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
         mix_type text NOT NULL,
-        mix_template_id integer NOT NULL,
+        mix_template_id integer,
         mix_template_name text,
         created_at timestamp with time zone DEFAULT now(),
         UNIQUE (boq_project_id, mix_type)
       )
     `));
+
+    // Drop NOT NULL constraint on mix_template_id if table was created with old NOT NULL schema
+    await db.execute(sql.raw(`
+      ALTER TABLE boq_mix_template_links ALTER COLUMN mix_template_id DROP NOT NULL
+    `)).catch(() => { /* already nullable — ignore */ });
   }
 
   async getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null> {
@@ -19964,6 +19970,24 @@ export class DatabaseStorage implements IStorage {
 
   async createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink> {
     const [row] = await db.insert(boqMixTemplateLinks).values(data).returning();
+    return row;
+  }
+
+  async upsertBoqMixLink(
+    projectId: number,
+    data: { mixType: string; mixTemplateId?: number | null; mixTemplateName?: string | null },
+  ): Promise<BoqMixTemplateLink> {
+    const [row] = await db
+      .insert(boqMixTemplateLinks)
+      .values({ boqProjectId: projectId, mixType: data.mixType, mixTemplateId: data.mixTemplateId ?? null, mixTemplateName: data.mixTemplateName ?? null })
+      .onConflictDoUpdate({
+        target: [boqMixTemplateLinks.boqProjectId, boqMixTemplateLinks.mixType],
+        set: {
+          mixTemplateId: data.mixTemplateId ?? null,
+          mixTemplateName: data.mixTemplateName ?? null,
+        },
+      })
+      .returning();
     return row;
   }
 

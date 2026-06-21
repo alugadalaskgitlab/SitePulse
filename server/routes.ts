@@ -9399,6 +9399,20 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/boq/projects/:id/mix-links", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { mixType, mixTemplateId, mixTemplateName } = req.body;
+      if (!mixType) return res.status(400).json({ error: "mixType is required" });
+      const link = await storage.upsertBoqMixLink(projectId, { mixType, mixTemplateId, mixTemplateName });
+      res.json(link);
+    } catch (err) {
+      console.error("PUT /api/boq/projects/:id/mix-links:", err);
+      res.status(500).json({ error: "Failed to upsert mix link" });
+    }
+  });
+
   app.delete("/api/boq/projects/:id/mix-links/:linkId", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;

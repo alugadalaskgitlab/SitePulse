@@ -20,13 +20,14 @@ CREATE TABLE IF NOT EXISTS boq_program_settings (
   updated_at timestamp with time zone DEFAULT now()
 );
 
--- Mix template links keyed by project + standard mix type (BC/DBM/WMM/SDBC/GSB/M20/M25/M30/M35/RMC)
--- The planning engine uses these to resolve which plant mix template supplies a given layer type.
+-- Mix template links keyed by project + standard mix type (BC/DBM/WMM/SDBC/GSB/M20/M25/M30/M35/RMC/EG)
+-- mix_template_id is nullable: a link can reserve a mix type slot before a template is assigned.
+-- The planning engine uses this to resolve which plant mix template supplies a given layer type.
 CREATE TABLE IF NOT EXISTS boq_mix_template_links (
   id serial PRIMARY KEY,
   boq_project_id integer NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
   mix_type text NOT NULL,
-  mix_template_id integer NOT NULL,
+  mix_template_id integer,
   mix_template_name text,
   created_at timestamp with time zone DEFAULT now(),
   UNIQUE (boq_project_id, mix_type)
