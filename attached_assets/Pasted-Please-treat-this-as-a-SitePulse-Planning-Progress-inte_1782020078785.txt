@@ -1,0 +1,368 @@
+Please treat this as a SitePulse Planning & Progress integration correction, not a fresh redesign.
+
+Many parts are already built, but the current flow is still too manual. The PM/user should not manually enter hrs/BOQ unit, count, material coefficients, labour coefficients, etc. for every BOQ item.
+
+Important: Do not change BOQ category/import classification in this task. Category handling is already in place. Focus only on SDB/SNL mapping, resource selection, automatic norms, Program Settings, Work Programme dates, BOM and demand flow.
+
+The intended SitePulse flow is:
+
+BOQ Import
+→ category/classification already preserved
+→ BOQ item matched to SDB/SNL norm
+→ materials populated automatically
+→ PM/Admin selects or confirms practical equipment/labour where required
+→ system auto-populates productivity, hrs/BOQ unit, labour coefficient and count/resource demand
+→ Program Settings used only for project-level assumptions
+→ PM prepares Work Programme/Gantt using chainage and start date/month
+→ BOM/Demand/Procurement outputs calculate automatically.
+
+Please inspect existing code first and fill the gaps without duplicating already-built functionality.
+
+---
+
+## 1. Auto SDB/SNL mapping after import
+
+After BOQ import, automatically attempt to map each BOQ item to SDB/SNL using:
+
+* item code, if available
+* description keywords
+* unit
+* category/chapter
+* known aliases
+* SDB/SNL item code and description
+
+If a confident match is found:
+
+* store snlItemId on the BOQ item
+* mark mappingStatus = mapped
+* populate internal working-copy data required for planning.
+
+If multiple possible matches exist:
+
+* mark mappingStatus = needs_review
+* show it in a simple review list
+* do not force the PM to manually configure recipe rows.
+
+If no match exists:
+
+* mark mappingStatus = unmapped
+* keep item visible in Work Programme and BOM
+* allow PM/Admin mapping later.
+
+---
+
+## 2. Material logic
+
+Material demand should be populated automatically.
+
+### Non-mix items
+
+Use SDB/SNL material coefficients wherever applicable.
+
+### Mix-specific items
+
+Use project mix templates / JMF / RMC design.
+
+Examples:
+
+* BC → aggregate dust, 6mm, 10mm, bitumen, filler, LDO
+* DBM → 20mm, 10mm, dust, bitumen, filler
+* WMM → selected WMM mix template
+* Concrete → RMC mix design for M20/M25/M30/etc.
+
+If mix template is missing, show:
+
+“Mix template required.”
+
+### Direct supply case
+
+For GSB/WMM direct from source/crusher:
+
+* If bought as ready material, BOM should show GSB Material / WMM Material.
+* If produced/mixed by contractor, BOM should break into fractions such as 40mm, 20mm, 10mm, dust and water.
+
+This should be selected once at project/item level, not entered manually as recipe rows.
+
+---
+
+## 3. Equipment selection and automatic output
+
+For each BOQ item, PM/Admin should be able to select or confirm practical equipment from the Equipment Master.
+
+After equipment is selected, the system must automatically populate:
+
+* output/productivity
+* hrs per BOQ unit
+* duration impact
+* required equipment hours
+* required count/resource demand wherever applicable
+
+using SDB/SNL norms and/or equipment master productivity.
+
+The PM/Admin should not manually enter hrs/BOQ unit or count as a normal step.
+
+If selected equipment does not have productivity for the BOQ unit, show:
+
+“Equipment output missing for this work unit. Please define output in master/advanced settings.”
+
+---
+
+## 4. Labour default and override
+
+Labour demand should default from SDB/SNL labour norms.
+
+PM/Admin may override labour coefficient where required, but manual labour entry should not be forced for every item.
+
+System should calculate:
+
+labour days per BOQ unit × work quantity = total mandays
+
+and distribute month-wise based on the Work Programme.
+
+---
+
+## 5. Item Recipes screen role
+
+The Item Recipes screen should remain available to PM/Admin, but it should become a resource confirmation / advanced correction screen.
+
+It should not behave like a manual rate-analysis entry screen.
+
+Normal fields should be auto-filled:
+
+* materials
+* equipment output
+* hrs per BOQ unit
+* labour coefficient
+* productivity
+* count/resource requirement where applicable
+
+Manual entry should be advanced override only.
+
+The “Map to Norm” button should remain for:
+
+* unmapped item
+* wrong mapping
+* PM/Admin correction
+
+When applied, it must actually populate:
+
+* materials
+* equipment/labour norms
+* productivity/output
+* layer/type information where applicable
+
+---
+
+## 6. Program Settings screen before Gantt
+
+Create/organise a clear Program Settings screen inside each BOQ project before Work Programme.
+
+It should contain only project-level assumptions.
+
+### A. Working hours / calendar
+
+Default from standard norm.
+
+Allow optional override:
+
+* 8 hrs
+* 10 hrs
+* 12 hrs
+* working days per month
+* night shift / double shift if supported
+
+### B. Lead & Source Distances
+
+Rename the existing “Planning Source Settings” to “Lead & Source Distances” and expand/reuse it.
+
+Current fields:
+
+* HMP chainage
+* WMM plant chainage
+* Quarry chainage
+* average tipper speed
+
+Add/organise as needed:
+
+* HMP → site
+* WMM plant → site
+* Quarry/crusher → site
+* RMC plant → site
+* Borrow area → site
+* Disposal point
+* average tipper speed
+* loading/unloading time
+* tipper capacity
+
+This should feed tipper demand and transport-related demand.
+
+Do not duplicate this elsewhere.
+
+### C. Mix Template Links
+
+For mix-specific items, link to existing templates/designs:
+
+* WMM
+* DBM
+* BC
+* SDBC
+* concrete grades
+* RMC mix designs
+
+### D. Productivity Override
+
+Default: use SDB/SNL standard output.
+
+Optional:
+
+* Use Standard Norm
+* Use Company Standard
+* Use Project Specific Output
+
+If project-specific override is used, the user should enter only output, for example:
+
+* WMM = 250 CUM/day
+* BC = 500 MT/day
+
+Do not ask the PM to edit equipment/labour/material coefficients in Program Settings.
+
+---
+
+## 7. Work Programme dates and duration logic
+
+Work Programme should allow:
+
+* chainage from
+* chainage to
+* start date / start month
+* optional end date
+* split/add stretch
+
+Logic:
+
+### A. If only start date/month is provided
+
+* calculate duration from bottleneck resource/productivity
+* calculate end date automatically
+* calculate monthly spread automatically
+
+### B. If start date and end date are provided
+
+* treat duration as fixed by the user
+* calculate required resource demand/count/hours needed to complete within that duration
+* do not shrink or distort the bar incorrectly
+
+Date changes must preserve correct duration/resource logic.
+
+No “No equipment” warning should appear for properly mapped BOQ items.
+
+If “No equipment” appears, it should mean:
+
+“This item is not properly mapped or equipment output is missing.”
+
+It should not mean the PM must manually enter hrs/BOQ unit.
+
+---
+
+## 8. BOM & Demand Road Estimator parity
+
+BOM & Demand should behave like Road Estimator, excluding rates/costs/GST/profit.
+
+### Materials
+
+Show:
+
+* material/component name
+* source BOQ item
+* coefficient × work quantity = total
+* monthly demand
+
+Materials must expand fully, including:
+
+* aggregate fractions
+* bitumen
+* emulsion
+* filler
+* cement
+* sand
+* steel
+* water
+* diesel/HSD
+* LDO/process fuel
+* any other mapped material
+
+Do not show only generic “Aggregate” where mix/template data exists.
+
+### Equipment
+
+Show equipment demand as:
+
+* equipment name
+* source BOQ item
+* hrs per BOQ unit × work quantity = total hours
+* monthly hours
+* required count only where calculated meaningfully from fixed duration/resource capacity
+
+Do not show fake “Count = 1” as demand.
+
+Physical equipment availability/readiness will be handled later.
+
+### Labour
+
+Show labour demand as:
+
+* labour category/designation
+* source BOQ item
+* days per BOQ unit × work quantity = total mandays
+* monthly mandays
+
+### By Item
+
+Each BOQ item should show its derived:
+
+* materials
+* equipment
+* labour
+
+with formulas and monthly split.
+
+---
+
+## 9. Procurement / Stock suggestions
+
+For now, connect only material demand to stock/procurement.
+
+Flow:
+
+Work Programme material demand
+→ compare with current stock / available stock
+→ identify shortage
+→ suggest action:
+
+* raise IRN
+* raise PI
+* plan procurement
+
+Do not disturb existing manual IRN/PI flows.
+
+Users must still be able to raise IRN/PI manually for any material, store item, spare, tool, consumable, or other requirement.
+
+---
+
+## 10. Implementation priority
+
+Please implement/fix in this order:
+
+1. Auto SDB/SNL mapping
+2. Automatic material population
+3. Equipment selection with automatic output/productivity population
+4. Labour default from SDB/SNL with optional override
+5. Program Settings screen
+6. Work Programme start date / optional end date logic
+7. BOM & Demand Road Estimator parity
+8. Material stock/procurement suggestions
+9. Dashboard redesign later
+
+The root issue is that a BOQ item is not yet automatically becoming a complete planned activity.
+
+Please fix that foundation first. Once that is correct, Work Programme, BOM, Demand and Procurement will start behaving correctly without manual calculation entry.
