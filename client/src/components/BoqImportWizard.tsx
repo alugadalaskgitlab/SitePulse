@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { useMutation } from "@tanstack/react-query";
 import {
   FileSpreadsheet, Upload, ArrowRight, Check, Loader2,
-  AlertCircle, X, Tags,
+  AlertCircle, X, Tags, Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,11 +73,12 @@ const STEPS = ["Upload File", "Map Columns", "Work Categories", "Confirm & Impor
 interface BoqImportWizardProps {
   projectId: number;
   projectName: string;
+  existingItemCount?: number;
   onClose: () => void;
-  onSuccess: (result: { created: number; categories: string[] }) => void;
+  onSuccess: (result: { created: number; categories: string[]; deleted?: number }) => void;
 }
 
-export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: BoqImportWizardProps) {
+export function BoqImportWizard({ projectId, projectName, existingItemCount = 0, onClose, onSuccess }: BoqImportWizardProps) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -92,10 +93,12 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
   const [itemWorkCats, setItemWorkCats] = useState<string[]>([]);
   // Bulk assign
   const [bulkCat, setBulkCat] = useState("");
+  // Import mode when project already has items
+  const [importMode, setImportMode] = useState<"append" | "replace">("append");
 
   const importMutation = useMutation({
-    mutationFn: (items: any[]) =>
-      apiRequest("POST", `/api/boq/projects/${projectId}/import`, { items }),
+    mutationFn: ({ items, mode }: { items: any[]; mode: "append" | "replace" }) =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/import`, { items, mode }),
     onSuccess: async (res) => {
       const result = await res.json();
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects"] });
@@ -503,6 +506,47 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
         {/* ── Step 3: Confirm ── */}
         {step === 3 && (
           <div className="space-y-4">
+            {/* Existing items warning + mode selector */}
+            {existingItemCount > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  This project already has {existingItemCount} BOQ item{existingItemCount !== 1 ? "s" : ""}
+                </p>
+                <p className="text-xs text-amber-700">Choose how to handle the existing items:</p>
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="append"
+                      checked={importMode === "append"}
+                      onChange={() => setImportMode("append")}
+                      className="accent-amber-600"
+                      data-testid="radio-import-append"
+                    />
+                    <span className="text-xs font-medium text-amber-900">
+                      Add to existing — keeps current {existingItemCount} items and appends new ones
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="replace"
+                      checked={importMode === "replace"}
+                      onChange={() => setImportMode("replace")}
+                      className="accent-red-600"
+                      data-testid="radio-import-replace"
+                    />
+                    <span className="text-xs font-medium text-red-800">
+                      Replace all — deletes all {existingItemCount} existing items and their Gantt bars, then imports fresh
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
               <p className="text-sm font-semibold text-emerald-800">Ready to import</p>
               <div className="grid grid-cols-3 gap-3 text-center">
@@ -609,14 +653,18 @@ export function BoqImportWizard({ projectId, projectName, onClose, onSuccess }: 
           )}
           {step === 3 && (
             <Button
-              onClick={() => importMutation.mutate(buildFinalItems())}
+              onClick={() => importMutation.mutate({ items: buildFinalItems(), mode: importMode })}
               disabled={importMutation.isPending || parsedItems.length === 0}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className={importMode === "replace" && existingItemCount > 0
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"}
               data-testid="button-import-confirm"
             >
               {importMutation.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Importing…</>
-                : <><Check className="w-4 h-4 mr-1" /> Import {parsedItems.length} Items</>
+                : importMode === "replace" && existingItemCount > 0
+                  ? <><Trash2 className="w-4 h-4 mr-1" /> Replace &amp; Import {parsedItems.length} Items</>
+                  : <><Check className="w-4 h-4 mr-1" /> Import {parsedItems.length} Items</>
               }
             </Button>
           )}

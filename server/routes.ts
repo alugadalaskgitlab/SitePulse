@@ -9528,7 +9528,7 @@ export async function registerRoutes(
   app.post("/api/boq/projects/:id/import", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);
-      const { items } = req.body as {
+      const { items, mode = "append" } = req.body as {
         items: Array<{
           itemCode?: string;
           description: string;
@@ -9539,6 +9539,7 @@ export async function registerRoutes(
           workCategory?: string;
           sortOrder?: number;
         }>;
+        mode?: "append" | "replace";
       };
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: "items array is required and must not be empty" });
@@ -9552,8 +9553,13 @@ export async function registerRoutes(
       if (badCat) {
         return res.status(400).json({ error: `Invalid workCategory code: "${badCat.workCategory}"` });
       }
+      // Replace mode: delete all existing items (and their programme stretches) before importing
+      let deleted = 0;
+      if (mode === "replace") {
+        deleted = await storage.deleteAllBoqItemsForProject(boqProjectId);
+      }
       const result = await storage.importBoqItems(boqProjectId, items);
-      res.status(201).json(result);
+      res.status(201).json({ ...result, deleted });
       // Fire-and-forget auto-mapping using the exact IDs returned from insert
       if (result.insertedIds.length > 0) {
         autoMapBoqItems(result.insertedIds).catch(err => console.error("[autoMapper] post-import error:", err));

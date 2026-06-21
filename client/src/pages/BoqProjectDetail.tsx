@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -69,6 +70,7 @@ function ItemEditDialog({
     unit: item.unit,
     itemCode: item.itemCode ?? "",
     clientRate: item.clientRate != null ? String(item.clientRate) : "",
+    workCategory: item.workCategory ?? "__none__",
   });
 
   const patchMutation = useMutation({
@@ -95,6 +97,7 @@ function ItemEditDialog({
       itemCode: form.itemCode.trim() || null,
       clientRate: rate,
       clientAmount,
+      workCategory: form.workCategory === "__none__" ? null : form.workCategory,
     });
   }
 
@@ -133,6 +136,25 @@ function ItemEditDialog({
               <Input type="number" value={form.clientRate}
                 onChange={e => setForm(p => ({ ...p, clientRate: e.target.value }))}
                 placeholder="0.00" data-testid="input-edit-rate" />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">WORK CATEGORY</Label>
+              <Select
+                value={form.workCategory}
+                onValueChange={v => setForm(p => ({ ...p, workCategory: v }))}
+              >
+                <SelectTrigger className="mt-0.5" data-testid="select-edit-work-category">
+                  <SelectValue placeholder="— Uncategorised —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" className="text-muted-foreground">— Uncategorised —</SelectItem>
+                  {BOQ_WORK_CATEGORIES.map(cat => (
+                    <SelectItem key={cat.code} value={cat.code}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -1399,6 +1421,7 @@ export default function BoqProjectDetail() {
         <BoqImportWizard
           projectId={projectId}
           projectName={project.name}
+          existingItemCount={items.length}
           onClose={() => setShowImport(false)}
           onSuccess={handleImportSuccess}
         />

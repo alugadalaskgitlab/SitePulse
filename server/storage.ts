@@ -1194,6 +1194,8 @@ export interface IStorage {
   patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
   // Task #1125 — SNL auto-mapping: update the mapping_status column on a BOQ item.
   updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
+  // Delete all BOQ items for a project (replace-mode import). Child records cascade automatically.
+  deleteAllBoqItemsForProject(projectId: number): Promise<number>;
   // Task #1126 — Program Settings per BOQ project
   ensureBoqProgramSettingsTables(): Promise<void>;
   getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
@@ -20017,6 +20019,11 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBoqItem(id: number): Promise<void> {
     await db.delete(boqItems).where(eq(boqItems.id, id));
+  }
+
+  async deleteAllBoqItemsForProject(projectId: number): Promise<number> {
+    const deleted = await db.delete(boqItems).where(eq(boqItems.boqProjectId, projectId)).returning({ id: boqItems.id });
+    return deleted.length;
   }
 
   // --- BOQ Revisions ---
