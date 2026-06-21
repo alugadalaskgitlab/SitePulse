@@ -1068,11 +1068,11 @@ export default function WorkProgramme() {
   });
 
   const { data: progSettings } = useQuery<{
-    workingDaysPerMonth: number; workingHoursPerDay: number; doubleShift: number;
+    workingDaysPerMonth: number; shiftHours: number; doubleShift: boolean;
     tipperCapacityT: number; avgTipperSpeedKmHr: number; loadTimeMin: number; unloadTimeMin: number;
     hmpChainageKm: number | null; wmmPlantChainageKm: number | null; quarryChainageKm: number | null;
     borrowChainageKm: number | null; disposalChainageKm: number | null; rmcChainageKm: number | null;
-    productivityMode: string;
+    productivityMode: string; productivityOverrides: unknown | null;
   }>({
     queryKey: ["/api/boq/projects", projectId, "program-settings"],
     queryFn: async () => {
@@ -1084,12 +1084,13 @@ export default function WorkProgramme() {
     staleTime: 60_000,
   });
 
-  // Merge program-settings values over legacy project fields for downstream consumers
+  // Merge program-settings values over legacy project fields for downstream consumers.
+  // shiftHours (new name) maps to workingHoursPerDay for backward-compat with planning engine.
   const effectiveProject = project
     ? {
         ...project,
-        workingDaysPerMonth: progSettings?.workingDaysPerMonth ?? project.workingDaysPerMonth ?? 26,
-        workingHoursPerDay: progSettings?.workingHoursPerDay ?? project.workingHoursPerDay ?? 8,
+        workingDaysPerMonth: progSettings?.workingDaysPerMonth ?? project.workingDaysPerMonth ?? 25,
+        workingHoursPerDay: progSettings?.shiftHours ?? project.workingHoursPerDay ?? 8,
         hmpChainageKm: progSettings?.hmpChainageKm ?? project.hmpChainageKm ?? null,
         wmmPlantChainageKm: progSettings?.wmmPlantChainageKm ?? project.wmmPlantChainageKm ?? null,
         quarryChainageKm: progSettings?.quarryChainageKm ?? project.quarryChainageKm ?? null,

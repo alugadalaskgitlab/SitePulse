@@ -9348,11 +9348,11 @@ export async function registerRoutes(
       if (!settings) {
         return res.json({
           id: null, projectId,
-          workingDaysPerMonth: 26, workingHoursPerDay: 8, doubleShift: 0,
+          workingDaysPerMonth: 25, shiftHours: 8, doubleShift: false,
           tipperCapacityT: 8, avgTipperSpeedKmHr: 30, loadTimeMin: 5, unloadTimeMin: 5,
           hmpChainageKm: null, wmmPlantChainageKm: null, quarryChainageKm: null,
           borrowChainageKm: null, disposalChainageKm: null, rmcChainageKm: null,
-          productivityMode: "default", customOverrides: null, updatedAt: null,
+          productivityMode: "snl", productivityOverrides: null, updatedAt: null,
         });
       }
       res.json(settings);

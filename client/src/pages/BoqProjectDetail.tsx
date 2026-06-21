@@ -1123,7 +1123,6 @@ export default function BoqProjectDetail() {
   const { toast } = useToast();
   const projectId = parseInt(params.id);
   const [showImport, setShowImport] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -1253,17 +1252,20 @@ export default function BoqProjectDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-slate-200 text-slate-600 hover:bg-slate-50 h-8"
-            onClick={() => setShowSettings(true)}
-            data-testid="button-project-settings"
-            title="Planning source settings (chainage, tipper speed)"
-          >
-            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-            Settings
-          </Button>
+          <Link href={`/work-program/${projectId}/settings`}>
+            <a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-slate-200 text-slate-600 hover:bg-slate-50 h-8"
+                data-testid="button-project-settings"
+                title="Program settings (schedule, tipper fleet, source chainages, productivity mode)"
+              >
+                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                Settings
+              </Button>
+            </a>
+          </Link>
           <Link href={`/work-program/${projectId}/programme`}>
             <a>
               <Button
@@ -1402,13 +1404,7 @@ export default function BoqProjectDetail() {
         />
       )}
 
-      {/* Planning Settings Dialog */}
-      {showSettings && (
-        <ProjectSettingsDialog
-          project={project}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
+      {/* Planning Settings are now at /work-program/:id/settings (BoqProgramSettings page) */}
     </div>
   );
 }

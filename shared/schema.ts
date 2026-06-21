@@ -2457,9 +2457,9 @@ export const boqProgramSettings = pgTable("boq_program_settings", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }).unique(),
   // Schedule
-  workingDaysPerMonth: integer("working_days_per_month").notNull().default(26),
-  workingHoursPerDay: real("working_hours_per_day").notNull().default(8),
-  doubleShift: integer("double_shift").notNull().default(0),
+  workingDaysPerMonth: integer("working_days_per_month").notNull().default(25),
+  shiftHours: real("shift_hours").notNull().default(8),
+  doubleShift: boolean("double_shift").notNull().default(false),
   // Tipper fleet defaults
   tipperCapacityT: real("tipper_capacity_t").notNull().default(8),
   avgTipperSpeedKmHr: real("avg_tipper_speed_km_hr").notNull().default(30),
@@ -2472,21 +2472,22 @@ export const boqProgramSettings = pgTable("boq_program_settings", {
   borrowChainageKm: real("borrow_chainage_km"),
   disposalChainageKm: real("disposal_chainage_km"),
   rmcChainageKm: real("rmc_chainage_km"),
-  // Productivity
-  productivityMode: text("productivity_mode").notNull().default("default"),
-  customOverrides: jsonb("custom_overrides"),
+  // Productivity mode: snl = SNL/standard norms, company = company norms, project = per-item overrides
+  productivityMode: text("productivity_mode").notNull().default("snl"),
+  productivityOverrides: jsonb("productivity_overrides"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // ─── BOQ Mix Template Links ────────────────────────────────────────────────────
+// Per-project mapping: standard mix type (BC/DBM/WMM/SDBC/GSB/M20/M25/M30/M35/RMC/EG)
+// → plant mix template. The planning engine uses this to resolve which mix template
+// supplies a given layer type when computing material demand and production capacity.
 export const boqMixTemplateLinks = pgTable("boq_mix_template_links", {
   id: serial("id").primaryKey(),
   boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
-  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  mixType: text("mix_type").notNull(),
   mixTemplateId: integer("mix_template_id").notNull(),
   mixTemplateName: text("mix_template_name"),
-  linkType: text("link_type").notNull().default("primary"),
-  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

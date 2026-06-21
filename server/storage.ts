@@ -19870,13 +19870,14 @@ export class DatabaseStorage implements IStorage {
   // ─── BOQ Program Settings ─────────────────────────────────────────────────
 
   async ensureBoqProgramSettingsTables(): Promise<void> {
+    // Create tables with authoritative schema (migration 0013)
     await db.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS boq_program_settings (
         id serial PRIMARY KEY,
         project_id integer NOT NULL UNIQUE REFERENCES boq_projects(id) ON DELETE CASCADE,
-        working_days_per_month integer NOT NULL DEFAULT 26,
-        working_hours_per_day real NOT NULL DEFAULT 8,
-        double_shift integer NOT NULL DEFAULT 0,
+        working_days_per_month integer NOT NULL DEFAULT 25,
+        shift_hours real NOT NULL DEFAULT 8,
+        double_shift boolean NOT NULL DEFAULT false,
         tipper_capacity_t real NOT NULL DEFAULT 8,
         avg_tipper_speed_km_hr real NOT NULL DEFAULT 30,
         load_time_min real NOT NULL DEFAULT 5,
@@ -19887,21 +19888,48 @@ export class DatabaseStorage implements IStorage {
         borrow_chainage_km real,
         disposal_chainage_km real,
         rmc_chainage_km real,
-        productivity_mode text NOT NULL DEFAULT 'default',
-        custom_overrides jsonb,
-        updated_at timestamp DEFAULT now()
+        productivity_mode text NOT NULL DEFAULT 'snl',
+        productivity_overrides jsonb,
+        updated_at timestamp with time zone DEFAULT now()
       )
     `));
+
+    // Column migrations: add shift_hours/productivity_overrides if table was created with old schema
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS shift_hours real NOT NULL DEFAULT 8`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS productivity_overrides jsonb`));
+    // Copy old working_hours_per_day → shift_hours if old column exists
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='boq_program_settings' AND column_name='working_hours_per_day') THEN
+          UPDATE boq_program_settings SET shift_hours = working_hours_per_day WHERE shift_hours = 8 AND working_hours_per_day IS NOT NULL;
+        END IF;
+      END $$
+    `));
+    // Migrate old productivity_mode values → snl
+    await db.execute(sql.raw(`
+      UPDATE boq_program_settings SET productivity_mode = 'snl'
+      WHERE productivity_mode NOT IN ('snl', 'company', 'project')
+    `));
+
+    // Recreate mix_template_links if old schema (boq_item_id column) exists — incompatible redesign
+    const oldMixCol = await db.execute(sql.raw(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='boq_mix_template_links' AND column_name='boq_item_id' LIMIT 1
+    `));
+    if ((oldMixCol as any).rows?.length > 0 || (oldMixCol as any).rowCount > 0) {
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS boq_mix_template_links`));
+    }
+
     await db.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS boq_mix_template_links (
         id serial PRIMARY KEY,
         boq_project_id integer NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
-        boq_item_id integer NOT NULL REFERENCES boq_items(id) ON DELETE CASCADE,
+        mix_type text NOT NULL,
         mix_template_id integer NOT NULL,
         mix_template_name text,
-        link_type text NOT NULL DEFAULT 'primary',
-        notes text,
-        created_at timestamp DEFAULT now()
+        created_at timestamp with time zone DEFAULT now(),
+        UNIQUE (boq_project_id, mix_type)
       )
     `));
   }

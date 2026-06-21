@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   ChevronRight, FileSpreadsheet, Settings2, Loader2, Truck,
   MapPin, CalendarDays, AlertCircle, Link2, Trash2, Plus,
-  CheckCircle2,
+  CheckCircle2, BarChart2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ import { WORKING_DAYS_DEFAULT, WORKING_HRS_DEFAULT } from "@shared/planningEngin
 
 const formSchema = z.object({
   workingDaysPerMonth: z.coerce.number().int().min(1).max(31),
-  workingHoursPerDay: z.coerce.number().min(1).max(24),
+  shiftHours: z.coerce.number().min(1).max(24),
   doubleShift: z.boolean(),
   tipperCapacityT: z.coerce.number().min(0.5).max(500),
   avgTipperSpeedKmHr: z.coerce.number().min(1).max(200),
@@ -37,27 +37,59 @@ const formSchema = z.object({
   borrowChainageKm: z.coerce.number().min(0).nullable().optional(),
   disposalChainageKm: z.coerce.number().min(0).nullable().optional(),
   rmcChainageKm: z.coerce.number().min(0).nullable().optional(),
-  productivityMode: z.enum(["default", "custom"]),
+  productivityMode: z.enum(["snl", "company", "project"]),
+  productivityOverrides: z.record(z.object({
+    outputPerHr: z.number().optional(),
+    unit: z.string().optional(),
+  })).nullable().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
-interface ProgramSettings extends FormValues {
+interface ProgramSettings {
   id: number | null;
   projectId: number;
+  workingDaysPerMonth: number;
+  shiftHours: number;
+  doubleShift: boolean;
+  tipperCapacityT: number;
+  avgTipperSpeedKmHr: number;
+  loadTimeMin: number;
+  unloadTimeMin: number;
+  hmpChainageKm: number | null;
+  wmmPlantChainageKm: number | null;
+  quarryChainageKm: number | null;
+  borrowChainageKm: number | null;
+  disposalChainageKm: number | null;
+  rmcChainageKm: number | null;
+  productivityMode: string;
+  productivityOverrides: Record<string, { outputPerHr?: number; unit?: string }> | null;
   updatedAt: string | null;
 }
 
-// ─── Mix Template type for links ─────────────────────────────────────────────
-
 interface PlanningMixTemplate { id: number; name: string; mixType: string; }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Standard mix types recognised by the planning engine
+const STD_MIX_TYPES = ["BC", "SDBC", "DBM", "BM", "WMM", "WBM", "GSB", "EG", "M20", "M25", "M30", "M35", "M40", "RMC"] as const;
+type StdMixType = typeof STD_MIX_TYPES[number];
 
-function numOrNull(v: string) {
-  const n = parseFloat(v);
-  return isNaN(n) ? null : n;
-}
+// Per-item-type productivity defaults (for "project" mode)
+const DEFAULT_PRODUCTIVITY: Record<StdMixType, { unit: string; hint: string }> = {
+  BC:    { unit: "T",   hint: "Bituminous Concrete" },
+  SDBC:  { unit: "T",   hint: "Semi-Dense Bituminous Concrete" },
+  DBM:   { unit: "T",   hint: "Dense Bituminous Macadam" },
+  BM:    { unit: "T",   hint: "Bituminous Macadam" },
+  WMM:   { unit: "CUM", hint: "Wet Mix Macadam" },
+  WBM:   { unit: "CUM", hint: "Water Bound Macadam" },
+  GSB:   { unit: "CUM", hint: "Granular Sub-Base" },
+  EG:    { unit: "CUM", hint: "Earthwork General" },
+  M20:   { unit: "CUM", hint: "Concrete M20" },
+  M25:   { unit: "CUM", hint: "Concrete M25" },
+  M30:   { unit: "CUM", hint: "Concrete M30" },
+  M35:   { unit: "CUM", hint: "Concrete M35" },
+  M40:   { unit: "CUM", hint: "Concrete M40" },
+  RMC:   { unit: "CUM", hint: "Ready-Mix Concrete" },
+};
 
 // ─── Section Card ─────────────────────────────────────────────────────────────
 
@@ -83,15 +115,11 @@ function SectionCard({ icon, title, subtitle, children }: {
 
 // ─── Mix Links section ────────────────────────────────────────────────────────
 
-function MixLinksSection({ projectId, boqItems }: {
-  projectId: number;
-  boqItems: { id: number; description: string; itemCode: string | null }[];
-}) {
+function MixLinksSection({ projectId }: { projectId: number }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [addItemId, setAddItemId] = useState("");
+  const [addMixType, setAddMixType] = useState<string>("");
   const [addTemplateId, setAddTemplateId] = useState("");
-  const [addLinkType, setAddLinkType] = useState<"primary" | "alternate">("primary");
 
   const { data: links = [], isLoading: linksLoading } = useQuery<BoqMixTemplateLink[]>({
     queryKey: ["/api/boq/projects", projectId, "mix-links"],
@@ -110,19 +138,20 @@ function MixLinksSection({ projectId, boqItems }: {
     staleTime: 120_000,
   });
 
+  const linkedTypes = new Set(links.map(l => l.mixType));
+
   const createMutation = useMutation({
     mutationFn: () => {
       const tpl = mixTemplates.find(t => String(t.id) === addTemplateId);
       return apiRequest("POST", `/api/boq/projects/${projectId}/mix-links`, {
-        boqItemId: parseInt(addItemId),
+        mixType: addMixType,
         mixTemplateId: parseInt(addTemplateId),
         mixTemplateName: tpl?.name ?? null,
-        linkType: addLinkType,
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "mix-links"] });
-      setAddItemId(""); setAddTemplateId(""); setAddLinkType("primary");
+      setAddMixType(""); setAddTemplateId("");
       toast({ title: "Mix link added" });
     },
     onError: () => toast({ title: "Failed to add link", variant: "destructive" }),
@@ -134,108 +163,176 @@ function MixLinksSection({ projectId, boqItems }: {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "mix-links"] }),
   });
 
+  const availableTypes = STD_MIX_TYPES.filter(t => !linkedTypes.has(t));
+
   return (
     <SectionCard
       icon={<Link2 className="w-4 h-4 text-violet-600" />}
       title="Mix Template Links"
-      subtitle="Link BOQ items to plant mix templates so the planning engine can cross-reference production capacity."
+      subtitle="Map standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer."
     >
       {linksLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
         </div>
       ) : links.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic py-1">No mix links yet.</p>
+        <p className="text-xs text-muted-foreground italic py-1">No mix links set. Add links below to enable material demand cross-referencing.</p>
       ) : (
         <div className="space-y-1.5 mb-3">
-          {links.map(link => {
-            const item = boqItems.find(i => i.id === link.boqItemId);
-            return (
-              <div key={link.id}
-                className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs">
-                <span className="font-medium text-slate-700 min-w-0 truncate flex-1">
-                  {item ? (item.itemCode ? `[${item.itemCode}] ` : "") + item.description : `Item #${link.boqItemId}`}
-                </span>
-                <span className="text-muted-foreground mx-1">→</span>
-                <span className="text-violet-700 font-medium">{link.mixTemplateName ?? `Template #${link.mixTemplateId}`}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
-                  link.linkType === "primary" ? "bg-teal-100 text-teal-700" : "bg-amber-100 text-amber-700"
-                }`}>{link.linkType}</span>
-                <button
-                  onClick={() => deleteMutation.mutate(link.id)}
-                  disabled={deleteMutation.isPending}
-                  className="p-0.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
-                  data-testid={`button-delete-mix-link-${link.id}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            );
-          })}
+          {links.map(link => (
+            <div key={link.id}
+              className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs"
+              data-testid={`mix-link-row-${link.id}`}>
+              <span className="font-mono font-bold text-violet-700 w-14 flex-shrink-0">{link.mixType}</span>
+              <span className="text-muted-foreground text-[10px]">→</span>
+              <span className="text-slate-700 flex-1 min-w-0 truncate">{link.mixTemplateName ?? `Template #${link.mixTemplateId}`}</span>
+              <button
+                onClick={() => deleteMutation.mutate(link.id)}
+                disabled={deleteMutation.isPending}
+                className="p-0.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+                data-testid={`button-delete-mix-link-${link.id}`}
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Add new link */}
-      <div className="rounded-md border border-dashed border-slate-300 bg-white p-3 space-y-2">
-        <p className="text-[11px] font-semibold text-muted-foreground">Add Link</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label className="text-[10px]">BOQ ITEM</Label>
-            <Select value={addItemId} onValueChange={setAddItemId}>
-              <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-item">
-                <SelectValue placeholder="Select item…" />
-              </SelectTrigger>
-              <SelectContent>
-                {boqItems.map(i => (
-                  <SelectItem key={i.id} value={String(i.id)}>
-                    {i.itemCode ? `[${i.itemCode}] ` : ""}{i.description.slice(0, 40)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-[10px]">MIX TEMPLATE</Label>
-            <Select value={addTemplateId} onValueChange={setAddTemplateId}>
-              <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-template">
-                <SelectValue placeholder="Select template…" />
-              </SelectTrigger>
-              <SelectContent>
-                {mixTemplates.map(t => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.name} ({t.mixType})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-[10px]">LINK TYPE</Label>
-            <Select value={addLinkType} onValueChange={v => setAddLinkType(v as "primary" | "alternate")}>
-              <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="primary">Primary</SelectItem>
-                <SelectItem value="alternate">Alternate</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              size="sm"
-              className="h-8 text-xs w-full"
-              onClick={() => createMutation.mutate()}
-              disabled={!addItemId || !addTemplateId || createMutation.isPending}
-              data-testid="button-add-mix-link"
-            >
-              {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
-              Add Link
-            </Button>
+      {availableTypes.length > 0 && (
+        <div className="rounded-md border border-dashed border-slate-300 bg-white p-3 space-y-2">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Add Mix Link</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[10px]">MIX TYPE</Label>
+              <Select value={addMixType} onValueChange={setAddMixType}>
+                <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-type">
+                  <SelectValue placeholder="Select type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTypes.map(t => (
+                    <SelectItem key={t} value={t}>
+                      <span className="font-mono font-semibold">{t}</span>
+                      <span className="text-muted-foreground text-[10px] ml-1.5">
+                        {DEFAULT_PRODUCTIVITY[t as StdMixType]?.hint}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[10px]">PLANT MIX TEMPLATE</Label>
+              <Select value={addTemplateId} onValueChange={setAddTemplateId}>
+                <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-template">
+                  <SelectValue placeholder="Select template…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mixTemplates.map(t => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      {t.name} ({t.mixType})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 flex justify-end">
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => createMutation.mutate()}
+                disabled={!addMixType || !addTemplateId || createMutation.isPending}
+                data-testid="button-add-mix-link"
+              >
+                {createMutation.isPending
+                  ? <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  : <Plus className="w-3 h-3 mr-1" />}
+                Add Link
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+      {availableTypes.length === 0 && links.length > 0 && (
+        <p className="text-[11px] text-emerald-600 mt-1">All standard mix types are linked.</p>
+      )}
     </SectionCard>
+  );
+}
+
+// ─── Productivity Overrides section (for "project" mode) ──────────────────────
+
+function ProductivityOverridesSection({
+  overrides,
+  onChange,
+}: {
+  overrides: Record<string, { outputPerHr?: number; unit?: string }> | null | undefined;
+  onChange: (v: Record<string, { outputPerHr?: number; unit?: string }>) => void;
+}) {
+  const current = overrides ?? {};
+
+  function updateRow(type: string, outputPerHr: string) {
+    const val = parseFloat(outputPerHr);
+    const updated = {
+      ...current,
+      [type]: {
+        ...current[type],
+        outputPerHr: isNaN(val) ? undefined : val,
+        unit: DEFAULT_PRODUCTIVITY[type as StdMixType]?.unit,
+      },
+    };
+    onChange(updated);
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+        Per-Type Output Rates (used instead of SNL norms when mode = Project)
+      </p>
+      <div className="rounded-md border border-slate-200 overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-20">TYPE</th>
+              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">LAYER</th>
+              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-16">UNIT</th>
+              <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-muted-foreground w-32">OUTPUT / HR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STD_MIX_TYPES.map(type => (
+              <tr key={type} className="border-b border-slate-100 last:border-0">
+                <td className="px-3 py-1.5">
+                  <span className="font-mono font-bold text-violet-700">{type}</span>
+                </td>
+                <td className="px-3 py-1.5 text-muted-foreground text-[10px]">
+                  {DEFAULT_PRODUCTIVITY[type]?.hint}
+                </td>
+                <td className="px-3 py-1.5 text-muted-foreground">
+                  {DEFAULT_PRODUCTIVITY[type]?.unit}
+                </td>
+                <td className="px-3 py-1.5">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="h-7 text-xs w-28"
+                    placeholder="leave blank = SNL"
+                    value={current[type]?.outputPerHr ?? ""}
+                    onChange={e => updateRow(type, e.target.value)}
+                    data-testid={`input-output-${type}`}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        Leave blank to fall back to SNL standard norms for that type. Values here take precedence only when Productivity Mode is set to "Project".
+      </p>
+    </div>
   );
 }
 
@@ -247,6 +344,7 @@ export default function BoqProgramSettings() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [formPopulated, setFormPopulated] = useState(false);
 
   const { data: project, isLoading: projectLoading } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -268,21 +366,11 @@ export default function BoqProgramSettings() {
     enabled: !isNaN(projectId),
   });
 
-  const { data: boqItems = [] } = useQuery<{ id: number; description: string; itemCode: string | null }[]>({
-    queryKey: ["/api/boq/projects", projectId, "items"],
-    queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${projectId}/items`, { credentials: "include" });
-      return res.ok ? res.json() : [];
-    },
-    enabled: !isNaN(projectId),
-    staleTime: 60_000,
-  });
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       workingDaysPerMonth: WORKING_DAYS_DEFAULT,
-      workingHoursPerDay: WORKING_HRS_DEFAULT,
+      shiftHours: WORKING_HRS_DEFAULT,
       doubleShift: false,
       tipperCapacityT: 8,
       avgTipperSpeedKmHr: 30,
@@ -294,17 +382,17 @@ export default function BoqProgramSettings() {
       borrowChainageKm: null,
       disposalChainageKm: null,
       rmcChainageKm: null,
-      productivityMode: "default",
+      productivityMode: "snl",
+      productivityOverrides: null,
     },
   });
 
-  // Populate form once settings loads (only once)
-  const [formPopulated, setFormPopulated] = useState(false);
+  // Populate form once settings loads (only once — preserves subsequent user edits)
   if (settings && !formPopulated) {
     form.reset({
       workingDaysPerMonth: settings.workingDaysPerMonth,
-      workingHoursPerDay: settings.workingHoursPerDay,
-      doubleShift: settings.doubleShift === 1,
+      shiftHours: settings.shiftHours,
+      doubleShift: Boolean(settings.doubleShift),
       tipperCapacityT: settings.tipperCapacityT,
       avgTipperSpeedKmHr: settings.avgTipperSpeedKmHr,
       loadTimeMin: settings.loadTimeMin,
@@ -315,17 +403,15 @@ export default function BoqProgramSettings() {
       borrowChainageKm: settings.borrowChainageKm ?? null,
       disposalChainageKm: settings.disposalChainageKm ?? null,
       rmcChainageKm: settings.rmcChainageKm ?? null,
-      productivityMode: (settings.productivityMode as "default" | "custom") ?? "default",
+      productivityMode: (settings.productivityMode as "snl" | "company" | "project") ?? "snl",
+      productivityOverrides: settings.productivityOverrides ?? null,
     });
     setFormPopulated(true);
   }
 
   const saveMutation = useMutation({
     mutationFn: (data: FormValues) =>
-      apiRequest("PUT", `/api/boq/projects/${projectId}/program-settings`, {
-        ...data,
-        doubleShift: data.doubleShift ? 1 : 0,
-      }),
+      apiRequest("PUT", `/api/boq/projects/${projectId}/program-settings`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
       setSavedAt(new Date());
@@ -333,13 +419,14 @@ export default function BoqProgramSettings() {
     onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
   });
 
-  // Autosave on blur — triggers save if form is dirty and valid
+  // Autosave on blur — only fires if form has unsaved changes
   const handleBlurSave = useCallback(() => {
     if (!form.formState.isDirty) return;
-    form.handleSubmit((data) => saveMutation.mutate(data))();
+    form.handleSubmit(data => saveMutation.mutate(data))();
   }, [form, saveMutation]);
 
   const isLoading = projectLoading || settingsLoading;
+  const vals = form.watch();
 
   if (isLoading) {
     return (
@@ -361,8 +448,6 @@ export default function BoqProgramSettings() {
     );
   }
 
-  const vals = form.watch();
-
   return (
     <Form {...form}>
       <div className="space-y-5 max-w-2xl">
@@ -370,8 +455,7 @@ export default function BoqProgramSettings() {
         <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Link href="/work-program">
             <a className="hover:text-slate-700 transition-colors flex items-center gap-1">
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              Work Program &amp; BOQ
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Work Program &amp; BOQ
             </a>
           </Link>
           <ChevronRight className="w-3 h-3 flex-shrink-0" />
@@ -406,11 +490,11 @@ export default function BoqProgramSettings() {
           </div>
         </div>
 
-        {/* Schedule Defaults */}
+        {/* ── 1. Schedule Defaults ─────────────────────────────────────────── */}
         <SectionCard
           icon={<CalendarDays className="w-4 h-4 text-blue-600" />}
           title="Schedule Defaults"
-          subtitle="Auto-duration = (BOQ qty ÷ bottleneck output) ÷ hrs/day ÷ days/month"
+          subtitle="Auto-duration = (BOQ qty ÷ bottleneck output) ÷ shift hrs/day ÷ working days/month"
         >
           <div className="grid grid-cols-2 gap-4">
             <FormField control={form.control} name="workingDaysPerMonth" render={({ field }) => (
@@ -427,18 +511,18 @@ export default function BoqProgramSettings() {
                 <FormDescription className="text-[10px]">Default: {WORKING_DAYS_DEFAULT} days/month</FormDescription>
               </FormItem>
             )} />
-            <FormField control={form.control} name="workingHoursPerDay" render={({ field }) => (
+            <FormField control={form.control} name="shiftHours" render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">WORKING HOURS / DAY</FormLabel>
+                <FormLabel className="text-xs">SHIFT HOURS / DAY</FormLabel>
                 <FormControl>
                   <Input type="number" min="1" max="24" step="0.5" className="h-9"
                     placeholder={String(WORKING_HRS_DEFAULT)}
                     {...field}
                     onBlur={() => { field.onBlur(); handleBlurSave(); }}
-                    data-testid="input-working-hours"
+                    data-testid="input-shift-hours"
                   />
                 </FormControl>
-                <FormDescription className="text-[10px]">Default: {WORKING_HRS_DEFAULT} hrs/day</FormDescription>
+                <FormDescription className="text-[10px]">Default: {WORKING_HRS_DEFAULT} hrs/shift</FormDescription>
               </FormItem>
             )} />
           </div>
@@ -447,21 +531,21 @@ export default function BoqProgramSettings() {
               <FormControl>
                 <Switch
                   checked={field.value}
-                  onCheckedChange={(v) => { field.onChange(v); handleBlurSave(); }}
+                  onCheckedChange={v => { field.onChange(v); form.handleSubmit(d => saveMutation.mutate(d))(); }}
                   data-testid="switch-double-shift"
                 />
               </FormControl>
               <div>
                 <FormLabel className="text-xs font-semibold text-slate-700">Double Shift</FormLabel>
                 <FormDescription className="text-[10px]">
-                  Enables 2× effective hours per day in duration calculations.
+                  Enables 2× effective hours per day — duration calculations use shift hrs × 2.
                 </FormDescription>
               </div>
             </FormItem>
           )} />
         </SectionCard>
 
-        {/* Tipper Fleet Defaults */}
+        {/* ── 2. Tipper Fleet Defaults ─────────────────────────────────────── */}
         <SectionCard
           icon={<Truck className="w-4 h-4 text-amber-600" />}
           title="Tipper Fleet Defaults"
@@ -492,20 +576,20 @@ export default function BoqProgramSettings() {
           </div>
         </SectionCard>
 
-        {/* Source Chainages */}
+        {/* ── 3. Source Chainages ───────────────────────────────────────────── */}
         <SectionCard
           icon={<MapPin className="w-4 h-4 text-rose-600" />}
           title="Source Chainages"
-          subtitle="Distance from mid-project to each supply source. Used to auto-compute haul distance by layer type."
+          subtitle="Distance from mid-project to each supply source. The planning engine uses these to auto-compute haul distance by layer type."
         >
           <div className="grid grid-cols-2 gap-4">
             {[
-              { name: "hmpChainageKm" as const, label: "HMP CHAINAGE (km)", hint: "Bituminous items → HMP", testId: "input-hmp-chainage" },
-              { name: "wmmPlantChainageKm" as const, label: "WMM PLANT CHAINAGE (km)", hint: "Granular/Plant items", testId: "input-wmm-chainage" },
-              { name: "quarryChainageKm" as const, label: "QUARRY CHAINAGE (km)", hint: "Granular/Quarry items", testId: "input-quarry-chainage" },
-              { name: "borrowChainageKm" as const, label: "BORROW PIT CHAINAGE (km)", hint: "Earthwork fill items", testId: "input-borrow-chainage" },
-              { name: "disposalChainageKm" as const, label: "DISPOSAL SITE CHAINAGE (km)", hint: "Earthwork cut items", testId: "input-disposal-chainage" },
-              { name: "rmcChainageKm" as const, label: "RMC PLANT CHAINAGE (km)", hint: "Concrete structure items", testId: "input-rmc-chainage" },
+              { name: "hmpChainageKm" as const, label: "HMP CHAINAGE (km)", hint: "BC / DBM / BM layers → HMP", testId: "input-hmp-chainage" },
+              { name: "wmmPlantChainageKm" as const, label: "WMM PLANT CHAINAGE (km)", hint: "WMM / GSB plant-side", testId: "input-wmm-chainage" },
+              { name: "quarryChainageKm" as const, label: "QUARRY CHAINAGE (km)", hint: "Granular quarry items", testId: "input-quarry-chainage" },
+              { name: "borrowChainageKm" as const, label: "BORROW PIT CHAINAGE (km)", hint: "Earthwork fill / EG", testId: "input-borrow-chainage" },
+              { name: "disposalChainageKm" as const, label: "DISPOSAL SITE CHAINAGE (km)", hint: "Earthwork cut / EG", testId: "input-disposal-chainage" },
+              { name: "rmcChainageKm" as const, label: "RMC PLANT CHAINAGE (km)", hint: "Concrete M20/M25/M30/RMC", testId: "input-rmc-chainage" },
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
@@ -525,17 +609,19 @@ export default function BoqProgramSettings() {
             ))}
           </div>
 
-          {/* Haul distance preview */}
+          {/* Haul-distance preview matrix */}
           <div className="mt-3 rounded-md bg-slate-50 border border-slate-200 p-2.5">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Auto-detect logic (layer type → source)</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Layer type → auto-selected source distance
+            </p>
             <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
               {[
-                { label: "Bituminous", val: vals.hmpChainageKm },
-                { label: "Granular/Plant", val: vals.wmmPlantChainageKm },
+                { label: "BC/DBM/BM", val: vals.hmpChainageKm },
+                { label: "WMM/Plant", val: vals.wmmPlantChainageKm },
                 { label: "Granular/Quarry", val: vals.quarryChainageKm },
-                { label: "Earthwork Fill", val: vals.borrowChainageKm },
-                { label: "Earthwork Cut", val: vals.disposalChainageKm },
-                { label: "Concrete", val: vals.rmcChainageKm },
+                { label: "EG Fill", val: vals.borrowChainageKm },
+                { label: "EG Cut", val: vals.disposalChainageKm },
+                { label: "Concrete/RMC", val: vals.rmcChainageKm },
               ].map(({ label, val }) => (
                 <div key={label} className="rounded border border-slate-200 bg-white py-1.5 px-1">
                   <p className="text-[9px] text-muted-foreground">{label}</p>
@@ -548,47 +634,90 @@ export default function BoqProgramSettings() {
           </div>
         </SectionCard>
 
-        {/* Productivity Mode */}
+        {/* ── 4. Productivity Mode ──────────────────────────────────────────── */}
         <SectionCard
-          icon={<Settings2 className="w-4 h-4 text-slate-500" />}
+          icon={<BarChart2 className="w-4 h-4 text-teal-600" />}
           title="Productivity Mode"
-          subtitle="Controls how equipment output rates are sourced in the planning engine."
+          subtitle="Controls which output rate source the planning engine uses when computing auto-durations."
         >
           <FormField control={form.control} name="productivityMode" render={({ field }) => (
             <FormItem>
               <FormLabel className="text-xs">MODE</FormLabel>
               <Select
                 value={field.value}
-                onValueChange={v => { field.onChange(v); form.handleSubmit(d => saveMutation.mutate(d))(); }}
+                onValueChange={v => {
+                  field.onChange(v);
+                  form.handleSubmit(d => saveMutation.mutate(d))();
+                }}
               >
-                <SelectTrigger className="h-9 w-60 mt-0.5" data-testid="select-productivity-mode">
+                <SelectTrigger className="h-9 w-full max-w-sm mt-0.5" data-testid="select-productivity-mode">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default — use standard norms</SelectItem>
-                  <SelectItem value="custom">Custom — use item-level overrides</SelectItem>
+                  <SelectItem value="snl">
+                    <div>
+                      <p className="font-medium">SNL / Standard Norms</p>
+                      <p className="text-[10px] text-muted-foreground">Uses IRC/MoRTH SNL tables for all items</p>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="company">
+                    <div>
+                      <p className="font-medium">Company Norms</p>
+                      <p className="text-[10px] text-muted-foreground">Uses company-configured standard outputs</p>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="project">
+                    <div>
+                      <p className="font-medium">Project-Specific</p>
+                      <p className="text-[10px] text-muted-foreground">Per-layer-type overrides defined below</p>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
-              <FormDescription className="text-[10px] mt-1">
-                {field.value === "custom"
-                  ? "Custom mode: per-item productivity overrides take precedence over standard norms."
-                  : "Default mode: uses SNL/standard productivity norms for all items."}
-              </FormDescription>
+              <div className="mt-2 rounded-md px-3 py-2 text-[11px] bg-slate-50 border border-slate-200 text-slate-600">
+                {field.value === "snl" && (
+                  <>
+                    <strong>SNL mode:</strong> auto-durations use IRC/MoRTH standard norms library values.
+                    Tipper fleet size is calculated from output norms + haul-cycle model.
+                  </>
+                )}
+                {field.value === "company" && (
+                  <>
+                    <strong>Company norms mode:</strong> planning engine will apply company-configured output
+                    rates (set in Equipment Master) in place of SNL defaults.
+                  </>
+                )}
+                {field.value === "project" && (
+                  <>
+                    <strong>Project-specific mode:</strong> planning engine uses the per-layer-type output
+                    rates entered below. Any blank entries fall back to SNL norms.
+                  </>
+                )}
+              </div>
             </FormItem>
           )} />
+
+          {/* Per-type override grid — only visible in "project" mode */}
+          {vals.productivityMode === "project" && (
+            <FormField control={form.control} name="productivityOverrides" render={({ field }) => (
+              <ProductivityOverridesSection
+                overrides={field.value as Record<string, { outputPerHr?: number; unit?: string }> | null}
+                onChange={v => {
+                  field.onChange(v);
+                  form.handleSubmit(d => saveMutation.mutate(d))();
+                }}
+              />
+            )} />
+          )}
         </SectionCard>
 
-        {/* Mix Template Links */}
-        <MixLinksSection projectId={projectId} boqItems={boqItems} />
+        {/* ── 5. Mix Template Links ─────────────────────────────────────────── */}
+        <MixLinksSection projectId={projectId} />
 
-        {/* Footer nav */}
+        {/* Footer */}
         <div className="flex items-center justify-between pt-1">
           <Link href={`/work-program/${projectId}`}>
-            <a>
-              <Button variant="outline" size="sm" data-testid="button-settings-back">
-                ← Back to Project
-              </Button>
-            </a>
+            <a><Button variant="outline" size="sm" data-testid="button-settings-back">← Back to Project</Button></a>
           </Link>
           <Button
             className="bg-teal-700 hover:bg-teal-800 text-white"
