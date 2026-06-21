@@ -9440,11 +9440,10 @@ export async function registerRoutes(
       }
       const result = await storage.importBoqItems(boqProjectId, items);
       res.status(201).json(result);
-      // Fire-and-forget auto-mapping (does not block the response)
-      storage.getBoqItems(boqProjectId).then(rows => {
-        const newIds = rows.slice(-result.created).map(r => r.id);
-        autoMapBoqItems(newIds).catch(err => console.error("[autoMapper] post-import error:", err));
-      }).catch(() => {});
+      // Fire-and-forget auto-mapping using the exact IDs returned from insert
+      if (result.insertedIds.length > 0) {
+        autoMapBoqItems(result.insertedIds).catch(err => console.error("[autoMapper] post-import error:", err));
+      }
     } catch (err) {
       console.error("POST /api/boq/projects/:id/import:", err);
       res.status(500).json({ error: "Failed to import BOQ items" });

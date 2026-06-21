@@ -1186,6 +1186,8 @@ export interface IStorage {
   // Task #334 — Inline dryer-source fix from mismatch toast. Updates just the
   // dryerFedFrom field on a single shift log without a full upsert cycle.
   patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
+  // Task #1125 — SNL auto-mapping: update the mapping_status column on a BOQ item.
+  updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -19802,9 +19804,9 @@ export class DatabaseStorage implements IStorage {
       workCategory?: string;
       sortOrder?: number;
     }>
-  ): Promise<{ created: number; categories: string[] }> {
+  ): Promise<{ created: number; categories: string[]; insertedIds: number[] }> {
     const categoryCache = new Map<string, number>();
-    let created = 0;
+    const insertedIds: number[] = [];
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -19824,7 +19826,7 @@ export class DatabaseStorage implements IStorage {
           ? Math.round(item.clientRate * item.boqQty * 100) / 100
           : null;
 
-      await db.insert(boqItems).values({
+      const [inserted] = await db.insert(boqItems).values({
         boqProjectId,
         categoryId,
         itemCode: item.itemCode ?? null,
@@ -19836,11 +19838,11 @@ export class DatabaseStorage implements IStorage {
         clientAmount,
         sortOrder: item.sortOrder ?? i,
         workCategory: item.workCategory ?? null,
-      });
-      created++;
+      }).returning({ id: boqItems.id });
+      insertedIds.push(inserted.id);
     }
 
-    return { created, categories: Array.from(categoryCache.keys()) };
+    return { created: insertedIds.length, categories: Array.from(categoryCache.keys()), insertedIds };
   }
 
   async updateBoqItem(id: number, data: Partial<InsertBoqItem>): Promise<BoqItem | null> {

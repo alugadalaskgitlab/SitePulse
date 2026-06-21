@@ -205,15 +205,17 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
             },
           });
 
+        let recipesApplied = false;
         try {
           await storage.applySnlMappingToRecipes(boqRow.id, top.snlItemId, "MEDIUM", null, "auto");
-        } catch {
-          // Recipe apply failure shouldn't block status update
+          recipesApplied = true;
+        } catch (recipeErr) {
+          console.error(`[autoMapper] applySnlMappingToRecipes failed for boqItemId=${boqRow.id}:`, recipeErr);
         }
 
         await db
           .update(boqItems)
-          .set({ mappingStatus: "mapped" })
+          .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
           .where(eq(boqItems.id, boqRow.id));
       } else {
         // Candidate match — save as suggestion only, don't apply recipes
