@@ -718,6 +718,130 @@ export const RCC_M25_MATERIALS = [
   { projectCategory: "ALL", gradingVariant: null, sortOrder: 4, materialName: "Water",                 materialCategory: "WATER",     unit: "KL",  quantityPerShift: 7.200,  shiftOutputRef: 45, derivedPerUnit: 7.200 / 45,  isDesignSpecific: false, notes: "0.16 KL/CUM (w/c ~0.40)" },
 ];
 
+// ─── ITEM 16: GSB MIX-IN-PLACE / DIRECT CRUSHER 4.01B ──────────────────────
+export const GSB_DIRECT_ITEM = {
+  itemCode: "4.01B",
+  description: "Granular Sub-Base with Graded Material (Table 400-1) — Mix-in-Place Method using Rotavator: providing and laying HBG/crushed stone aggregate or graded material directly from quarry/crusher as sub-base material, spreading in uniform layers with motor grader on prepared surface, mixing in-situ with water at OMC using tractor-towed rotavator, and compacting with vibratory power roller to achieve desired density. Mix in place method without WMM/GSB plant, material supplied direct from quarry or crusher to work site, as per Clause 401.",
+  shortLabel: "GSB — Mix-in-Place / Direct Crusher",
+  unit: "CUM",
+  workCategory: "SUBBASE_BASE",
+  workSubCategory: "Granular Sub-Base",
+  chapterNo: "4",
+  chapterTitle: "Sub-Bases, Bases (Non-Bituminous) and Shoulders",
+  sourcePage: "88",
+  specClause: "Clause 401",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Mix-in-place method using Rotavator — no separate mixing plant required. Material delivered direct from quarry/crusher to site. Output approx 350 CUM/8-hr shift (lower than plant mix due to in-situ mixing constraints).",
+};
+
+export const GSB_DIRECT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 400, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 50 },
+  { projectCategory: "MEDIUM", shiftOutput: 350, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 43.75 },
+  { projectCategory: "SMALL",  shiftOutput: 250, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 31.25 },
+];
+
+export const GSB_DIRECT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.060, shiftOutputRef: 350, derivedPerUnit: 0.060 / 350 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Tractor Driver",  skillTier: "SKILLED",     unit: "day", quantityPerShift: 1.000, shiftOutputRef: 350, derivedPerUnit: 1.000 / 350 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 350, derivedPerUnit: 2.000 / 350 },
+];
+
+export const GSB_DIRECT_EQUIPMENT = [
+  { projectCategory: "ALL",    sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "3.70m blade",  purpose: "spreading",  unit: "hrs", quantityPerShift: 4.000, formulaType: "FIXED", shiftOutputRef: 350, derivedPerUnit: 4.000 / 350 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Rotavator",         equipmentSpec: "Tractor-towed 2.4m", purpose: "mixing",  unit: "hrs", quantityPerShift: 6.000, formulaType: "FIXED", shiftOutputRef: 350, derivedPerUnit: 6.000 / 350 },
+  { projectCategory: "ALL",    sortOrder: 3, equipmentType: "Vibratory Roller",  equipmentSpec: "10–12T",       purpose: "compaction", unit: "hrs", quantityPerShift: 3.500, formulaType: "FIXED", shiftOutputRef: 350, derivedPerUnit: 3.500 / 350 },
+  { projectCategory: "LARGE",  sortOrder: 4, equipmentType: "Water Tanker",      equipmentSpec: "12 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.365*L1+1.260", shiftOutputRef: 350, derivedPerUnit: null },
+  { projectCategory: "MEDIUM", sortOrder: 4, equipmentType: "Water Tanker",      equipmentSpec: "12 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.365*L1+1.260", shiftOutputRef: 350, derivedPerUnit: null },
+  { projectCategory: "SMALL",  sortOrder: 4, equipmentType: "Water Tanker",      equipmentSpec: "6 KL",         purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.729*L1+2.520", shiftOutputRef: 350, derivedPerUnit: null },
+];
+
+export const GSB_DIRECT_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Graded Stone Aggregate (Crusher to Site)", materialCategory: "AGGREGATE", unit: "CUM", quantityPerShift: 350, shiftOutputRef: 350, derivedPerUnit: 1.000, isDesignSpecific: false, notes: "Aggregate supplied directly from quarry/crusher, no plant processing" },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Water",                                    materialCategory: "WATER",     unit: "KL",  quantityPerShift: 52.5,  shiftOutputRef: 350, derivedPerUnit: 52.5 / 350, isDesignSpecific: false },
+];
+
+// ─── ITEM 17: SCARIFYING EXISTING BT SURFACE 2.05 ──────────────────────────
+export const SCARIFYING_BT_ITEM = {
+  itemCode: "2.05",
+  description: "Scarifying the existing bituminous road surface by mechanical means using motor grader with scarifier attachment, cutting and loosening old BT/asphalt surface to specified depth, removing loosened bituminous material, loading into tippers for disposal to designated leads and lifts. Includes cleaning, trimming and making good as directed by Engineer-in-Charge, complete.",
+  shortLabel: "Scarifying Existing BT Surface",
+  unit: "SQM",
+  workCategory: "SITE_CLEARANCE",
+  workSubCategory: "Scarifying BT Surface",
+  chapterNo: "2",
+  chapterTitle: "Site Clearance & Dismantling",
+  sourcePage: "45",
+  specClause: "Clause 305.4.3",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Output ≈ 2000 SQM/8-hr shift using grader with scarifier. Depth typically 50–75mm. Tipper for disposal of scarified material.",
+};
+
+export const SCARIFYING_BT_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 2500, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 312.5 },
+  { projectCategory: "MEDIUM", shiftOutput: 2000, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 250 },
+  { projectCategory: "SMALL",  shiftOutput: 1200, shiftHours: 8, outputUnit: "SQM", derivedPerHour: 150 },
+];
+
+export const SCARIFYING_BT_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",            skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.100, shiftOutputRef: 2000, derivedPerUnit: 0.100 / 2000 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor Skilled", skillTier: "SKILLED",     unit: "day", quantityPerShift: 1.000, shiftOutputRef: 2000, derivedPerUnit: 1.000 / 2000 },
+  { projectCategory: "ALL", sortOrder: 3, designation: "Mazdoor",         skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 3.000, shiftOutputRef: 2000, derivedPerUnit: 3.000 / 2000 },
+];
+
+export const SCARIFYING_BT_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Motor Grader with Scarifier", equipmentSpec: "4.30m blade", purpose: "scarifying", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 2500, derivedPerUnit: 8.0 / 2500 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Motor Grader with Scarifier", equipmentSpec: "3.70m blade", purpose: "scarifying", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 2000, derivedPerUnit: 8.0 / 2000 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Motor Grader with Scarifier", equipmentSpec: "3.35m blade", purpose: "scarifying", unit: "hrs", quantityPerShift: 8.0, formulaType: "FIXED", shiftOutputRef: 1200, derivedPerUnit: 8.0 / 1200 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Tipper",                      equipmentSpec: "10 CUM",       purpose: "disposal",   unit: "hrs", quantityPerShift: 5.0, formulaType: "FIXED", shiftOutputRef: 2000, derivedPerUnit: 5.0 / 2000 },
+];
+
+export const SCARIFYING_BT_MATERIALS: never[] = [];
+
+// ─── ITEM 18: EARTHEN SHOULDERS 4.20 ────────────────────────────────────────
+export const SHOULDERS_ITEM = {
+  itemCode: "4.20",
+  description: "Construction of earthen shoulders with approved borrow material or excavated soil including compacting in layers to achieve specified density, shaping to specified camber and cross-slope with motor grader, trimming, dressing and all complete as per Clause 315 and drawings.",
+  shortLabel: "Earthen Shoulders",
+  unit: "CUM",
+  workCategory: "SHOULDERS_MEDIANS",
+  workSubCategory: "Earthen Shoulder",
+  chapterNo: "4",
+  chapterTitle: "Sub-Bases, Bases (Non-Bituminous) and Shoulders",
+  sourcePage: "130",
+  specClause: "Clause 315",
+  isMixSpecific: false,
+  hasGradingVariants: false,
+  notes: "Earthen shoulder compaction similar to embankment (Clause 305). Output ≈ 400 CUM/8-hr shift with grader + roller.",
+};
+
+export const SHOULDERS_PRODUCTIVITY = [
+  { projectCategory: "LARGE",  shiftOutput: 450, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 56.25 },
+  { projectCategory: "MEDIUM", shiftOutput: 400, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 50 },
+  { projectCategory: "SMALL",  shiftOutput: 280, shiftHours: 8, outputUnit: "CUM", derivedPerHour: 35 },
+];
+
+export const SHOULDERS_LABOUR = [
+  { projectCategory: "ALL", sortOrder: 1, designation: "Mate",    skillTier: "SUPERVISORY", unit: "day", quantityPerShift: 0.040, shiftOutputRef: 400, derivedPerUnit: 0.040 / 400 },
+  { projectCategory: "ALL", sortOrder: 2, designation: "Mazdoor", skillTier: "UNSKILLED",   unit: "day", quantityPerShift: 2.000, shiftOutputRef: 400, derivedPerUnit: 2.000 / 400 },
+];
+
+export const SHOULDERS_EQUIPMENT = [
+  { projectCategory: "LARGE",  sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "4.30m blade",  purpose: "shaping",    unit: "hrs", quantityPerShift: 3.000, formulaType: "FIXED", shiftOutputRef: 450, derivedPerUnit: 3.000 / 450 },
+  { projectCategory: "MEDIUM", sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "3.70m blade",  purpose: "shaping",    unit: "hrs", quantityPerShift: 3.500, formulaType: "FIXED", shiftOutputRef: 400, derivedPerUnit: 3.500 / 400 },
+  { projectCategory: "SMALL",  sortOrder: 1, equipmentType: "Motor Grader",     equipmentSpec: "3.35m blade",  purpose: "shaping",    unit: "hrs", quantityPerShift: 4.000, formulaType: "FIXED", shiftOutputRef: 280, derivedPerUnit: 4.000 / 280 },
+  { projectCategory: "ALL",    sortOrder: 2, equipmentType: "Vibratory Roller", equipmentSpec: "10T",          purpose: "compaction", unit: "hrs", quantityPerShift: 2.500, formulaType: "FIXED", shiftOutputRef: 400, derivedPerUnit: 2.500 / 400 },
+  { projectCategory: "LARGE",  sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "12 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.365*L1+1.260", shiftOutputRef: 400, derivedPerUnit: null },
+  { projectCategory: "MEDIUM", sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "12 KL",        purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.365*L1+1.260", shiftOutputRef: 400, derivedPerUnit: null },
+  { projectCategory: "SMALL",  sortOrder: 3, equipmentType: "Water Tanker",     equipmentSpec: "6 KL",         purpose: "watering",   unit: "hrs", quantityPerShift: null,  formulaType: "LEAD_FORMULA", formulaExpr: "0.729*L1+2.520", shiftOutputRef: 280, derivedPerUnit: null },
+];
+
+export const SHOULDERS_MATERIALS = [
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 1, materialName: "Borrow Material / Earth (shoulders)", materialCategory: "BULK_FILL", unit: "CUM", quantityPerShift: 400, shiftOutputRef: 400, derivedPerUnit: 1.000, isDesignSpecific: false },
+  { projectCategory: "ALL", gradingVariant: null, sortOrder: 2, materialName: "Water",                               materialCategory: "WATER",     unit: "KL",  quantityPerShift: 24.000, shiftOutputRef: 400, derivedPerUnit: 24.000 / 400, isDesignSpecific: false },
+];
+
 // ─── ITEM 15: PIPE CULVERT (RCC NP3 600mm) 7.09.1 ──────────────────────────
 export const PIPE_CULVERT_ITEM = {
   itemCode: "7.09.1",

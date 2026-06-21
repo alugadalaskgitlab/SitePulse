@@ -10551,7 +10551,7 @@ async function seedSnlItems() {
   try {
     const sources = await storage.getSnlSources();
     const totalItems = sources.reduce((sum, s) => sum + (s.itemCount ?? 0), 0);
-    if (totalItems >= 15) return;
+    if (totalItems >= 18) return;
     console.log(`SNL: only ${totalItems} items found, seeding MoRTH SDB 2019 library...`);
     const result = await storage.seedSnlMorthSdb();
     console.log(`SNL seed complete: ${result.items} items from ${result.source.code}`);

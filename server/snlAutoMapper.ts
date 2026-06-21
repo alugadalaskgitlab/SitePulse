@@ -161,7 +161,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         ? snlRows.filter(s => s.workCategory === boqRow.workCategory)
         : snlRows;
 
-      const candidates: ScoredCandidate[] = (sameCatCandidates.length > 0 ? sameCatCandidates : snlRows)
+      const sameCatSorted: ScoredCandidate[] = (sameCatCandidates.length > 0 ? sameCatCandidates : snlRows)
         .map(snl => ({
           snlItemId: snl.id,
           snlItemCode: snl.itemCode,
@@ -169,9 +169,25 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         }))
         .sort((a, b) => b.score - a.score);
 
+      // If the best same-category match is below 0.35, try cross-category search
+      // (e.g. SITE_CLEARANCE scarifying may match EARTHWORK SNL items on keywords)
+      let candidates = sameCatSorted;
+      if (boqRow.workCategory && sameCatCandidates.length > 0 && (!sameCatSorted[0] || sameCatSorted[0].score < 0.35)) {
+        const crossCatCandidates = snlRows
+          .filter(s => s.workCategory !== boqRow.workCategory)
+          .map(snl => ({
+            snlItemId: snl.id,
+            snlItemCode: snl.itemCode,
+            score: scoreCandidate(boqRow, snl) * 0.80, // penalty for category mismatch
+          }))
+          .sort((a, b) => b.score - a.score);
+        // Merge: same-cat candidates go first if any scored >= 0.30, else cross-cat may win
+        candidates = [...sameCatSorted, ...crossCatCandidates].sort((a, b) => b.score - a.score);
+      }
+
       const top = candidates[0];
 
-      if (!top || top.score < 0.40) {
+      if (!top || top.score < 0.35) {
         // No match
         await db
           .update(boqItems)

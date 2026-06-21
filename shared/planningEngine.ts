@@ -211,11 +211,11 @@ export interface ProductivitySettings {
  * First alias with an outputPerHr override wins (most-specific first).
  */
 const LAYER_TYPE_ALIASES: Record<string, string[]> = {
-  BITUMINOUS: ["BC", "SDBC", "DBM", "BM"],
-  GRANULAR:   ["WMM", "WBM", "GSB", "EG"],
-  CONCRETE:   ["M20", "M25", "M30", "M35", "M40", "RMC"],
+  BITUMINOUS: ["HMP", "BC", "SDBC", "DBM", "BM"],
+  GRANULAR:   ["WMM", "WBM", "GSB"],
+  CONCRETE:   ["RMC", "M20", "M25", "M30", "M35", "M40"],
   EARTHWORK:  ["EG"],
-  SPRAY_COAT: ["BC"],
+  SPRAY_COAT: ["HMP", "BC"],
 };
 
 /**

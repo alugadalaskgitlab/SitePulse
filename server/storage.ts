@@ -19919,6 +19919,19 @@ export class DatabaseStorage implements IStorage {
       UPDATE boq_program_settings SET productivity_mode = 'snl'
       WHERE productivity_mode NOT IN ('snl', 'company', 'project')
     `));
+    // Fix double_shift column type: older installations used integer instead of boolean
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'boq_program_settings'
+                   AND column_name = 'double_shift'
+                   AND data_type = 'integer') THEN
+          ALTER TABLE boq_program_settings
+          ALTER COLUMN double_shift TYPE boolean
+          USING CASE WHEN double_shift = 0 OR double_shift IS NULL THEN false ELSE true END;
+        END IF;
+      END $$
+    `));
     // Lead & source distances (8 new directional fields replacing old chainages)
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS hmp_to_site_km real`));
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS wmm_plant_to_site_km real`));
@@ -20823,6 +20836,9 @@ export class DatabaseStorage implements IStorage {
       PCC_M10_ITEM, PCC_M10_PRODUCTIVITY, PCC_M10_LABOUR, PCC_M10_EQUIPMENT, PCC_M10_MATERIALS,
       RCC_M25_ITEM, RCC_M25_PRODUCTIVITY, RCC_M25_LABOUR, RCC_M25_EQUIPMENT, RCC_M25_MATERIALS,
       PIPE_CULVERT_ITEM, PIPE_CULVERT_PRODUCTIVITY, PIPE_CULVERT_LABOUR, PIPE_CULVERT_EQUIPMENT, PIPE_CULVERT_MATERIALS,
+      GSB_DIRECT_ITEM, GSB_DIRECT_PRODUCTIVITY, GSB_DIRECT_LABOUR, GSB_DIRECT_EQUIPMENT, GSB_DIRECT_MATERIALS,
+      SCARIFYING_BT_ITEM, SCARIFYING_BT_PRODUCTIVITY, SCARIFYING_BT_LABOUR, SCARIFYING_BT_EQUIPMENT, SCARIFYING_BT_MATERIALS,
+      SHOULDERS_ITEM, SHOULDERS_PRODUCTIVITY, SHOULDERS_LABOUR, SHOULDERS_EQUIPMENT, SHOULDERS_MATERIALS,
     } = await import("@shared/snlSeedData");
 
     const source = await this.upsertSnlSource({ ...MORTH_SDB_SOURCE, isActive: true });
@@ -20849,6 +20865,10 @@ export class DatabaseStorage implements IStorage {
       { item: RCC_M25_ITEM,              prod: RCC_M25_PRODUCTIVITY,              lab: RCC_M25_LABOUR,              equip: RCC_M25_EQUIPMENT,              mat: RCC_M25_MATERIALS },
       // Chapter 7 — Drainage
       { item: PIPE_CULVERT_ITEM,         prod: PIPE_CULVERT_PRODUCTIVITY,         lab: PIPE_CULVERT_LABOUR,         equip: PIPE_CULVERT_EQUIPMENT,         mat: PIPE_CULVERT_MATERIALS },
+      // Extended items
+      { item: GSB_DIRECT_ITEM,           prod: GSB_DIRECT_PRODUCTIVITY,           lab: GSB_DIRECT_LABOUR,           equip: GSB_DIRECT_EQUIPMENT,           mat: GSB_DIRECT_MATERIALS },
+      { item: SCARIFYING_BT_ITEM,        prod: SCARIFYING_BT_PRODUCTIVITY,        lab: SCARIFYING_BT_LABOUR,        equip: SCARIFYING_BT_EQUIPMENT,        mat: SCARIFYING_BT_MATERIALS },
+      { item: SHOULDERS_ITEM,            prod: SHOULDERS_PRODUCTIVITY,            lab: SHOULDERS_LABOUR,            equip: SHOULDERS_EQUIPMENT,            mat: SHOULDERS_MATERIALS },
     ];
 
     let count = 0;
