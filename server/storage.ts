@@ -19777,6 +19777,7 @@ export class DatabaseStorage implements IStorage {
         clientAmount: boqItems.clientAmount,
         sortOrder: boqItems.sortOrder,
         workCategory: boqItems.workCategory,
+        itemName: boqItems.itemName,
         mappingStatus: boqItems.mappingStatus,
         layerConfig: boqItems.layerConfig,
         createdAt: boqItems.createdAt,

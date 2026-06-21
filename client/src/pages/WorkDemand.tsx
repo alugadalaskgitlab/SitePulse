@@ -143,7 +143,7 @@ function MaterialsTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-teal-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate">{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate" title={b.itemDescription}>{b.itemDescription.slice(0, 50)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.qtyPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
