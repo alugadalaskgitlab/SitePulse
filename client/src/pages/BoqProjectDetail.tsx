@@ -1012,13 +1012,13 @@ export default function BoqProjectDetail() {
               </p>
             </div>
 
-            {workCatSections.map(sec => (
+            {workCatSections.filter(sec => sec.items.length > 0).map(sec => (
               <CategorySection
                 key={sec.code}
                 name={sec.label}
                 items={sec.items}
                 projectId={projectId}
-                defaultCollapsed={sec.items.length === 0}
+                defaultCollapsed={false}
               />
             ))}
             {hasUncategorised && (
