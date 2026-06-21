@@ -35,6 +35,7 @@ import type {
   InsertBoqItemEquipment,
   InsertBoqItemLabour,
   InsertBoqItemMaterials,
+  BoqMixTemplateLink,
 } from "@shared/schema";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -173,9 +174,11 @@ const LAYER_TYPE_OPTIONS = [
 
 function LayerConfigTab({
   item,
+  projectId,
   onLayerConfigChange,
 }: {
   item: BoqItemWithCategory;
+  projectId: number;
   onLayerConfigChange: (lc: LayerConfig | null) => void;
 }) {
   const { toast } = useToast();
@@ -197,6 +200,15 @@ function LayerConfigTab({
       const res = await fetch("/api/planning/mix-templates", { credentials: "include" });
       return res.ok ? res.json() : [];
     },
+  });
+
+  const { data: mixLinks = [] } = useQuery<BoqMixTemplateLink[]>({
+    queryKey: ["/api/boq/projects", projectId, "mix-links"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/mix-links`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!projectId && layerType === "bituminous",
   });
 
   const { data: templateDetail } = useQuery<MixTemplateWithComponents>({
@@ -294,6 +306,34 @@ function LayerConfigTab({
       {layerType === "bituminous" && (
         <div className="rounded-lg border border-teal-100 p-3 space-y-3">
           <p className="text-[10px] font-medium text-teal-700">Bituminous Layer Settings</p>
+
+          {/* Mix template links — project-level links defined in Programme Settings */}
+          {mixLinks.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">Project-linked templates (from Programme Settings):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {mixLinks.map((lnk) => {
+                  const isActive = String(lnk.mixTemplateId) === mixTemplateId;
+                  return (
+                    <button
+                      key={lnk.id}
+                      onClick={() => setMixTemplateId(String(lnk.mixTemplateId))}
+                      className={`text-[11px] px-2 py-0.5 rounded border font-medium transition-colors ${
+                        isActive
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "bg-white text-teal-700 border-teal-300 hover:bg-teal-50"
+                      }`}
+                      data-testid={`btn-mix-link-${lnk.mixType}`}
+                      title={`Use project-linked template for ${lnk.mixType}: ${lnk.mixTemplateName ?? lnk.mixTemplateId}`}
+                    >
+                      {lnk.mixType}{lnk.mixTemplateName ? ` — ${lnk.mixTemplateName}` : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-3">
               <Label className="text-[10px]">MIX TEMPLATE</Label>
@@ -480,9 +520,13 @@ function EquipmentTab({
       const lc = layerConfig;
       let sourceKm: number | null = null;
       if (lc?.layerType === "bituminous") sourceKm = progSettings.hmpChainageKm;
+      else if (lc?.layerType === "spray_coat") sourceKm = progSettings.hmpChainageKm;
       else if (lc?.layerType === "granular" && (lc as any).granularSource === "plant") sourceKm = progSettings.wmmPlantChainageKm;
       else if (lc?.layerType === "granular") sourceKm = progSettings.quarryChainageKm;
-      else sourceKm = progSettings.hmpChainageKm;
+      else if (lc?.layerType === "earthwork" && (lc as any).earthworkType === "cut") sourceKm = progSettings.disposalChainageKm;
+      else if (lc?.layerType === "earthwork") sourceKm = progSettings.borrowChainageKm ?? progSettings.disposalChainageKm;
+      else if (lc?.layerType === "concrete") sourceKm = progSettings.rmcChainageKm;
+      // null for "none" or unknown types — no auto-fill
       if (sourceKm != null && sourceKm > 0) {
         setHaulDistance(String(sourceKm));
       }
@@ -1246,7 +1290,7 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
                 <TabsTrigger value="labour" className="flex items-center gap-1.5 text-xs"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-xs"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
-              <TabsContent value="layer-config"><LayerConfigTab item={item} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
+              <TabsContent value="layer-config"><LayerConfigTab item={item} projectId={item.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
               <TabsContent value="equipment"><EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={item.boqProjectId} /></TabsContent>
               <TabsContent value="labour"><LabourTab boqItemId={item.id} boqUnit={item.unit} labourTypeList={labourTypeList} /></TabsContent>
               <TabsContent value="materials"><MaterialsTab boqItemId={item.id} boqUnit={item.unit} projectId={item.boqProjectId} /></TabsContent>

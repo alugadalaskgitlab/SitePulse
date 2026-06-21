@@ -129,6 +129,12 @@ export function calculateAutoDuration(
 
 /**
  * Full version that also returns the bottleneck equipment name.
+ *
+ * Optional `productivitySettings` + `itemType`:
+ * - When mode = "project" and an outputPerHr override exists for `itemType`,
+ *   that single rate replaces all equipment-based bottleneck logic.
+ * - When mode = "snl" or "company" (or settings absent), standard equipment
+ *   norms are used unchanged.
  */
 export function calculateAutoDurationFull(
   stretchQty: number,
@@ -136,10 +142,22 @@ export function calculateAutoDurationFull(
   equipment: Array<EquipmentProductivity & { name: string }>,
   workingHoursPerDay: number = WORKING_HRS_DEFAULT,
   workingDaysPerMonth: number = WORKING_DAYS_DEFAULT,
+  productivitySettings?: ProductivitySettings | null,
+  itemType?: string | null,
 ): { months: number; bottleneckEquipment: string | null } {
-  if (!equipment.length || stretchQty <= 0) {
-    return { months: 0, bottleneckEquipment: null };
+  if (stretchQty <= 0) return { months: 0, bottleneckEquipment: null };
+
+  // ── Project-mode override takes precedence over equipment norms ──────────
+  const projectOverride = resolveProductivityForType(productivitySettings, itemType);
+  if (projectOverride && projectOverride > 0) {
+    const monthlyOutput = projectOverride * workingHoursPerDay * workingDaysPerMonth;
+    return {
+      months: Math.max(0.01, stretchQty / monthlyOutput),
+      bottleneckEquipment: `[${String(itemType ?? "override").toUpperCase()} · project norm]`,
+    };
   }
+
+  if (!equipment.length) return { months: 0, bottleneckEquipment: null };
 
   const candidates: Array<{ output: number; name: string }> = [];
 
@@ -163,6 +181,45 @@ export function calculateAutoDurationFull(
     months: Math.max(0.01, months),
     bottleneckEquipment: bottleneck.name,
   };
+}
+
+// ─── Productivity Settings ────────────────────────────────────────────────────
+
+/**
+ * Project-level productivity settings loaded from boq_program_settings.
+ *
+ * Modes:
+ * - "snl"     : IRC/MoRTH standard norms library (default). Equipment master
+ *               outputs are used as-is; no override applied.
+ * - "company" : Company-configured standard outputs. Same resolution path as
+ *               SNL until company norms are independently stored.
+ * - "project" : Per-item-type output overrides in productivityOverrides JSONB.
+ *               Overrides completely replace equipment bottleneck logic.
+ *
+ * Override keys are case-insensitive layer types (e.g. "BITUMINOUS", "GRANULAR",
+ * "EARTHWORK", "CONCRETE", "SPRAY_COAT") or mix types (e.g. "BC", "DBM", "WMM").
+ */
+export interface ProductivitySettings {
+  mode: "snl" | "company" | "project";
+  overrides: Record<string, { outputPerHr?: number; unit?: string }> | null;
+}
+
+/**
+ * Resolves an outputPerHr project-mode override for `itemType`.
+ * Returns the override value (>0) or null when no match / wrong mode.
+ *
+ * Lookup is case-insensitive on both exact key and UPPERCASE key.
+ */
+export function resolveProductivityForType(
+  settings: ProductivitySettings | null | undefined,
+  itemType: string | null | undefined,
+): number | null {
+  if (!settings || settings.mode !== "project" || !settings.overrides || !itemType) return null;
+  const raw = itemType.trim();
+  const up = raw.toUpperCase();
+  const override = settings.overrides[up] ?? settings.overrides[raw];
+  const val = override?.outputPerHr;
+  return typeof val === "number" && val > 0 ? val : null;
 }
 
 // ─── Monthly Distribution ─────────────────────────────────────────────────────

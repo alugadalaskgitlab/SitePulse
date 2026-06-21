@@ -22,6 +22,7 @@ import {
   WORKING_HRS_DEFAULT,
   type EquipmentProductivity,
   type LayerConfig,
+  type ProductivitySettings,
 } from "@shared/planningEngine";
 import type {
   BoqProject,
@@ -94,10 +95,12 @@ interface StretchRowProps {
   colW: number;
   onDelete: (id: number) => void;
   onSplit: (bar: WorkProgramBarWithItem) => void;
+  productivitySettings?: ProductivitySettings | null;
 }
 
 function StretchRow({
   bar, itemBars, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
+  productivitySettings,
 }: StretchRowProps) {
   const { toast } = useToast();
   const dirty = useRef(false);
@@ -168,10 +171,15 @@ function StretchRow({
   }, [item.id, recipesMap]);
 
   const effectiveQty = autoQty ?? bar.plannedQty;
+  const itemType = (item.layerConfig as LayerConfig | null)?.layerType ?? null;
   const autoDuration = useMemo(() => {
-    if (effectiveQty <= 0 || !equipment.length) return null;
-    return calculateAutoDurationFull(effectiveQty, item.unit, equipment, workingHrs, workingDays);
-  }, [effectiveQty, item.unit, equipment, workingHrs, workingDays]);
+    if (effectiveQty <= 0 && !productivitySettings) return null;
+    if (effectiveQty <= 0) return null;
+    return calculateAutoDurationFull(
+      effectiveQty, item.unit, equipment, workingHrs, workingDays,
+      productivitySettings, itemType,
+    );
+  }, [effectiveQty, item.unit, equipment, workingHrs, workingDays, productivitySettings, itemType]);
 
   // ── Chainage overlap detection ────────────────────────────────────────────
   const hasChainageOverlap = useMemo(() => {
@@ -422,12 +430,14 @@ function InlineGanttTable({
   bars,
   recipesMap,
   projectId,
+  productivitySettings,
 }: {
   project: BoqProject;
   items: BoqItemWithCategory[];
   bars: WorkProgramBarWithItem[];
   recipesMap: Map<number, BoqItemEquipmentWithMaster[]>;
   projectId: number;
+  productivitySettings?: ProductivitySettings | null;
 }) {
   const { toast } = useToast();
   const totalMonths = project.totalMonths ?? 12;
@@ -591,8 +601,10 @@ function InlineGanttTable({
       standardOutputs: e.standardOutputs as Array<{ unit: string; outputPerHr: number }> | null,
       count: e.count ?? 1,
     }));
-    const dur = qty > 0 && equipment.length
-      ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays)
+    const itemLayerType = (item.layerConfig as LayerConfig | null)?.layerType ?? null;
+    const dur = qty > 0 && (equipment.length || productivitySettings?.mode === "project")
+      ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays,
+          productivitySettings, itemLayerType)
       : null;
     const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;
 
@@ -766,6 +778,7 @@ function InlineGanttTable({
                         colW={colW}
                         onDelete={setDeleteBarId}
                         onSplit={bar => splitMutation.mutate(bar)}
+                        productivitySettings={productivitySettings}
                       />
                     ))}
 
@@ -1090,7 +1103,7 @@ export default function WorkProgramme() {
     ? {
         ...project,
         workingDaysPerMonth: progSettings?.workingDaysPerMonth ?? project.workingDaysPerMonth ?? 25,
-        workingHoursPerDay: progSettings?.shiftHours ?? project.workingHoursPerDay ?? 8,
+        workingHoursPerDay: (progSettings?.shiftHours ?? project.workingHoursPerDay ?? 8) * (progSettings?.doubleShift ? 2 : 1),
         hmpChainageKm: progSettings?.hmpChainageKm ?? project.hmpChainageKm ?? null,
         wmmPlantChainageKm: progSettings?.wmmPlantChainageKm ?? project.wmmPlantChainageKm ?? null,
         quarryChainageKm: progSettings?.quarryChainageKm ?? project.quarryChainageKm ?? null,
@@ -1281,6 +1294,10 @@ export default function WorkProgramme() {
                 bars={bars}
                 recipesMap={recipesMap}
                 projectId={projectId}
+                productivitySettings={progSettings ? {
+                  mode: (progSettings.productivityMode ?? "snl") as "snl" | "company" | "project",
+                  overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
+                } : null}
               />
             ) : (
               <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2">
