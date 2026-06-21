@@ -9430,6 +9430,13 @@ export async function registerRoutes(
       }
       const invalid = items.find((it) => !it.description || !it.unit);
       if (invalid) return res.status(400).json({ error: "Each item must have description and unit" });
+      const validCategoryCodes = new Set(
+        (await import("../shared/boqWorkCategories.js")).BOQ_WORK_CATEGORIES.map((c: { code: string }) => c.code)
+      );
+      const badCat = items.find((it) => it.workCategory && !validCategoryCodes.has(it.workCategory));
+      if (badCat) {
+        return res.status(400).json({ error: `Invalid workCategory code: "${badCat.workCategory}"` });
+      }
       const result = await storage.importBoqItems(boqProjectId, items);
       res.status(201).json(result);
     } catch (err) {
