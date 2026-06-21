@@ -232,9 +232,10 @@ export function resolveProductivityForType(
   settings: ProductivitySettings | null | undefined,
   itemType: string | null | undefined,
 ): number | null {
-  // Both "company" and "project" modes apply overrides from productivityOverrides JSONB.
-  // "snl" mode exclusively uses equipment-master norms with no override.
-  if (!settings || settings.mode === "snl" || !settings.overrides || !itemType) return null;
+  // Only "project" mode applies productivityOverrides from program settings.
+  // "company" mode is planned for a separate company-norms source (no-op for now, falls through to SNL norms).
+  // "snl" mode always uses equipment-master IRC norms with no override.
+  if (!settings || settings.mode !== "project" || !settings.overrides || !itemType) return null;
   const raw = itemType.trim();
   const up = raw.toUpperCase();
   const ov = settings.overrides;
@@ -552,6 +553,10 @@ export const LAYER_DENSITY_DEFAULTS: Record<string, number> = {
 /** Layer config stored as JSONB on boq_items */
 export interface LayerConfig {
   layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "none";
+  // Specific mix/grade type resolved from the linked plant template (e.g. "BC", "DBM", "WMM", "M20").
+  // Used by the planning engine to resolve the correct productivity override key rather than
+  // falling back to a generic layerType alias (which would collapse all bituminous → "BC").
+  mixType?: string | null;
   // Bituminous
   mixTemplateId?: number | null;
   thicknessMm?: number | null;

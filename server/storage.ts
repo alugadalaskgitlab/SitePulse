@@ -19938,6 +19938,21 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`
       ALTER TABLE boq_mix_template_links ALTER COLUMN mix_template_id DROP NOT NULL
     `)).catch(() => { /* already nullable — ignore */ });
+
+    // Add FK constraint to mix_templates if not already present (idempotent)
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE table_name='boq_mix_template_links'
+            AND constraint_name='boq_mix_template_links_mix_template_id_fkey'
+        ) THEN
+          ALTER TABLE boq_mix_template_links
+            ADD CONSTRAINT boq_mix_template_links_mix_template_id_fkey
+            FOREIGN KEY (mix_template_id) REFERENCES mix_templates(id) ON DELETE SET NULL;
+        END IF;
+      END $$
+    `)).catch(() => { /* mix_templates may not exist yet — ignore */ });
   }
 
   async getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null> {

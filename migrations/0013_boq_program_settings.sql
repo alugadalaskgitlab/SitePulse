@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS boq_mix_template_links (
   id serial PRIMARY KEY,
   boq_project_id integer NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
   mix_type text NOT NULL,
-  mix_template_id integer,
+  mix_template_id integer REFERENCES mix_templates(id) ON DELETE SET NULL,
   mix_template_name text,
   created_at timestamp with time zone DEFAULT now(),
   UNIQUE (boq_project_id, mix_type)

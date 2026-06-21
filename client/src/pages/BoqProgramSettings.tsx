@@ -697,8 +697,8 @@ export default function BoqProgramSettings() {
             </FormItem>
           )} />
 
-          {/* Per-type override grid — visible in "company" and "project" modes */}
-          {(vals.productivityMode === "project" || vals.productivityMode === "company") && (
+          {/* Per-type override grid — only visible in "project" mode */}
+          {vals.productivityMode === "project" && (
             <FormField control={form.control} name="productivityOverrides" render={({ field }) => (
               <ProductivityOverridesSection
                 overrides={field.value as Record<string, { outputPerHr?: number; unit?: string }> | null}

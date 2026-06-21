@@ -171,7 +171,11 @@ function StretchRow({
   }, [item.id, recipesMap]);
 
   const effectiveQty = autoQty ?? bar.plannedQty;
-  const itemType = (item.layerConfig as LayerConfig | null)?.layerType ?? null;
+  // Prefer the specific mix type (BC/DBM/WMM/M20 stored when a mix template is linked)
+  // over the generic layerType ("bituminous"/"granular") so the planning engine can
+  // resolve the correct per-type productivity override without alias collapse.
+  const _lc = item.layerConfig as LayerConfig | null;
+  const itemType = (_lc?.mixType ?? _lc?.layerType) ?? null;
   const autoDuration = useMemo(() => {
     if (effectiveQty <= 0 && !productivitySettings) return null;
     if (effectiveQty <= 0) return null;

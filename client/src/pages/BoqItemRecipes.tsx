@@ -243,6 +243,9 @@ function LayerConfigTab({
     const lc: LayerConfig = { layerType };
     if (layerType === "bituminous") {
       lc.mixTemplateId = mixTemplateId ? parseInt(mixTemplateId) : null;
+      // Store the resolved mix type (e.g. "BC", "DBM") so the planning engine can
+      // look up the correct productivity override instead of using a generic alias.
+      lc.mixType = templateDetail?.template.mixType?.toUpperCase() ?? null;
       lc.thicknessMm = thicknessMm ? parseFloat(thicknessMm) : null;
       lc.densityTPerCum = densityTPerCum ? parseFloat(densityTPerCum) : null;
     }
