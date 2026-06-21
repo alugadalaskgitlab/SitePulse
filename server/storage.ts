@@ -238,6 +238,8 @@ import {
   boqItemEquipment,
   boqItemLabour,
   boqItemMaterials,
+  boqProgramSettings,
+  boqMixTemplateLinks,
   equipmentMaster,
   sites,
   planningEquipmentTypes,
@@ -260,6 +262,10 @@ import {
   type InsertBoqItemLabour,
   type BoqItemMaterialsRow,
   type InsertBoqItemMaterials,
+  type BoqProgramSettings,
+  type InsertBoqProgramSettings,
+  type BoqMixTemplateLink,
+  type InsertBoqMixTemplateLink,
   type BoqItemEquipmentWithMaster,
   type BoqItemWithRecipes,
   type BoqProjectWithCounts,
@@ -1188,6 +1194,13 @@ export interface IStorage {
   patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
   // Task #1125 — SNL auto-mapping: update the mapping_status column on a BOQ item.
   updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
+  // Task #1126 — Program Settings per BOQ project
+  ensureBoqProgramSettingsTables(): Promise<void>;
+  getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
+  upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings>;
+  getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]>;
+  createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink>;
+  deleteBoqMixLink(id: number): Promise<void>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -19852,6 +19865,82 @@ export class DatabaseStorage implements IStorage {
 
   async updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void> {
     await db.update(boqItems).set({ mappingStatus: status }).where(eq(boqItems.id, boqItemId));
+  }
+
+  // ─── BOQ Program Settings ─────────────────────────────────────────────────
+
+  async ensureBoqProgramSettingsTables(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS boq_program_settings (
+        id serial PRIMARY KEY,
+        project_id integer NOT NULL UNIQUE REFERENCES boq_projects(id) ON DELETE CASCADE,
+        working_days_per_month integer NOT NULL DEFAULT 26,
+        working_hours_per_day real NOT NULL DEFAULT 8,
+        double_shift integer NOT NULL DEFAULT 0,
+        tipper_capacity_t real NOT NULL DEFAULT 8,
+        avg_tipper_speed_km_hr real NOT NULL DEFAULT 30,
+        load_time_min real NOT NULL DEFAULT 5,
+        unload_time_min real NOT NULL DEFAULT 5,
+        hmp_chainage_km real,
+        wmm_plant_chainage_km real,
+        quarry_chainage_km real,
+        borrow_chainage_km real,
+        disposal_chainage_km real,
+        rmc_chainage_km real,
+        productivity_mode text NOT NULL DEFAULT 'default',
+        custom_overrides jsonb,
+        updated_at timestamp DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS boq_mix_template_links (
+        id serial PRIMARY KEY,
+        boq_project_id integer NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
+        boq_item_id integer NOT NULL REFERENCES boq_items(id) ON DELETE CASCADE,
+        mix_template_id integer NOT NULL,
+        mix_template_name text,
+        link_type text NOT NULL DEFAULT 'primary',
+        notes text,
+        created_at timestamp DEFAULT now()
+      )
+    `));
+  }
+
+  async getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null> {
+    const [row] = await db
+      .select()
+      .from(boqProgramSettings)
+      .where(eq(boqProgramSettings.projectId, projectId));
+    return row ?? null;
+  }
+
+  async upsertBoqProgramSettings(projectId: number, data: Partial<InsertBoqProgramSettings>): Promise<BoqProgramSettings> {
+    const [row] = await db
+      .insert(boqProgramSettings)
+      .values({ ...data, projectId, updatedAt: new Date() } as any)
+      .onConflictDoUpdate({
+        target: boqProgramSettings.projectId,
+        set: { ...data, updatedAt: new Date() },
+      })
+      .returning();
+    return row;
+  }
+
+  async getBoqMixLinks(projectId: number): Promise<BoqMixTemplateLink[]> {
+    return db
+      .select()
+      .from(boqMixTemplateLinks)
+      .where(eq(boqMixTemplateLinks.boqProjectId, projectId))
+      .orderBy(boqMixTemplateLinks.id);
+  }
+
+  async createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink> {
+    const [row] = await db.insert(boqMixTemplateLinks).values(data).returning();
+    return row;
+  }
+
+  async deleteBoqMixLink(id: number): Promise<void> {
+    await db.delete(boqMixTemplateLinks).where(eq(boqMixTemplateLinks.id, id));
   }
 
   async deleteBoqItem(id: number): Promise<void> {

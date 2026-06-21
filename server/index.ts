@@ -138,6 +138,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureBoqProgramSettingsTables();
+    console.log("Startup: boq_program_settings and boq_mix_template_links tables ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure BOQ program settings tables:", e);
+  }
+
+  try {
     await storage.ensureRmcTables();
     console.log("Startup: RMC tables ensured");
   } catch (e) {

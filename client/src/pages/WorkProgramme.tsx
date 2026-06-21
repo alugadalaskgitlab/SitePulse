@@ -757,7 +757,7 @@ function InlineGanttTable({
                         bar={bar}
                         itemBars={itemBars}
                         item={item}
-                        project={project}
+                        project={effectiveProject ?? project!}
                         recipesMap={recipesMap}
                         projectId={projectId}
                         color={color}
@@ -1067,6 +1067,36 @@ export default function WorkProgramme() {
     enabled: !isNaN(projectId),
   });
 
+  const { data: progSettings } = useQuery<{
+    workingDaysPerMonth: number; workingHoursPerDay: number; doubleShift: number;
+    tipperCapacityT: number; avgTipperSpeedKmHr: number; loadTimeMin: number; unloadTimeMin: number;
+    hmpChainageKm: number | null; wmmPlantChainageKm: number | null; quarryChainageKm: number | null;
+    borrowChainageKm: number | null; disposalChainageKm: number | null; rmcChainageKm: number | null;
+    productivityMode: string;
+  }>({
+    queryKey: ["/api/boq/projects", projectId, "program-settings"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/program-settings`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !isNaN(projectId),
+    staleTime: 60_000,
+  });
+
+  // Merge program-settings values over legacy project fields for downstream consumers
+  const effectiveProject = project
+    ? {
+        ...project,
+        workingDaysPerMonth: progSettings?.workingDaysPerMonth ?? project.workingDaysPerMonth ?? 26,
+        workingHoursPerDay: progSettings?.workingHoursPerDay ?? project.workingHoursPerDay ?? 8,
+        hmpChainageKm: progSettings?.hmpChainageKm ?? project.hmpChainageKm ?? null,
+        wmmPlantChainageKm: progSettings?.wmmPlantChainageKm ?? project.wmmPlantChainageKm ?? null,
+        quarryChainageKm: progSettings?.quarryChainageKm ?? project.quarryChainageKm ?? null,
+        avgTipperSpeedKmHr: progSettings?.avgTipperSpeedKmHr ?? project.avgTipperSpeedKmHr ?? 30,
+      }
+    : project;
+
   const { data: items = [], isLoading: itemsLoading } = useQuery<BoqItemWithCategory[]>({
     queryKey: ["/api/boq/projects", projectId, "items"],
     queryFn: async () => {
@@ -1156,15 +1186,15 @@ export default function WorkProgramme() {
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work Programme</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {project?.name}
-            {project?.contractNo ? ` · ${project.contractNo}` : ""}
-            {project?.roadLengthKm ? ` · ${project.roadLengthKm} km road` : ""}
-            {project?.startDate && project?.totalMonths
-              ? ` · ${monthLabel(1, project.startDate)} – ${monthLabel(project.totalMonths, project.startDate)}`
+            {effectiveProject?.name}
+            {effectiveProject?.contractNo ? ` · ${effectiveProject.contractNo}` : ""}
+            {effectiveProject?.roadLengthKm ? ` · ${effectiveProject.roadLengthKm} km road` : ""}
+            {effectiveProject?.startDate && effectiveProject?.totalMonths
+              ? ` · ${monthLabel(1, effectiveProject.startDate)} – ${monthLabel(effectiveProject.totalMonths, effectiveProject.startDate)}`
               : ""}
-            {project && (
+            {effectiveProject && (
               <span className="ml-1 text-teal-600">
-                · {project.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT}d/mo · {project.workingHoursPerDay ?? WORKING_HRS_DEFAULT}h/d
+                · {effectiveProject.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT}d/mo · {effectiveProject.workingHoursPerDay ?? WORKING_HRS_DEFAULT}h/d
               </span>
             )}
           </p>
@@ -1228,7 +1258,7 @@ export default function WorkProgramme() {
         </Card>
       )}
 
-      {!isLoading && items.length > 0 && project && (
+      {!isLoading && items.length > 0 && effectiveProject && (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-3">
             <TabsTrigger value="gantt" className="flex items-center gap-1.5" data-testid="tab-gantt">
@@ -1243,9 +1273,9 @@ export default function WorkProgramme() {
           </TabsList>
 
           <TabsContent value="gantt">
-            {project.totalMonths ? (
+            {effectiveProject.totalMonths ? (
               <InlineGanttTable
-                project={project}
+                project={effectiveProject}
                 items={items}
                 bars={bars}
                 recipesMap={recipesMap}
@@ -1260,7 +1290,7 @@ export default function WorkProgramme() {
           </TabsContent>
 
           <TabsContent value="monthly">
-            <MonthlyPlanView project={project} items={items} bars={bars} />
+            <MonthlyPlanView project={effectiveProject} items={items} bars={bars} />
           </TabsContent>
 
           <TabsContent value="pva">

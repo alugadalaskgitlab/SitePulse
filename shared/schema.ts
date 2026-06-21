@@ -2452,6 +2452,44 @@ export const boqItemMaterials = pgTable("boq_item_materials", {
   itemIdx: index("boq_item_materials_item_idx").on(t.boqItemId),
 }));
 
+// ─── BOQ Program Settings (per-project planning configuration) ────────────────
+export const boqProgramSettings = pgTable("boq_program_settings", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }).unique(),
+  // Schedule
+  workingDaysPerMonth: integer("working_days_per_month").notNull().default(26),
+  workingHoursPerDay: real("working_hours_per_day").notNull().default(8),
+  doubleShift: integer("double_shift").notNull().default(0),
+  // Tipper fleet defaults
+  tipperCapacityT: real("tipper_capacity_t").notNull().default(8),
+  avgTipperSpeedKmHr: real("avg_tipper_speed_km_hr").notNull().default(30),
+  loadTimeMin: real("load_time_min").notNull().default(5),
+  unloadTimeMin: real("unload_time_min").notNull().default(5),
+  // Source chainages
+  hmpChainageKm: real("hmp_chainage_km"),
+  wmmPlantChainageKm: real("wmm_plant_chainage_km"),
+  quarryChainageKm: real("quarry_chainage_km"),
+  borrowChainageKm: real("borrow_chainage_km"),
+  disposalChainageKm: real("disposal_chainage_km"),
+  rmcChainageKm: real("rmc_chainage_km"),
+  // Productivity
+  productivityMode: text("productivity_mode").notNull().default("default"),
+  customOverrides: jsonb("custom_overrides"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── BOQ Mix Template Links ────────────────────────────────────────────────────
+export const boqMixTemplateLinks = pgTable("boq_mix_template_links", {
+  id: serial("id").primaryKey(),
+  boqProjectId: integer("boq_project_id").notNull().references(() => boqProjects.id, { onDelete: "cascade" }),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  mixTemplateId: integer("mix_template_id").notNull(),
+  mixTemplateName: text("mix_template_name"),
+  linkType: text("link_type").notNull().default("primary"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Planning masters insert schemas
 export const insertPlanningEquipmentTypeSchema = createInsertSchema(planningEquipmentTypes).omit({ id: true, createdAt: true });
 export const insertPlanningLabourTypeSchema = createInsertSchema(planningLabourTypes).omit({ id: true, createdAt: true });
@@ -2492,6 +2530,12 @@ export type BoqItemLabourRow = typeof boqItemLabour.$inferSelect;
 export type InsertBoqItemLabour = z.infer<typeof insertBoqItemLabourSchema>;
 export type BoqItemMaterialsRow = typeof boqItemMaterials.$inferSelect;
 export type InsertBoqItemMaterials = z.infer<typeof insertBoqItemMaterialsSchema>;
+export type BoqProgramSettings = typeof boqProgramSettings.$inferSelect;
+export const insertBoqProgramSettingsSchema = createInsertSchema(boqProgramSettings).omit({ id: true, updatedAt: true });
+export type InsertBoqProgramSettings = z.infer<typeof insertBoqProgramSettingsSchema>;
+export type BoqMixTemplateLink = typeof boqMixTemplateLinks.$inferSelect;
+export const insertBoqMixTemplateLinkSchema = createInsertSchema(boqMixTemplateLinks).omit({ id: true, createdAt: true });
+export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSchema>;
 
 // Composite types for API responses
 export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null };

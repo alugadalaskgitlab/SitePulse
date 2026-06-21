@@ -426,11 +426,17 @@ function makeEquipRow(r?: BoqItemEquipmentWithMaster): EquipRow {
   };
 }
 
-interface ProjectSettingsMinimal {
-  avgTipperSpeedKmHr: number | null;
+interface ProgramSettingsMinimal {
+  avgTipperSpeedKmHr: number;
+  tipperCapacityT: number;
+  loadTimeMin: number;
+  unloadTimeMin: number;
   hmpChainageKm: number | null;
   wmmPlantChainageKm: number | null;
   quarryChainageKm: number | null;
+  borrowChainageKm: number | null;
+  disposalChainageKm: number | null;
+  rmcChainageKm: number | null;
 }
 
 function EquipmentTab({
@@ -447,11 +453,11 @@ function EquipmentTab({
   const [showTipperFleet, setShowTipperFleet] = useState(false);
   const [tipperDefaultsApplied, setTipperDefaultsApplied] = useState(false);
 
-  const { data: projSettings } = useQuery<ProjectSettingsMinimal | null>({
-    queryKey: ["/api/boq/projects", projectId],
+  const { data: progSettings } = useQuery<ProgramSettingsMinimal | null>({
+    queryKey: ["/api/boq/projects", projectId, "program-settings"],
     queryFn: async () => {
       if (!projectId || projectId <= 0) return null;
-      const res = await fetch(`/api/boq/projects/${projectId}`, { credentials: "include" });
+      const res = await fetch(`/api/boq/projects/${projectId}/program-settings`, { credentials: "include" });
       return res.ok ? res.json() : null;
     },
     enabled: !!projectId && projectId > 0,
@@ -466,22 +472,23 @@ function EquipmentTab({
   const [unloadTime, setUnloadTime] = useState("5");
 
   useEffect(() => {
-    if (projSettings && !tipperDefaultsApplied) {
-      if (projSettings.avgTipperSpeedKmHr != null) {
-        setAvgSpeed(String(projSettings.avgTipperSpeedKmHr));
-      }
+    if (progSettings && !tipperDefaultsApplied) {
+      setAvgSpeed(String(progSettings.avgTipperSpeedKmHr ?? 30));
+      setTipperCapacity(String(progSettings.tipperCapacityT ?? 8));
+      setLoadTime(String(progSettings.loadTimeMin ?? 5));
+      setUnloadTime(String(progSettings.unloadTimeMin ?? 5));
       const lc = layerConfig;
       let sourceKm: number | null = null;
-      if (lc?.layerType === "bituminous") sourceKm = projSettings.hmpChainageKm;
-      else if (lc?.layerType === "granular" && (lc as any).granularSource === "plant") sourceKm = projSettings.wmmPlantChainageKm;
-      else if (lc?.layerType === "granular") sourceKm = projSettings.quarryChainageKm;
-      else sourceKm = projSettings.hmpChainageKm;
+      if (lc?.layerType === "bituminous") sourceKm = progSettings.hmpChainageKm;
+      else if (lc?.layerType === "granular" && (lc as any).granularSource === "plant") sourceKm = progSettings.wmmPlantChainageKm;
+      else if (lc?.layerType === "granular") sourceKm = progSettings.quarryChainageKm;
+      else sourceKm = progSettings.hmpChainageKm;
       if (sourceKm != null && sourceKm > 0) {
         setHaulDistance(String(sourceKm));
       }
       setTipperDefaultsApplied(true);
     }
-  }, [projSettings, layerConfig, tipperDefaultsApplied]);
+  }, [progSettings, layerConfig, tipperDefaultsApplied]);
 
   const { data: existing = [], isLoading } = useQuery<BoqItemEquipmentWithMaster[]>({
     queryKey: ["/api/boq/items", boqItemId, "equipment"],

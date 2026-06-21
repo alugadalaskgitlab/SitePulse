@@ -9338,6 +9338,78 @@ export async function registerRoutes(
     }
   });
 
+  // --- BOQ Program Settings ---
+
+  app.get("/api/boq/projects/:id/program-settings", async (req, res) => {
+    try {
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+      const projectId = parseInt(req.params.id);
+      const settings = await storage.getBoqProgramSettings(projectId);
+      if (!settings) {
+        return res.json({
+          id: null, projectId,
+          workingDaysPerMonth: 26, workingHoursPerDay: 8, doubleShift: 0,
+          tipperCapacityT: 8, avgTipperSpeedKmHr: 30, loadTimeMin: 5, unloadTimeMin: 5,
+          hmpChainageKm: null, wmmPlantChainageKm: null, quarryChainageKm: null,
+          borrowChainageKm: null, disposalChainageKm: null, rmcChainageKm: null,
+          productivityMode: "default", customOverrides: null, updatedAt: null,
+        });
+      }
+      res.json(settings);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/program-settings:", err);
+      res.status(500).json({ error: "Failed to fetch program settings" });
+    }
+  });
+
+  app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const settings = await storage.upsertBoqProgramSettings(projectId, req.body);
+      res.json(settings);
+    } catch (err) {
+      console.error("PUT /api/boq/projects/:id/program-settings:", err);
+      res.status(500).json({ error: "Failed to save program settings" });
+    }
+  });
+
+  // --- BOQ Mix Template Links ---
+
+  app.get("/api/boq/projects/:id/mix-links", async (req, res) => {
+    try {
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+      const links = await storage.getBoqMixLinks(parseInt(req.params.id));
+      res.json(links);
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/mix-links:", err);
+      res.status(500).json({ error: "Failed to fetch mix links" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/mix-links", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const link = await storage.createBoqMixLink({ ...req.body, boqProjectId: projectId });
+      res.status(201).json(link);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/mix-links:", err);
+      res.status(500).json({ error: "Failed to create mix link" });
+    }
+  });
+
+  app.delete("/api/boq/projects/:id/mix-links/:linkId", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      await storage.deleteBoqMixLink(parseInt(req.params.linkId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/boq/projects/:id/mix-links/:linkId:", err);
+      res.status(500).json({ error: "Failed to delete mix link" });
+    }
+  });
+
   app.post("/api/boq/projects/:id/duplicate", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
