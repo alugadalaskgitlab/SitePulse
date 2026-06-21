@@ -23,6 +23,8 @@ import { WORKING_DAYS_DEFAULT, WORKING_HRS_DEFAULT } from "@shared/planningEngin
 
 // ─── Zod Schema ──────────────────────────────────────────────────────────────
 
+const leadDistField = z.coerce.number().min(0).nullable().optional();
+
 const formSchema = z.object({
   projectStartDate: z.string().nullable().optional(),
   workingDaysPerMonth: z.coerce.number().int().min(1).max(31),
@@ -32,12 +34,15 @@ const formSchema = z.object({
   avgTipperSpeedKmHr: z.coerce.number().min(1).max(200),
   loadTimeMin: z.coerce.number().min(0).max(120),
   unloadTimeMin: z.coerce.number().min(0).max(120),
-  hmpChainageKm: z.coerce.number().min(0).nullable().optional(),
-  wmmPlantChainageKm: z.coerce.number().min(0).nullable().optional(),
-  quarryChainageKm: z.coerce.number().min(0).nullable().optional(),
-  borrowChainageKm: z.coerce.number().min(0).nullable().optional(),
-  disposalChainageKm: z.coerce.number().min(0).nullable().optional(),
-  rmcChainageKm: z.coerce.number().min(0).nullable().optional(),
+  // Lead & source distances
+  hmpToSiteKm: leadDistField,
+  wmmPlantToSiteKm: leadDistField,
+  quarryToSiteKm: leadDistField,
+  quarryToHmpKm: leadDistField,
+  quarryToRmcKm: leadDistField,
+  rmcToSiteKm: leadDistField,
+  borrowToSiteKm: leadDistField,
+  disposalDistanceKm: leadDistField,
   productivityMode: z.enum(["snl", "company", "project"]),
   productivityOverrides: z.record(z.object({
     outputPerHr: z.number().optional(),
@@ -58,12 +63,15 @@ interface ProgramSettings {
   avgTipperSpeedKmHr: number;
   loadTimeMin: number;
   unloadTimeMin: number;
-  hmpChainageKm: number | null;
-  wmmPlantChainageKm: number | null;
-  quarryChainageKm: number | null;
-  borrowChainageKm: number | null;
-  disposalChainageKm: number | null;
-  rmcChainageKm: number | null;
+  // Lead & source distances
+  hmpToSiteKm: number | null;
+  wmmPlantToSiteKm: number | null;
+  quarryToSiteKm: number | null;
+  quarryToHmpKm: number | null;
+  quarryToRmcKm: number | null;
+  rmcToSiteKm: number | null;
+  borrowToSiteKm: number | null;
+  disposalDistanceKm: number | null;
   productivityMode: string;
   productivityOverrides: Record<string, { outputPerHr?: number; unit?: string }> | null;
   updatedAt: string | null;
@@ -379,12 +387,14 @@ export default function BoqProgramSettings() {
       avgTipperSpeedKmHr: 30,
       loadTimeMin: 5,
       unloadTimeMin: 5,
-      hmpChainageKm: null,
-      wmmPlantChainageKm: null,
-      quarryChainageKm: null,
-      borrowChainageKm: null,
-      disposalChainageKm: null,
-      rmcChainageKm: null,
+      hmpToSiteKm: null,
+      wmmPlantToSiteKm: null,
+      quarryToSiteKm: null,
+      quarryToHmpKm: null,
+      quarryToRmcKm: null,
+      rmcToSiteKm: null,
+      borrowToSiteKm: null,
+      disposalDistanceKm: null,
       productivityMode: "snl",
       productivityOverrides: null,
     },
@@ -401,12 +411,14 @@ export default function BoqProgramSettings() {
       avgTipperSpeedKmHr: settings.avgTipperSpeedKmHr,
       loadTimeMin: settings.loadTimeMin,
       unloadTimeMin: settings.unloadTimeMin,
-      hmpChainageKm: settings.hmpChainageKm ?? null,
-      wmmPlantChainageKm: settings.wmmPlantChainageKm ?? null,
-      quarryChainageKm: settings.quarryChainageKm ?? null,
-      borrowChainageKm: settings.borrowChainageKm ?? null,
-      disposalChainageKm: settings.disposalChainageKm ?? null,
-      rmcChainageKm: settings.rmcChainageKm ?? null,
+      hmpToSiteKm: settings.hmpToSiteKm ?? null,
+      wmmPlantToSiteKm: settings.wmmPlantToSiteKm ?? null,
+      quarryToSiteKm: settings.quarryToSiteKm ?? null,
+      quarryToHmpKm: settings.quarryToHmpKm ?? null,
+      quarryToRmcKm: settings.quarryToRmcKm ?? null,
+      rmcToSiteKm: settings.rmcToSiteKm ?? null,
+      borrowToSiteKm: settings.borrowToSiteKm ?? null,
+      disposalDistanceKm: settings.disposalDistanceKm ?? null,
       productivityMode: (settings.productivityMode as "snl" | "company" | "project") ?? "snl",
       productivityOverrides: settings.productivityOverrides ?? null,
     });
@@ -598,20 +610,18 @@ export default function BoqProgramSettings() {
           </div>
         </SectionCard>
 
-        {/* ── 3. Source Chainages ───────────────────────────────────────────── */}
+        {/* ── 3. Lead & Source Distances ────────────────────────────────────── */}
         <SectionCard
           icon={<MapPin className="w-4 h-4 text-rose-600" />}
-          title="Source Chainages"
-          subtitle="Distance from mid-project to each supply source. The planning engine uses these to auto-compute haul distance by layer type."
+          title="Lead & Source Distances"
+          subtitle="Point-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type."
         >
-          <div className="grid grid-cols-2 gap-4">
+          {/* Bituminous group */}
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 mt-1">Bituminous</p>
+          <div className="grid grid-cols-2 gap-4 mb-4">
             {[
-              { name: "hmpChainageKm" as const, label: "HMP CHAINAGE (km)", hint: "BC / DBM / BM layers → HMP", testId: "input-hmp-chainage" },
-              { name: "wmmPlantChainageKm" as const, label: "WMM PLANT CHAINAGE (km)", hint: "WMM / GSB plant-side", testId: "input-wmm-chainage" },
-              { name: "quarryChainageKm" as const, label: "QUARRY CHAINAGE (km)", hint: "Granular quarry items", testId: "input-quarry-chainage" },
-              { name: "borrowChainageKm" as const, label: "BORROW PIT CHAINAGE (km)", hint: "Earthwork fill / EG", testId: "input-borrow-chainage" },
-              { name: "disposalChainageKm" as const, label: "DISPOSAL SITE CHAINAGE (km)", hint: "Earthwork cut / EG", testId: "input-disposal-chainage" },
-              { name: "rmcChainageKm" as const, label: "RMC PLANT CHAINAGE (km)", hint: "Concrete M20/M25/M30/RMC", testId: "input-rmc-chainage" },
+              { name: "hmpToSiteKm" as const, label: "HMP → SITE (km)", hint: "BC / DBM / BM / SDBC layer haul", testId: "input-hmp-to-site" },
+              { name: "quarryToHmpKm" as const, label: "QUARRY/CRUSHER → HMP (km)", hint: "Aggregate transport to hot mix plant", testId: "input-quarry-to-hmp" },
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
@@ -631,22 +641,99 @@ export default function BoqProgramSettings() {
             ))}
           </div>
 
-          {/* Haul-distance preview matrix */}
-          <div className="mt-3 rounded-md bg-slate-50 border border-slate-200 p-2.5">
+          {/* Granular / WMM group */}
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Granular / WMM</p>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {[
+              { name: "wmmPlantToSiteKm" as const, label: "WMM PLANT → SITE (km)", hint: "WMM / GSB plant-mix haul to site", testId: "input-wmm-plant-to-site" },
+              { name: "quarryToSiteKm" as const, label: "QUARRY/CRUSHER → SITE (km)", hint: "Granular material direct to site", testId: "input-quarry-to-site" },
+              { name: "quarryToRmcKm" as const, label: "QUARRY/CRUSHER → RMC (km)", hint: "Aggregate transport to RMC plant", testId: "input-quarry-to-rmc" },
+            ].map(({ name, label, hint, testId }) => (
+              <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormControl>
+                    <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
+                      placeholder="km"
+                      value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
+                      onBlur={() => { field.onBlur(); handleBlurSave(); }}
+                      data-testid={testId}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                </FormItem>
+              )} />
+            ))}
+          </div>
+
+          {/* Concrete group */}
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Concrete</p>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {[
+              { name: "rmcToSiteKm" as const, label: "RMC PLANT → SITE (km)", hint: "Ready-mix / M20/M25/M30/M35 haul", testId: "input-rmc-to-site" },
+            ].map(({ name, label, hint, testId }) => (
+              <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormControl>
+                    <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
+                      placeholder="km"
+                      value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
+                      onBlur={() => { field.onBlur(); handleBlurSave(); }}
+                      data-testid={testId}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                </FormItem>
+              )} />
+            ))}
+          </div>
+
+          {/* Earthwork group */}
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Earthwork</p>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { name: "borrowToSiteKm" as const, label: "BORROW AREA → SITE (km)", hint: "Earthwork fill / embankment haul", testId: "input-borrow-to-site" },
+              { name: "disposalDistanceKm" as const, label: "DISPOSAL POINT (km)", hint: "Earthwork cut / excavation haul-away", testId: "input-disposal-distance" },
+            ].map(({ name, label, hint, testId }) => (
+              <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormControl>
+                    <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
+                      placeholder="km"
+                      value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
+                      onBlur={() => { field.onBlur(); handleBlurSave(); }}
+                      data-testid={testId}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                </FormItem>
+              )} />
+            ))}
+          </div>
+
+          {/* Distance summary matrix */}
+          <div className="mt-4 rounded-md bg-slate-50 border border-slate-200 p-2.5">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-              Layer type → auto-selected source distance
+              Layer type → haul distance used by planning engine
             </p>
-            <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+            <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
               {[
-                { label: "BC/DBM/BM", val: vals.hmpChainageKm },
-                { label: "WMM/Plant", val: vals.wmmPlantChainageKm },
-                { label: "Granular/Quarry", val: vals.quarryChainageKm },
-                { label: "EG Fill", val: vals.borrowChainageKm },
-                { label: "EG Cut", val: vals.disposalChainageKm },
-                { label: "Concrete/RMC", val: vals.rmcChainageKm },
+                { label: "BC/DBM→site", val: vals.hmpToSiteKm },
+                { label: "Qry→HMP", val: vals.quarryToHmpKm },
+                { label: "WMM plant→site", val: vals.wmmPlantToSiteKm },
+                { label: "Qry→site", val: vals.quarryToSiteKm },
+                { label: "Qry→RMC", val: vals.quarryToRmcKm },
+                { label: "RMC→site", val: vals.rmcToSiteKm },
+                { label: "Borrow→site", val: vals.borrowToSiteKm },
+                { label: "Disposal", val: vals.disposalDistanceKm },
               ].map(({ label, val }) => (
                 <div key={label} className="rounded border border-slate-200 bg-white py-1.5 px-1">
-                  <p className="text-[9px] text-muted-foreground">{label}</p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">{label}</p>
                   <p className="font-bold text-slate-700 mt-0.5">
                     {val != null ? `${val} km` : "—"}
                   </p>

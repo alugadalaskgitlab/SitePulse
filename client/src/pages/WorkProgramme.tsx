@@ -246,22 +246,25 @@ function StretchRow({
     return { ...result, exceedsCapacity, capacityPct };
   }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays, capacityMonthlyOutput]);
 
-  // Haul distance: the stored values (hmpChainageKm, etc.) are per-project haul distances
-  // from source to site — use them directly as distance, not chainage math.
+  // Haul distance: prefer new directional lead distance fields; fall back to legacy chainage fields.
   const haulDistanceKm = useMemo(() => {
     const lc = item.layerConfig as LayerConfig | null;
     if (!lc) return null;
     let dist: number | null = null;
-    if (lc.layerType === "bituminous") dist = project.hmpChainageKm ?? null;
-    else if (lc.layerType === "spray_coat") dist = project.hmpChainageKm ?? null;
-    else if (lc.layerType === "granular" && (lc as any).granularSource === "plant") dist = project.wmmPlantChainageKm ?? null;
-    else if (lc.layerType === "granular") dist = project.quarryChainageKm ?? null;
-    else if (lc.layerType === "earthwork" && (lc as any).earthworkType === "cut") dist = (project as any).disposalChainageKm ?? null;
-    else if (lc.layerType === "earthwork") dist = (project as any).borrowChainageKm ?? (project as any).disposalChainageKm ?? null;
-    else if (lc.layerType === "concrete") dist = (project as any).rmcChainageKm ?? null;
+    const p = project as any;
+    if (lc.layerType === "bituminous") dist = p.hmpToSiteKm ?? project.hmpChainageKm ?? null;
+    else if (lc.layerType === "spray_coat") dist = p.hmpToSiteKm ?? project.hmpChainageKm ?? null;
+    else if (lc.layerType === "granular" && lc.granularSource === "plant") dist = p.wmmPlantToSiteKm ?? project.wmmPlantChainageKm ?? null;
+    else if (lc.layerType === "granular") dist = p.quarryToSiteKm ?? project.quarryChainageKm ?? null;
+    else if (lc.layerType === "earthwork" && (lc as any).earthworkType === "cut") dist = p.disposalDistanceKm ?? p.disposalChainageKm ?? null;
+    else if (lc.layerType === "earthwork") dist = p.borrowToSiteKm ?? p.borrowChainageKm ?? p.disposalDistanceKm ?? null;
+    else if (lc.layerType === "concrete") dist = p.rmcToSiteKm ?? p.rmcChainageKm ?? null;
     return dist != null && dist > 0 ? dist : null;
   }, [item.layerConfig, project.hmpChainageKm, project.wmmPlantChainageKm, project.quarryChainageKm,
-      (project as any).borrowChainageKm, (project as any).disposalChainageKm, (project as any).rmcChainageKm]);
+      (project as any).borrowChainageKm, (project as any).disposalChainageKm, (project as any).rmcChainageKm,
+      (project as any).hmpToSiteKm, (project as any).wmmPlantToSiteKm, (project as any).quarryToSiteKm,
+      (project as any).quarryToHmpKm, (project as any).quarryToRmcKm, (project as any).rmcToSiteKm,
+      (project as any).borrowToSiteKm, (project as any).disposalDistanceKm]);
 
   const patch = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -1338,6 +1341,9 @@ export default function WorkProgramme() {
     tipperCapacityT: number; avgTipperSpeedKmHr: number; loadTimeMin: number; unloadTimeMin: number;
     hmpChainageKm: number | null; wmmPlantChainageKm: number | null; quarryChainageKm: number | null;
     borrowChainageKm: number | null; disposalChainageKm: number | null; rmcChainageKm: number | null;
+    hmpToSiteKm: number | null; wmmPlantToSiteKm: number | null; quarryToSiteKm: number | null;
+    quarryToHmpKm: number | null; quarryToRmcKm: number | null; rmcToSiteKm: number | null;
+    borrowToSiteKm: number | null; disposalDistanceKm: number | null;
     productivityMode: string; productivityOverrides: unknown | null;
   }>({
     queryKey: ["/api/boq/projects", projectId, "program-settings"],
@@ -1357,10 +1363,20 @@ export default function WorkProgramme() {
         ...project,
         workingDaysPerMonth: progSettings?.workingDaysPerMonth ?? project.workingDaysPerMonth ?? 25,
         workingHoursPerDay: (progSettings?.shiftHours ?? project.workingHoursPerDay ?? 8) * (progSettings?.doubleShift ? 2 : 1),
+        // Legacy chainage fields (kept for backward compat)
         hmpChainageKm: progSettings?.hmpChainageKm ?? project.hmpChainageKm ?? null,
         wmmPlantChainageKm: progSettings?.wmmPlantChainageKm ?? project.wmmPlantChainageKm ?? null,
         quarryChainageKm: progSettings?.quarryChainageKm ?? project.quarryChainageKm ?? null,
         avgTipperSpeedKmHr: progSettings?.avgTipperSpeedKmHr ?? project.avgTipperSpeedKmHr ?? 30,
+        // New lead & source distances
+        hmpToSiteKm: progSettings?.hmpToSiteKm ?? null,
+        wmmPlantToSiteKm: progSettings?.wmmPlantToSiteKm ?? null,
+        quarryToSiteKm: progSettings?.quarryToSiteKm ?? null,
+        quarryToHmpKm: progSettings?.quarryToHmpKm ?? null,
+        quarryToRmcKm: progSettings?.quarryToRmcKm ?? null,
+        rmcToSiteKm: progSettings?.rmcToSiteKm ?? null,
+        borrowToSiteKm: progSettings?.borrowToSiteKm ?? null,
+        disposalDistanceKm: progSettings?.disposalDistanceKm ?? null,
       }
     : project;
 

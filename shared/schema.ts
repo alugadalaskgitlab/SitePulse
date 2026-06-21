@@ -2468,13 +2468,22 @@ export const boqProgramSettings = pgTable("boq_program_settings", {
   avgTipperSpeedKmHr: real("avg_tipper_speed_km_hr").notNull().default(30),
   loadTimeMin: real("load_time_min").notNull().default(5),
   unloadTimeMin: real("unload_time_min").notNull().default(5),
-  // Source chainages
+  // Source chainages (legacy — kept for backward compat, superseded by lead distance fields below)
   hmpChainageKm: real("hmp_chainage_km"),
   wmmPlantChainageKm: real("wmm_plant_chainage_km"),
   quarryChainageKm: real("quarry_chainage_km"),
   borrowChainageKm: real("borrow_chainage_km"),
   disposalChainageKm: real("disposal_chainage_km"),
   rmcChainageKm: real("rmc_chainage_km"),
+  // Lead & source distances (directional point-to-point, feeds tipper demand)
+  hmpToSiteKm: real("hmp_to_site_km"),
+  wmmPlantToSiteKm: real("wmm_plant_to_site_km"),
+  quarryToSiteKm: real("quarry_to_site_km"),
+  quarryToHmpKm: real("quarry_to_hmp_km"),
+  quarryToRmcKm: real("quarry_to_rmc_km"),
+  rmcToSiteKm: real("rmc_to_site_km"),
+  borrowToSiteKm: real("borrow_to_site_km"),
+  disposalDistanceKm: real("disposal_distance_km"),
   // Project start date — sets the calendar date for Month 1 in the Work Programme Gantt
   projectStartDate: date("project_start_date"),
   // Productivity mode: snl = SNL/standard norms, company = company norms, project = per-item overrides

@@ -9352,6 +9352,9 @@ export async function registerRoutes(
           tipperCapacityT: 8, avgTipperSpeedKmHr: 30, loadTimeMin: 5, unloadTimeMin: 5,
           hmpChainageKm: null, wmmPlantChainageKm: null, quarryChainageKm: null,
           borrowChainageKm: null, disposalChainageKm: null, rmcChainageKm: null,
+          hmpToSiteKm: null, wmmPlantToSiteKm: null, quarryToSiteKm: null,
+          quarryToHmpKm: null, quarryToRmcKm: null, rmcToSiteKm: null,
+          borrowToSiteKm: null, disposalDistanceKm: null,
           productivityMode: "snl", productivityOverrides: null, projectStartDate: null, updatedAt: null,
         });
       }
@@ -9364,7 +9367,7 @@ export async function registerRoutes(
 
   app.put("/api/boq/projects/:id/program-settings", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
       const projectId = parseInt(req.params.id);
 
       // Read existing settings to detect project-start-date transition (null → date)

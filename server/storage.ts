@@ -19919,6 +19919,15 @@ export class DatabaseStorage implements IStorage {
       UPDATE boq_program_settings SET productivity_mode = 'snl'
       WHERE productivity_mode NOT IN ('snl', 'company', 'project')
     `));
+    // Lead & source distances (8 new directional fields replacing old chainages)
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS hmp_to_site_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS wmm_plant_to_site_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS quarry_to_site_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS quarry_to_hmp_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS quarry_to_rmc_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS rmc_to_site_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS borrow_to_site_km real`));
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS disposal_distance_km real`));
 
     // Recreate mix_template_links if old schema (boq_item_id column) exists — incompatible redesign
     const oldMixCol = await db.execute(sql.raw(`
