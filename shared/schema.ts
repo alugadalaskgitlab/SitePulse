@@ -2428,6 +2428,7 @@ export const boqItemEquipment = pgTable("boq_item_equipment", {
 export const boqItemLabour = pgTable("boq_item_labour", {
   id: serial("id").primaryKey(),
   boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  planningLabourTypeId: integer("planning_labour_type_id").references(() => planningLabourTypes.id, { onDelete: "set null" }),
   designation: text("designation").notNull(),                  // e.g. "Skilled Labour", "Mason"
   qtyPerBoqUnit: real("qty_per_boq_unit").notNull().default(0), // days per 1 BOQ unit
   count: real("count").notNull().default(1),

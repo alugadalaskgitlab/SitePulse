@@ -839,7 +839,8 @@ function EquipmentTab({
 interface LabRow { key: string; planningLabourTypeId: string; designation: string; qtyPerBoqUnit: string; notes: string; }
 
 function makeLabRow(r?: BoqItemLabourRow): LabRow {
-  return { key: Math.random().toString(36).slice(2), planningLabourTypeId: "__manual__", designation: r?.designation ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "" };
+  const planningLabourTypeId = r?.planningLabourTypeId != null ? String(r.planningLabourTypeId) : "__manual__";
+  return { key: Math.random().toString(36).slice(2), planningLabourTypeId, designation: r?.designation ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "" };
 }
 
 function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave }: { boqItemId: number; boqUnit: string; labourTypeList: PlanningLabourTypeMinimal[]; onPendingSave?: (fn: (() => Promise<void>) | null) => void }) {
@@ -856,7 +857,12 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave }: { boqI
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: InsertBoqItemLabour[] = rows.filter((r) => r.designation.trim()).map((r, i) => ({
-        boqItemId, designation: r.designation.trim(), qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : 0, notes: r.notes || null, sortOrder: i,
+        boqItemId,
+        planningLabourTypeId: r.planningLabourTypeId !== "__manual__" ? parseInt(r.planningLabourTypeId) : null,
+        designation: r.designation.trim(),
+        qtyPerBoqUnit: r.qtyPerBoqUnit ? parseFloat(r.qtyPerBoqUnit) : 0,
+        notes: r.notes || null,
+        sortOrder: i,
       }));
       await apiRequest("PUT", `/api/boq/items/${boqItemId}/labour`, { rows: payload });
     },
