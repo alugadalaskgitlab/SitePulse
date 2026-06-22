@@ -4,7 +4,7 @@ import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
-  GitBranch, CalendarDays, Package, Settings2,
+  GitBranch, CalendarDays, Package, Settings2, BookOpen,
   Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
@@ -1318,6 +1318,19 @@ export default function BoqProjectDetail() {
               >
                 <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
                 Work Programme
+              </Button>
+            </a>
+          </Link>
+          <Link href={`/work-program/${projectId}/demand`}>
+            <a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-purple-200 text-purple-700 hover:bg-purple-50 h-8"
+                data-testid="button-bom-demand"
+              >
+                <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                BOM &amp; Demand
               </Button>
             </a>
           </Link>

@@ -1129,6 +1129,7 @@ function MonthlyPlanView({
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>
               BOQ Item
             </th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[72px] whitespace-nowrap">BOQ Qty</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px]">Unit</th>
             {months.map(m => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[64px]">
@@ -1149,7 +1150,7 @@ function MonthlyPlanView({
             return [
               <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12` }}>
                 <td
-                  colSpan={2 + maxMonth + 1}
+                  colSpan={3 + maxMonth + 1}
                   className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider sticky left-0 z-10"
                   style={{ backgroundColor: `${color}18`, color }}
                 >
@@ -1171,6 +1172,7 @@ function MonthlyPlanView({
                         title={item.description}>
                         {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description.slice(0, 40)}
                       </td>
+                      <td className="px-2 py-1.5 text-right font-mono text-slate-600 font-semibold">{fmtQty(item.currentQty, 1)}</td>
                       <td className="px-2 py-1.5 text-right text-muted-foreground">{item.unit}</td>
                       {months.map(m => {
                         const val = g[m] ?? 0;
@@ -1213,6 +1215,7 @@ function MonthlyPlanView({
             return (
               <tr className="bg-slate-100 dark:bg-slate-800 font-bold border-t-2 border-slate-300 dark:border-slate-600">
                 <td className="px-3 py-2 text-slate-700 dark:text-slate-200 sticky left-0 bg-slate-100 dark:bg-slate-800 z-10">TOTAL</td>
+                <td />
                 <td />
                 {months.map(m => {
                   const val = grandMonthly[m] ?? 0;
