@@ -21,12 +21,13 @@ interface ColumnMap {
   unit: number | null;
   boqQty: number | null;
   itemCode: number | null;
+  snlCode: number | null;
   clientRate: number | null;
 }
 
 const EMPTY_COL_MAP: ColumnMap = {
   description: null, unit: null, boqQty: null,
-  itemCode: null, clientRate: null,
+  itemCode: null, snlCode: null, clientRate: null,
 };
 
 interface ParsedItem {
@@ -34,6 +35,7 @@ interface ParsedItem {
   unit: string;
   boqQty: number;
   itemCode?: string;
+  snlCode?: string;
   clientRate?: number;
   sortOrder: number;
 }
@@ -126,6 +128,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         if (autoMap.description == null && (lh.includes("desc") || lh.includes("item name") || lh.includes("work"))) autoMap.description = i;
         else if (autoMap.unit == null && (lh === "unit" || lh === "uom" || lh.includes("unit of"))) autoMap.unit = i;
         else if (autoMap.boqQty == null && (lh.includes("qty") || lh.includes("quantity") || lh === "nos" || lh.includes("boq"))) autoMap.boqQty = i;
+        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book"))) autoMap.snlCode = i;
         else if (autoMap.itemCode == null && (lh.includes("code") || lh.includes("sl") || lh === "no." || lh === "sno" || lh === "s.no" || lh === "item no")) autoMap.itemCode = i;
         else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price") || lh.includes("amount"))) autoMap.clientRate = i;
       });
@@ -175,6 +178,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
           unit,
           boqQty: typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw ?? "0")) || 0,
           itemCode: colMap.itemCode != null ? (cellStr(row[colMap.itemCode]) || undefined) : undefined,
+          snlCode: colMap.snlCode != null ? (cellStr(row[colMap.snlCode]) || undefined) : undefined,
           clientRate: rateRaw != null ? (typeof rateRaw === "number" ? rateRaw : parseFloat(String(rateRaw))) || undefined : undefined,
           sortOrder: i,
         };
@@ -317,6 +321,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                 { field: "description", label: "Description", required: true },
                 { field: "unit", label: "Unit", required: true },
                 { field: "boqQty", label: "BOQ Quantity", required: true },
+                { field: "snlCode", label: "SNL / SDB Code", required: false },
                 { field: "itemCode", label: "Item Code", required: false },
                 { field: "clientRate", label: "Client Rate (₹)", required: false },
               ] as { field: keyof ColumnMap; label: string; required: boolean }[]).map(({ field, label, required }) => (

@@ -1259,6 +1259,9 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">BOQ Qty</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Planned to Date</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Actual to Date</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">BOQ Value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Planned Value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Actual Value (₹)</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">% Complete</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Last Activity</th>
           </tr>
@@ -1272,6 +1275,9 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
               <td className="px-2 py-2 text-right font-mono">{fmtQty(row.currentQty, 1)} {row.unit}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.totalPlanned, 1)}</td>
               <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.totalActual, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono text-slate-600">{fmtQty(row.boqAmount, 0)}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.plannedAmount, 0)}</td>
+              <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.actualAmount, 0)}</td>
               <td className="px-2 py-2 text-right">
                 <span className={`font-semibold ${
                   row.percentComplete >= 100 ? "text-emerald-700"
@@ -1286,6 +1292,16 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="border-t-2 font-semibold bg-slate-50 dark:bg-slate-800/40">
+            <td className="px-3 py-2 sticky left-0 bg-slate-50 dark:bg-slate-800/40">Total</td>
+            <td></td><td></td><td></td>
+            <td className="px-2 py-2 text-right font-mono">{fmtQty(rows.reduce((s: number, r: any) => s + (r.boqAmount || 0), 0), 0)}</td>
+            <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.plannedAmount || 0), 0), 0)}</td>
+            <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.actualAmount || 0), 0), 0)}</td>
+            <td></td><td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   );

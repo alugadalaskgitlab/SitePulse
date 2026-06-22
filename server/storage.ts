@@ -19820,6 +19820,7 @@ export class DatabaseStorage implements IStorage {
     boqProjectId: number,
     items: Array<{
       itemCode?: string;
+      snlCode?: string;
       description: string;
       unit: string;
       boqQty: number;
@@ -19854,6 +19855,7 @@ export class DatabaseStorage implements IStorage {
         boqProjectId,
         categoryId,
         itemCode: item.itemCode ?? null,
+        snlCode: item.snlCode ?? null,
         description: item.description,
         unit: item.unit,
         boqQty: item.boqQty ?? 0,
@@ -20329,6 +20331,8 @@ export class DatabaseStorage implements IStorage {
       const totalActual = actualRow?.totalQty ?? 0;
       const totalPlanned = Math.round((plannedToDate.get(item.id) ?? 0) * 1000) / 1000;
       const percentComplete = item.currentQty > 0 ? Math.round((totalActual / item.currentQty) * 10000) / 100 : 0;
+      const clientRate = item.clientRate ?? null;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
       return {
         boqItemId: item.id,
         itemCode: item.itemCode,
@@ -20340,6 +20344,10 @@ export class DatabaseStorage implements IStorage {
         totalActual: Math.round(totalActual * 1000) / 1000,
         percentComplete,
         lastActivityDate: actualRow?.lastDate ?? null,
+        clientRate,
+        boqAmount: clientRate != null ? round2(clientRate * item.currentQty) : 0,
+        plannedAmount: clientRate != null ? round2(clientRate * totalPlanned) : 0,
+        actualAmount: clientRate != null ? round2(clientRate * totalActual) : 0,
       };
     });
   }
@@ -20793,6 +20801,23 @@ export class DatabaseStorage implements IStorage {
       ? itemFull.materials.filter(m => m.gradingVariant === gradingVariant)
       : itemFull.materials.filter(m => !m.gradingVariant);
 
+    // Fetch active planning equipment types to link bottleneck resource for duration calc.
+    const planTypes = await db
+      .select({ id: planningEquipmentTypes.id, name: planningEquipmentTypes.name })
+      .from(planningEquipmentTypes)
+      .where(eq(planningEquipmentTypes.isActive, true));
+
+    const matchPlanTypeId = (equipmentType: string): number | null => {
+      const et = equipmentType.trim().toLowerCase();
+      const match = planTypes.find(
+        (pt) =>
+          pt.name.trim().toLowerCase() === et ||
+          et.includes(pt.name.trim().toLowerCase()) ||
+          pt.name.trim().toLowerCase().includes(et),
+      );
+      return match?.id ?? null;
+    };
+
     await db.transaction(async (tx) => {
       // Populate boqItemEquipment
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
@@ -20804,6 +20829,7 @@ export class DatabaseStorage implements IStorage {
             equipmentName: e.equipmentType + (e.equipmentSpec ? ` (${e.equipmentSpec})` : ""),
             qtyPerBoqUnit: e.derivedPerUnit ?? 0,
             count: 1,
+            planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),
             notes: e.notes ?? `SNL ${itemFull.itemCode} [${projectCategory}]`,
           }))
         );

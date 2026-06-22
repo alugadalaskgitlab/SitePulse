@@ -9531,6 +9531,7 @@ export async function registerRoutes(
       const { items, mode = "append" } = req.body as {
         items: Array<{
           itemCode?: string;
+          snlCode?: string;
           description: string;
           unit: string;
           boqQty: number;

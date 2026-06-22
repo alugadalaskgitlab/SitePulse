@@ -1,0 +1,471 @@
+# SitePulse — Fix Brief: Deterministic SDB/SNL Mapping + Bottleneck Duration
+
+> **How to use this file:** Open SitePulse on Replit, open the Replit AI agent, and
+> paste this entire document as your task. It tells the agent exactly which files to
+> change and what code to add. After the agent applies the changes it must run the DB
+> migration (`npm run db:push`) and restart. Nothing here changes costs — BOM/Gantt
+> stay cost-free except client BOQ rate (plan vs actual), exactly as today.
+
+---
+
+## Background — what is broken and why
+
+The planning engine (`shared/planningEngine.ts`) already does bottleneck-resource
+duration (`calculateAutoDurationFull`) and BOM aggregation (`calculateBomDemand`)
+correctly. The Work Programme already calls them. The problem is **upstream**, in two
+places:
+
+### Bug 1 — SNL/SDB mapping is fuzzy-text only
+`server/snlAutoMapper.ts` maps each BOQ item to an SNL (Standard Norms Library) item by
+**scoring the description and short label** (Jaccard keyword overlap). When tender BOQ
+wording differs from MoRTH SDB wording, the score stays below the 0.80 confidence
+threshold, the item is left `unmapped`/`needs_review`, **no recipe is applied**, and
+therefore there is no equipment / labour / material to drive duration or BOM.
+
+**Fix:** add a **deterministic mapping path**. Let the user put the SDB/SNL norm code
+(e.g. `5.05`, `4.14`, `3.16`) in a dedicated **"SNL / SDB Code"** column in the BOQ
+import. If that code exactly matches an `snl_items.item_code`, map it directly with
+confidence `1.0` and apply the recipe — **skip all fuzzy scoring**.
+
+### Bug 2 — Mapped items still show duration = 0
+`storage.applySnlMappingToRecipes()` copies SNL equipment into `boq_item_equipment`
+**but never sets `planningEquipmentTypeId` or `equipmentMasterId`**. The Work Programme
+reads equipment output-per-hour from the linked planning type / equipment master
+(`getBoqItemsWithRecipes`). With no link, `outputTheoretical`/`standardOutputs` are
+`null`, `getEffectiveOutputPerHr` returns 0, and the bottleneck duration is 0 months.
+
+**Fix:** when applying the recipe, match each SNL equipment to a row in
+`planning_equipment_types` by name and store `planningEquipmentTypeId`, so the recipe
+equipment carries a real output norm and the slowest one becomes the bottleneck.
+
+---
+
+## FILE-BY-FILE CHANGES
+
+### 1. `shared/schema.ts` — add the SNL code column to BOQ items
+
+Find the `boqItems` table (`export const boqItems = pgTable("boq_items", {`). Right
+after the `mappingStatus` line, add `snlCode`:
+
+```ts
+  mappingStatus: text("mapping_status").notNull().default("unmapped"),
+  // Explicit SDB/SNL norm code supplied in the BOQ import (e.g. "5.05").
+  // Used for deterministic SNL mapping — bypasses fuzzy description matching.
+  snlCode: text("snl_code"),
+```
+
+> After this change the agent MUST run `npm run db:push` so the new column is created.
+
+---
+
+### 2. `server/storage.ts` → `importBoqItems()` — accept & store snlCode
+
+Find `async importBoqItems(`. Add `snlCode?: string;` to the `items` parameter type:
+
+```ts
+    items: Array<{
+      itemCode?: string;
+      snlCode?: string;
+      description: string;
+      unit: string;
+      boqQty: number;
+      clientRate?: number;
+      categoryName?: string;
+      workCategory?: string;
+      sortOrder?: number;
+    }>
+```
+
+Then in the `db.insert(boqItems).values({ ... })` block, add the `snlCode` field right
+after `itemCode`:
+
+```ts
+      const [inserted] = await db.insert(boqItems).values({
+        boqProjectId,
+        categoryId,
+        itemCode: item.itemCode ?? null,
+        snlCode: item.snlCode ?? null,
+        description: item.description,
+        unit: item.unit,
+        boqQty: item.boqQty ?? 0,
+        currentQty: item.boqQty ?? 0,
+        clientRate: item.clientRate ?? null,
+        clientAmount,
+        sortOrder: item.sortOrder ?? i,
+        workCategory: item.workCategory ?? null,
+      }).returning({ id: boqItems.id });
+```
+
+---
+
+### 3. `server/routes.ts` → BOQ import endpoint — accept snlCode in the body
+
+Find `app.post("/api/boq/projects/:id/import"`. In the destructured `items` type, add
+`snlCode?: string;`:
+
+```ts
+      const { items, mode = "append" } = req.body as {
+        items: Array<{
+          itemCode?: string;
+          snlCode?: string;
+          description: string;
+          unit: string;
+          boqQty: number;
+          clientRate?: number;
+          categoryName?: string;
+          workCategory?: string;
+          sortOrder?: number;
+        }>;
+        mode?: "append" | "replace";
+      };
+```
+
+---
+
+### 4. `server/snlAutoMapper.ts` — deterministic code match BEFORE fuzzy scoring
+
+**(a)** In `autoMapBoqItems`, add `snlCode` to the BOQ select. Find the
+`.select({ id: boqItems.id, itemCode: boqItems.itemCode, ... })` block and add:
+
+```ts
+  const boqRows = await db
+    .select({
+      id: boqItems.id,
+      itemCode: boqItems.itemCode,
+      snlCode: boqItems.snlCode,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      workCategory: boqItems.workCategory,
+    })
+    .from(boqItems)
+    .where(inArray(boqItems.id, boqItemIds));
+```
+
+**(b)** Inside `for (const boqRow of boqRows) {`, immediately after the opening
+`try {`, insert this deterministic block (it runs before the fuzzy scorer and `continue`s
+on success):
+
+```ts
+      // ── 0. Deterministic SNL-code match (highest priority) ──────────────
+      // If the BOQ row carries an explicit SDB/SNL norm code, map straight to
+      // the SNL item with that exact item_code. No fuzzy description parsing.
+      const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase();
+      if (explicitCode) {
+        const directSnl = snlRows.find(
+          (s) => s.itemCode.trim().toLowerCase() === explicitCode,
+        );
+        if (directSnl) {
+          await db
+            .insert(snlBoqMappings)
+            .values({
+              boqItemId: boqRow.id,
+              snlItemId: directSnl.id,
+              projectCategory: "MEDIUM",
+              gradingVariant: null,
+              mappedBy: "auto",
+              isAutoMapped: true,
+              confidenceScore: 1,
+              notes: `Mapped by SNL code "${directSnl.itemCode}"`,
+            })
+            .onConflictDoUpdate({
+              target: snlBoqMappings.boqItemId,
+              set: {
+                snlItemId: directSnl.id,
+                isAutoMapped: true,
+                confidenceScore: 1,
+                mappedAt: new Date(),
+                notes: `Mapped by SNL code "${directSnl.itemCode}"`,
+              },
+            });
+
+          let recipesApplied = false;
+          try {
+            await storage.applySnlMappingToRecipes(boqRow.id, directSnl.id, "MEDIUM", null, "auto");
+            recipesApplied = true;
+          } catch (recipeErr) {
+            console.error(`[autoMapper] code-match recipes failed for boqItemId=${boqRow.id}:`, recipeErr);
+          }
+
+          await db
+            .update(boqItems)
+            .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
+            .where(eq(boqItems.id, boqRow.id));
+          continue; // done — skip fuzzy scoring for this row
+        }
+      }
+```
+
+> Everything below this block (the existing fuzzy scorer) stays unchanged and is the
+> fallback for rows that do not carry an SNL code.
+
+---
+
+### 5. `server/storage.ts` → `applySnlMappingToRecipes()` — link equipment to planning types (fixes duration = 0)
+
+Find `async applySnlMappingToRecipes(`. **Before** the `await db.transaction(async (tx) => {`
+line, add a planning-equipment-type resolver:
+
+```ts
+    // Resolve a planning_equipment_type for each SNL equipment so the recipe
+    // equipment carries an output-per-hour norm. Without this the Work Programme
+    // cannot compute bottleneck (slowest-resource) auto-duration.
+    const planTypes = await db
+      .select({ id: planningEquipmentTypes.id, name: planningEquipmentTypes.name })
+      .from(planningEquipmentTypes)
+      .where(eq(planningEquipmentTypes.isActive, true));
+
+    const matchPlanTypeId = (snlEquipType: string): number | null => {
+      const t = (snlEquipType ?? "").trim().toLowerCase();
+      if (!t) return null;
+      // 1) planning name contains the SNL type (e.g. "Hydraulic Excavator" ⊂ "Hydraulic Excavator (0.9 CUM)")
+      const contains = planTypes.find((p) => p.name.toLowerCase().includes(t));
+      if (contains) return contains.id;
+      // 2) token-overlap fallback
+      const tw = new Set(t.split(/\s+/).filter((w) => w.length > 2));
+      let bestId: number | null = null;
+      let bestScore = 0;
+      for (const p of planTypes) {
+        let s = 0;
+        for (const w of p.name.toLowerCase().split(/\s+/)) if (tw.has(w)) s++;
+        if (s > bestScore) { bestScore = s; bestId = p.id; }
+      }
+      return bestScore > 0 ? bestId : null;
+    };
+```
+
+Then in the `tx.insert(boqItemEquipment).values(...)` mapping, add the
+`planningEquipmentTypeId` field:
+
+```ts
+        await tx.insert(boqItemEquipment).values(
+          equipment.map((e, i) => ({
+            boqItemId,
+            sortOrder: e.sortOrder ?? i,
+            equipmentName: e.equipmentType + (e.equipmentSpec ? ` (${e.equipmentSpec})` : ""),
+            planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),
+            qtyPerBoqUnit: e.derivedPerUnit ?? 0,
+            count: 1,
+            notes: e.notes ?? `SNL ${itemFull.itemCode} [${projectCategory}]`,
+          }))
+        );
+```
+
+> `planningEquipmentTypes` is already imported in `server/storage.ts`. If the planning
+> equipment types are empty, the agent should call the existing
+> `seedPlanningMorthDefaults()` once (there is already an admin endpoint / startup hook
+> for it) so name-matching has data to match against.
+
+---
+
+### 6. `client/src/components/BoqImportWizard.tsx` — add the "SNL / SDB Code" column
+
+**(a)** Add `snlCode` to the `ColumnMap` type and its default:
+
+```ts
+type ColumnMap = {
+  description: number | null;
+  unit: number | null;
+  boqQty: number | null;
+  itemCode: number | null;
+  snlCode: number | null;
+  clientRate: number | null;
+};
+const EMPTY_MAP: ColumnMap = {
+  description: null, unit: null, boqQty: null,
+  itemCode: null, snlCode: null, clientRate: null,
+};
+```
+
+**(b)** Add `snlCode?: string;` to the parsed-item type (the type with
+`description / unit / boqQty / itemCode / clientRate`).
+
+**(c)** In the header auto-detect loop (the `header.forEach((h, i) => { ... })` block),
+add a rule for SNL/SDB/norm headers — put it **before** the generic `code` rule so it
+wins when both appear:
+
+```ts
+        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book"))) autoMap.snlCode = i;
+        else if (autoMap.itemCode == null && (lh.includes("code") || lh.includes("sl") || lh === "no." || lh === "sno" || lh === "s.no" || lh === "item no")) autoMap.itemCode = i;
+```
+
+**(d)** In the row-parsing map (where `itemCode:` is read into each parsed item), add:
+
+```ts
+          itemCode: colMap.itemCode != null ? (cellStr(row[colMap.itemCode]) || undefined) : undefined,
+          snlCode: colMap.snlCode != null ? (cellStr(row[colMap.snlCode]) || undefined) : undefined,
+```
+
+**(e)** In the column-mapping UI field list (the array with
+`{ field: "itemCode", label: "Item Code", required: false }`), add an entry:
+
+```ts
+                { field: "itemCode", label: "Item Code", required: false },
+                { field: "snlCode", label: "SNL / SDB Code", required: false },
+                { field: "clientRate", label: "Client Rate (₹)", required: false },
+```
+
+**(f)** In the final POST payload that sends items to `/import` (where each item object
+is built with `description / unit / boqQty / itemCode / clientRate / workCategory`),
+add `snlCode`:
+
+```ts
+        snlCode: item.snlCode,
+```
+
+---
+
+## TEST PLAN (run on Replit after `npm run db:push` + restart)
+
+1. **Seed SNL + planning norms** (if not already): admin → seed MoRTH SDB and seed
+   planning MoRTH defaults.
+2. **Re-import a BOQ** with a filled **"SNL / SDB Code"** column. Use real SDB codes:
+   - Earthwork embankment → `3.16`
+   - GSB (plant mix) → `4.01A`
+   - WMM → `4.14`
+   - DBM Grading-II → `5.04B`
+   - BC → `5.05`
+   - Prime coat → `5.01`, Tack coat → `5.02`
+3. **Confirm mapping**: every coded row should show **Mapped** with note
+   *"Mapped by SNL code …"* (confidence 1.00), no `needs_review`.
+4. **Work Programme**: add a stretch/bar for a mapped item, leave it in **AUTO**
+   duration mode. The duration (months) and end date must now compute (no longer 0) —
+   driven by the slowest (bottleneck) equipment of that SDB norm.
+5. **BOM & Demand page**: materials, equipment-hours and labour-days must populate per
+   month, with no rates/costs (client BOQ rate stays only for plan-vs-actual).
+
+## Acceptance criteria
+- Items with an SNL code map deterministically (confidence 1.0), regardless of how the
+  BOQ description is worded.
+- AUTO-mode bars produce a non-zero duration computed from the bottleneck resource.
+- BOM aggregates materials/equipment/labour by month for mapped items.
+- No cost columns appear anywhere except the existing client BOQ rate.
+
+---
+
+## ADDENDUM — important for an EXISTING BOQ that has NO MoRTH SDB code column
+
+The "Takkadpally-Sirur" BOQ imported from Road Estimator has tender item codes +
+descriptions but (typically) **no MoRTH SDB norm code column**. Two things follow:
+
+### A. FIX 2 (duration link) is the universal fix — applies to MANUAL mapping too
+The app's manual mapping action `POST /api/snl/mappings/:boqItemId/apply` calls the SAME
+`applySnlMappingToRecipes()`. So **today, even when you manually pick the correct SDB
+norm for a BOQ item in the app, the duration still comes out 0** because the recipe
+equipment isn't linked to a planning type. After applying **FIX 5** above, manual
+mappings produce correct bottleneck durations and BOM. **After deploying FIX 5, re-apply
+the mappings** (admin → "Remap project" `POST /api/boq/projects/:id/remap`, or re-pick in
+the mapping screen) so existing items get the new equipment links.
+
+### B. Optional fallback — match on the existing "Item Code" column (no new SDB column needed)
+If you would rather not add an SDB-code column, also let the deterministic matcher try
+the BOQ's existing `itemCode` against `snl_items.item_code`. In
+`server/snlAutoMapper.ts`, inside the deterministic block from FIX 4(b), broaden the
+lookup key:
+
+```ts
+      // Try the explicit SNL code first, then fall back to the BOQ item code.
+      const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase()
+        || (boqRow.itemCode ?? "").trim().toLowerCase();
+```
+
+This only fires when the BOQ item code happens to equal an SDB norm code, so it is safe
+(no false positives) and needs no schema/UI change. For reliable results, the cleanest
+route is still: add SDB codes per line, **or** map each item once in the app's SNL
+mapping screen (which writes the real `snl_id`).
+
+### Recommended order for your existing project
+1. Apply **FIX 5** (duration link) + **FIX 4(b)** deterministic block with the 5(B)
+   item-code fallback. Run `npm run db:push`, restart.
+2. Map your BOQ items to SDB norms — either by the item-code/SDB-code match, or manually
+   in the SNL mapping screen.
+3. Run **Remap project**, then open Work Programme (AUTO mode) and BOM & Demand to verify
+   durations and quantities populate.
+
+---
+
+## FIX 7 — Financial Plan vs Actual (client BOQ rate only) — fully additive
+
+The existing Plan vs Actual is physical-only (qty). Add planned/actual VALUE using the
+**client BOQ rate** that is already stored on each BOQ item (`clientRate`). No internal
+costs are introduced — this is the client BOQ cost only, exactly as you want.
+
+### 7.1 `shared/schema.ts` — extend the `PlanVsActualRow` type
+Find `export type PlanVsActualRow = {` and add the three money fields + rate:
+
+```ts
+export type PlanVsActualRow = {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  categoryName: string | null;
+  currentQty: number;
+  totalPlanned: number;
+  totalActual: number;
+  percentComplete: number;
+  lastActivityDate: string | null;
+  clientRate: number | null;
+  boqAmount: number;       // clientRate × currentQty
+  plannedAmount: number;   // clientRate × totalPlanned (to date)
+  actualAmount: number;    // clientRate × totalActual (to date)
+};
+```
+
+### 7.2 `server/storage.ts` → `getPlanVsActual()` — compute the amounts
+Inside the final `return items.map((item) => { ... })`, replace the existing `return { ... }`
+object with this version (adds the 4 new fields; everything else unchanged):
+
+```ts
+      const clientRate = item.clientRate ?? null;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      return {
+        boqItemId: item.id,
+        itemCode: item.itemCode,
+        description: item.description,
+        unit: item.unit,
+        categoryName: item.categoryName,
+        currentQty: item.currentQty,
+        totalPlanned,
+        totalActual: Math.round(totalActual * 1000) / 1000,
+        percentComplete,
+        lastActivityDate: actualRow?.lastDate ?? null,
+        clientRate,
+        boqAmount: clientRate != null ? round2(clientRate * item.currentQty) : 0,
+        plannedAmount: clientRate != null ? round2(clientRate * totalPlanned) : 0,
+        actualAmount: clientRate != null ? round2(clientRate * totalActual) : 0,
+      };
+```
+
+### 7.3 `client/src/pages/WorkProgramme.tsx` → `PlanVsActualView` — show value columns + totals
+**(a)** In the `<thead>` row, add three header cells right after the
+`Actual to Date` header (`<th ...>Actual to Date</th>`):
+
+```tsx
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Actual to Date</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">BOQ Value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Planned Value (₹)</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Actual Value (₹)</th>
+```
+
+**(b)** In the body `<tr>`, add three cells right after the
+`{fmtQty(row.totalActual, 1)}` cell:
+
+```tsx
+              <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.totalActual, 1)}</td>
+              <td className="px-2 py-2 text-right font-mono text-slate-600">{fmtQty(row.boqAmount, 0)}</td>
+              <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.plannedAmount, 0)}</td>
+              <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.actualAmount, 0)}</td>
+```
+
+**(c)** (Optional but nice) Add a totals footer just before `</table>`:
+
+```tsx
+        <tfoot>
+          <tr className="border-t-2 font-semibold bg-slate-50 dark:bg-slate-800/40">
+            <td className="px-3 py-2 sticky left-0 bg-slate-50 dark:bg-slate-800/40">Total</td>
+            <td></td><td></td><td></td><td></td><td></td>
+            <td className="px-2 py-2 text-right font-mono">{fmtQty(rows.reduce((s: number, r: any) => s + (r.boqAmount || 0), 0), 0)}</td>
+            <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.plannedAmount || 0), 0), 0)}</td>
+            <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.actualAmount || 0), 0), 0)}</td>
+          </tr>
+        </tfoot>

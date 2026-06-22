@@ -2359,6 +2359,9 @@ export const boqItems = pgTable("boq_items", {
   workCategory: text("work_category"),
   itemName: text("item_name"),
   mappingStatus: text("mapping_status").notNull().default("unmapped"),
+  // Explicit SDB/SNL norm code supplied in the BOQ import (e.g. "5.05").
+  // Used for deterministic SNL mapping — bypasses fuzzy description matching.
+  snlCode: text("snl_code"),
   // Layer config for auto material derivation (Task #1100)
   layerConfig: jsonb("layer_config"),
   // Multiplier applied to DPR progress entry quantities when summing actuals
@@ -2606,6 +2609,10 @@ export type PlanVsActualRow = {
   totalActual: number;
   percentComplete: number;
   lastActivityDate: string | null;
+  clientRate: number | null;
+  boqAmount: number;       // clientRate × currentQty
+  plannedAmount: number;   // clientRate × totalPlanned (to date)
+  actualAmount: number;    // clientRate × totalActual (to date)
 };
 
 // ============================================

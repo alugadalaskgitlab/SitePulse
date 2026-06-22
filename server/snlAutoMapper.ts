@@ -174,6 +174,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     .select({
       id: boqItems.id,
       itemCode: boqItems.itemCode,
+      snlCode: boqItems.snlCode,
       description: boqItems.description,
       unit: boqItems.unit,
       workCategory: boqItems.workCategory,
@@ -203,6 +204,56 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
   for (const boqRow of boqRows) {
     try {
+      // ── 0. Deterministic SNL-code match (highest priority) ──────────────
+      // Try the explicit SNL code first, then fall back to the BOQ item code.
+      // If the BOQ row carries an explicit SDB/SNL norm code, map straight to
+      // the SNL item with that exact item_code. No fuzzy description parsing.
+      const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase()
+        || (boqRow.itemCode ?? "").trim().toLowerCase();
+      if (explicitCode) {
+        const directSnl = snlRows.find(
+          (s) => s.itemCode.trim().toLowerCase() === explicitCode,
+        );
+        if (directSnl) {
+          await db
+            .insert(snlBoqMappings)
+            .values({
+              boqItemId: boqRow.id,
+              snlItemId: directSnl.id,
+              projectCategory: "MEDIUM",
+              gradingVariant: null,
+              mappedBy: "auto",
+              isAutoMapped: true,
+              confidenceScore: 1,
+              notes: `Mapped by SNL code "${directSnl.itemCode}"`,
+            })
+            .onConflictDoUpdate({
+              target: snlBoqMappings.boqItemId,
+              set: {
+                snlItemId: directSnl.id,
+                isAutoMapped: true,
+                confidenceScore: 1,
+                mappedAt: new Date(),
+                notes: `Mapped by SNL code "${directSnl.itemCode}"`,
+              },
+            });
+
+          let recipesApplied = false;
+          try {
+            await storage.applySnlMappingToRecipes(boqRow.id, directSnl.id, "MEDIUM", null, "auto");
+            recipesApplied = true;
+          } catch (recipeErr) {
+            console.error(`[autoMapper] code-match recipes failed for boqItemId=${boqRow.id}:`, recipeErr);
+          }
+
+          await db
+            .update(boqItems)
+            .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
+            .where(eq(boqItems.id, boqRow.id));
+          continue; // done — skip fuzzy scoring for this row
+        }
+      }
+
       // Determine effective category — explicit or inferred from description keywords.
       // This lets us narrow the candidate pool even when BOQ items lack a workCategory field.
       const effectiveCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
