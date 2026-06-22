@@ -107,6 +107,8 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; unit: string };
+
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
   workType: string;
@@ -176,7 +178,16 @@ export default function SiteEntry() {
   });
   const activeSites = sitesList.filter(s => s.isActive);
 
-  // Resolve numeric siteId from selected site name
+  // Filter to only active equipment
+  const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
+
+  const [header, setHeader] = useState({
+    date: format(new Date(), "yyyy-MM-dd"),
+    site: "",
+    engineer: "",
+  });
+
+  // Resolve numeric siteId from selected site name (must be after `header`)
   const selectedSiteId = useMemo(() => {
     if (!header.site) return null;
     return sitesList.find((s) => s.name === header.site)?.id ?? null;
@@ -194,18 +205,13 @@ export default function SiteEntry() {
   const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
 
   // Fetch items of that BOQ project
-  const { data: siteBoqItems = [] } = useQuery<Array<{ id: number; description: string; itemCode: string | null; unit: string }>>({
+  const { data: siteBoqItems = [] } = useQuery<SiteBoqItem[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/items`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
     enabled: !!siteBoqProjectId,
-  });
-
-  // Filter to only active equipment
-  const activeEquipment = equipmentMaster?.filter(e => e.isActive) || [];
-
-  const [header, setHeader] = useState({
-    date: format(new Date(), "yyyy-MM-dd"),
-    site: "",
-    engineer: "",
   });
 
   const { data: personnelList } = useQuery<Personnel[]>({
