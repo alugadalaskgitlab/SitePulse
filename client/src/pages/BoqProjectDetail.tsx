@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useImperativeHandle, forwardRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
@@ -512,23 +512,33 @@ type SnlSearchResult = {
   sourceCode: string;
 };
 
-function SnlMappingPanel({
-  projectId,
-  items,
-  onMapped,
-}: {
-  projectId: number;
-  items: BoqItemWithCategory[];
-  onMapped: () => void;
-}) {
+type SnlMappingPanelHandle = { openAndFocus: () => void };
+type SnlMappingPanelProps = { projectId: number; items: BoqItemWithCategory[]; onMapped: () => void };
+
+const SnlMappingPanel = forwardRef<SnlMappingPanelHandle, SnlMappingPanelProps>(
+function SnlMappingPanel({ projectId, items, onMapped }, ref) {
   const { toast } = useToast();
-  const [collapsed, setCollapsed] = useState(false);
-  const [searchItem, setSearchItem] = useState<BoqItemWithCategory | null>(null);
-  const [searchQ, setSearchQ] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const needsReview = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review");
   const unmapped    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "unmapped");
   const mapped      = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped");
+
+  const fullyMapped = items.length > 0 && mapped.length === items.length;
+
+  // Auto-collapse when fully mapped; auto-expand when any action is needed
+  const [collapsed, setCollapsed] = useState(() => fullyMapped);
+  const [searchItem, setSearchItem] = useState<BoqItemWithCategory | null>(null);
+  const [searchQ, setSearchQ] = useState("");
+
+  useImperativeHandle(ref, () => ({
+    openAndFocus() {
+      setCollapsed(false);
+      setTimeout(() => {
+        panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    },
+  }));
 
   const remapMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {}),
@@ -571,7 +581,7 @@ function SnlMappingPanel({
   if (items.length === 0) return null;
 
   return (
-    <Card className="border-slate-200 overflow-hidden" data-testid="panel-snl-mapping">
+    <Card ref={panelRef as any} className="border-slate-200 overflow-hidden" data-testid="panel-snl-mapping">
       <button
         onClick={() => setCollapsed(c => !c)}
         className="w-full bg-teal-800 hover:bg-teal-700 transition-colors px-4 py-2.5 flex items-center justify-between text-left"
@@ -772,7 +782,7 @@ function SnlMappingPanel({
       )}
     </Card>
   );
-}
+});
 
 // ─── Revision Panel ────────────────────────────────────────────────────────────
 
@@ -1155,6 +1165,7 @@ export default function BoqProjectDetail() {
   const projectId = parseInt(params.id);
   const [showImport, setShowImport] = useState(false);
   const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
+  const snlPanelRef = useRef<SnlMappingPanelHandle>(null);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -1325,32 +1336,56 @@ export default function BoqProjectDetail() {
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
+      {(() => {
+        const mappedCount    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped").length;
+        const reviewCount    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review").length;
+        const unmappedCount  = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "unmapped").length;
+        const snlFullyMapped = items.length > 0 && mappedCount === items.length;
+        const snlNeedsAction = items.length > 0 && (reviewCount > 0 || unmappedCount > 0);
+
+        const tiles: { label: string; value: string; extra?: string; extraCls?: string; onClick?: () => void; highlight?: boolean }[] = [
           { label: "BOQ Items", value: String(items.length) },
           { label: "Work Categories", value: String(workCatSections.filter(s => s.items.length > 0).length + (hasUncategorised ? 1 : 0)) },
           { label: "Revisions", value: String(revisions.length) },
           {
             label: "SNL Mapped",
-            value: items.length > 0
-              ? `${items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped").length} / ${items.length}`
-              : "—",
-            extra: items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review").length > 0
-              ? `${items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review").length} need review`
-              : undefined,
-            extraCls: "text-amber-600",
+            value: items.length > 0 ? `${mappedCount} / ${items.length}` : "—",
+            extra: reviewCount > 0
+              ? `${reviewCount} need review`
+              : unmappedCount > 0
+                ? `${unmappedCount} unmapped`
+                : snlFullyMapped ? "All mapped ✓" : undefined,
+            extraCls: snlNeedsAction ? "text-amber-600" : "text-emerald-600",
+            highlight: snlNeedsAction,
+            onClick: items.length > 0 ? () => snlPanelRef.current?.openAndFocus() : undefined,
           },
           { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—" },
-        ].map(({ label, value, extra, extraCls }) => (
-          <Card key={label} className="border-slate-200">
-            <CardContent className="py-3 px-4">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="text-lg font-bold text-slate-800 mt-0.5">{value}</p>
-              {extra && <p className={`text-[12px] mt-0.5 ${extraCls ?? ""}`}>{extra}</p>}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+        ];
+
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {tiles.map(({ label, value, extra, extraCls, onClick, highlight }) => (
+              <Card
+                key={label}
+                className={`border-slate-200 transition-colors ${onClick ? "cursor-pointer hover:border-teal-400 hover:shadow-sm" : ""} ${highlight ? "border-amber-300 bg-amber-50/40" : ""}`}
+                onClick={onClick}
+                data-testid={label === "SNL Mapped" ? "tile-snl-mapped" : undefined}
+              >
+                <CardContent className="py-3 px-4">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className={`text-lg font-bold mt-0.5 ${highlight ? "text-amber-700" : "text-slate-800"}`}>{value}</p>
+                  {extra && <p className={`text-[12px] mt-0.5 ${extraCls ?? ""}`}>{extra}</p>}
+                  {onClick && (
+                    <p className="text-[11px] text-teal-600 mt-0.5 opacity-70">
+                      {highlight ? "Click to review →" : "Click to view →"}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Main two-column layout */}
       {items.length === 0 ? (
@@ -1414,6 +1449,7 @@ export default function BoqProjectDetail() {
           {/* ── Right: SNL Mapping + Revision panel ── */}
           <div className="w-full lg:w-72 xl:w-80 flex-shrink-0 space-y-3">
             <SnlMappingPanel
+              ref={snlPanelRef}
               projectId={projectId}
               items={items}
               onMapped={() => { void refetchItems(); }}
