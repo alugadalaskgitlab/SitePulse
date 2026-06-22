@@ -69,28 +69,28 @@ function ProjectFormFields({
   return (
     <div className="space-y-3">
       <div>
-        <Label className="text-xs">PROJECT NAME <span className="text-red-500">*</span></Label>
+        <Label className="text-sm">PROJECT NAME <span className="text-red-500">*</span></Label>
         <Input value={form.name} onChange={e => set("name", e.target.value)}
           placeholder="e.g. NH-44 Widening — Package 3" data-testid="input-project-name" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-xs">CONTRACT NO.</Label>
+          <Label className="text-sm">CONTRACT NO.</Label>
           <Input value={form.contractNo} onChange={e => set("contractNo", e.target.value)}
             placeholder="e.g. NHAI/2024/001" data-testid="input-contract-no" />
         </div>
         <div>
-          <Label className="text-xs">CLIENT / AUTHORITY</Label>
+          <Label className="text-sm">CLIENT / AUTHORITY</Label>
           <Input value={form.client} onChange={e => set("client", e.target.value)}
             placeholder="e.g. NHAI" data-testid="input-client" />
         </div>
         <div>
-          <Label className="text-xs">CONTRACTOR</Label>
+          <Label className="text-sm">CONTRACTOR</Label>
           <Input value={form.contractor} onChange={e => set("contractor", e.target.value)}
             placeholder="e.g. HLC" data-testid="input-contractor" />
         </div>
         <div>
-          <Label className="text-xs">LINKED SITE</Label>
+          <Label className="text-sm">LINKED SITE</Label>
           <Select value={form.siteId || "__none__"} onValueChange={v => set("siteId", v === "__none__" ? "" : v)}>
             <SelectTrigger data-testid="select-site">
               <SelectValue placeholder="— None —" />
@@ -104,22 +104,22 @@ function ProjectFormFields({
           </Select>
         </div>
         <div>
-          <Label className="text-xs">ROAD LENGTH (km)</Label>
+          <Label className="text-sm">ROAD LENGTH (km)</Label>
           <Input type="number" value={form.roadLengthKm} onChange={e => set("roadLengthKm", e.target.value)}
             placeholder="0.00" data-testid="input-road-length" />
         </div>
         <div>
-          <Label className="text-xs">TOTAL MONTHS</Label>
+          <Label className="text-sm">TOTAL MONTHS</Label>
           <Input type="number" value={form.totalMonths} onChange={e => set("totalMonths", e.target.value)}
             placeholder="12" data-testid="input-total-months" />
         </div>
         <div>
-          <Label className="text-xs">START DATE</Label>
+          <Label className="text-sm">START DATE</Label>
           <Input type="date" value={form.startDate} onChange={e => set("startDate", e.target.value)}
             data-testid="input-start-date" />
         </div>
         <div>
-          <Label className="text-xs">STATUS</Label>
+          <Label className="text-sm">STATUS</Label>
           <Select value={form.status} onValueChange={v => set("status", v)}>
             <SelectTrigger data-testid="select-status">
               <SelectValue />
@@ -300,16 +300,16 @@ function ProjectCard({
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-slate-800 truncate">{project.name}</h3>
             {project.contractNo && (
-              <p className="text-xs text-muted-foreground mt-0.5 truncate">Contract: {project.contractNo}</p>
+              <p className="text-sm text-muted-foreground mt-0.5 truncate">Contract: {project.contractNo}</p>
             )}
           </div>
-          <Badge variant="outline" className={`text-xs flex-shrink-0 ${STATUS_COLORS[project.status] ?? STATUS_COLORS.draft}`}>
+          <Badge variant="outline" className={`text-sm flex-shrink-0 ${STATUS_COLORS[project.status] ?? STATUS_COLORS.draft}`}>
             {project.status.toUpperCase()}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-3">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           {project.client && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Building2 className="w-3 h-3 flex-shrink-0" />
@@ -337,7 +337,7 @@ function ProjectCard({
         </div>
 
         <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
-          <div className="flex-1 text-xs text-muted-foreground">
+          <div className="flex-1 text-sm text-muted-foreground">
             <span className="font-semibold text-slate-700">{project.itemCount}</span> BOQ items
             {project.activeRevision && (
               <span className="ml-2 text-emerald-600">· Rev: {project.activeRevision}</span>
@@ -348,7 +348,7 @@ function ProjectCard({
         <div className="flex gap-2 pt-1">
           <Button
             size="sm"
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm h-8"
             onClick={() => navigate(`/work-program/${project.id}`)}
             data-testid={`button-open-project-${project.id}`}
           >
@@ -358,7 +358,7 @@ function ProjectCard({
           <Button
             size="sm"
             variant="outline"
-            className="text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+            className="text-sm h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
             onClick={() => onImport(project.id)}
             data-testid={`button-import-project-${project.id}`}
           >
@@ -462,13 +462,13 @@ export default function BoqProjects() {
         </div>
         <div className="flex items-center gap-2">
           <Link href="/norms">
-            <a className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 hover:text-teal-900 px-3 py-1.5 rounded-md border border-teal-300 bg-teal-50 hover:bg-teal-100 transition-colors"
+            <a className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 px-3 py-1.5 rounded-md border border-teal-300 bg-teal-50 hover:bg-teal-100 transition-colors"
               data-testid="link-norms-library">
               <BookOpen className="w-3.5 h-3.5" /> Norms Library
             </a>
           </Link>
           <Link href="/work-program/planning-masters">
-            <a className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-teal-700 px-3 py-1.5 rounded-md border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-colors"
+            <a className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-teal-700 px-3 py-1.5 rounded-md border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-colors"
               data-testid="link-planning-masters">
               <Settings className="w-3.5 h-3.5" /> Planning Masters
             </a>

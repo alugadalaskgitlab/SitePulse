@@ -338,15 +338,15 @@ function MismatchDiagnosisPanel({
           >
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-foreground">{item.sessionLabel}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                <p className="text-sm font-semibold text-foreground">{item.sessionLabel}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{item.description}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                 {item.issue === "missing_flow_entry" && item.sessionId != null && (
                   <Button
                     size="sm"
                     variant="default"
-                    className="h-7 text-xs"
+                    className="h-7 text-sm"
                     disabled={resyncMutation.isPending}
                     onClick={() => resyncMutation.mutate(item.sessionId!)}
                     data-testid={`button-diagnose-fix-auto-${item.itemKey}`}
@@ -361,7 +361,7 @@ function MismatchDiagnosisPanel({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
+                    className="h-7 text-sm"
                     data-testid={`button-diagnose-open-${item.itemKey}`}
                   >
                     {item.issue === "shift_vs_ledger" ? (
@@ -375,7 +375,7 @@ function MismatchDiagnosisPanel({
             </div>
             <ol className="list-decimal list-inside space-y-0.5">
               {item.steps.map((step, si) => (
-                <li key={si} className="text-xs text-foreground/70">
+                <li key={si} className="text-sm text-foreground/70">
                   {step}
                 </li>
               ))}
@@ -432,7 +432,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
               <p className="text-sm font-semibold text-destructive">
                 {orphanedLedgerRows.length} orphaned LDO ledger {orphanedLedgerRows.length === 1 ? "entry" : "entries"} found
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 These entries were auto-created by heating sessions that have since been deleted.
                 They are still counted in the LDO ledger, which is why the totals don't match.
                 Removing them will resolve the mismatch.
@@ -441,7 +441,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
                 {[...new Set(orphanedLedgerRows.map(r => r.sourceHeatingSessionId))].map(sid => {
                   const rows = orphanedLedgerRows.filter(r => r.sourceHeatingSessionId === sid);
                   return (
-                    <li key={sid} className="text-xs text-muted-foreground">
+                    <li key={sid} className="text-sm text-muted-foreground">
                       Session #{sid} — {rows.length} {rows.length === 1 ? "row" : "rows"} ({rows.map(r => r.readingType).join(", ")})
                     </li>
                   );
@@ -698,7 +698,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
                         {sourceLabel(r)}
                       </Badge>
                     </td>
-                    <td className="py-2 pr-3 text-xs text-muted-foreground">{r.readingType}</td>
+                    <td className="py-2 pr-3 text-sm text-muted-foreground">{r.readingType}</td>
                     <td className="py-2 pr-3">{r.time || "—"}</td>
                     <td
                       className="py-2 pr-3 text-right"
@@ -712,7 +712,7 @@ function DayDetail({ day, plant, appendPlantContext, ldoFlowMeterLink, isAdmin, 
                     >
                       {r.quantityLiters != null ? fmt(r.quantityLiters, 1) : "—"}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-muted-foreground max-w-[180px] truncate">
+                    <td className="py-2 pr-3 text-sm text-muted-foreground max-w-[180px] truncate">
                       {r.notes || "—"}
                     </td>
                     <td className="py-2 pr-3 text-right">
@@ -1437,7 +1437,7 @@ export default function PlantLdoMismatch() {
           <div className="flex items-end gap-4 flex-wrap">
             <Calendar className="w-5 h-5 text-muted-foreground mb-1 hidden sm:block" />
             <div className="flex flex-col gap-1">
-              <Label htmlFor="input-date-from" className="text-xs">
+              <Label htmlFor="input-date-from" className="text-sm">
                 From
               </Label>
               <Input
@@ -1450,7 +1450,7 @@ export default function PlantLdoMismatch() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="input-date-to" className="text-xs">
+              <Label htmlFor="input-date-to" className="text-sm">
                 To
               </Label>
               <Input
@@ -1498,7 +1498,7 @@ export default function PlantLdoMismatch() {
                   {mismatchCount > 0 && (
                     <TooltipContent
                       side="bottom"
-                      className="text-xs max-w-xs"
+                      className="text-sm max-w-xs"
                       data-testid="tooltip-mismatch-breakdown"
                     >
                       <p className="font-medium mb-0.5">Click to filter table to mismatch days</p>
@@ -1559,13 +1559,13 @@ export default function PlantLdoMismatch() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <Flame className="w-3 h-3" /> Heating sessions total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-sessions-total">
                   {fmt(rangeTotals.sessionsTotalL)} L
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   {daySummaries.reduce((s, d) => s + d.sessions.length, 0)} session
                   {daySummaries.reduce((s, d) => s + d.sessions.length, 0) === 1 ? "" : "s"}
                   {isMultiDay && ` across ${dates.length} days`}
@@ -1574,13 +1574,13 @@ export default function PlantLdoMismatch() {
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <GaugeCircle className="w-3 h-3" /> Shift-meter total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-shift-total">
                   {rangeTotals.anyShiftHasMeter ? `${fmt(rangeTotals.shiftTotalL)} L` : "—"}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0)} shift log
                   {daySummaries.reduce((s, d) => s + d.shiftLogs.length, 0) === 1 ? "" : "s"}
                   {!rangeTotals.anyShiftHasMeter &&
@@ -1591,7 +1591,7 @@ export default function PlantLdoMismatch() {
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <BookOpen className="w-3 h-3" /> LDO Flow ledger total
                 </div>
                 <div className="text-2xl font-bold" data-testid="kpi-ledger-total">
@@ -1599,7 +1599,7 @@ export default function PlantLdoMismatch() {
                     ? `${fmt(rangeTotals.ledgerTotalL)} L`
                     : "—"}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   {daySummaries.reduce((s, d) => s + d.ledgerRows.length, 0)} ledger row
                   {daySummaries.reduce((s, d) => s + d.ledgerRows.length, 0) === 1 ? "" : "s"}
                 </div>
@@ -1640,7 +1640,7 @@ export default function PlantLdoMismatch() {
                 }
               >
                 <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <div className="text-sm text-muted-foreground flex items-center gap-1">
                     <GitCompare className="w-3 h-3" /> {description}
                   </div>
                   <div
@@ -1649,10 +1649,10 @@ export default function PlantLdoMismatch() {
                   >
                     {delta == null ? "—" : `${delta > 0 ? "+" : ""}${fmt(delta)} L`}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-sm text-muted-foreground">
                     {label}
                   </div>
-                  <div className="text-xs text-muted-foreground italic mt-0.5">
+                  <div className="text-sm text-muted-foreground italic mt-0.5">
                     {hint} · Tolerance: ±{MISMATCH_THRESHOLD_L} L
                   </div>
                 </CardContent>
@@ -1757,7 +1757,7 @@ export default function PlantLdoMismatch() {
                           <td className="py-2 px-3 text-right">
                             <DeltaCell d={day.deltaShiftVsLedger} />
                           </td>
-                          <td className="py-2 px-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                          <td className="py-2 px-3 text-right text-sm text-muted-foreground whitespace-nowrap">
                             {isExpanded ? "Collapse" : "Expand"}
                           </td>
                         </tr>

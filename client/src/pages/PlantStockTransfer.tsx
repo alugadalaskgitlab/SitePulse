@@ -158,7 +158,7 @@ export default function PlantStockTransfer() {
         <MoveHorizontal className="w-4 h-4 mt-0.5 text-blue-700 dark:text-blue-400 shrink-0" />
         <div>
           <div className="font-semibold text-blue-800 dark:text-blue-300">Forward stock transfer — use to return borrowed material.</div>
-          <div className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-0.5">
+          <div className="text-sm text-blue-800/80 dark:text-blue-200/80 mt-0.5">
             When a dispatch borrowed material from HLC and the party has since received their own stock, 
             use this form to transfer the equivalent quantity back to HLC. Two ledger entries are created 
             (debit source party, credit destination party) with a full audit trail.
@@ -171,7 +171,7 @@ export default function PlantStockTransfer() {
           <CheckCircle2 className="w-4 h-4 mt-0.5 text-green-700 dark:text-green-400 shrink-0" />
           <div>
             <div className="font-semibold text-green-800 dark:text-green-300">Transfer recorded successfully</div>
-            <div className="text-xs text-green-800/80 dark:text-green-200/80 mt-0.5">
+            <div className="text-sm text-green-800/80 dark:text-green-200/80 mt-0.5">
               Ledger entries created and balances updated for both parties.
             </div>
           </div>
@@ -218,14 +218,14 @@ export default function PlantStockTransfer() {
               </SelectContent>
             </Select>
             {fromPartyBalance !== null && materialId && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Current balance: <span className={`font-semibold ${fromPartyBalance.balance < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
                   {fromPartyBalance.balance.toFixed(3)} {fromPartyBalance.uom || materialUom}
                 </span>
               </p>
             )}
             {fromPartyId && materialId && fromPartyBalance === null && (
-              <p className="text-xs text-muted-foreground">Current balance: <span className="font-semibold">0.000 {materialUom}</span></p>
+              <p className="text-sm text-muted-foreground">Current balance: <span className="font-semibold">0.000 {materialUom}</span></p>
             )}
           </div>
 
@@ -242,14 +242,14 @@ export default function PlantStockTransfer() {
               </SelectContent>
             </Select>
             {toPartyBalance !== null && materialId && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Current balance: <span className={`font-semibold ${toPartyBalance.balance < 0 ? "text-red-600" : "text-green-700 dark:text-green-400"}`}>
                   {toPartyBalance.balance.toFixed(3)} {toPartyBalance.uom || materialUom}
                 </span>
               </p>
             )}
             {toPartyId && materialId && toPartyBalance === null && (
-              <p className="text-xs text-muted-foreground">Current balance: <span className="font-semibold">0.000 {materialUom}</span></p>
+              <p className="text-sm text-muted-foreground">Current balance: <span className="font-semibold">0.000 {materialUom}</span></p>
             )}
           </div>
 
@@ -265,7 +265,7 @@ export default function PlantStockTransfer() {
               data-testid="input-quantity"
             />
             {isOverBalance && (
-              <div className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   Quantity ({qtyNum.toFixed(3)}) exceeds current balance ({fromBalance!.toFixed(3)} {materialUom}).

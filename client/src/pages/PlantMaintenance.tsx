@@ -62,12 +62,12 @@ function eventTypeBadge(type: string) {
     type === "breakdown" ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400" :
     type === "service" ? "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400" :
     "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400";
-  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cls}`}>{EVENT_TYPE_LABELS[type] ?? type}</span>;
+  return <span className={`text-sm px-2 py-0.5 rounded-full border font-medium ${cls}`}>{EVENT_TYPE_LABELS[type] ?? type}</span>;
 }
 
 function statusBadge(status: string) {
-  if (status === "open") return <Badge variant="destructive" className="text-xs">Open</Badge>;
-  return <Badge variant="outline" className="text-xs text-green-700 border-green-500">Resolved</Badge>;
+  if (status === "open") return <Badge variant="destructive" className="text-sm">Open</Badge>;
+  return <Badge variant="outline" className="text-sm text-green-700 border-green-500">Resolved</Badge>;
 }
 
 const TODAY = format(new Date(), "yyyy-MM-dd");
@@ -103,7 +103,7 @@ function PartSelector({
     <div className="space-y-1">
       <div className="flex gap-2 items-end">
         <div className="flex-1 space-y-1">
-          <Label className="text-xs">Item</Label>
+          <Label className="text-sm">Item</Label>
           <Select value={partItemId} onValueChange={v => { setPartItemId(v); const it = storeItems.find(s => s.id === Number(v)); if (it) setPartUom(it.uom); }}>
             <SelectTrigger data-testid="select-part-item"><SelectValue placeholder="Select item..." /></SelectTrigger>
             <SelectContent>
@@ -112,30 +112,30 @@ function PartSelector({
                 return (
                   <SelectItem key={s.id} value={String(s.id)}>
                     <span>{s.name}</span>
-                    <span className={`ml-2 text-xs ${bal <= 0 ? "text-red-500" : "text-muted-foreground"}`}>({bal} {s.uom} avail.)</span>
+                    <span className={`ml-2 text-sm ${bal <= 0 ? "text-red-500" : "text-muted-foreground"}`}>({bal} {s.uom} avail.)</span>
                   </SelectItem>
                 );
               })}
             </SelectContent>
           </Select>
           {available !== null && (
-            <p className={`text-xs ${available <= 0 ? "text-red-600" : "text-muted-foreground"}`}>
+            <p className={`text-sm ${available <= 0 ? "text-red-600" : "text-muted-foreground"}`}>
               Stock available: {available} {selectedItem?.uom ?? ""}
             </p>
           )}
         </div>
         <div className="w-20 space-y-1">
-          <Label className="text-xs">Qty</Label>
+          <Label className="text-sm">Qty</Label>
           <Input className={`h-9 ${exceeds ? "border-red-400" : ""}`} type="number" min="0.01" step="0.01" value={partQty} onChange={e => setPartQty(e.target.value)} placeholder="0" data-testid="input-part-qty" />
         </div>
         <div className="w-20 space-y-1">
-          <Label className="text-xs">UOM</Label>
+          <Label className="text-sm">UOM</Label>
           <Input className="h-9" value={partUom || selectedItem?.uom || ""} onChange={e => setPartUom(e.target.value)} placeholder="Nos" data-testid="input-part-uom" />
         </div>
         <Button type="button" variant="outline" size="sm" className="h-9" onClick={onAdd} disabled={!partItemId || !partQty || exceeds} data-testid="button-add-part">{addLabel}</Button>
       </div>
       {exceeds && (
-        <p className="text-xs text-red-600 flex items-center gap-1">
+        <p className="text-sm text-red-600 flex items-center gap-1">
           <AlertTriangle className="w-3 h-3" /> Requested qty ({partQty}) exceeds available stock ({available}).
         </p>
       )}
@@ -575,11 +575,11 @@ function LogCard({
                 {eventTypeBadge(log.eventType)}
                 {statusBadge(log.status)}
                 {log.eventType === "breakdown" && log.downtimeHours ? (
-                  <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{log.downtimeHours}h downtime</span>
+                  <span className="text-sm text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{log.downtimeHours}h downtime</span>
                 ) : null}
               </div>
               <p className="text-sm text-foreground line-clamp-2">{log.description}</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
                 <span>{log.date}</span>
                 {log.servicedBy && <span>By: {log.servicedBy}</span>}
                 {log.nextServiceDue && <span>Next service: {log.nextServiceDue}</span>}
@@ -593,7 +593,7 @@ function LogCard({
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {canEdit && (
-                <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => resolveToggleMutation.mutate()} disabled={resolveToggleMutation.isPending} data-testid={`button-toggle-status-${log.id}`}>
+                <Button variant="ghost" size="sm" className="text-sm h-7 px-2" onClick={() => resolveToggleMutation.mutate()} disabled={resolveToggleMutation.isPending} data-testid={`button-toggle-status-${log.id}`}>
                   {log.status === "open" ? "Resolve" : "Re-open"}
                 </Button>
               )}
@@ -648,7 +648,7 @@ function LogCard({
 
               {addPartOpen && (
                 <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
-                  <p className="text-xs font-medium">Add part (auto-issued from Stores)</p>
+                  <p className="text-sm font-medium">Add part (auto-issued from Stores)</p>
                   <PartSelector
                     storeItems={storeItems}
                     stockMap={stockMap}
@@ -709,7 +709,7 @@ function HealthSummaryTab({ summary }: { summary: HealthSummary[] }) {
                 <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm text-red-700 dark:text-red-400">{openBreakdowns.length} equipment with open breakdown{openBreakdowns.length !== 1 ? "s" : ""}</p>
-                  <p className="text-xs text-muted-foreground">{openBreakdowns.map(s => s.equipmentName).join(", ")}</p>
+                  <p className="text-sm text-muted-foreground">{openBreakdowns.map(s => s.equipmentName).join(", ")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -720,7 +720,7 @@ function HealthSummaryTab({ summary }: { summary: HealthSummary[] }) {
                 <Clock className="w-6 h-6 text-orange-600 dark:text-orange-400 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm text-orange-700 dark:text-orange-400">{overdue.length} service{overdue.length !== 1 ? "s" : ""} overdue</p>
-                  <p className="text-xs text-muted-foreground">{overdue.map(s => s.equipmentName).join(", ")}</p>
+                  <p className="text-sm text-muted-foreground">{overdue.map(s => s.equipmentName).join(", ")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -742,14 +742,14 @@ function HealthSummaryTab({ summary }: { summary: HealthSummary[] }) {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold text-sm">{s.equipmentName}</p>
-                    {s.registrationNumber && <p className="text-xs text-muted-foreground">{s.registrationNumber}</p>}
+                    {s.registrationNumber && <p className="text-sm text-muted-foreground">{s.registrationNumber}</p>}
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    {hasBd && <Badge variant="destructive" className="text-xs">{s.openBreakdowns} open</Badge>}
-                    {isOverdue && <Badge className="text-xs bg-orange-500 hover:bg-orange-600">Overdue</Badge>}
+                    {hasBd && <Badge variant="destructive" className="text-sm">{s.openBreakdowns} open</Badge>}
+                    {isOverdue && <Badge className="text-sm bg-orange-500 hover:bg-orange-600">Overdue</Badge>}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   <span>Last service:</span>
                   <span className="text-foreground">{s.lastServiceDate ?? "—"}</span>
                   <span>Next due:</span>
@@ -885,7 +885,7 @@ export default function PlantMaintenance() {
           <TabsTrigger value="all" data-testid="tab-all-logs">All</TabsTrigger>
           <TabsTrigger value="breakdown" className="gap-1" data-testid="tab-breakdowns">
             Breakdowns
-            {openBreakdownCount > 0 && activeTab !== "breakdown" && <Badge variant="destructive" className="text-xs h-4 px-1 ml-1">{openBreakdownCount}</Badge>}
+            {openBreakdownCount > 0 && activeTab !== "breakdown" && <Badge variant="destructive" className="text-sm h-4 px-1 ml-1">{openBreakdownCount}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="service" data-testid="tab-services">Services</TabsTrigger>
           <TabsTrigger value="health" className="gap-1" data-testid="tab-health"><Activity className="w-4 h-4" /><span className="hidden sm:inline">Health</span></TabsTrigger>

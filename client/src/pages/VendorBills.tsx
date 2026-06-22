@@ -1404,7 +1404,7 @@ export default function VendorBills() {
               <div className="flex flex-col items-center gap-0.5">
                 <Badge
                   variant={isDone ? "default" : isActive ? "secondary" : "outline"}
-                  className={`text-xs uppercase ${isDone ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 no-default-hover-elevate no-default-active-elevate" : ""}`}
+                  className={`text-sm uppercase ${isDone ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 no-default-hover-elevate no-default-active-elevate" : ""}`}
                   data-testid={`status-step-${step}`}
                 >
                   {isDone && <Check className="w-3 h-3 mr-1" />}
@@ -1412,10 +1412,10 @@ export default function VendorBills() {
                   {step}
                 </Badge>
                 {(isDone || isActive) && sm?.timestamp && (
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>
+                  <span className="text-[12px] text-muted-foreground whitespace-nowrap leading-tight">{sm.timestamp}</span>
                 )}
                 {(isDone || isActive) && sm?.actor && (
-                  <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
+                  <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap leading-tight">{sm.actor}</span>
                 )}
               </div>
             </div>
@@ -1445,15 +1445,15 @@ export default function VendorBills() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs uppercase">Bill Date</Label>
+                <Label className="text-sm uppercase">Bill Date</Label>
                 <Input type="date" value={billDate} onChange={e => setBillDate(e.target.value)} data-testid="input-bill-date" />
               </div>
               <div>
-                <Label className="text-xs uppercase">Bill Number</Label>
+                <Label className="text-sm uppercase">Bill Number</Label>
                 <Input value={billNo} onChange={e => setBillNo(e.target.value)} onBlur={e => setBillNo(e.target.value.toUpperCase())} placeholder="AUTO-GENERATED" className="uppercase" data-testid="input-bill-no" />
               </div>
               <div>
-                <Label className="text-xs uppercase">Bill Type</Label>
+                <Label className="text-sm uppercase">Bill Type</Label>
                 <Select value={billType} onValueChange={(val) => {
                   setBillType(val);
                   const newCat = (val === "transport" || val === "equipment" || val === "material" || val === "labour") ? val : "other";
@@ -1482,7 +1482,7 @@ export default function VendorBills() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="relative">
-                <Label className="text-xs uppercase">Vendor / Supplier Name</Label>
+                <Label className="text-sm uppercase">Vendor / Supplier Name</Label>
                 <Input
                   value={vendorName || vendorSearch}
                   onChange={e => {
@@ -1529,11 +1529,11 @@ export default function VendorBills() {
                 )}
               </div>
               <div>
-                <Label className="text-xs uppercase">Period From</Label>
+                <Label className="text-sm uppercase">Period From</Label>
                 <Input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} data-testid="input-period-from" />
               </div>
               <div>
-                <Label className="text-xs uppercase">Period To</Label>
+                <Label className="text-sm uppercase">Period To</Label>
                 <Input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} data-testid="input-period-to" />
               </div>
             </div>
@@ -1553,7 +1553,7 @@ export default function VendorBills() {
             )}
 
             <div className="border-t pt-4">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Bill Status</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Bill Status</p>
               {renderStatusSteps("draft")}
             </div>
           </CardContent>
@@ -1590,14 +1590,14 @@ export default function VendorBills() {
                           {vendor.vendorName}
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
+                          <span className="text-sm text-muted-foreground" data-testid={`text-record-count-${vendor.vendorName}`}>
                             {vendor.recordCount} record{vendor.recordCount !== 1 ? "s" : ""}
                           </span>
                           {vendor.categories.map(cat => (
                             <Badge
                               key={cat}
                               variant="outline"
-                              className={`text-[10px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}
+                              className={`text-[12px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}
                               data-testid={`badge-cat-${vendor.vendorName}-${cat}`}
                             >
                               {getCategoryLabel(cat)}
@@ -1610,7 +1610,7 @@ export default function VendorBills() {
                           <>
                             <Badge
                               variant="outline"
-                              className={`text-xs uppercase ${getStatusBadgeClass(vendor.existingBill.status)} no-default-hover-elevate no-default-active-elevate`}
+                              className={`text-sm uppercase ${getStatusBadgeClass(vendor.existingBill.status)} no-default-hover-elevate no-default-active-elevate`}
                               data-testid={`badge-bill-status-${vendor.vendorName}`}
                             >
                               {vendor.existingBill.status} - {vendor.existingBill.billNo}
@@ -1627,7 +1627,7 @@ export default function VendorBills() {
                           </>
                         ) : (
                           <>
-                            <span className="text-xs text-muted-foreground">NO BILL</span>
+                            <span className="text-sm text-muted-foreground">NO BILL</span>
                             <Button
                               variant="default"
                               size="sm"
@@ -1721,16 +1721,16 @@ export default function VendorBills() {
 
               const renderItemRow = (item: LineItem, idx: number) => (
                 <tr key={idx} className="border-b">
-                  <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground text-sm">{idx + 1}</td>
                   <td className="px-2 py-1.5">
                     {item.source === "auto" ? (
-                      <span className="text-xs font-mono" data-testid={`text-item-date-${idx}`}>{formatDate(item.date)}</span>
+                      <span className="text-sm font-mono" data-testid={`text-item-date-${idx}`}>{formatDate(item.date)}</span>
                     ) : (
                       <Input
                         type="date"
                         value={item.date}
                         onChange={e => updateLineItem(idx, "date", e.target.value)}
-                        className="text-xs h-8"
+                        className="text-sm h-8"
                         data-testid={`input-item-date-${idx}`}
                       />
                     )}
@@ -1739,14 +1739,14 @@ export default function VendorBills() {
                     {item.source === "auto" ? (
                       <Badge
                         variant="outline"
-                        className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
+                        className={`text-[12px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
                         data-testid={`badge-category-${idx}`}
                       >
                         {getCategoryLabel(item.category)}
                       </Badge>
                     ) : (
                       <Select value={item.category} onValueChange={v => updateLineItem(idx, "category", v)}>
-                        <SelectTrigger className="h-8 text-xs" data-testid={`select-item-category-${idx}`}>
+                        <SelectTrigger className="h-8 text-sm" data-testid={`select-item-category-${idx}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1762,24 +1762,24 @@ export default function VendorBills() {
                   <td className="px-2 py-1.5">
                     {item.source === "auto" ? (
                       <div className="space-y-1">
-                        <span className="text-xs" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
+                        <span className="text-sm" data-testid={`text-item-desc-${idx}`}>{item.description}</span>
                         <div className="flex items-center gap-1 flex-wrap">
                           {(() => {
                             const badge = parseSiteBadge(item);
                             return badge ? (
-                              <Badge variant="outline" className={`text-[10px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-form-site-${idx}`}>
+                              <Badge variant="outline" className={`text-[12px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-form-site-${idx}`}>
                                 {badge.label}
                               </Badge>
                             ) : null;
                           })()}
                           {extractDiesel(item.description) > 0 && (
-                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
+                            <Badge variant="outline" className="text-[12px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-diesel-${idx}`}>
                               <Fuel className="w-3 h-3 mr-1" />
                               {extractDiesel(item.description)}L DIESEL
                             </Badge>
                           )}
                           {item.billedIn && (
-                            <Badge variant="outline" className="text-[10px] bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-billed-${idx}`}>
+                            <Badge variant="outline" className="text-[12px] bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-billed-${idx}`}>
                               BILLED ({item.billedIn.billNo} - {item.billedIn.billStatus.toUpperCase()})
                             </Badge>
                           )}
@@ -1791,19 +1791,19 @@ export default function VendorBills() {
                         onChange={e => updateLineItem(idx, "description", e.target.value)}
                         onBlur={e => updateLineItem(idx, "description", e.target.value.toUpperCase())}
                         placeholder="ENTER DESCRIPTION"
-                        className="uppercase text-xs h-8"
+                        className="uppercase text-sm h-8"
                         data-testid={`input-item-desc-${idx}`}
                       />
                     )}
                   </td>
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
-                      <span className="text-xs text-muted-foreground" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
+                      <span className="text-sm text-muted-foreground" data-testid={`text-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</span>
                     </td>
                   )}
                   {hasSuppliedOrTransporter && (
                     <td className="px-2 py-1.5">
-                      <span className="text-xs text-muted-foreground" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
+                      <span className="text-sm text-muted-foreground" data-testid={`text-item-transporter-${idx}`}>{item.transporter || "—"}</span>
                     </td>
                   )}
                   <td className="px-2 py-1.5">
@@ -1814,11 +1814,11 @@ export default function VendorBills() {
                           step="0.01"
                           value={item.qty || ""}
                           onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
-                          className="text-xs h-8 bg-muted/50 text-muted-foreground"
+                          className="text-sm h-8 bg-muted/50 text-muted-foreground"
                           onWheel={e => (e.target as HTMLInputElement).blur()}
                           data-testid={`input-item-qty-${idx}`}
                         />
-                        <span className="text-[9px] text-muted-foreground italic">info only</span>
+                        <span className="text-xs text-muted-foreground italic">info only</span>
                       </div>
                     ) : (
                       <Input
@@ -1826,7 +1826,7 @@ export default function VendorBills() {
                         step="0.01"
                         value={item.qty || ""}
                         onChange={e => updateLineItem(idx, "qty", parseFloat(e.target.value) || 0)}
-                        className="text-xs h-8"
+                        className="text-sm h-8"
                         onWheel={e => (e.target as HTMLInputElement).blur()}
                         data-testid={`input-item-qty-${idx}`}
                       />
@@ -1834,7 +1834,7 @@ export default function VendorBills() {
                   </td>
                   <td className="px-2 py-1.5">
                     <Select value={item.unit} onValueChange={v => updateLineItem(idx, "unit", v)}>
-                      <SelectTrigger className="h-8 text-xs" data-testid={`select-item-unit-${idx}`}>
+                      <SelectTrigger className="h-8 text-sm" data-testid={`select-item-unit-${idx}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1854,16 +1854,16 @@ export default function VendorBills() {
                             value={item.leadDistance || ""}
                             onChange={e => updateLineItem(idx, "leadDistance", parseFloat(e.target.value) || 0)}
                             placeholder="ONE-WAY KM"
-                            className="text-xs h-8"
+                            className="text-sm h-8"
                             onWheel={e => (e.target as HTMLInputElement).blur()}
                             data-testid={`input-item-lead-${idx}`}
                           />
                           {item.leadDistance && item.leadDistance > 0 && (
-                            <span className="text-[10px] text-muted-foreground">RT: {(item.leadDistance * 2).toFixed(2)} KM</span>
+                            <span className="text-[12px] text-muted-foreground">RT: {(item.leadDistance * 2).toFixed(2)} KM</span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                        <span className="text-sm text-muted-foreground">-</span>
                       )}
                     </td>
                   )}
@@ -1874,7 +1874,7 @@ export default function VendorBills() {
                         step="0.01"
                         value={item.rate || ""}
                         onChange={e => updateLineItem(idx, "rate", parseFloat(e.target.value) || 0)}
-                        className="text-xs h-8"
+                        className="text-sm h-8"
                         onWheel={e => (e.target as HTMLInputElement).blur()}
                         data-testid={`input-item-rate-${idx}`}
                       />
@@ -1893,7 +1893,7 @@ export default function VendorBills() {
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-right font-semibold bg-amber-50 dark:bg-amber-900/20">
-                    <span className="text-xs" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
+                    <span className="text-sm" data-testid={`text-item-amount-${idx}`}>{formatCurrency(item.amount)}</span>
                   </td>
                   <td className="px-2 py-1.5">
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineItem(idx)} data-testid={`button-remove-item-${idx}`}>
@@ -1907,7 +1907,7 @@ export default function VendorBills() {
                 <>
                   {showLabourFilter && (
                     <div className="px-3 pt-3 pb-2 flex flex-wrap items-center gap-2 border-b" data-testid="labour-filter-chips">
-                      <span className="text-xs uppercase tracking-wider text-muted-foreground mr-1">Labour view:</span>
+                      <span className="text-sm uppercase tracking-wider text-muted-foreground mr-1">Labour view:</span>
                       {labourChips.map(chip => {
                         const active = labourFilter === chip.key;
                         return (
@@ -1916,19 +1916,19 @@ export default function VendorBills() {
                             type="button"
                             variant={active ? "default" : "outline"}
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-7 text-sm"
                             onClick={() => setLabourFilter(chip.key)}
                             data-testid={`button-labour-filter-${chip.key}`}
                           >
                             {chip.label}
-                            <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate">
+                            <Badge variant="outline" className="ml-1.5 text-[12px] px-1 py-0 no-default-hover-elevate no-default-active-elevate">
                               {chip.count}
                             </Badge>
                           </Button>
                         );
                       })}
                       {labourFilter !== "all" && (
-                        <span className="text-[11px] text-muted-foreground ml-1" data-testid="text-labour-filter-hint">
+                        <span className="text-xs text-muted-foreground ml-1" data-testid="text-labour-filter-hint">
                           View only — hidden rows are still saved with the bill.
                         </span>
                       )}
@@ -1936,7 +1936,7 @@ export default function VendorBills() {
                   )}
                   <table className="w-full text-sm" style={{ minWidth: 900 }}>
                   <thead>
-                    <tr className="border-b text-xs text-muted-foreground uppercase">
+                    <tr className="border-b text-sm text-muted-foreground uppercase">
                       <th className="px-2 py-2 text-left w-8">#</th>
                       <th className="px-2 py-2 text-left w-28">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
@@ -1979,7 +1979,7 @@ export default function VendorBills() {
                           return (
                             <Fragment key={cat}>
                               <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
-                                <td colSpan={totalColSpan} className="px-3 py-2 font-semibold text-xs uppercase tracking-wider">
+                                <td colSpan={totalColSpan} className="px-3 py-2 font-semibold text-sm uppercase tracking-wider">
                                   <Badge variant="outline" className={`${getCategoryBadgeClass(cat)} mr-2 no-default-hover-elevate no-default-active-elevate`}>
                                     {catLabels[cat]}
                                   </Badge>
@@ -1995,8 +1995,8 @@ export default function VendorBills() {
                                   return (
                                     <Fragment key={grp.key}>
                                       <tr className="border-b bg-muted/20">
-                                        <td colSpan={totalColSpan} className="px-3 py-1.5 text-xs uppercase tracking-wider" data-testid={`row-labour-source-${grp.key}`}>
-                                          <Badge variant="outline" className={`text-[10px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-labour-source-${grp.key}`}>
+                                        <td colSpan={totalColSpan} className="px-3 py-1.5 text-sm uppercase tracking-wider" data-testid={`row-labour-source-${grp.key}`}>
+                                          <Badge variant="outline" className={`text-[12px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-labour-source-${grp.key}`}>
                                             {grp.label}
                                           </Badge>
                                           <span className="text-muted-foreground normal-case">
@@ -2012,10 +2012,10 @@ export default function VendorBills() {
                                 catItems.map(({ item, idx }) => renderItemRow(item, idx))
                               )}
                               <tr className="border-b bg-muted/40">
-                                <td colSpan={labelColSpan} className="px-2 py-2 text-right text-xs font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
+                                <td colSpan={labelColSpan} className="px-2 py-2 text-right text-sm font-semibold uppercase" data-testid={`text-subtotal-label-${cat}`}>
                                   {catLabels[cat]} Sub-total
                                 </td>
-                                <td className="px-2 py-2 text-right text-xs font-semibold" data-testid={`text-subtotal-amount-${cat}`}>Rs. {formatCurrency(catTotal)}</td>
+                                <td className="px-2 py-2 text-right text-sm font-semibold" data-testid={`text-subtotal-amount-${cat}`}>Rs. {formatCurrency(catTotal)}</td>
                                 <td></td>
                               </tr>
                             </Fragment>
@@ -2049,7 +2049,7 @@ export default function VendorBills() {
         <Card>
           <CardContent className="py-4 space-y-4">
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Adjustments</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Adjustments</p>
 
               {(() => {
                 const isGrouped = billType === "all";
@@ -2077,11 +2077,11 @@ export default function VendorBills() {
                     {gstRows.map(row => (
                       <div key={row.testId} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                         <div className="md:col-span-2">
-                          <Label className="text-xs uppercase">{row.label}</Label>
-                          <p className="text-xs text-muted-foreground">On Rs. {formatCurrency(row.subtotal)}</p>
+                          <Label className="text-sm uppercase">{row.label}</Label>
+                          <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(row.subtotal)}</p>
                         </div>
                         <div>
-                          <Label className="text-xs uppercase">Rate %</Label>
+                          <Label className="text-sm uppercase">Rate %</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -2093,7 +2093,7 @@ export default function VendorBills() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs uppercase">GST Amount</Label>
+                          <Label className="text-sm uppercase">GST Amount</Label>
                           <p className="text-sm font-semibold text-green-700 dark:text-green-400 pt-2" data-testid={`text-${row.testId}-amount`}>
                             {row.rate ? `+ Rs. ${formatCurrency(row.amount)}` : "—"}
                           </p>
@@ -2103,10 +2103,10 @@ export default function VendorBills() {
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-3">
                       <div className="md:col-span-2">
-                        <Label className="text-xs uppercase">Advance Deduction</Label>
+                        <Label className="text-sm uppercase">Advance Deduction</Label>
                       </div>
                       <div className="md:col-span-2">
-                        <Label className="text-xs uppercase">Amount (negative to deduct)</Label>
+                        <Label className="text-sm uppercase">Amount (negative to deduct)</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -2121,11 +2121,11 @@ export default function VendorBills() {
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <div className="md:col-span-2">
-                        <Label className="text-xs uppercase">IT TDS</Label>
-                        <p className="text-xs text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
+                        <Label className="text-sm uppercase">IT TDS</Label>
+                        <p className="text-sm text-muted-foreground">On Rs. {formatCurrency(totalAmount)}</p>
                       </div>
                       <div>
-                        <Label className="text-xs uppercase">Rate %</Label>
+                        <Label className="text-sm uppercase">Rate %</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -2137,7 +2137,7 @@ export default function VendorBills() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs uppercase">TDS Amount</Label>
+                        <Label className="text-sm uppercase">TDS Amount</Label>
                         <p className="text-sm font-semibold text-red-600 dark:text-red-400 pt-2" data-testid="text-tds-amount">
                           {tdsRate ? `- Rs. ${formatCurrency(tdsAmount)}` : "—"}
                         </p>
@@ -2174,7 +2174,7 @@ export default function VendorBills() {
               )}
             </div>
             <div>
-              <Label className="text-xs uppercase">Notes / Remarks</Label>
+              <Label className="text-sm uppercase">Notes / Remarks</Label>
               <Textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
@@ -2213,10 +2213,10 @@ export default function VendorBills() {
                 return (
                   <div key={cat} className="space-y-3">
                     <div className="flex items-center gap-2 border-b pb-1">
-                      <Badge variant="outline" className={`text-[10px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}>
+                      <Badge variant="outline" className={`text-[12px] ${getCategoryBadgeClass(cat)} no-default-hover-elevate no-default-active-elevate`}>
                         {catLabel}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">{catGroups.length} group{catGroups.length !== 1 ? "s" : ""}</span>
+                      <span className="text-sm text-muted-foreground">{catGroups.length} group{catGroups.length !== 1 ? "s" : ""}</span>
                     </div>
                     {catGroups.map(group => (
                       <div key={group.key} className="border rounded-md p-3 space-y-2">
@@ -2224,15 +2224,15 @@ export default function VendorBills() {
                           <div>
                             <p className="text-sm font-semibold" data-testid={`text-rate-group-${group.key}`}>{group.groupName}</p>
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">{group.entryType}</span>
-                              <Badge variant="outline" className="text-[9px] px-1 py-0">{group.unit}</Badge>
-                              <span className="text-xs text-muted-foreground">({group.count} row{group.count !== 1 ? "s" : ""})</span>
+                              <span className="text-sm text-muted-foreground">{group.entryType}</span>
+                              <Badge variant="outline" className="text-xs px-1 py-0">{group.unit}</Badge>
+                              <span className="text-sm text-muted-foreground">({group.count} row{group.count !== 1 ? "s" : ""})</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex-1 min-w-[120px]">
-                            <Label className="text-xs uppercase">Rate (₹)</Label>
+                            <Label className="text-sm uppercase">Rate (₹)</Label>
                             <Input
                               type="number"
                               step="0.01"
@@ -2244,7 +2244,7 @@ export default function VendorBills() {
                           </div>
                           {group.category === "transport" && (
                             <div className="flex-1 min-w-[120px]">
-                              <Label className="text-xs uppercase">Lead Distance (KM)</Label>
+                              <Label className="text-sm uppercase">Lead Distance (KM)</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -2334,7 +2334,7 @@ export default function VendorBills() {
           <CardContent className="py-4 space-y-4">
             <div className="flex justify-between items-start flex-wrap gap-3">
               <div>
-                <p className="text-xs text-muted-foreground uppercase">Vendor</p>
+                <p className="text-sm text-muted-foreground uppercase">Vendor</p>
                 <p className="text-xl font-bold" data-testid="text-vendor-name">{bill.vendorName}</p>
               </div>
               <Badge variant="outline" className={`uppercase text-sm ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid="badge-bill-status">
@@ -2344,19 +2344,19 @@ export default function VendorBills() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground uppercase">Bill Number</p>
+                <p className="text-sm text-muted-foreground uppercase">Bill Number</p>
                 <p className="text-sm font-semibold" data-testid="text-bill-no">{bill.billNo}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase">Bill Date</p>
+                <p className="text-sm text-muted-foreground uppercase">Bill Date</p>
                 <p className="text-sm font-semibold" data-testid="text-bill-date">{formatDate(bill.billDate)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase">Bill Type</p>
+                <p className="text-sm text-muted-foreground uppercase">Bill Type</p>
                 <p className="text-sm font-semibold" data-testid="text-bill-type">{getBillTypeLabel(bill.billType)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase">Period</p>
+                <p className="text-sm text-muted-foreground uppercase">Period</p>
                 <p className="text-sm font-semibold" data-testid="text-period">
                   {bill.periodFrom && bill.periodTo ? `${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}` : "-"}
                 </p>
@@ -2364,7 +2364,7 @@ export default function VendorBills() {
             </div>
 
             <div className="border-t pt-4">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Status Progress</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Status Progress</p>
               {renderStatusSteps(bill.status, {
                 createdAt: bill.createdAt,
                 verifiedAt: bill.verifiedAt,
@@ -2423,36 +2423,36 @@ export default function VendorBills() {
 
               const renderDetailRow = (item: any, idx: number) => (
                 <tr key={item.id || idx} className="border-b">
-                  <td className="px-2 py-2 text-muted-foreground text-xs">{idx + 1}</td>
-                  <td className="px-2 py-2 text-xs font-mono" data-testid={`text-detail-item-date-${idx}`}>{formatDate(item.date)}</td>
+                  <td className="px-2 py-2 text-muted-foreground text-sm">{idx + 1}</td>
+                  <td className="px-2 py-2 text-sm font-mono" data-testid={`text-detail-item-date-${idx}`}>{formatDate(item.date)}</td>
                   <td className="px-2 py-2 text-center">
                     {item.category ? (
                       <Badge
                         variant="outline"
-                        className={`text-[10px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
+                        className={`text-[12px] ${getCategoryBadgeClass(item.category)} no-default-hover-elevate no-default-active-elevate`}
                       >
                         {getCategoryLabel(item.category)}
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      <Badge variant="outline" className="text-[12px] text-muted-foreground">
                         {item.source === "auto" ? "AUTO" : "-"}
                       </Badge>
                     )}
                   </td>
-                  <td className="px-2 py-2 font-medium text-xs" data-testid={`text-detail-item-desc-${idx}`}>
+                  <td className="px-2 py-2 font-medium text-sm" data-testid={`text-detail-item-desc-${idx}`}>
                     <div className="space-y-1">
                       <span>{item.description}</span>
                       <div className="flex items-center gap-1 flex-wrap">
                         {(() => {
                           const badge = parseSiteBadge(item);
                           return badge ? (
-                            <Badge variant="outline" className={`text-[10px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-site-${idx}`}>
+                            <Badge variant="outline" className={`text-[12px] ${getSiteBadgeClass(badge.type)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-site-${idx}`}>
                               {badge.label}
                             </Badge>
                           ) : null;
                         })()}
                         {extractDiesel(item.description) > 0 && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
+                          <Badge variant="outline" className="text-[12px] bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 no-default-hover-elevate no-default-active-elevate">
                             <Fuel className="w-3 h-3 mr-1" />
                             {extractDiesel(item.description)}L DIESEL
                           </Badge>
@@ -2460,19 +2460,19 @@ export default function VendorBills() {
                       </div>
                     </div>
                   </td>
-                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>}
-                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-xs text-muted-foreground" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>}
-                  <td className="px-2 py-2 text-xs">{formatQty(item.qty)}</td>
-                  <td className="px-2 py-2 text-xs">{item.unit}</td>
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground" data-testid={`text-detail-item-supplied-to-${idx}`}>{item.suppliedTo || "—"}</td>}
+                  {hasSuppliedOrTransporter && <td className="px-2 py-2 text-sm text-muted-foreground" data-testid={`text-detail-item-transporter-${idx}`}>{item.transporter || "—"}</td>}
+                  <td className="px-2 py-2 text-sm">{formatQty(item.qty)}</td>
+                  <td className="px-2 py-2 text-sm">{item.unit}</td>
                   {hasLead && (
-                    <td className="px-2 py-2 text-xs">
+                    <td className="px-2 py-2 text-sm">
                       {item.leadDistance && item.leadDistance > 0 ? (
                         <span>{formatQty(item.leadDistance)} <span className="text-muted-foreground">(RT: {formatQty(item.leadDistance * 2)})</span></span>
                       ) : "-"}
                     </td>
                   )}
-                  <td className="px-2 py-2 text-right text-xs">{formatCurrency(item.rate)}</td>
-                  <td className="px-2 py-2 text-right font-semibold bg-amber-50 dark:bg-amber-900/20 text-xs" data-testid={`text-detail-item-amount-${idx}`}>
+                  <td className="px-2 py-2 text-right text-sm">{formatCurrency(item.rate)}</td>
+                  <td className="px-2 py-2 text-right font-semibold bg-amber-50 dark:bg-amber-900/20 text-sm" data-testid={`text-detail-item-amount-${idx}`}>
                     {formatCurrency(item.amount)}
                   </td>
                 </tr>
@@ -2481,7 +2481,7 @@ export default function VendorBills() {
               return (
                 <table className="w-full text-sm" style={{ minWidth: 800 }}>
                   <thead>
-                    <tr className="border-b text-xs text-muted-foreground uppercase">
+                    <tr className="border-b text-sm text-muted-foreground uppercase">
                       <th className="px-2 py-2 text-left w-8">#</th>
                       <th className="px-2 py-2 text-left w-24">Date</th>
                       <th className="px-2 py-2 text-center w-16">Type</th>
@@ -2507,7 +2507,7 @@ export default function VendorBills() {
                           return (
                             <Fragment key={cat}>
                               <tr className={`${getCategoryBadgeClass(cat)} border-b`}>
-                                <td colSpan={totalCols} className="px-3 py-2 font-semibold text-xs uppercase tracking-wider">
+                                <td colSpan={totalCols} className="px-3 py-2 font-semibold text-sm uppercase tracking-wider">
                                   <Badge variant="outline" className={`${getCategoryBadgeClass(cat)} mr-2 no-default-hover-elevate no-default-active-elevate`}>
                                     {catLabels[cat]}
                                   </Badge>
@@ -2533,8 +2533,8 @@ export default function VendorBills() {
                                   return (
                                     <Fragment key={grp.key}>
                                       <tr className="border-b bg-muted/20">
-                                        <td colSpan={totalCols} className="px-3 py-1.5 text-xs uppercase tracking-wider" data-testid={`row-detail-labour-source-${grp.key}`}>
-                                          <Badge variant="outline" className={`text-[10px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-detail-labour-source-${grp.key}`}>
+                                        <td colSpan={totalCols} className="px-3 py-1.5 text-sm uppercase tracking-wider" data-testid={`row-detail-labour-source-${grp.key}`}>
+                                          <Badge variant="outline" className={`text-[12px] mr-2 ${badgeClass} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-detail-labour-source-${grp.key}`}>
                                             {grp.label}
                                           </Badge>
                                           <span className="text-muted-foreground normal-case">
@@ -2548,17 +2548,17 @@ export default function VendorBills() {
                                 });
                               })()}
                               <tr className="border-b bg-muted/40">
-                                <td colSpan={labelCols} className="px-2 py-2 text-right text-xs font-semibold uppercase">
+                                <td colSpan={labelCols} className="px-2 py-2 text-right text-sm font-semibold uppercase">
                                   {catLabels[cat]} Sub-total
                                 </td>
-                                <td className="px-2 py-2 text-right text-xs font-semibold" colSpan={2}>Rs. {formatCurrency(catTotal)}</td>
+                                <td className="px-2 py-2 text-right text-sm font-semibold" colSpan={2}>Rs. {formatCurrency(catTotal)}</td>
                               </tr>
                               {catGstRate > 0 && (
                                 <tr className="border-b bg-green-50 dark:bg-green-900/10">
-                                  <td colSpan={labelCols} className="px-2 py-1 text-right text-xs font-semibold text-green-700 dark:text-green-400 uppercase">
+                                  <td colSpan={labelCols} className="px-2 py-1 text-right text-sm font-semibold text-green-700 dark:text-green-400 uppercase">
                                     GST ON {catLabels[cat]} @ {catGstRate}%
                                   </td>
-                                  <td className="px-2 py-1 text-right text-xs font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(catGstAmount)}</td>
+                                  <td className="px-2 py-1 text-right text-sm font-semibold text-green-700 dark:text-green-400" colSpan={2}>+ Rs. {formatCurrency(catGstAmount)}</td>
                                 </tr>
                               )}
                             </Fragment>
@@ -2642,7 +2642,7 @@ export default function VendorBills() {
         {bill.notes && (
           <Card>
             <CardContent className="py-4">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Notes</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Notes</p>
               <p className="text-sm text-muted-foreground" data-testid="text-notes">{bill.notes}</p>
             </CardContent>
           </Card>
@@ -2702,7 +2702,7 @@ export default function VendorBills() {
               <FileText className="w-5 h-5 text-amber-500" />
               VENDOR BILLS
             </h1>
-            <p className="text-xs text-muted-foreground">Manage vendor/supplier billing and payments</p>
+            <p className="text-sm text-muted-foreground">Manage vendor/supplier billing and payments</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -2730,50 +2730,50 @@ export default function VendorBills() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-xs text-muted-foreground uppercase" data-testid="label-total">Total Bills</p>
+            <p className="text-sm text-muted-foreground uppercase" data-testid="label-total">Total Bills</p>
             <p className="text-xl font-bold" data-testid="text-summary-total">{billSummary?.total || 0}</p>
-            <p className="text-xs text-muted-foreground">{formatCurrency(billSummary?.totalAmount)}</p>
+            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.totalAmount)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-xs text-muted-foreground uppercase" data-testid="label-draft">Draft</p>
+            <p className="text-sm text-muted-foreground uppercase" data-testid="label-draft">Draft</p>
             <p className="text-xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-summary-draft">{billSummary?.draft || 0}</p>
-            <p className="text-xs text-muted-foreground">{formatCurrency(billSummary?.draftAmount)}</p>
+            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.draftAmount)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-xs text-muted-foreground uppercase" data-testid="label-verified">Verified</p>
+            <p className="text-sm text-muted-foreground uppercase" data-testid="label-verified">Verified</p>
             <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-summary-verified">{billSummary?.verified || 0}</p>
-            <p className="text-xs text-muted-foreground">{formatCurrency(billSummary?.verifiedAmount)}</p>
+            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.verifiedAmount)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-xs text-muted-foreground uppercase" data-testid="label-paid">Paid</p>
+            <p className="text-sm text-muted-foreground uppercase" data-testid="label-paid">Paid</p>
             <p className="text-xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-summary-paid">{billSummary?.paid || 0}</p>
-            <p className="text-xs text-muted-foreground">{formatCurrency(billSummary?.paidAmount)}</p>
+            <p className="text-sm text-muted-foreground">{formatCurrency(billSummary?.paidAmount)}</p>
           </CardContent>
         </Card>
       </div>
 
       <Card data-testid="card-gst-register">
         <CardHeader className="py-2 px-3">
-          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
             <span>
               {filterVendor !== "all"
                 ? `Vendor Ledger — GST (${filterVendor})`
                 : "GST Register — Category Breakdown"}
             </span>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] normal-case font-normal text-muted-foreground">
+              <span className="text-[12px] normal-case font-normal text-muted-foreground">
                 Reflects current filters &middot; {filteredBills.length} bill{filteredBills.length !== 1 ? "s" : ""}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px] normal-case"
+                className="h-7 px-2 text-xs normal-case"
                 onClick={() => handleGstRegisterExport("csv")}
                 disabled={!filteredBills.length}
                 data-testid="button-export-gst-csv"
@@ -2784,7 +2784,7 @@ export default function VendorBills() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px] normal-case"
+                className="h-7 px-2 text-xs normal-case"
                 onClick={() => handleGstRegisterExport("xlsx")}
                 disabled={!filteredBills.length}
                 data-testid="button-export-gst-excel"
@@ -2798,39 +2798,39 @@ export default function VendorBills() {
         <CardContent className="py-2 px-3">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="text-center" data-testid="gst-card-equipment">
-              <p className="text-[10px] text-muted-foreground uppercase">GST Equipment</p>
+              <p className="text-[12px] text-muted-foreground uppercase">GST Equipment</p>
               <p className="text-base font-bold text-blue-700 dark:text-blue-400" data-testid="text-gst-equipment">
                 {formatCurrency(gstBreakdown.equipment)}
               </p>
             </div>
             <div className="text-center" data-testid="gst-card-material">
-              <p className="text-[10px] text-muted-foreground uppercase">GST Material</p>
+              <p className="text-[12px] text-muted-foreground uppercase">GST Material</p>
               <p className="text-base font-bold text-emerald-700 dark:text-emerald-400" data-testid="text-gst-material">
                 {formatCurrency(gstBreakdown.material)}
               </p>
             </div>
             <div className="text-center" data-testid="gst-card-transport">
-              <p className="text-[10px] text-muted-foreground uppercase">GST Transport</p>
+              <p className="text-[12px] text-muted-foreground uppercase">GST Transport</p>
               <p className="text-base font-bold text-amber-700 dark:text-amber-400" data-testid="text-gst-transport">
                 {formatCurrency(gstBreakdown.transport)}
               </p>
             </div>
             <div className="text-center" data-testid="gst-card-labour">
-              <p className="text-[10px] text-muted-foreground uppercase">GST Labour</p>
+              <p className="text-[12px] text-muted-foreground uppercase">GST Labour</p>
               <p className="text-base font-bold text-purple-700 dark:text-purple-400" data-testid="text-gst-labour">
                 {formatCurrency(gstBreakdown.labour)}
               </p>
             </div>
             <div className="text-center border-l md:pl-2" data-testid="gst-card-total">
-              <p className="text-[10px] text-muted-foreground uppercase">Total GST</p>
+              <p className="text-[12px] text-muted-foreground uppercase">Total GST</p>
               <p className="text-base font-bold text-green-700 dark:text-green-400" data-testid="text-gst-total">
                 {formatCurrency(gstBreakdown.total)}
               </p>
             </div>
           </div>
           {labourSplit.site > 0 && labourSplit.plant > 0 && (
-            <div className="mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs" data-testid="labour-split-summary">
-              <span className="uppercase text-muted-foreground tracking-wider text-[10px]">
+            <div className="mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm" data-testid="labour-split-summary">
+              <span className="uppercase text-muted-foreground tracking-wider text-[12px]">
                 Labour Split &middot; Total <span className="font-semibold text-foreground" data-testid="text-labour-split-total">₹{formatCurrency(labourSplit.total)}</span>
               </span>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -2859,7 +2859,7 @@ export default function VendorBills() {
         <CardContent className="py-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <Label className="text-xs uppercase">Date From</Label>
+              <Label className="text-sm uppercase">Date From</Label>
               <div className="relative">
                 <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
                 {filterDateFrom && (
@@ -2870,7 +2870,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-xs uppercase">Date To</Label>
+              <Label className="text-sm uppercase">Date To</Label>
               <div className="relative">
                 <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
                 {filterDateTo && (
@@ -2881,7 +2881,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-xs uppercase">Vendor</Label>
+              <Label className="text-sm uppercase">Vendor</Label>
               <div className="flex items-center gap-1">
                 <Select value={filterVendor} onValueChange={setFilterVendor}>
                   <SelectTrigger data-testid="filter-vendor" className="flex-1">
@@ -2902,7 +2902,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-xs uppercase">Status</Label>
+              <Label className="text-sm uppercase">Status</Label>
               <div className="flex items-center gap-1">
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger data-testid="filter-status" className="flex-1">
@@ -2924,7 +2924,7 @@ export default function VendorBills() {
               </div>
             </div>
             <div>
-              <Label className="text-xs uppercase">Category</Label>
+              <Label className="text-sm uppercase">Category</Label>
               <div className="flex items-center gap-1">
                 <Select value={filterCategory} onValueChange={setFilterCategory}>
                   <SelectTrigger data-testid="filter-category" className="flex-1">
@@ -2949,7 +2949,7 @@ export default function VendorBills() {
             </div>
             {canViewBills && partyNames.length > 0 && (
               <div>
-                <Label className="text-xs uppercase">Supplied To</Label>
+                <Label className="text-sm uppercase">Supplied To</Label>
                 <div className="flex items-center gap-1">
                   <Select value={filterParty} onValueChange={setFilterParty}>
                     <SelectTrigger data-testid="filter-party" className="flex-1">
@@ -3022,12 +3022,12 @@ export default function VendorBills() {
                 <div className="flex justify-between items-center flex-wrap gap-2">
                   <div className="min-w-0">
                     <p className="font-bold text-sm uppercase truncate" data-testid={`text-bill-vendor-${bill.id}`}>{bill.vendorName}</p>
-                    <p className="text-xs text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
+                    <p className="text-sm text-muted-foreground" data-testid={`text-bill-meta-${bill.id}`}>
                       {bill.billNo} &bull; {getBillTypeLabel(bill.billType)}
                       {bill.periodFrom && bill.periodTo && ` \u2022 ${formatDate(bill.periodFrom)} to ${formatDate(bill.periodTo)}`}
                     </p>
                     {showLabourSplit && (
-                      <p className="text-[11px] text-muted-foreground italic mt-0.5" data-testid={`text-bill-labour-split-${bill.id}`}>
+                      <p className="text-xs text-muted-foreground italic mt-0.5" data-testid={`text-bill-labour-split-${bill.id}`}>
                         Labour {formatCurrency(labourTotal)} &mdash; DPR Site {formatCurrency(labourSiteAmt)} &middot; Plant Shift {formatCurrency(labourPlantAmt)}
                       </p>
                     )}
@@ -3037,7 +3037,7 @@ export default function VendorBills() {
                       <p className={`font-bold text-base ${getStatusColor(bill.status)}`} data-testid={`text-bill-amount-${bill.id}`}>
                         {formatCurrency(bill.totalAmount)}
                       </p>
-                      <p className="text-xs text-muted-foreground">{bill.items?.length || 0} line items</p>
+                      <p className="text-sm text-muted-foreground">{bill.items?.length || 0} line items</p>
                     </div>
                     <Badge variant="outline" className={`uppercase ${getStatusBadgeClass(bill.status)} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-bill-status-${bill.id}`}>
                       {bill.status}
@@ -3056,15 +3056,15 @@ export default function VendorBills() {
           <DialogHeader>
             <DialogTitle>VENDOR ALIASES</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Group vendor name spelling variations so billing pulls records from all variants.
           </p>
           <div className="space-y-3 mt-2">
             <div className="grid grid-cols-5 gap-2 items-end">
               <div className="col-span-2">
-                <Label className="text-xs uppercase">Canonical Name</Label>
+                <Label className="text-sm uppercase">Canonical Name</Label>
                 <Select value={aliasCanonical} onValueChange={setAliasCanonical}>
-                  <SelectTrigger className="h-8 text-xs" data-testid="select-alias-canonical">
+                  <SelectTrigger className="h-8 text-sm" data-testid="select-alias-canonical">
                     <SelectValue placeholder="SELECT VENDOR..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -3075,13 +3075,13 @@ export default function VendorBills() {
                 </Select>
               </div>
               <div className="col-span-2">
-                <Label className="text-xs uppercase">Alias (Alternate Spelling)</Label>
+                <Label className="text-sm uppercase">Alias (Alternate Spelling)</Label>
                 <Input
                   value={aliasValue}
                   onChange={e => setAliasValue(e.target.value)}
                   onBlur={e => setAliasValue(e.target.value.toUpperCase())}
                   placeholder="ALTERNATE NAME"
-                  className="text-xs h-8 uppercase"
+                  className="text-sm h-8 uppercase"
                   data-testid="input-alias-value"
                 />
               </div>
@@ -3098,11 +3098,11 @@ export default function VendorBills() {
 
             <div className="border rounded-md max-h-60 overflow-y-auto">
               {(!vendorAliasesData || vendorAliasesData.length === 0) ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No aliases configured</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No aliases configured</p>
               ) : (
                 <div className="divide-y">
                   {vendorAliasesData.map(a => (
-                    <div key={a.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                    <div key={a.id} className="flex items-center justify-between px-3 py-2 text-sm">
                       <div>
                         <span className="font-semibold">{a.canonicalName}</span>
                         <span className="text-muted-foreground mx-2">=</span>

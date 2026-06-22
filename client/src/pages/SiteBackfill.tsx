@@ -51,7 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function statusBadge(status: string) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[status] ?? "bg-slate-100 text-slate-700"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium ${STATUS_COLORS[status] ?? "bg-slate-100 text-slate-700"}`}>
       {status}
     </span>
   );
@@ -311,7 +311,7 @@ export default function SiteBackfill() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {selectedDiesel.size} of {dieselRows.length} selected
                     </p>
                   </div>
@@ -392,7 +392,7 @@ export default function SiteBackfill() {
                                 />
                               </td>
                               <td className="p-3 font-medium">{format(new Date(row.date), "dd MMM yyyy")}</td>
-                              <td className="p-3 font-mono text-xs">{row.indentNo}</td>
+                              <td className="p-3 font-mono text-sm">{row.indentNo}</td>
                               <td className="p-3 text-muted-foreground">{row.raisedBy}</td>
                               <td className="p-3">{statusBadge(row.status)}</td>
                             </tr>
@@ -400,7 +400,7 @@ export default function SiteBackfill() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {selectedIndents.size} of {indentRows.length} selected
                     </p>
                   </div>

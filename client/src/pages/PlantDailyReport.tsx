@@ -296,7 +296,7 @@ export default function PlantDailyReport() {
                             suggestedValue: mismatch.conflictingSessions[0]?.dryerFedFrom ?? (mismatch.shiftLogValue === "TANK_1" ? "TANK_2" : "TANK_1"),
                           },
                         })}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-xs font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-sm font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
                         data-testid="badge-dryer-mismatch"
                       >
                         ⚠ Dryer source conflict
@@ -361,9 +361,9 @@ export default function PlantDailyReport() {
                     <p className="text-sm font-semibold mb-3">LDO Consumption</p>
                     <div className="grid grid-cols-[5rem_1fr_1fr_1fr] gap-x-4 gap-y-2 text-sm items-baseline">
                       <div />
-                      <div className="text-xs font-medium text-muted-foreground">Consumed (L)</div>
-                      <div className="text-xs font-medium text-muted-foreground">L / hr</div>
-                      <div className="text-xs font-medium text-muted-foreground">L / MT</div>
+                      <div className="text-sm font-medium text-muted-foreground">Consumed (L)</div>
+                      <div className="text-sm font-medium text-muted-foreground">L / hr</div>
+                      <div className="text-sm font-medium text-muted-foreground">L / MT</div>
 
                       <div className="text-sm font-medium">Dryer</div>
                       <div className="font-semibold" data-testid="text-prod-dryer-l">{fmt(dryerL, 1)}</div>
@@ -440,14 +440,14 @@ export default function PlantDailyReport() {
                       <div key={label}>
                         <div className="text-muted-foreground mb-0.5">{label}</div>
                         <div className="font-semibold" data-testid={testId}>{dip != null ? `${dip.toFixed(1)} cm` : "—"}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
+                        <div className="text-sm text-muted-foreground mt-0.5">
                           {fmtMt(totalMt)} MT total · {totalVol != null ? `${Math.round(totalVol).toLocaleString()} L` : "—"}
                         </div>
-                        <div className="text-xs text-green-700 dark:text-green-400">
+                        <div className="text-sm text-green-700 dark:text-green-400">
                           {fmtMt(usableMt)} MT usable
                         </div>
                         {deadVol != null && (
-                          <div className="text-xs text-amber-700 dark:text-amber-400">
+                          <div className="text-sm text-amber-700 dark:text-amber-400">
                             {deadVol.toLocaleString()} L dead stock
                           </div>
                         )}
@@ -457,7 +457,7 @@ export default function PlantDailyReport() {
                 </div>
                 {bitConsumedMt != null && (
                   <div className="border-t pt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="md:col-span-4 text-xs font-medium text-muted-foreground">Consumed today (opening − closing dip)</div>
+                    <div className="md:col-span-4 text-sm font-medium text-muted-foreground">Consumed today (opening − closing dip)</div>
                     {bitT1Consumed != null && <KV label="Tank 1 Consumed MT" value={fmtMt(bitT1Consumed)} />}
                     {bitT2Consumed != null && <KV label="Tank 2 Consumed MT" value={fmtMt(bitT2Consumed)} />}
                     <KV label="Total Consumed MT" value={fmtMt(bitConsumedMt)} />
@@ -474,7 +474,7 @@ export default function PlantDailyReport() {
                   {data.ldo.source && data.ldo.source !== "shift_meter" ? <Badge variant="secondary" className="ml-2">Source: {data.ldo.source}</Badge> : null}
                   {data.ldo.primarySourceT1 === "sessions" ? <Badge variant="default" className="ml-2" data-testid="badge-t1-source">Boiler Meter from Heating Sessions</Badge> : null}
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">Dip-stick cross-check and tank stock deduction.</p>
+                <p className="text-sm text-muted-foreground mt-1">Dip-stick cross-check and tank stock deduction.</p>
               </CardHeader>
               {(data.ldo.dipDeltaT1L != null || data.ldo.dipDeltaT2L != null) && (() => {
                 const DIP_THRESHOLD_L = 200;
@@ -489,10 +489,10 @@ export default function PlantDailyReport() {
                 return (
                   <CardContent className="border-t pt-4 pb-3" data-testid="section-ldo-dip-crosscheck">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-medium">Dip-stick cross-check</span>
-                      <span className="text-xs text-muted-foreground">(shift log opening − closing, depth → volume)</span>
+                      <span className="text-sm font-medium">Dip-stick cross-check</span>
+                      <span className="text-sm text-muted-foreground">(shift log opening − closing, depth → volume)</span>
                       {anyHighVar && (
-                        <span className="text-xs font-semibold text-destructive flex items-center gap-1">
+                        <span className="text-sm font-semibold text-destructive flex items-center gap-1">
                           <AlertTriangle className="w-3 h-3" /> Meter vs dip gap &gt; {DIP_THRESHOLD_L} L
                         </span>
                       )}
@@ -503,7 +503,7 @@ export default function PlantDailyReport() {
                       )}
                       {t1Var != null && (
                         <div data-testid="text-ldo-dip-var-t1">
-                          <div className="text-xs text-muted-foreground mb-0.5">Meter vs Dip T1</div>
+                          <div className="text-sm text-muted-foreground mb-0.5">Meter vs Dip T1</div>
                           <div className={`font-medium ${Math.abs(t1Var) > DIP_THRESHOLD_L ? "text-destructive" : "text-green-600"}`}>
                             {t1Var > 0 ? "+" : ""}{t1Var} L
                           </div>
@@ -514,7 +514,7 @@ export default function PlantDailyReport() {
                       )}
                       {t2Var != null && (
                         <div data-testid="text-ldo-dip-var-t2">
-                          <div className="text-xs text-muted-foreground mb-0.5">Meter vs Dip T2</div>
+                          <div className="text-sm text-muted-foreground mb-0.5">Meter vs Dip T2</div>
                           <div className={`font-medium ${Math.abs(t2Var) > DIP_THRESHOLD_L ? "text-destructive" : "text-green-600"}`}>
                             {t2Var > 0 ? "+" : ""}{t2Var} L
                           </div>
@@ -543,7 +543,7 @@ export default function PlantDailyReport() {
                 </CardContent>
               )}
               <CardContent className="border-t pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="md:col-span-4 text-xs text-muted-foreground">
+                <div className="md:col-span-4 text-sm text-muted-foreground">
                   Tank stock deducted today (dryer meter is routed to{" "}
                   <span className="font-medium" data-testid="text-dryer-fed-from-summary">
                     {data.ldo.dryerFedFrom === "TANK_1" ? "Boiler tank" : data.ldo.dryerFedFrom === "TANK_2" ? "Dryer tank" : "Not set"}
@@ -569,7 +569,7 @@ export default function PlantDailyReport() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <p className="text-xs text-muted-foreground" data-testid="text-heating-attribution-range">
+                    <p className="text-sm text-muted-foreground" data-testid="text-heating-attribution-range">
                       {data.boilerHeating.attributionFromDate
                         ? <>Sessions attributed: <span className="font-medium">after {data.boilerHeating.attributionFromDate}</span> through <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (rolls overnight pre-heating into this production day).</>
                         : <>Sessions attributed: on or before <span className="font-medium">{data.boilerHeating.attributionToDate}</span> (no prior production day on record for this plant).</>
@@ -577,7 +577,7 @@ export default function PlantDailyReport() {
                     </p>
                     {data.boilerHeating.reconciliation.anyMismatch && (
                       <div
-                        className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs space-y-1"
+                        className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm space-y-1"
                         data-testid="panel-boiler-meter-reconciliation"
                       >
                         <div className="font-semibold text-destructive">
@@ -637,7 +637,7 @@ export default function PlantDailyReport() {
                               <TableCell>
                                 {s.date}
                                 {s.date !== data.boilerHeating!.attributionToDate && (
-                                  <Badge variant="outline" className="ml-1 text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
+                                  <Badge variant="outline" className="ml-1 text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
                                 )}
                               </TableCell>
                               <TableCell>{heatingSessionTypeLabel(s.sessionType)}</TableCell>
@@ -703,7 +703,7 @@ export default function PlantDailyReport() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span>{g.generatorName}</span>
                               {g.sourceHeatingSessionId != null && (
-                                <Badge variant="secondary" className="text-xs" data-testid={`badge-generator-session-${g.id}`}>
+                                <Badge variant="secondary" className="text-sm" data-testid={`badge-generator-session-${g.id}`}>
                                   🔥 Session #{g.sourceHeatingSessionId}
                                 </Badge>
                               )}

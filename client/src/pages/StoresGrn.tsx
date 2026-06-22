@@ -29,27 +29,27 @@ const ACCEPTANCE_STATUS_OPTIONS = [
 function getAcceptanceBadge(status: string) {
   switch (status) {
     case "accepted":
-      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">ACCEPTED</Badge>;
+      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[12px] px-1.5 py-0">ACCEPTED</Badge>;
     case "partial":
-      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PARTIAL</Badge>;
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0">PARTIAL</Badge>;
     case "rejected":
-      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
+      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[12px] px-1.5 py-0">REJECTED</Badge>;
     default:
       return null;
   }
 }
 
 function getDraftBadge() {
-  return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">DRAFT</Badge>;
+  return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0">DRAFT</Badge>;
 }
 
 function getStatusBadgeGrn(status: string) {
   switch (status) {
-    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">APPROVED</Badge>;
-    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PENDING</Badge>;
-    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[10px] px-1.5 py-0">COMPLETED</Badge>;
-    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
-    default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
+    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[12px] px-1.5 py-0">APPROVED</Badge>;
+    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0">PENDING</Badge>;
+    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[12px] px-1.5 py-0">COMPLETED</Badge>;
+    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[12px] px-1.5 py-0">REJECTED</Badge>;
+    default: return <Badge variant="outline" className="text-[12px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
   }
 }
 const STORE_UOMS = ["Nos", "Pcs", "Set", "Liters", "Ltrs", "Kg", "Grams", "Meters", "Feet", "Roll", "Bag", "Box", "Pair", "Pack"];
@@ -647,7 +647,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       setDraftOnly(false);
                       setSelectedId(g.id);
                     }}
-                    className="inline-flex items-center gap-1 text-xs font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
+                    className="inline-flex items-center gap-1 text-sm font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
                     data-testid={`button-stale-grn-${g.id}`}
                   >
                     {g.grnNumber}
@@ -676,30 +676,30 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedGrn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                     {selectedGrn.status === "draft" ? getDraftBadge() : getAcceptanceBadge(selectedGrn.acceptanceStatus || "accepted")}
                     {selectedGrn.status === "draft" && !selectedGrn.indentRef && (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-awaiting-pi">Awaiting PI</Badge>
                     )}
                     {selectedGrn.status === "draft" && selectedGrn.indentRef && (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[10px] px-1.5 py-0" data-testid="badge-detail-ready-finalise">Ready to Finalise</Badge>
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[12px] px-1.5 py-0" data-testid="badge-detail-ready-finalise">Ready to Finalise</Badge>
                     )}
-                    {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-xs text-muted-foreground">— No site assigned</span>; })()}
+                    {(() => { const s = selectedGrn.siteId ? sites.find(x => x.id === selectedGrn.siteId) : null; return s ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{s.name}</Badge> : <span className="text-sm text-muted-foreground">— No site assigned</span>; })()}
                     {selectedGrn.indentRef && (
-                      <Badge variant="outline" className="text-[10px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
+                      <Badge variant="outline" className="text-[12px] border-violet-400 text-violet-700 dark:text-violet-400">{selectedGrn.indentRef}</Badge>
                     )}
                   </div>
                   <p className="text-base font-semibold mt-1">{selectedGrn.supplier}</p>
                   {(selectedGrn.invoiceNo || selectedGrn.invoiceDate) && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {selectedGrn.invoiceNo ? `Invoice/Challan: ${selectedGrn.invoiceNo}` : ""}
                       {selectedGrn.invoiceNo && selectedGrn.invoiceDate ? " · " : ""}
                       {selectedGrn.invoiceDate ? format(new Date(selectedGrn.invoiceDate + "T00:00:00"), "dd MMM yyyy") : ""}
                     </p>
                   )}
                   {selectedGrn.acceptanceRemarks && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       <span className="font-medium">QC Note:</span> {selectedGrn.acceptanceRemarks}
                     </p>
                   )}
-                  {selectedGrn.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
+                  {selectedGrn.remarks && <p className="text-sm text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={closeDetail} data-testid="button-close-detail">
                   <X className="w-4 h-4" />
@@ -709,21 +709,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="text-left px-3 py-2 text-xs">Item</th>
-                      <th className="text-left px-3 py-2 text-xs">Category</th>
-                      <th className="text-right px-3 py-2 text-xs">Qty</th>
-                      <th className="text-left px-2 py-2 text-xs">UOM</th>
-                      <th className="text-right px-3 py-2 text-xs">Rate (₹)</th>
-                      <th className="text-right px-3 py-2 text-xs">Amount (₹)</th>
+                      <th className="text-left px-3 py-2 text-sm">Item</th>
+                      <th className="text-left px-3 py-2 text-sm">Category</th>
+                      <th className="text-right px-3 py-2 text-sm">Qty</th>
+                      <th className="text-left px-2 py-2 text-sm">UOM</th>
+                      <th className="text-right px-3 py-2 text-sm">Rate (₹)</th>
+                      <th className="text-right px-3 py-2 text-sm">Amount (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedGrn.items.map((it, i) => (
                       <tr key={i} className="border-t" data-testid={`row-detail-item-${i}`}>
                         <td className="px-3 py-2 font-medium">{it.itemName}</td>
-                        <td className="px-3 py-2 text-muted-foreground text-xs">{it.category}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-sm">{it.category}</td>
                         <td className="px-3 py-2 text-right">{it.qty}</td>
-                        <td className="px-2 py-2 text-xs">{it.uom}</td>
+                        <td className="px-2 py-2 text-sm">{it.uom}</td>
                         <td className="px-3 py-2 text-right text-muted-foreground">{it.rate != null ? it.rate.toLocaleString("en-IN") : "—"}</td>
                         <td className="px-3 py-2 text-right">{it.rate != null ? (it.qty * it.rate).toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}</td>
                       </tr>
@@ -741,14 +741,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 );
                 return (
                   <div className="border rounded-md p-3 space-y-3 bg-green-50/60 dark:bg-green-950/20 border-green-300 dark:border-green-800" data-testid="panel-finalise-draft">
-                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5" /> Finalise GRN — Link Indent &amp; Confirm
                     </p>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label className="text-xs">Indent Reference (optional)</Label>
+                        <Label className="text-sm">Indent Reference (optional)</Label>
                         {draftFirstItemName && draftItemApprovedIndents.length > 0 && !draftFinaliseIndentRef && (
-                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
+                          <span className="text-[12px] text-violet-600 dark:text-violet-400">
                             {draftItemApprovedIndents.length} approved match{draftItemApprovedIndents.length !== 1 ? "es" : ""}
                           </span>
                         )}
@@ -758,7 +758,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       {noDraftPi && !draftFinaliseIndentRef && (
                         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2" data-testid="note-no-approved-pi">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                          <p className="text-xs text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item. Ask a manager to approve a PI, or manually enter a PI number below and use the override.</p>
+                          <p className="text-sm text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item. Ask a manager to approve a PI, or manually enter a PI number below and use the override.</p>
                         </div>
                       )}
 
@@ -766,7 +766,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <div ref={draftFinaliseComboRef} className="relative">
                         <div className="flex items-center gap-1">
                           <Input
-                            className="text-xs flex-1 h-8"
+                            className="text-sm flex-1 h-8"
                             placeholder={draftFirstItemName ? "Search approved indents for this item…" : "Type PI number to search…"}
                             value={draftFinaliseIndentRef || draftFinaliseComboSearch}
                             onChange={e => {
@@ -810,8 +810,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           )}
                         </div>
                         {draftFinaliseComboOpen && !draftFinaliseIndentRef && filteredDraftPIs.length > 0 && (
-                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
-                            <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">Approved indents — select one</div>
+                          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
+                            <div className="px-2 py-1 text-[12px] text-muted-foreground border-b">Approved indents — select one</div>
                             {filteredDraftPIs.map(p => (
                               <div
                                 key={p.id}
@@ -835,7 +835,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                       {/* Selected PI card */}
                       {pi && (
-                        <div className={`rounded-md border p-2 text-xs space-y-1 ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                        <div className={`rounded-md border p-2 text-sm space-y-1 ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
                           <div className="flex items-center gap-2 flex-wrap">
                             {getStatusBadgeGrn(pi.status)}
                             <span className="font-semibold">{pi.indentNo}</span>
@@ -853,10 +853,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                           <div className="flex-1 space-y-1">
-                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                               This indent is <strong>{pi.status.toUpperCase()}</strong> — not yet approved.
                             </p>
-                            <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
                               <input type="checkbox" checked={draftFinaliseOverride} onChange={e => setDraftFinaliseOverride(e.target.checked)} data-testid="checkbox-finalise-override" />
                               <span className="text-amber-700 dark:text-amber-300">Override — I understand this indent is not yet approved</span>
                             </label>
@@ -867,7 +867,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        className="gap-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                        className="gap-1 h-7 text-sm bg-green-600 hover:bg-green-700 text-white"
                         disabled={finaliseMutation.isPending}
                         data-testid="button-confirm-finalise"
                         onClick={() => {
@@ -889,7 +889,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         {finaliseMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                         Finalise GRN
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFinalisingDraft(false)} data-testid="button-cancel-finalise">Cancel</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-sm" onClick={() => setFinalisingDraft(false)} data-testid="button-cancel-finalise">Cancel</Button>
                     </div>
                   </div>
                 );
@@ -898,28 +898,28 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               {/* Inline acceptance editor */}
               {editingAcceptance ? (
                 <div className="border rounded-md p-3 space-y-3 bg-muted/40" data-testid="panel-acceptance-edit">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Edit Acceptance Status</p>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Edit Acceptance Status</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">Status</Label>
+                      <Label className="text-sm">Status</Label>
                       <Select
                         value={acceptanceEdit.acceptanceStatus}
                         onValueChange={v => setAcceptanceEdit(prev => ({ ...prev, acceptanceStatus: v }))}
                       >
-                        <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status-edit">
+                        <SelectTrigger className="h-8 text-sm" data-testid="select-acceptance-status-edit">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {ACCEPTANCE_STATUS_OPTIONS.map(o => (
-                            <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                            <SelectItem key={o.value} value={o.value} className="text-sm">{o.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">QC Remarks {(acceptanceEdit.acceptanceStatus === "partial" || acceptanceEdit.acceptanceStatus === "rejected") && <span className="text-destructive">*</span>}</Label>
+                      <Label className="text-sm">QC Remarks {(acceptanceEdit.acceptanceStatus === "partial" || acceptanceEdit.acceptanceStatus === "rejected") && <span className="text-destructive">*</span>}</Label>
                       <Input
-                        className="h-8 text-xs"
+                        className="h-8 text-sm"
                         value={acceptanceEdit.acceptanceRemarks}
                         onChange={e => setAcceptanceEdit(prev => ({ ...prev, acceptanceRemarks: e.target.value }))}
                         placeholder="Reason / note"
@@ -930,7 +930,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <div className="flex gap-2">
                     <Button
                       size="sm"
-                      className="gap-1 h-7 text-xs"
+                      className="gap-1 h-7 text-sm"
                       disabled={patchAcceptanceMutation.isPending}
                       data-testid="button-save-acceptance"
                       onClick={() => {
@@ -953,7 +953,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs"
+                      className="h-7 text-sm"
                       onClick={() => setEditingAcceptance(false)}
                       data-testid="button-cancel-acceptance-edit"
                     >
@@ -973,7 +973,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-1 text-xs border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                        className="gap-1 text-sm border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/20"
                         data-testid="button-edit-draft"
                         onClick={() => openDraftForEdit(selectedGrn)}
                       >
@@ -981,7 +981,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                       </Button>
                       <Button
                         size="sm"
-                        className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white"
+                        className="gap-1 text-sm bg-green-600 hover:bg-green-700 text-white"
                         data-testid="button-finalise-grn"
                         onClick={() => {
                           setDraftFinaliseIndentRef(selectedGrn.indentRef || "");
@@ -997,7 +997,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 text-xs"
+                      className="gap-1 text-sm"
                       data-testid="button-edit-acceptance"
                       onClick={() => {
                         setAcceptanceEdit({
@@ -1030,21 +1030,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   <h3 className="font-semibold text-sm flex items-center gap-2">
                     <ArrowDownToLine className="w-4 h-4 text-green-600" />
                     {editingDraftId
-                      ? <><span className="text-amber-600 dark:text-amber-400">Edit Draft</span> <span className="font-mono text-xs bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300">{editingDraftNumber}</span></>
+                      ? <><span className="text-amber-600 dark:text-amber-400">Edit Draft</span> <span className="font-mono text-sm bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300">{editingDraftNumber}</span></>
                       : "New Goods Receipt Note"}
                   </h3>
                   {!editingDraftId && (
                     <Select value={grnCategory} onValueChange={v => { setGrnCategory(v); }}>
-                      <SelectTrigger className="h-7 w-36 text-xs" data-testid="select-grn-category">
+                      <SelectTrigger className="h-7 w-36 text-sm" data-testid="select-grn-category">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                        {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   )}
                   {!editingDraftId && previewNum?.number && (
-                    <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-grn-preview-number">
+                    <span className="text-sm font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-grn-preview-number">
                       {previewNum.number}
                     </span>
                   )}
@@ -1057,21 +1057,21 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* ── GRN Date (first field) ── */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs">GRN Date *</Label>
+                  <Label className="text-sm">GRN Date *</Label>
                   <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-grn-date" />
                 </div>
 
                 {/* ── Items received (item-first) ── */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Items Received *</Label>
-                  <p className="text-[10px] text-muted-foreground -mt-1">Select items first — the approved purchase indent will be matched automatically.</p>
+                  <Label className="text-sm font-semibold">Items Received *</Label>
+                  <p className="text-[12px] text-muted-foreground -mt-1">Select items first — the approved purchase indent will be matched automatically.</p>
 
                   {/* Column headers */}
                   <div className="hidden sm:grid grid-cols-12 gap-2 px-1">
-                    <span className="col-span-4 text-[10px] text-muted-foreground font-medium">Item</span>
-                    <span className="col-span-2 text-[10px] text-muted-foreground font-medium">Qty *</span>
-                    <span className="col-span-2 text-[10px] text-muted-foreground font-medium">UOM</span>
-                    <span className="col-span-3 text-[10px] text-muted-foreground font-medium">Rate (₹, optional)</span>
+                    <span className="col-span-4 text-[12px] text-muted-foreground font-medium">Item</span>
+                    <span className="col-span-2 text-[12px] text-muted-foreground font-medium">Qty *</span>
+                    <span className="col-span-2 text-[12px] text-muted-foreground font-medium">UOM</span>
+                    <span className="col-span-3 text-[12px] text-muted-foreground font-medium">Rate (₹, optional)</span>
                   </div>
 
                   {lines.map((line, idx) => {
@@ -1095,14 +1095,14 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                 return (
                                   <>
                                     <div
-                                      className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-xs cursor-text w-full"
+                                      className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-sm cursor-text w-full"
                                       onClick={() => setItemComboOpen(prev => ({ ...prev, [idx]: true }))}
                                       data-testid={`select-item-${idx}`}
                                     >
                                       {isOpen ? (
                                         <input
                                           autoFocus
-                                          className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-xs"
+                                          className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-sm"
                                           placeholder="Type to search items…"
                                           value={search}
                                           onChange={e => setItemComboSearch(prev => ({ ...prev, [idx]: e.target.value }))}
@@ -1131,13 +1131,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                       )}
                                     </div>
                                     {isOpen && (
-                                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
                                         {filteredItems.length === 0 && (
                                           <div className="px-3 py-2 text-muted-foreground italic">No items match "{search}"</div>
                                         )}
                                         {recentItems.length > 0 && (
                                           <>
-                                            <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                            <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
                                               Recently Used
                                             </div>
                                             {recentItems.map(it => (
@@ -1158,7 +1158,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                               </div>
                                             ))}
                                             {remainingItems.length > 0 && (
-                                              <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                                              <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
                                                 All Items
                                               </div>
                                             )}
@@ -1214,13 +1214,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             </Button>
                           </div>
                           <div className="col-span-2">
-                            <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-qty-${idx}`} />
+                            <Input type="number" min="0" step="any" className="h-8 text-sm" placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-qty-${idx}`} />
                           </div>
                           <div className="col-span-2">
-                            <Input className="h-8 text-xs bg-muted/50" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-uom-${idx}`} />
+                            <Input className="h-8 text-sm bg-muted/50" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-uom-${idx}`} />
                           </div>
                           <div className="col-span-3">
-                            <Input type="number" min="0" step="any" className="h-8 text-xs" placeholder="Rate ₹" value={line.rate} onChange={e => updateLine(idx, "rate", e.target.value)} data-testid={`input-rate-${idx}`} />
+                            <Input type="number" min="0" step="any" className="h-8 text-sm" placeholder="Rate ₹" value={line.rate} onChange={e => updateLine(idx, "rate", e.target.value)} data-testid={`input-rate-${idx}`} />
                           </div>
                           <div className="col-span-1 flex justify-center">
                             {lines.length > 1 && (
@@ -1234,7 +1234,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     );
                   })}
 
-                  <Button type="button" variant="outline" size="sm" className="text-xs gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-line">
+                  <Button type="button" variant="outline" size="sm" className="text-sm gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-line">
                     <Plus className="w-3 h-3" /> Add Line
                   </Button>
                 </div>
@@ -1249,9 +1249,9 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   return (
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <Label className="text-xs">Indent Reference</Label>
+                        <Label className="text-sm">Indent Reference</Label>
                         {firstItemName && itemApprovedIndents.length > 0 && !form.indentRef && (
-                          <span className="text-[10px] text-violet-600 dark:text-violet-400">
+                          <span className="text-[12px] text-violet-600 dark:text-violet-400">
                             {itemApprovedIndents.length} approved match{itemApprovedIndents.length !== 1 ? "es" : ""}
                           </span>
                         )}
@@ -1262,8 +1262,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2.5" data-testid="notice-pending-pi">
                           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                           <div className="flex-1 space-y-0.5">
-                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item</p>
-                            <p className="text-[11px] text-amber-600 dark:text-amber-400">Save as draft and get the indent approved. Once approved, open this draft and link it before finalising.</p>
+                            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">No approved Purchase Indent for this item</p>
+                            <p className="text-xs text-amber-600 dark:text-amber-400">Save as draft and get the indent approved. Once approved, open this draft and link it before finalising.</p>
                           </div>
                         </div>
                       ) : (
@@ -1272,7 +1272,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                           <div ref={indentComboRef} className="relative">
                             <div className="flex items-center gap-1">
                               <Input
-                                className="text-xs flex-1"
+                                className="text-sm flex-1"
                                 placeholder={firstItemName ? "Search approved indents for this item…" : "Type PI number to search…"}
                                 value={form.indentRef || indentComboSearch}
                                 onChange={e => {
@@ -1297,8 +1297,8 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                               )}
                             </div>
                             {indentComboOpen && !form.indentRef && filteredPIs.length > 0 && (
-                              <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
-                                <div className="px-2 py-1 text-[10px] text-muted-foreground border-b">Approved indents — select one</div>
+                              <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
+                                <div className="px-2 py-1 text-[12px] text-muted-foreground border-b">Approved indents — select one</div>
                                 {filteredPIs.map(pi => (
                                   <div
                                     key={pi.id}
@@ -1321,7 +1321,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
 
                           {/* Selected PI status card */}
                           {selectedPI && (
-                            <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                            <div className={`rounded-md border p-2.5 space-y-1 text-sm ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-semibold">{selectedPI.indentNo}</span>
                                 {getStatusBadgeGrn(selectedPI.status)}
@@ -1341,10 +1341,10 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
                               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                               <div className="flex-1 space-y-1">
-                                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                                   This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
                                 </p>
-                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
                                   <input
                                     type="checkbox"
                                     checked={indentOverride}
@@ -1365,7 +1365,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 {/* ── Supplier / Invoice / Site ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Supplier / Source *</Label>
+                    <Label className="text-sm">Supplier / Source *</Label>
                     <div className="relative" ref={supplierDropdownRef}>
                       <Input
                         value={form.supplier}
@@ -1383,13 +1383,13 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         </datalist>
                       )}
                       {supplierDropdownOpen && (grnSupplierHistory.length > 0 || recentSuppliers.length > 0) && (
-                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-56 overflow-y-auto text-xs" data-testid="dropdown-recent-suppliers">
+                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-56 overflow-y-auto text-sm" data-testid="dropdown-recent-suppliers">
                           {grnSupplierHistory.length > 0 && (() => {
                             const filtered = grnSupplierHistory.filter(s => !form.supplier || s.toLowerCase().includes(form.supplier.toLowerCase()));
                             if (filtered.length === 0) return null;
                             return (
                               <>
-                                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
                                   Past Suppliers for Selected Items
                                 </div>
                                 {filtered.map(s => (
@@ -1417,7 +1417,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                             if (filtered.length === 0) return null;
                             return (
                               <>
-                                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
                                   Recently Used
                                 </div>
                                 {filtered.map(s => (
@@ -1442,23 +1442,23 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Invoice / Challan No.</Label>
+                    <Label className="text-sm">Invoice / Challan No.</Label>
                     <Input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Optional" data-testid="input-grn-invoice" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Invoice / Challan Date</Label>
+                    <Label className="text-sm">Invoice / Challan Date</Label>
                     <Input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} data-testid="input-grn-invoice-date" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Site / Project (optional)</Label>
+                    <Label className="text-sm">Site / Project (optional)</Label>
                     <Select value={form.siteId} onValueChange={v => setForm(f => ({ ...f, siteId: v === "__none__" ? "" : v }))}>
-                      <SelectTrigger className="h-9 text-xs" data-testid="select-grn-site">
+                      <SelectTrigger className="h-9 text-sm" data-testid="select-grn-site">
                         <SelectValue placeholder="— Not assigned —" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__" className="text-xs text-muted-foreground">— Not assigned —</SelectItem>
+                        <SelectItem value="__none__" className="text-sm text-muted-foreground">— Not assigned —</SelectItem>
                         {sites.map(s => (
-                          <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
+                          <SelectItem key={s.id} value={String(s.id)} className="text-sm">{s.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1466,28 +1466,28 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Remarks / Notes</Label>
+                  <Label className="text-sm">Remarks / Notes</Label>
                   <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-grn-remarks" />
                 </div>
 
                 {/* ── Acceptance Status ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-md border bg-muted/30">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Acceptance Status *</Label>
+                    <Label className="text-sm font-semibold">Acceptance Status *</Label>
                     <Select value={form.acceptanceStatus} onValueChange={v => setForm(f => ({ ...f, acceptanceStatus: v, acceptanceRemarks: v === "accepted" ? "" : f.acceptanceRemarks }))}>
-                      <SelectTrigger className="h-8 text-xs" data-testid="select-acceptance-status">
+                      <SelectTrigger className="h-8 text-sm" data-testid="select-acceptance-status">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {ACCEPTANCE_STATUS_OPTIONS.map(o => (
-                          <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                          <SelectItem key={o.value} value={o.value} className="text-sm">{o.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   {(form.acceptanceStatus === "partial" || form.acceptanceStatus === "rejected") && (
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">
+                      <Label className="text-sm font-semibold">
                         {form.acceptanceStatus === "rejected" ? "Rejection Reason *" : "Partial Acceptance Reason *"}
                       </Label>
                       <Input
@@ -1534,7 +1534,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             </DialogHeader>
             <div className="space-y-3 pt-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Item Name *</Label>
+                <Label className="text-sm">Item Name *</Label>
                 <Input
                   value={addItemForm.name}
                   onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
@@ -1545,16 +1545,16 @@ export default function StoresGrn({ isNew, detailId }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Category *</Label>
+                  <Label className="text-sm">Category *</Label>
                   <Select value={addItemForm.category} onValueChange={v => setAddItemForm(f => ({ ...f, category: v }))}>
-                    <SelectTrigger className="text-xs" data-testid="select-new-item-category"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="text-sm" data-testid="select-new-item-category"><SelectValue /></SelectTrigger>
                     <SelectContent>{STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">UOM *</Label>
+                  <Label className="text-sm">UOM *</Label>
                   <Select value={addItemForm.uom} onValueChange={v => setAddItemForm(f => ({ ...f, uom: v }))}>
-                    <SelectTrigger className="text-xs" data-testid="select-new-item-uom"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="text-sm" data-testid="select-new-item-uom"><SelectValue /></SelectTrigger>
                     <SelectContent>{STORE_UOMS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -1580,27 +1580,27 @@ export default function StoresGrn({ isNew, detailId }: Props) {
             {/* Filters */}
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="date" className="h-8 w-36 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
+                <Label className="text-sm text-muted-foreground">From</Label>
+                <Input type="date" className="h-8 w-36 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
+                <Label className="text-sm text-muted-foreground">To</Label>
+                <Input type="date" className="h-8 w-36 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Indent</Label>
-                <Input className="h-8 w-36 text-xs" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
+                <Label className="text-sm text-muted-foreground">Indent</Label>
+                <Input className="h-8 w-36 text-sm" placeholder="PI-YYYY-NNN" value={indentFilter} onChange={e => setIndentFilter(e.target.value)} data-testid="input-indent-filter" />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Supplier</Label>
-                <Input className="h-8 w-40 text-xs" placeholder="Supplier name" value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} data-testid="input-supplier-filter" />
+                <Label className="text-sm text-muted-foreground">Supplier</Label>
+                <Input className="h-8 w-40 text-sm" placeholder="Supplier name" value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} data-testid="input-supplier-filter" />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Label className="text-sm text-muted-foreground">Status</Label>
                 <Button
                   variant={draftOnly ? "default" : "outline"}
                   size="sm"
-                  className={`text-xs h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
+                  className={`text-sm h-8 gap-1 ${draftOnly ? "bg-amber-600 hover:bg-amber-700 text-white border-0" : "text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-700"}`}
                   onClick={() => { setDraftOnly(v => !v); setAwaitingPiFilter(false); }}
                   data-testid="button-drafts-only"
                 >
@@ -1610,20 +1610,20 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 <Button
                   variant={awaitingPiFilter ? "default" : "outline"}
                   size="sm"
-                  className={`text-xs h-8 gap-1.5 ${awaitingPiFilter ? "bg-orange-600 hover:bg-orange-700 text-white border-0" : "text-orange-700 border-orange-300 hover:bg-orange-50 dark:text-orange-300 dark:border-orange-700"}`}
+                  className={`text-sm h-8 gap-1.5 ${awaitingPiFilter ? "bg-orange-600 hover:bg-orange-700 text-white border-0" : "text-orange-700 border-orange-300 hover:bg-orange-50 dark:text-orange-300 dark:border-orange-700"}`}
                   onClick={() => { setAwaitingPiFilter(v => !v); setDraftOnly(false); }}
                   data-testid="button-awaiting-pi-filter"
                 >
                   <AlertTriangle className="w-3 h-3" />
                   {awaitingPiFilter ? "Awaiting PI ×" : "Awaiting PI"}
                   {!awaitingPiFilter && awaitingPiCount > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-600 text-white text-[10px] font-bold leading-none" data-testid="badge-awaiting-pi-count">
+                    <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-600 text-white text-[12px] font-bold leading-none" data-testid="badge-awaiting-pi-count">
                       {awaitingPiCount}
                     </span>
                   )}
                 </Button>
                 <Select value={statusFilter || "__all__"} onValueChange={v => setStatusFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-status-filter">
+                  <SelectTrigger className="h-8 w-44 text-sm" data-testid="select-status-filter">
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1635,39 +1635,39 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Site</Label>
+                <Label className="text-sm text-muted-foreground">Site</Label>
                 <Select value={siteFilter} onValueChange={v => setSiteFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-8 w-40 text-xs" data-testid="select-site-filter">
+                  <SelectTrigger className="h-8 w-40 text-sm" data-testid="select-site-filter">
                     <SelectValue placeholder="All sites" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__" className="text-xs text-muted-foreground">All sites</SelectItem>
+                    <SelectItem value="__all__" className="text-sm text-muted-foreground">All sites</SelectItem>
                     {sites.map(s => (
-                      <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>
+                      <SelectItem key={s.id} value={String(s.id)} className="text-sm">{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Category</Label>
+                <Label className="text-sm text-muted-foreground">Category</Label>
                 <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-category-filter">
+                  <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-category-filter">
                     <SelectValue placeholder="All categories" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__" className="text-xs text-muted-foreground">All categories</SelectItem>
+                    <SelectItem value="__all__" className="text-sm text-muted-foreground">All categories</SelectItem>
                     {STORE_CATEGORIES.map(c => (
-                      <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                      <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Item</Label>
-                <Input className="h-8 w-36 text-xs" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
+                <Label className="text-sm text-muted-foreground">Item</Label>
+                <Input className="h-8 w-36 text-sm" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
               </div>
               {(dateFrom || dateTo || indentFilter || supplierFilter || siteFilter || statusFilter || categoryFilter || itemFilter || draftOnly || awaitingPiFilter) && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); setAwaitingPiFilter(false); }}>Clear</Button>
+                <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setIndentFilter(""); setSupplierFilter(""); setSiteFilter(""); setStatusFilter(""); setCategoryFilter(""); setItemFilter(""); setDraftOnly(false); setAwaitingPiFilter(false); }}>Clear</Button>
               )}
             </div>
 
@@ -1685,30 +1685,30 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-sm font-bold text-green-700 dark:text-green-400">{grn.grnNumber}</span>
-                            <span className="text-xs text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                            <span className="text-sm text-muted-foreground">{format(new Date(grn.date + "T00:00:00"), "dd MMM yyyy")}</span>
                             {grn.status === "draft" ? getDraftBadge() : (grn.acceptanceStatus && grn.acceptanceStatus !== "accepted" && getAcceptanceBadge(grn.acceptanceStatus))}
                             {grn.status === "draft" && !grn.indentRef && (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0" data-testid={`badge-awaiting-pi-${grn.id}`}>Awaiting PI</Badge>
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0" data-testid={`badge-awaiting-pi-${grn.id}`}>Awaiting PI</Badge>
                             )}
                             {grn.status === "draft" && grn.indentRef && (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[10px] px-1.5 py-0" data-testid={`badge-ready-finalise-${grn.id}`}>Ready to Finalise</Badge>
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700 text-[12px] px-1.5 py-0" data-testid={`badge-ready-finalise-${grn.id}`}>Ready to Finalise</Badge>
                             )}
-                            {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
+                            {(() => { const s = grn.siteId ? sites.find(x => x.id === grn.siteId) : null; return s ? <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{s.name}</span> : <span className="text-[12px] text-muted-foreground">—</span>; })()}
                             {grn.indentRef && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
                                 {grn.indentRef}
                               </span>
                             )}
                           </div>
                           <div className="text-sm font-medium mt-1">{grn.supplier}</div>
                           {(grn.invoiceNo || grn.invoiceDate) && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-sm text-muted-foreground">
                               {grn.invoiceNo ? `Inv: ${grn.invoiceNo}` : ""}
                               {grn.invoiceNo && grn.invoiceDate ? " · " : ""}
                               {grn.invoiceDate ? format(new Date(grn.invoiceDate + "T00:00:00"), "dd MMM yyyy") : ""}
                             </div>
                           )}
-                          <div className="mt-1 text-xs text-muted-foreground">
+                          <div className="mt-1 text-sm text-muted-foreground">
                             {grn.items.length} item{grn.items.length !== 1 ? "s" : ""}
                             {" — "}
                             {grn.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}
@@ -1725,7 +1725,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                                 {matched.map(it => (
                                   <span
                                     key={it.itemId}
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
                                     data-testid={`matched-item-pill-${grn.id}-${it.itemId}`}
                                   >
                                     {it.itemName}

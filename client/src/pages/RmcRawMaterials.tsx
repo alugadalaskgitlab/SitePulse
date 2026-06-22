@@ -220,7 +220,7 @@ export default function RmcRawMaterials() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{r.materialName}</span>
                         {r.category && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[r.category] ?? "bg-muted text-muted-foreground"}`}>
+                          <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[r.category] ?? "bg-muted text-muted-foreground"}`}>
                             {r.category}
                           </span>
                         )}
@@ -232,7 +232,7 @@ export default function RmcRawMaterials() {
                         {r.vehicleNumber && <span>🚚 {r.vehicleNumber}</span>}
                         {r.challanNumber && <span>Challan: {r.challanNumber}</span>}
                       </div>
-                      {r.notes && <p className="text-xs text-muted-foreground mt-1">{r.notes}</p>}
+                      {r.notes && <p className="text-sm text-muted-foreground mt-1">{r.notes}</p>}
                     </div>
                     <div className="flex gap-2">
                       {canEdit && (
@@ -290,7 +290,7 @@ export default function RmcRawMaterials() {
                       <div>
                         <p className="font-semibold">{s.materialName}</p>
                         {s.category && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[s.category] ?? "bg-muted text-muted-foreground"}`}>
+                          <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[s.category] ?? "bg-muted text-muted-foreground"}`}>
                             {s.category}
                           </span>
                         )}
@@ -299,10 +299,10 @@ export default function RmcRawMaterials() {
                         <p className={`text-xl font-bold ${s.balance < 0 ? "text-red-600 dark:text-red-400" : "text-blue-700 dark:text-blue-300"}`}>
                           {s.balance.toFixed(2)}
                         </p>
-                        <p className="text-xs text-muted-foreground">balance ({s.uom})</p>
+                        <p className="text-sm text-muted-foreground">balance ({s.uom})</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground border-t pt-2">
+                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground border-t pt-2">
                       <div>
                         <span className="text-green-700 dark:text-green-400 font-medium">↑ {s.totalReceived.toFixed(2)} {s.uom}</span>
                         <span className="ml-1">received</span>
@@ -315,10 +315,10 @@ export default function RmcRawMaterials() {
                       </div>
                     </div>
                     {s.balanceKg !== null && s.uom.toLowerCase() !== 'kg' && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">≈ {s.balanceKg.toFixed(1)} kg balance</p>
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">≈ {s.balanceKg.toFixed(1)} kg balance</p>
                     )}
                     {s.totalConsumed === 0 && (
-                      <p className="text-xs text-muted-foreground mt-1 italic">Add component proportions to mix designs to track consumption</p>
+                      <p className="text-sm text-muted-foreground mt-1 italic">Add component proportions to mix designs to track consumption</p>
                     )}
                   </CardContent>
                 </Card>

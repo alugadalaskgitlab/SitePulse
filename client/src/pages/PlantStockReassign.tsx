@@ -163,7 +163,7 @@ export default function PlantStockReassign() {
         <ShieldAlert className="w-4 h-4 mt-0.5 text-amber-700 dark:text-amber-400 shrink-0" />
         <div>
           <div className="font-semibold text-amber-800 dark:text-amber-300">Admin only — corrects mis-assigned ledger entries.</div>
-          <div className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+          <div className="text-sm text-amber-800/80 dark:text-amber-200/80 mt-0.5">
             Use this to move past dispatches or receipts from one party to another (for example, bitumen
             dispatches that were saved against HLC but actually belong to VATPALLY). Always preview first.
           </div>
@@ -265,7 +265,7 @@ export default function PlantStockReassign() {
               <div>Net change at {fromPartyName}: <span className="font-semibold tabular-nums">{(totals.totalOut - totals.totalIn).toFixed(3)}</span></div>
             </div>
             <div className="overflow-auto border rounded-md max-h-[480px]">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm">
                 <thead className="bg-muted/60 border-b sticky top-0">
                   <tr>
                     <th className="text-left p-2">Date</th>

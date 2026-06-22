@@ -206,7 +206,7 @@ export default function PlantHeatingMismatch() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <Flame className="w-3 h-3" /> Heating sessions total
                 </div>
                 <div
@@ -215,14 +215,14 @@ export default function PlantHeatingMismatch() {
                 >
                   {fmt(sessionsTotalL)} L
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   {sessions.length} session{sessions.length === 1 ? "" : "s"}
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <GaugeCircle className="w-3 h-3" /> Shift-meter total
                 </div>
                 <div
@@ -231,7 +231,7 @@ export default function PlantHeatingMismatch() {
                 >
                   {anyShiftHasMeter ? `${fmt(shiftTotalL)} L` : "—"}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   {shiftLogs.length} shift log{shiftLogs.length === 1 ? "" : "s"}
                   {shiftLogs.length > 0 && !anyShiftHasMeter && " · no meter readings"}
                 </div>
@@ -242,7 +242,7 @@ export default function PlantHeatingMismatch() {
               data-testid="card-delta"
             >
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <GitCompare className="w-3 h-3" /> Δ (sessions − shift)
                 </div>
                 <div
@@ -253,7 +253,7 @@ export default function PlantHeatingMismatch() {
                     ? "—"
                     : `${deltaL > 0 ? "+" : ""}${fmt(deltaL)} L`}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   Tolerance: ±{MISMATCH_THRESHOLD_L} L
                 </div>
               </CardContent>
@@ -445,7 +445,7 @@ export default function PlantHeatingMismatch() {
                           >
                             {consumed == null ? "—" : fmt(consumed, 1)}
                           </td>
-                          <td className="py-2 pr-3 text-xs text-muted-foreground">
+                          <td className="py-2 pr-3 text-sm text-muted-foreground">
                             {sh.boilerRunsDuringProduction
                               ? "Boiler ran during production"
                               : ""}

@@ -81,12 +81,12 @@ function StockCard({
       <CardContent className="py-3">
         <div className="flex items-center gap-2 mb-1">
           <Droplets className={`w-4 h-4 ${toneClass}`} />
-          <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
+          <span className="text-sm font-medium uppercase text-muted-foreground">{label}</span>
         </div>
         <div className={`font-bold ${emphasised ? "text-2xl" : "text-xl"} ${toneClass}`} data-testid={valueTestId}>
           {valueText}
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{asOfText}</div>
+        <div className="text-sm text-muted-foreground mt-0.5">{asOfText}</div>
       </CardContent>
     </Card>
   );

@@ -446,7 +446,7 @@ export default function PlantGeneratorLogs() {
                     <p className="text-sm text-muted-foreground">
                       {log.startTime} - {log.endTime} ({log.hoursRun?.toFixed(3)} hrs)
                     </p>
-                    <div className="flex flex-wrap gap-3 text-xs mt-1">
+                    <div className="flex flex-wrap gap-3 text-sm mt-1">
                       <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
                         Opening: {log.openingDiesel || 0} L
                       </span>
@@ -460,11 +460,11 @@ export default function PlantGeneratorLogs() {
                         Closing: {log.closingDiesel || ((log.openingDiesel || 0) + (log.dieselIssued || 0) - (log.dieselConsumed || 0)).toFixed(3)} L
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{log.date}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{log.date}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-primary">{log.efficiency?.toFixed(3)} L/hr</p>
-                    <p className="text-xs text-muted-foreground">Efficiency</p>
+                    <p className="text-sm text-muted-foreground">Efficiency</p>
                   </div>
                 </div>
               ))}

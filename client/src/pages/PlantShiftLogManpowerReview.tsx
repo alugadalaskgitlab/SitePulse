@@ -1686,7 +1686,7 @@ export default function PlantShiftLogManpowerReview() {
         <ShieldAlert className="w-4 h-4 mt-0.5 text-amber-700 dark:text-amber-400 shrink-0" />
         <div>
           <div className="font-semibold text-amber-800 dark:text-amber-300">Admin only — clean up legacy plant shift-log workers.</div>
-          <div className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+          <div className="text-sm text-amber-800/80 dark:text-amber-200/80 mt-0.5">
             These workers were auto-tagged <span className="font-mono">UNKNOWN CONTRACTOR</span> or
             <span className="font-mono"> OTHER</span> when historical shift logs were back-filled.
             Pick the real contractor / category / gender for each name and apply — every shift-log row of that
@@ -1711,7 +1711,7 @@ export default function PlantShiftLogManpowerReview() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               Dismissals are remembered per plant — switching here changes which 'not a duplicate' decisions are loaded.
             </div>
           </div>
@@ -1752,7 +1752,7 @@ export default function PlantShiftLogManpowerReview() {
             Recent activity (last 30 days)
             {selectedAliasActivityFeedCount > 0 && (
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700 px-2 py-0.5 text-[11px] font-medium text-purple-800 dark:text-purple-200"
+                className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900/50 border border-purple-300 dark:border-purple-700 px-2 py-0.5 text-xs font-medium text-purple-800 dark:text-purple-200"
                 data-testid="badge-alias-selected-count"
               >
                 <span className="font-semibold">{selectedAliasActivityFeedCount}</span>
@@ -1771,7 +1771,7 @@ export default function PlantShiftLogManpowerReview() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="text-xs text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             Every merge, relabel, "not a duplicate" dismissal, restore and alias add/remove/mute
             done from this screen shows up here. Hit Undo/Revert within 30 days to reverse the
             action.
@@ -1788,13 +1788,13 @@ export default function PlantShiftLogManpowerReview() {
             <>
               {selectedAliasActivityFeedCount > 0 && (
                 <div className="flex items-center gap-2 py-1.5 px-1" data-testid="feed-bulk-revert-bar">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     {selectedAliasActivityFeedCount} alias change{selectedAliasActivityFeedCount === 1 ? "" : "s"} selected
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-xs border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
+                    className="h-7 px-2 text-sm border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
                     disabled={bulkRevertingAlias || actor.trim().length < 2}
                     onClick={bulkRevertFromFeed}
                     data-testid="button-feed-bulk-revert"
@@ -1807,7 +1807,7 @@ export default function PlantShiftLogManpowerReview() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 px-2 text-xs text-muted-foreground"
+                    className="h-7 px-2 text-sm text-muted-foreground"
                     onClick={() => setSelectedAliasActivityIds({})}
                     data-testid="button-feed-clear-selection"
                   >
@@ -1859,12 +1859,12 @@ export default function PlantShiftLogManpowerReview() {
                       return (
                         <tr key={`m-${m.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-merge-${m.id}`}>
                           <td className="p-2 w-8"></td>
-                          <td className="p-2 text-xs whitespace-nowrap">
+                          <td className="p-2 text-sm whitespace-nowrap">
                             {when.toLocaleDateString()}<br />
                             <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
                           </td>
-                          <td className="p-2 text-xs">{m.actor}</td>
-                          <td className="p-2 text-xs">
+                          <td className="p-2 text-sm">{m.actor}</td>
+                          <td className="p-2 text-sm">
                             <div className="font-medium">
                               {m.isMerge ? "Merge" : "Relabel"}: <span className="font-mono">{fromList}</span> → <span className="font-mono">{m.toName}</span>
                             </div>
@@ -1918,14 +1918,14 @@ export default function PlantShiftLogManpowerReview() {
                               }}
                             />
                           </td>
-                          <td className="p-2 text-xs whitespace-nowrap">
+                          <td className="p-2 text-sm whitespace-nowrap">
                             {when.toLocaleDateString()}<br />
                             <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
                           </td>
-                          <td className="p-2 text-xs">{aa.actor}</td>
-                          <td className="p-2 text-xs">
+                          <td className="p-2 text-sm">{aa.actor}</td>
+                          <td className="p-2 text-sm">
                             <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${aliasBadgeColor}`}>
+                              <span className={`text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${aliasBadgeColor}`}>
                                 {aliasLabel}
                               </span>
                             </div>
@@ -1971,35 +1971,35 @@ export default function PlantShiftLogManpowerReview() {
                     return (
                       <tr key={`d-${a.id}`} className="border-b last:border-0 align-top" data-testid={`row-recent-dup-${a.id}`}>
                         <td className="p-2 w-8"></td>
-                        <td className="p-2 text-xs whitespace-nowrap">
+                        <td className="p-2 text-sm whitespace-nowrap">
                           {when.toLocaleDateString()}<br />
                           <span className="text-muted-foreground">{when.toLocaleTimeString()}</span>
                         </td>
-                        <td className="p-2 text-xs">{a.actor}</td>
-                        <td className="p-2 text-xs">
+                        <td className="p-2 text-sm">{a.actor}</td>
+                        <td className="p-2 text-sm">
                           <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                            <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${actionColor}`}>
+                            <span className={`text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${actionColor}`}>
                               {actionLabel}
                             </span>
                             {a.action === "bulk_restore" && (
-                              <span className="text-muted-foreground text-[11px]">
+                              <span className="text-muted-foreground text-xs">
                                 {a.pairCount} pair{a.pairCount === 1 ? "" : "s"}
                               </span>
                             )}
                           </div>
                           <div className="space-y-0.5">
                             {previewPairs.map((p, i) => (
-                              <div key={i} className="font-mono text-xs">
+                              <div key={i} className="font-mono text-sm">
                                 {p[0]} <span className="text-muted-foreground">↔</span> {p[1]}
                               </div>
                             ))}
                             {overflow > 0 && (
-                              <div className="text-muted-foreground text-[11px]">
+                              <div className="text-muted-foreground text-xs">
                                 + {overflow} more pair{overflow === 1 ? "" : "s"}
                               </div>
                             )}
                           </div>
-                          <div className="text-muted-foreground text-[11px] mt-0.5">
+                          <div className="text-muted-foreground text-xs mt-0.5">
                             scope: {plantText}
                           </div>
                         </td>
@@ -2033,7 +2033,7 @@ export default function PlantShiftLogManpowerReview() {
         </CardHeader>
         {showAliasPanel && (
           <CardContent className="space-y-4">
-            <div className="text-xs text-muted-foreground">
+            <div className="text-sm text-muted-foreground">
               Teach the duplicate-suggester new short forms or local nicknames (e.g.
               <span className="font-mono"> CHIKKU ↔ CHANDRA</span>) without doing a merge first.
               Custom aliases are applied alongside the built-in dictionary
@@ -2048,23 +2048,23 @@ export default function PlantShiftLogManpowerReview() {
               </div>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">Token A</Label>
+                  <Label className="text-sm">Token A</Label>
                   <Input
                     value={newAliasA}
                     onChange={(e) => setNewAliasA(e.target.value)}
                     placeholder="e.g. CHIKKU"
-                    className="h-8 text-xs uppercase w-40"
+                    className="h-8 text-sm uppercase w-40"
                     data-testid="input-new-alias-a"
                   />
                 </div>
                 <span className="text-muted-foreground pb-2">↔</span>
                 <div className="space-y-1">
-                  <Label className="text-xs">Token B</Label>
+                  <Label className="text-sm">Token B</Label>
                   <Input
                     value={newAliasB}
                     onChange={(e) => setNewAliasB(e.target.value)}
                     placeholder="e.g. CHANDRA"
-                    className="h-8 text-xs uppercase w-40"
+                    className="h-8 text-sm uppercase w-40"
                     data-testid="input-new-alias-b"
                   />
                 </div>
@@ -2086,7 +2086,7 @@ export default function PlantShiftLogManpowerReview() {
                   Add alias
                 </Button>
               </div>
-              <div className="text-[11px] text-muted-foreground mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Tokens are case-insensitive and stored UPPER-cased. Punctuation/spaces are stripped.
               </div>
             </div>
@@ -2104,7 +2104,7 @@ export default function PlantShiftLogManpowerReview() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-6 px-2 text-[11px]"
+                        className="h-6 px-2 text-xs"
                         disabled={loadingRecent || bulkRevertingAlias}
                         onClick={() => {
                           const filtered = filteredAliasActivity;
@@ -2126,7 +2126,7 @@ export default function PlantShiftLogManpowerReview() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-6 px-2 text-[11px] border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
+                        className="h-6 px-2 text-xs border-purple-400 text-purple-800 dark:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-950"
                         disabled={bulkRevertingAlias || selectedAliasActivityCount === 0 || actor.trim().length < 2}
                         onClick={bulkRevertAliasActivity}
                         data-testid="button-alias-activity-bulk-revert"
@@ -2141,7 +2141,7 @@ export default function PlantShiftLogManpowerReview() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-xs"
+                    className="h-6 px-2 text-sm"
                     onClick={fetchRecentMerges}
                     disabled={loadingRecent}
                     data-testid="button-refresh-recent-alias-changes"
@@ -2150,19 +2150,19 @@ export default function PlantShiftLogManpowerReview() {
                   </Button>
                 </div>
               </div>
-              <div className="text-[11px] text-muted-foreground mb-2">
+              <div className="text-xs text-muted-foreground mb-2">
                 Last 30 days of add / remove / mute / unmute actions in the alias dictionary.
                 Check rows and hit Revert selected to undo many changes in one step.
               </div>
               {(recentAliasActivity || []).length > 0 && (
                 <div className="flex flex-wrap items-end gap-2 mb-2 p-2 bg-purple-50 dark:bg-purple-950/30 rounded border border-purple-200 dark:border-purple-800" data-testid="alias-activity-filters">
                   <div className="flex flex-col gap-0.5 min-w-[120px]">
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Action type</label>
+                    <label className="text-[12px] text-muted-foreground uppercase tracking-wide">Action type</label>
                     <Select
                       value={aliasFilterActionType}
                       onValueChange={v => setAliasFilterActionType(v as typeof aliasFilterActionType)}
                     >
-                      <SelectTrigger className="h-7 text-xs" data-testid="select-alias-filter-action-type">
+                      <SelectTrigger className="h-7 text-sm" data-testid="select-alias-filter-action-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2175,9 +2175,9 @@ export default function PlantShiftLogManpowerReview() {
                     </Select>
                   </div>
                   <div className="flex flex-col gap-0.5 min-w-[130px]">
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Actor</label>
+                    <label className="text-[12px] text-muted-foreground uppercase tracking-wide">Actor</label>
                     <Input
-                      className="h-7 text-xs"
+                      className="h-7 text-sm"
                       placeholder="Search by name…"
                       value={aliasFilterActor}
                       onChange={e => setAliasFilterActor(e.target.value)}
@@ -2185,20 +2185,20 @@ export default function PlantShiftLogManpowerReview() {
                     />
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">From</label>
+                    <label className="text-[12px] text-muted-foreground uppercase tracking-wide">From</label>
                     <input
                       type="date"
-                      className="h-7 text-xs rounded border border-input bg-background px-2 py-0.5"
+                      className="h-7 text-sm rounded border border-input bg-background px-2 py-0.5"
                       value={aliasFilterDateFrom}
                       onChange={e => setAliasFilterDateFrom(e.target.value)}
                       data-testid="input-alias-filter-date-from"
                     />
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">To</label>
+                    <label className="text-[12px] text-muted-foreground uppercase tracking-wide">To</label>
                     <input
                       type="date"
-                      className="h-7 text-xs rounded border border-input bg-background px-2 py-0.5"
+                      className="h-7 text-sm rounded border border-input bg-background px-2 py-0.5"
                       value={aliasFilterDateTo}
                       onChange={e => setAliasFilterDateTo(e.target.value)}
                       data-testid="input-alias-filter-date-to"
@@ -2208,7 +2208,7 @@ export default function PlantShiftLogManpowerReview() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-xs self-end"
+                      className="h-7 px-2 text-sm self-end"
                       onClick={() => {
                         setAliasFilterActionType("all");
                         setAliasFilterActor("");
@@ -2223,15 +2223,15 @@ export default function PlantShiftLogManpowerReview() {
                 </div>
               )}
               {recentAliasActivity === null ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-loading">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-alias-changes-loading">
                   Loading…
                 </div>
               ) : recentAliasActivity.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-empty">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-alias-changes-empty">
                   No alias add/remove/mute actions in the last 30 days.
                 </div>
               ) : filteredAliasActivity.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-recent-alias-changes-no-match">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-recent-alias-changes-no-match">
                   No entries match the active filters.
                 </div>
               ) : (
@@ -2252,7 +2252,7 @@ export default function PlantShiftLogManpowerReview() {
                     return (
                       <div
                         key={a.id}
-                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-xs border border-purple-200 dark:border-purple-800"
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-sm border border-purple-200 dark:border-purple-800"
                         data-testid={`alias-activity-${a.id}`}
                       >
                         <input
@@ -2271,7 +2271,7 @@ export default function PlantShiftLogManpowerReview() {
                           data-testid={`checkbox-alias-activity-${a.id}`}
                           aria-label={`Select ${a.tokenA} ↔ ${a.tokenB}`}
                         />
-                        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${badgeTone}`}>
+                        <span className={`text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${badgeTone}`}>
                           {label}
                         </span>
                         <span className="font-mono">{a.tokenA}</span>
@@ -2307,9 +2307,9 @@ export default function PlantShiftLogManpowerReview() {
                 Custom aliases ({(customAliases || []).filter(c => c.kind === "alias").length})
               </div>
               {customAliases === null ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-custom-aliases-loading">Loading…</div>
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-custom-aliases-loading">Loading…</div>
               ) : customAliases.filter(c => c.kind === "alias").length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-custom-aliases-empty">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-custom-aliases-empty">
                   No custom aliases yet. Add one above to teach the suggester a new equivalence.
                 </div>
               ) : (
@@ -2319,7 +2319,7 @@ export default function PlantShiftLogManpowerReview() {
                     return (
                       <div
                         key={c.id}
-                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-xs border border-purple-200 dark:border-purple-800"
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-purple-900/20 rounded px-2 py-1 text-sm border border-purple-200 dark:border-purple-800"
                         data-testid={`custom-alias-${c.id}`}
                       >
                         <span className="font-mono">{c.tokenA}</span>
@@ -2351,14 +2351,14 @@ export default function PlantShiftLogManpowerReview() {
               <div className="text-sm font-semibold mb-1.5">
                 Auto-learned full-name pairs ({learnedAliases?.pairs.length || 0})
               </div>
-              <div className="text-[11px] text-muted-foreground mb-2">
+              <div className="text-xs text-muted-foreground mb-2">
                 Whole-name equivalences mined from past merges. Click <span className="font-mono">Mute</span> to
                 stop a noisy pattern from biasing future suggestions without undoing the merges that taught it.
               </div>
               {!learnedAliases ? (
-                <div className="text-xs text-muted-foreground py-2">Loading…</div>
+                <div className="text-sm text-muted-foreground py-2">Loading…</div>
               ) : learnedAliases.pairs.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-learned-full-pairs-empty">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-learned-full-pairs-empty">
                   No learned full-name pairs yet. They appear here automatically as you confirm merges.
                 </div>
               ) : (
@@ -2375,7 +2375,7 @@ export default function PlantShiftLogManpowerReview() {
                       <div
                         key={fullKey}
                         className={
-                          "rounded px-2 py-1 text-xs border " +
+                          "rounded px-2 py-1 text-sm border " +
                           (suppressed
                             ? "bg-slate-100 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700 opacity-70"
                             : "bg-white/70 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900")
@@ -2390,7 +2390,7 @@ export default function PlantShiftLogManpowerReview() {
                             confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
                           </span>
                           {suppressed && (
-                            <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            <span className="text-[12px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                               muted
                             </span>
                           )}
@@ -2416,7 +2416,7 @@ export default function PlantShiftLogManpowerReview() {
                               return (
                                 <div
                                   key={ex.batchId}
-                                  className="text-[11px] text-muted-foreground"
+                                  className="text-xs text-muted-foreground"
                                   data-testid={`learned-full-pair-example-${fullKey}-${ex.batchId}`}
                                 >
                                   e.g. <span className="font-mono">{ex.from}</span> →{" "}
@@ -2438,14 +2438,14 @@ export default function PlantShiftLogManpowerReview() {
               <div className="text-sm font-semibold mb-1.5">
                 Auto-learned token aliases ({learnedAliases?.tokenPairs.length || 0})
               </div>
-              <div className="text-[11px] text-muted-foreground mb-2">
+              <div className="text-xs text-muted-foreground mb-2">
                 Token equivalences mined from past merges. Click <span className="font-mono">Mute</span> to
                 suppress a noisy one without undoing the merge that created it.
               </div>
               {!learnedAliases ? (
-                <div className="text-xs text-muted-foreground py-2">Loading…</div>
+                <div className="text-sm text-muted-foreground py-2">Loading…</div>
               ) : learnedAliases.tokenPairs.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2" data-testid="text-learned-token-pairs-empty">
+                <div className="text-sm text-muted-foreground py-2" data-testid="text-learned-token-pairs-empty">
                   No learned token-pairs yet. They appear here automatically as you confirm merges.
                 </div>
               ) : (
@@ -2462,7 +2462,7 @@ export default function PlantShiftLogManpowerReview() {
                       <div
                         key={tokenKey}
                         className={
-                          "rounded px-2 py-1 text-xs border " +
+                          "rounded px-2 py-1 text-sm border " +
                           (suppressed
                             ? "bg-slate-100 dark:bg-slate-800/60 border-slate-300 dark:border-slate-700 opacity-70"
                             : "bg-white/70 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900")
@@ -2477,7 +2477,7 @@ export default function PlantShiftLogManpowerReview() {
                             confirmed {p.count}× by past merge{p.count === 1 ? "" : "s"}
                           </span>
                           {suppressed && (
-                            <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                            <span className="text-[12px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                               muted
                             </span>
                           )}
@@ -2503,7 +2503,7 @@ export default function PlantShiftLogManpowerReview() {
                               return (
                                 <div
                                   key={ex.batchId}
-                                  className="text-[11px] text-muted-foreground"
+                                  className="text-xs text-muted-foreground"
                                   data-testid={`learned-token-pair-example-${tokenKey}-${ex.batchId}`}
                                 >
                                   e.g. <span className="font-mono">{ex.from}</span> →{" "}
@@ -2526,7 +2526,7 @@ export default function PlantShiftLogManpowerReview() {
                 <div className="text-sm font-semibold mb-1.5">
                   Muted learned aliases ({(customAliases || []).filter(c => c.kind === "suppress_learned" || c.kind === "suppress_learned_pair").length})
                 </div>
-                <div className="text-[11px] text-muted-foreground mb-2">
+                <div className="text-xs text-muted-foreground mb-2">
                   These auto-mined patterns (token-pairs and full-name pairs) are currently
                   suppressed. Remove a row to let them trigger duplicate suggestions again.
                 </div>
@@ -2536,13 +2536,13 @@ export default function PlantShiftLogManpowerReview() {
                     return (
                       <div
                         key={c.id}
-                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1 text-xs border border-slate-300 dark:border-slate-700"
+                        className="flex flex-wrap items-center gap-2 bg-white/70 dark:bg-slate-800/40 rounded px-2 py-1 text-sm border border-slate-300 dark:border-slate-700"
                         data-testid={`suppressed-learned-${c.id}`}
                       >
                         <span className="font-mono">{c.tokenA}</span>
                         <span className="text-muted-foreground">↔</span>
                         <span className="font-mono">{c.tokenB}</span>
-                        <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                        <span className="text-[12px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                           {c.kind === "suppress_learned_pair" ? "full name" : "token"}
                         </span>
                         <span className="text-muted-foreground ml-2">
@@ -2578,7 +2578,7 @@ export default function PlantShiftLogManpowerReview() {
           <CardContent className="space-y-3">
             {dismissedPairs && dismissedPairs.length > 0 && (
               <div
-                className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2 text-xs"
+                className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2 text-sm"
                 data-testid="dismissed-pairs-panel"
               >
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2600,19 +2600,19 @@ export default function PlantShiftLogManpowerReview() {
                   <div className="mt-2 space-y-2">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <div className="space-y-1">
-                        <Label className="text-[11px]">Filter by name</Label>
+                        <Label className="text-xs">Filter by name</Label>
                         <Input
                           value={dismissedNameFilter}
                           onChange={(e) => setDismissedNameFilter(e.target.value)}
                           placeholder="e.g. RAJU"
-                          className="h-8 text-xs"
+                          className="h-8 text-sm"
                           data-testid="input-dismissed-filter-name"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px]">Dismissed by</Label>
+                        <Label className="text-xs">Dismissed by</Label>
                         <Select value={dismissedActorFilter} onValueChange={setDismissedActorFilter}>
-                          <SelectTrigger className="h-8 text-xs" data-testid="select-dismissed-actor-filter">
+                          <SelectTrigger className="h-8 text-sm" data-testid="select-dismissed-actor-filter">
                             <SelectValue placeholder="Any operator" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2624,35 +2624,35 @@ export default function PlantShiftLogManpowerReview() {
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px]">From date</Label>
+                        <Label className="text-xs">From date</Label>
                         <Input
                           type="date"
                           value={dismissedDateFrom}
                           onChange={(e) => setDismissedDateFrom(e.target.value)}
-                          className="h-8 text-xs"
+                          className="h-8 text-sm"
                           data-testid="input-dismissed-date-from"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px]">To date</Label>
+                        <Label className="text-xs">To date</Label>
                         <Input
                           type="date"
                           value={dismissedDateTo}
                           onChange={(e) => setDismissedDateTo(e.target.value)}
-                          className="h-8 text-xs"
+                          className="h-8 text-sm"
                           data-testid="input-dismissed-date-to"
                         />
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] text-muted-foreground" data-testid="text-dismissed-filtered-count">
+                      <span className="text-xs text-muted-foreground" data-testid="text-dismissed-filtered-count">
                         Showing {filteredDismissedPairs.length} of {dismissedPairs.length}
                       </span>
                       {(dismissedNameFilter || dismissedActorFilter !== "__all__" || dismissedDateFrom || dismissedDateTo) && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 px-2 text-[11px]"
+                          className="h-6 px-2 text-xs"
                           onClick={() => {
                             setDismissedNameFilter("");
                             setDismissedActorFilter("__all__");
@@ -2668,7 +2668,7 @@ export default function PlantShiftLogManpowerReview() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 px-2 text-xs"
                           disabled={filteredDismissedPairs.length === 0}
                           onClick={downloadDismissedPairsCsv}
                           data-testid="button-dismissed-download-csv"
@@ -2680,7 +2680,7 @@ export default function PlantShiftLogManpowerReview() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 px-2 text-xs"
                           disabled={filteredDismissedPairs.length === 0}
                           onClick={() => {
                             const next: Record<number, boolean> = { ...selectedDismissedIds };
@@ -2700,7 +2700,7 @@ export default function PlantShiftLogManpowerReview() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-[11px] border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                          className="h-7 px-2 text-xs border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950"
                           disabled={
                             bulkRestoring
                             || selectedDismissedCount === 0
@@ -2724,21 +2724,21 @@ export default function PlantShiftLogManpowerReview() {
                           Restore selected ({selectedDismissedCount})
                         </Button>
                         <div className="flex items-center gap-1">
-                          <Label className="text-[11px] whitespace-nowrap">Clear older than</Label>
+                          <Label className="text-xs whitespace-nowrap">Clear older than</Label>
                           <Input
                             type="number"
                             min={0}
                             step={1}
                             value={purgeOlderDays}
                             onChange={(e) => setPurgeOlderDays(e.target.value)}
-                            className="h-7 w-16 text-xs"
+                            className="h-7 w-16 text-sm"
                             data-testid="input-dismissed-purge-days"
                           />
-                          <span className="text-[11px] text-muted-foreground">days</span>
+                          <span className="text-xs text-muted-foreground">days</span>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 px-2 text-[11px] border-rose-400 text-rose-800 dark:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950"
+                            className="h-7 px-2 text-xs border-rose-400 text-rose-800 dark:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950"
                             disabled={
                               bulkRestoring
                               || actor.trim().length < 2
@@ -2763,7 +2763,7 @@ export default function PlantShiftLogManpowerReview() {
                     </div>
                     <div className="space-y-1 max-h-60 overflow-auto">
                       {filteredDismissedPairs.length === 0 ? (
-                        <div className="text-[11px] text-muted-foreground px-2 py-3 text-center" data-testid="text-dismissed-empty">
+                        <div className="text-xs text-muted-foreground px-2 py-3 text-center" data-testid="text-dismissed-empty">
                           No dismissed pairs match the current filters.
                         </div>
                       ) : filteredDismissedPairs.map(p => {
@@ -2823,7 +2823,7 @@ export default function PlantShiftLogManpowerReview() {
                   <div className="text-sm font-semibold text-purple-900 dark:text-purple-200">
                     {visibleClusters.length} suggested duplicate group{visibleClusters.length === 1 ? "" : "s"}
                   </div>
-                  <div className="text-xs text-purple-900/70 dark:text-purple-200/70">
+                  <div className="text-sm text-purple-900/70 dark:text-purple-200/70">
                     (typos, phonetic spellings, reordered tokens, short-form aliases like MD./MOHAMMED, prior-merge patterns, or shared role + contractor with overlapping name tokens)
                   </div>
                 </div>
@@ -2831,21 +2831,21 @@ export default function PlantShiftLogManpowerReview() {
                   {visibleClusters.map(c => (
                     <div
                       key={c.key}
-                      className="flex flex-wrap items-center gap-2 text-xs bg-white/60 dark:bg-purple-900/30 rounded px-2 py-1.5"
+                      className="flex flex-wrap items-center gap-2 text-sm bg-white/60 dark:bg-purple-900/30 rounded px-2 py-1.5"
                       data-testid={`suggestion-${c.canonical}`}
                     >
                       <span className="font-medium">Keep <span className="font-mono">{c.canonical}</span>, merge:</span>
                       <span className="font-mono">{c.names.filter(n => n !== c.canonical).join(", ")}</span>
                       {c.reasonChips.length > 0 && (
                         <div className="basis-full flex flex-wrap gap-1 mt-0.5" data-testid={`suggestion-reasons-${c.canonical}`}>
-                          <span className="text-[10px] uppercase tracking-wide text-purple-900/70 dark:text-purple-200/70 mr-1">Why:</span>
+                          <span className="text-[12px] uppercase tracking-wide text-purple-900/70 dark:text-purple-200/70 mr-1">Why:</span>
                           {c.reasonChips.map((chip, idx) => (
                             <span
                               key={idx}
                               className={
                                 chip.learned
-                                  ? "text-[10px] rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700 cursor-help"
-                                  : "text-[10px] rounded px-1.5 py-0.5 bg-purple-100/70 text-purple-900 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-800 cursor-help"
+                                  ? "text-[12px] rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700 cursor-help"
+                                  : "text-[12px] rounded px-1.5 py-0.5 bg-purple-100/70 text-purple-900 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-800 cursor-help"
                               }
                               title={chip.tooltip}
                               data-testid={`suggestion-reason-chip-${c.canonical}-${idx}`}
@@ -2895,12 +2895,12 @@ export default function PlantShiftLogManpowerReview() {
                     <div className="text-sm font-semibold text-blue-900 dark:text-blue-200">
                       Merge {selectedNames.length} duplicate name(s) into one
                     </div>
-                    <div className="text-xs text-blue-900/80 dark:text-blue-200/80 mt-0.5">
+                    <div className="text-sm text-blue-900/80 dark:text-blue-200/80 mt-0.5">
                       Selected: {selectedNames.join(", ")}
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Keep this spelling</Label>
+                    <Label className="text-sm">Keep this spelling</Label>
                     <Select value={mergeTarget} onValueChange={setMergeTarget}>
                       <SelectTrigger className="min-w-[180px]" data-testid="select-merge-target">
                         <SelectValue placeholder="Pick canonical name" />
@@ -2988,7 +2988,7 @@ export default function PlantShiftLogManpowerReview() {
                               if (c.canonical === r.name) {
                                 return (
                                   <div
-                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
+                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[12px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
                                     data-testid={`badge-canonical-${r.name}`}
                                     title={why || "Suggested canonical spelling"}
                                   >
@@ -2999,7 +2999,7 @@ export default function PlantShiftLogManpowerReview() {
                               return (
                                 <span className="inline-flex items-center gap-1 flex-wrap">
                                   <span
-                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
+                                    className="inline-flex items-center gap-1 ml-2 align-middle text-[12px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700"
                                     data-testid={`badge-dup-${r.name}`}
                                     title={why ? `Possible duplicate of ${c.canonical}\n${why}` : `Possible duplicate of ${c.canonical}`}
                                   >
@@ -3007,7 +3007,7 @@ export default function PlantShiftLogManpowerReview() {
                                   </span>
                                   {c.fromLearnedPattern && (
                                     <span
-                                      className="inline-flex items-center gap-1 align-middle text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700"
+                                      className="inline-flex items-center gap-1 align-middle text-[12px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700"
                                       data-testid={`badge-learned-${r.name}`}
                                       title={why || "Matched a previously-confirmed merge pattern"}
                                     >
@@ -3018,14 +3018,14 @@ export default function PlantShiftLogManpowerReview() {
                               );
                             })()}
                             {r.roles.length > 0 && (
-                              <div className="text-xs text-muted-foreground mt-0.5">role: {r.roles.join(", ")}</div>
+                              <div className="text-sm text-muted-foreground mt-0.5">role: {r.roles.join(", ")}</div>
                             )}
                           </td>
                           <td className="p-2 tabular-nums">{r.count}</td>
-                          <td className="p-2 text-xs whitespace-nowrap">
+                          <td className="p-2 text-sm whitespace-nowrap">
                             {r.earliestDate}<br />→ {r.latestDate}
                           </td>
-                          <td className="p-2 text-xs">
+                          <td className="p-2 text-sm">
                             <div className={r.needsContractor ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
                               {r.currentContractors.join(", ") || "—"}
                             </div>

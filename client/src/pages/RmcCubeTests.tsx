@@ -229,19 +229,19 @@ export default function RmcCubeTests() {
         <div className="grid grid-cols-3 gap-4">
           <Card className="bg-muted/30">
             <CardContent className="p-4 text-center">
-              <p className="text-xs text-muted-foreground">Total Tests</p>
+              <p className="text-sm text-muted-foreground">Total Tests</p>
               <p className="text-2xl font-bold">{cubeTests.length}</p>
             </CardContent>
           </Card>
           <Card className="bg-green-50 dark:bg-green-950/20 border-green-200">
             <CardContent className="p-4 text-center">
-              <p className="text-xs text-green-700 dark:text-green-400">Pass</p>
+              <p className="text-sm text-green-700 dark:text-green-400">Pass</p>
               <p className="text-2xl font-bold text-green-700 dark:text-green-300">{passCount}</p>
             </CardContent>
           </Card>
           <Card className="bg-red-50 dark:bg-red-950/20 border-red-200">
             <CardContent className="p-4 text-center">
-              <p className="text-xs text-red-700 dark:text-red-400">Fail</p>
+              <p className="text-sm text-red-700 dark:text-red-400">Fail</p>
               <p className="text-2xl font-bold text-red-700 dark:text-red-300">{failCount}</p>
             </CardContent>
           </Card>
@@ -270,7 +270,7 @@ export default function RmcCubeTests() {
               <CardTitle className="text-base">Strength Trend</CardTitle>
               <div className="flex items-center gap-2">
                 <Select value={chartGrade} onValueChange={setChartGrade}>
-                  <SelectTrigger className="w-32 h-8 text-xs" data-testid="select-chart-grade">
+                  <SelectTrigger className="w-32 h-8 text-sm" data-testid="select-chart-grade">
                     <SelectValue placeholder="All grades" />
                   </SelectTrigger>
                   <SelectContent>
@@ -279,7 +279,7 @@ export default function RmcCubeTests() {
                   </SelectContent>
                 </Select>
                 <Select value={chartAge} onValueChange={setChartAge}>
-                  <SelectTrigger className="w-28 h-8 text-xs" data-testid="select-chart-age">
+                  <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-chart-age">
                     <SelectValue placeholder="Age" />
                   </SelectTrigger>
                   <SelectContent>
@@ -367,7 +367,7 @@ export default function RmcCubeTests() {
                     <Badge variant="outline">{t.ageDays}-day</Badge>
                     <span className="font-bold text-lg">{t.strengthMpa} MPa</span>
                     {t.targetStrength && (
-                      <span className="text-xs text-muted-foreground">/ {t.targetStrength} MPa target</span>
+                      <span className="text-sm text-muted-foreground">/ {t.targetStrength} MPa target</span>
                     )}
                     {t.passFail === "pass" && (
                       <span className="flex items-center gap-1 text-green-600 dark:text-green-400 text-sm">
@@ -384,7 +384,7 @@ export default function RmcCubeTests() {
                     <span>Tested: {t.testDate}</span>
                     <span>Batch: {getBatchLabel(t.batchRecordId)}</span>
                   </div>
-                  {t.remarks && <p className="text-xs text-muted-foreground mt-1">{t.remarks}</p>}
+                  {t.remarks && <p className="text-sm text-muted-foreground mt-1">{t.remarks}</p>}
                 </div>
                 <div className="flex gap-2">
                   {canEdit && (

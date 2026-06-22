@@ -458,7 +458,7 @@ export default function PlantLdoDipBackfill() {
             <ChevronLeft className="w-4 h-4 mr-1" /> Back to Plant
           </Button>
         </Link>
-        <div className="text-xs text-muted-foreground flex items-center gap-2">
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
           <Badge variant="outline">Admin only</Badge>
           <span>Logged in as <span className="font-medium">{user?.fullName}</span></span>
         </div>
@@ -477,15 +477,15 @@ export default function PlantLdoDipBackfill() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
-              <Label className="text-xs">From</Label>
+              <Label className="text-sm">From</Label>
               <Input type="date" value={from} onChange={e => setFrom(e.target.value)} data-testid="input-backfill-from" />
             </div>
             <div>
-              <Label className="text-xs">To</Label>
+              <Label className="text-sm">To</Label>
               <Input type="date" value={to} onChange={e => setTo(e.target.value)} data-testid="input-backfill-to" />
             </div>
             <div>
-              <Label className="text-xs">Plant</Label>
+              <Label className="text-sm">Plant</Label>
               <Select value={plant} onValueChange={setPlant}>
                 <SelectTrigger data-testid="select-backfill-plant">
                   <SelectValue />
@@ -531,7 +531,7 @@ export default function PlantLdoDipBackfill() {
 
           {csvOpen && (
             <div className="border rounded-lg p-3 space-y-2 bg-muted/40">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Paste CSV with columns: <code>date,plant,tank,opening_cm,closing_cm,remarks</code> (one row per tank per day). A
                 header line is optional. Dates outside the current range are ignored.
               </p>
@@ -589,7 +589,7 @@ export default function PlantLdoDipBackfill() {
                   <Filter className="w-3.5 h-3.5" />
                   <span>Show gaps only</span>
                   {showGapsOnly && filteredGrid.length !== grid.length && (
-                    <Badge variant="secondary" className="text-[10px] py-0" data-testid="badge-gaps-count">
+                    <Badge variant="secondary" className="text-[12px] py-0" data-testid="badge-gaps-count">
                       {filteredGrid.length} / {grid.length}
                     </Badge>
                   )}
@@ -599,12 +599,12 @@ export default function PlantLdoDipBackfill() {
               <TooltipProvider>
               <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide">
+                <thead className="bg-muted/60 text-sm uppercase tracking-wide">
                   <tr>
                     <th className="text-left p-2 sticky left-0 bg-muted/60">Date</th>
-                    <th className="text-left p-2">T1 Open (cm)<br /><span className="text-[10px] normal-case text-muted-foreground">{TANK_LABELS[1]}</span></th>
+                    <th className="text-left p-2">T1 Open (cm)<br /><span className="text-[12px] normal-case text-muted-foreground">{TANK_LABELS[1]}</span></th>
                     <th className="text-left p-2">T1 Close (cm)</th>
-                    <th className="text-left p-2">T2 Open (cm)<br /><span className="text-[10px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
+                    <th className="text-left p-2">T2 Open (cm)<br /><span className="text-[12px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
                     <th className="text-left p-2">T2 Close (cm)</th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
@@ -630,11 +630,11 @@ export default function PlantLdoDipBackfill() {
                         className={`border-t ${allEmpty ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}
                         data-testid={`row-date-${row.date}`}
                       >
-                        <td className="p-2 font-mono text-xs sticky left-0 bg-background">
+                        <td className="p-2 font-mono text-sm sticky left-0 bg-background">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{row.date}</span>
                             {allEmpty && (
-                              <Badge className="text-[10px] py-0 bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 border-amber-300 dark:border-amber-700" variant="outline" data-testid={`badge-missing-${row.date}`}>
+                              <Badge className="text-[12px] py-0 bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 border-amber-300 dark:border-amber-700" variant="outline" data-testid={`badge-missing-${row.date}`}>
                                 Missing
                               </Badge>
                             )}
@@ -653,11 +653,11 @@ export default function PlantLdoDipBackfill() {
                                 className={`h-8 ${issue ? "border-red-500" : ""}`}
                                 data-testid={`input-${tankKey}-${kind}-${row.date}`}
                               />
-                              <div className="text-[10px] text-muted-foreground mt-1" data-testid={`text-${tankKey}-${kind}-volume-${row.date}`}>
+                              <div className="text-[12px] text-muted-foreground mt-1" data-testid={`text-${tankKey}-${kind}-volume-${row.date}`}>
                                 {formatVolume(tankNum, numeric)}
                               </div>
                               {cell.source !== "empty" && (
-                                <Badge variant="secondary" className={`mt-1 text-[10px] py-0 ${SOURCE_BADGE[cell.source].className}`}>
+                                <Badge variant="secondary" className={`mt-1 text-[12px] py-0 ${SOURCE_BADGE[cell.source].className}`}>
                                   {SOURCE_BADGE[cell.source].label}
                                 </Badge>
                               )}
@@ -673,7 +673,7 @@ export default function PlantLdoDipBackfill() {
                             data-testid={`input-remarks-${row.date}`}
                           />
                         </td>
-                        <td className="p-2 text-xs space-y-0.5">
+                        <td className="p-2 text-sm space-y-0.5">
                           {rowIssues.map((iss, k) => (
                             <div
                               key={k}
@@ -690,7 +690,7 @@ export default function PlantLdoDipBackfill() {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-sm"
                                 onClick={() => handleDeleteRow(gridIdx)}
                                 disabled={saveMutation.isPending}
                                 data-testid={`button-confirm-delete-${row.date}`}
@@ -700,7 +700,7 @@ export default function PlantLdoDipBackfill() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-sm"
                                 onClick={() => setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; })}
                                 data-testid={`button-cancel-delete-${row.date}`}
                               >
@@ -732,7 +732,7 @@ export default function PlantLdoDipBackfill() {
                                   </Button>
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent side="left" className="max-w-[200px] text-xs">
+                              <TooltipContent side="left" className="max-w-[200px] text-sm">
                                 No readings on this date to delete
                               </TooltipContent>
                             </Tooltip>

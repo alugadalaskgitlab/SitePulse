@@ -242,7 +242,7 @@ function UserRow({
   return (
     <tr className="border-b last:border-0" data-testid={`row-user-${user.id}`}>
       <td className="py-2 pr-4 font-medium">{user.fullName}</td>
-      <td className="py-2 pr-4 text-muted-foreground text-xs">
+      <td className="py-2 pr-4 text-muted-foreground text-sm">
         {user.email ?? <span className="italic">{user.phone ?? "—"}</span>}
       </td>
       <td className="py-2 pr-4">
@@ -253,7 +253,7 @@ function UserRow({
             <Badge variant="secondary">User</Badge>
           )}
           {user.canManagePermissions && !user.isAdmin && (
-            <Badge variant="outline" className="text-xs gap-1">
+            <Badge variant="outline" className="text-sm gap-1">
               <ShieldHalf className="h-3 w-3" />
               PM {user.permissionManagerScope === "full" ? "(full)" : "(partial)"}
             </Badge>
@@ -287,7 +287,7 @@ function UserRow({
             onCheckedChange={(v) => patch.mutate({ notificationsEnabled: v })}
             data-testid={`switch-notif-${user.id}`}
           />
-          <span className="text-xs text-muted-foreground" data-testid={`badge-devices-${user.id}`}>
+          <span className="text-sm text-muted-foreground" data-testid={`badge-devices-${user.id}`}>
             {deviceCount > 0 ? `${deviceCount}d` : "0d"}
           </span>
         </div>
@@ -369,7 +369,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
           <div>
             <Label>Password</Label>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="input-new-password" />
-            <p className="text-xs text-muted-foreground mt-1">Minimum 8 characters.</p>
+            <p className="text-sm text-muted-foreground mt-1">Minimum 8 characters.</p>
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="isAdmin">Admin</Label>
@@ -476,7 +476,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
           <div>
             <Label>Phone</Label>
             <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" data-testid="input-edit-phone" />
-            <p className="text-xs text-muted-foreground mt-1">At least one of email or phone is required for sign-in.</p>
+            <p className="text-sm text-muted-foreground mt-1">At least one of email or phone is required for sign-in.</p>
           </div>
           {isAdmin && (
             <div className="flex items-center justify-between">
@@ -503,7 +503,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="edit-can-mgmt-perms" className="text-sm font-medium">Permission Manager</Label>
-                  <p className="text-xs text-muted-foreground">Can edit other users' permissions without being admin</p>
+                  <p className="text-sm text-muted-foreground">Can edit other users' permissions without being admin</p>
                 </div>
                 <Switch
                   id="edit-can-mgmt-perms"
@@ -514,7 +514,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
               </div>
               {canMgmtPerms && (
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">Scope</Label>
+                  <Label className="text-sm text-muted-foreground mb-1 block">Scope</Label>
                   <Select value={permScope} onValueChange={(v) => setPermScope(v as "full" | "partial")}>
                     <SelectTrigger className="h-8" data-testid="select-edit-perm-scope"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -653,7 +653,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   function PermMatrix({ sections }: { sections: SectionKey[] }) {
     return (
       <div className="overflow-x-auto border rounded">
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead className="bg-muted sticky top-0 z-10">
             <tr>
               <th className="text-left px-3 py-2 min-w-[180px] font-medium">Section</th>
@@ -683,7 +683,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
               const allChecked = allGrantable.length > 0 && allGrantable.every((a) => row[a]);
               return (
                 <tr key={s} className="border-t hover:bg-muted/30" data-testid={`row-perm-${s}`}>
-                  <td className="px-3 py-1.5 font-medium text-xs leading-tight">{SECTION_LABELS[s]}</td>
+                  <td className="px-3 py-1.5 font-medium text-sm leading-tight">{SECTION_LABELS[s]}</td>
                   {ACTIONS.map((a) => {
                     const grantable = canGrantAction(s, a);
                     return (
@@ -734,7 +734,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           <DialogTitle>
             Permissions — {target?.fullName ?? "User"}
             {isPartialManager && (
-              <span className="text-xs font-normal text-muted-foreground ml-2">(Partial manager — can only grant permissions you have)</span>
+              <span className="text-sm font-normal text-muted-foreground ml-2">(Partial manager — can only grant permissions you have)</span>
             )}
           </DialogTitle>
         </DialogHeader>
@@ -791,9 +791,9 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                   <AccordionTrigger className="py-2 px-1 hover:no-underline">
                     <div className="flex items-center gap-3 flex-1 mr-3">
                       <span className="text-sm font-semibold">{group.label}</span>
-                      <span className="text-xs text-muted-foreground">({group.sections.length} sections)</span>
+                      <span className="text-sm text-muted-foreground">({group.sections.length} sections)</span>
                       <label
-                        className="flex items-center gap-1.5 ml-auto cursor-pointer normal-case font-normal text-xs tracking-normal"
+                        className="flex items-center gap-1.5 ml-auto cursor-pointer normal-case font-normal text-sm tracking-normal"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Checkbox
@@ -809,7 +809,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                     {group.sections.length > 0 ? (
                       <PermMatrix sections={group.sections} />
                     ) : (
-                      <p className="text-xs text-muted-foreground px-2 py-2 italic">No sections in this group.</p>
+                      <p className="text-sm text-muted-foreground px-2 py-2 italic">No sections in this group.</p>
                     )}
                   </AccordionContent>
                 </AccordionItem>
@@ -880,7 +880,7 @@ function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }
   return (
     <div className="space-y-4">
       {isAdmin && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           This user is an Admin — they always see all sites regardless of site access settings.
         </div>
       )}
@@ -897,7 +897,7 @@ function SiteAccessTab({ userId, isAdmin }: { userId: number; isAdmin: boolean }
       </div>
       {!allSites && (
         <div className="border rounded overflow-hidden">
-          <div className="bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <div className="bg-muted px-3 py-1.5 text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
             <MapPin className="h-3 w-3" /> Permitted sites
           </div>
           <div className="max-h-56 overflow-y-auto divide-y">
@@ -956,7 +956,7 @@ function PasswordResetDialog({ userId, users, onClose }: { userId: number; users
         <div className="space-y-3">
           <Label>New password</Label>
           <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} data-testid="input-reset-pw" />
-          <p className="text-xs text-muted-foreground">Minimum 8 characters. Share with the user; they cannot change it themselves.</p>
+          <p className="text-sm text-muted-foreground">Minimum 8 characters. Share with the user; they cannot change it themselves.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

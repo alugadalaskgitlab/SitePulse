@@ -1152,7 +1152,7 @@ export default function PlantLdoFlowMeter() {
           Boiler Meter (heats bitumen) and Dryer Meter (heats aggregates) — both meters draw from the main LDO tank.
         </div>
         <Link href={appendOrigin(`/plant/ldo-reconciliation?role=${pageRole}&plant=${encodeURIComponent(urlPlant)}`)}>
-          <Button variant="outline" size="sm" data-testid="link-ldo-reconciliation" className="text-xs gap-1">
+          <Button variant="outline" size="sm" data-testid="link-ldo-reconciliation" className="text-sm gap-1">
             <BarChart3 className="h-3.5 w-3.5" />
             Book vs Physical
           </Button>
@@ -1576,7 +1576,7 @@ export default function PlantLdoFlowMeter() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Daily LDO Consumption — Flow Meter</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">Shows actual LDO consumed per day per meter (opening → closing delta). Dryer meter is active; Boiler meter readings available when restored.</p>
+            <p className="text-sm text-muted-foreground mt-1">Shows actual LDO consumed per day per meter (opening → closing delta). Dryer meter is active; Boiler meter readings available when restored.</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -1644,11 +1644,11 @@ export default function PlantLdoFlowMeter() {
             {/* Summary grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className="text-muted-foreground text-sm mb-1">Total Book Stock (All Parties)</div>
                 <div className={`font-bold text-lg ${ldoBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
                   {ldoBookStockL.toFixed(0)} L
                 </div>
-                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                   {ldoPartyBalances.map(b => (
                     <div key={b.id} className="flex justify-between gap-2">
                       <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
@@ -1658,30 +1658,30 @@ export default function PlantLdoFlowMeter() {
                 </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Physical Stock (Dip)</div>
+                <div className="text-muted-foreground text-sm mb-1">Physical Stock (Dip)</div>
                 <div className="font-bold text-lg text-amber-700 dark:text-amber-400">
                   {latestDipTank1 || latestDipTank2
                     ? `${((latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0)).toFixed(0)} L`
                     : "No dip readings"}
                 </div>
-                <div className="text-xs text-muted-foreground">Boiler: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
-                <div className="text-xs text-muted-foreground">Dryer: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
+                <div className="text-sm text-muted-foreground">Boiler: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</div>
+                <div className="text-sm text-muted-foreground">Dryer: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
-                <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
+                <div className="text-muted-foreground text-sm mb-1">Difference (Physical − Book)</div>
                 {(latestDipTank1 || latestDipTank2) ? (() => {
                   const physL = (latestDipTank1?.volumeLiters || 0) + (latestDipTank2?.volumeLiters || 0);
                   const diff = physL - ldoBookStockL;
                   return (
                     <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
                       {diff > 0 ? "+" : ""}{diff.toFixed(0)} L
-                      <span className="text-xs font-normal ml-2 text-muted-foreground">
+                      <span className="text-sm font-normal ml-2 text-muted-foreground">
                         {diff > 0 ? "Surplus" : diff < 0 ? "Deficit — check receipts/consumption" : "Balanced"}
                       </span>
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-xs text-muted-foreground mt-1">Post a correction to align a party's book stock with physical measurement</div>
+                <div className="text-sm text-muted-foreground mt-1">Post a correction to align a party's book stock with physical measurement</div>
               </div>
             </div>
 
@@ -1692,7 +1692,7 @@ export default function PlantLdoFlowMeter() {
                 {/* Party + date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Party to Correct</Label>
+                    <Label className="text-sm">Party to Correct</Label>
                     <Select value={ldoCorrPartyId} onValueChange={id => setLdoCorrPartyId(id)}>
                       <SelectTrigger data-testid="select-ldo-corr-party">
                         <SelectValue placeholder="Select party" />
@@ -1708,23 +1708,23 @@ export default function PlantLdoFlowMeter() {
                       </SelectContent>
                     </Select>
                     {ldoCorrPartyId && ldoSelectedPartyBalanceL !== null && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         Current book stock: <span className={ldoSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{ldoSelectedPartyBalanceL.toFixed(0)} L</span>
                       </p>
                     )}
                   </div>
                   <div>
-                    <Label className="text-xs">As on Date</Label>
+                    <Label className="text-sm">As on Date</Label>
                     <Input type="date" value={ldoCorrDate} onChange={e => setLdoCorrDate(e.target.value)} data-testid="input-ldo-corr-date" />
                   </div>
                 </div>
 
                 {/* Per-tank inputs */}
                 <div>
-                  <Label className="text-xs mb-2 block">Physical Stock from Dip Readings (Liters)</Label>
+                  <Label className="text-sm mb-2 block">Physical Stock from Dip Readings (Liters)</Label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Boiler Meter</Label>
+                      <Label className="text-sm text-muted-foreground">Boiler Meter</Label>
                       <Input
                         type="number" step="1" min="0"
                         value={ldoCorrTank1L}
@@ -1732,10 +1732,10 @@ export default function PlantLdoFlowMeter() {
                         placeholder={String(Math.round(latestDipTank1?.volumeLiters || 0))}
                         data-testid="input-ldo-corr-tank1-l"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Dip: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</p>
+                      <p className="text-sm text-muted-foreground mt-1">Dip: {(latestDipTank1?.volumeLiters || 0).toFixed(0)} L</p>
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Dryer Meter</Label>
+                      <Label className="text-sm text-muted-foreground">Dryer Meter</Label>
                       <Input
                         type="number" step="1" min="0"
                         value={ldoCorrTank2L}
@@ -1743,10 +1743,10 @@ export default function PlantLdoFlowMeter() {
                         placeholder={String(Math.round(latestDipTank2?.volumeLiters || 0))}
                         data-testid="input-ldo-corr-tank2-l"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Dip: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</p>
+                      <p className="text-sm text-muted-foreground mt-1">Dip: {(latestDipTank2?.volumeLiters || 0).toFixed(0)} L</p>
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className="text-xs text-muted-foreground">Total Physical</div>
+                      <div className="text-sm text-muted-foreground">Total Physical</div>
                       <div className="font-bold text-base">
                         {ldoCorrTank1L || ldoCorrTank2L
                           ? ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)).toFixed(0)
@@ -1759,7 +1759,7 @@ export default function PlantLdoFlowMeter() {
                           ? "bg-green-50 dark:bg-green-900/20"
                           : "bg-red-50 dark:bg-red-900/20"
                       }`}>
-                        <div className="text-xs text-muted-foreground">Adjustment</div>
+                        <div className="text-sm text-muted-foreground">Adjustment</div>
                         <div className={`font-bold text-base ${
                           ((parseFloat(ldoCorrTank1L) || 0) + (parseFloat(ldoCorrTank2L) || 0)) - ldoSelectedPartyBalanceL > 0
                             ? "text-green-700 dark:text-green-400"
@@ -1777,7 +1777,7 @@ export default function PlantLdoFlowMeter() {
                 </div>
 
                 <div>
-                  <Label className="text-xs">Notes (optional)</Label>
+                  <Label className="text-sm">Notes (optional)</Label>
                   <Input value={ldoCorrNotes} onChange={e => setLdoCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — Boiler: 1500L, Dryer: 1000L" data-testid="input-ldo-corr-notes" />
                 </div>
 
@@ -1821,19 +1821,19 @@ export default function PlantLdoFlowMeter() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-sm font-medium">LDO Consumption Variance Analysis</CardTitle>
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1.5 text-sm">
                 <span className="text-muted-foreground">Actual source:</span>
                 <button
                   data-testid="button-ldo-official-dip"
                   onClick={() => setOfficialMethod("dip")}
-                  className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${officialMethod === "dip" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                  className={`px-2 py-0.5 rounded border text-sm font-medium transition-colors ${officialMethod === "dip" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
                 >
                   Dip Reading
                 </button>
                 <button
                   data-testid="button-ldo-official-flowmeter"
                   onClick={() => setOfficialMethod("flowmeter")}
-                  className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${officialMethod === "flowmeter" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                  className={`px-2 py-0.5 rounded border text-sm font-medium transition-colors ${officialMethod === "flowmeter" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
                 >
                   Flow Meter
                 </button>
@@ -1871,7 +1871,7 @@ export default function PlantLdoFlowMeter() {
                       <td className="p-2 text-right font-bold">{row.actualTotal.toFixed(1)}</td>
                       <td className={`p-2 text-right font-semibold ${lPerTon && normPerTon ? (lPerTon > normPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
                         {lPerTon !== null ? lPerTon.toFixed(2) : "-"}
-                        {normPerTon !== null && <span className="text-xs text-muted-foreground ml-0.5">/{normPerTon.toFixed(1)}</span>}
+                        {normPerTon !== null && <span className="text-sm text-muted-foreground ml-0.5">/{normPerTon.toFixed(1)}</span>}
                       </td>
                       <td className={`p-2 text-right font-bold ${row.variance < 0 ? "text-green-600 dark:text-green-400" : row.variance > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                         {row.variance.toFixed(1)}
@@ -1908,7 +1908,7 @@ export default function PlantLdoFlowMeter() {
                         <td className="p-2 text-right">{totActual.toFixed(1)}</td>
                         <td className={`p-2 text-right ${totLPerTon && totNormPerTon ? (totLPerTon > totNormPerTon ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : ""}`}>
                           {totLPerTon !== null ? totLPerTon.toFixed(2) : "-"}
-                          {totNormPerTon !== null && <span className="text-xs text-muted-foreground ml-0.5">/{totNormPerTon.toFixed(1)}</span>}
+                          {totNormPerTon !== null && <span className="text-sm text-muted-foreground ml-0.5">/{totNormPerTon.toFixed(1)}</span>}
                         </td>
                         <td className={`p-2 text-right ${totVar < 0 ? "text-green-600 dark:text-green-400" : totVar > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                           {totVar.toFixed(1)}
@@ -1989,7 +1989,7 @@ export default function PlantLdoFlowMeter() {
                           style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
                         />
                         <h3 className="font-semibold">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
-                        <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                        <Badge variant="secondary" className="text-sm no-default-hover-elevate no-default-active-elevate">
                           {dateReadings.length} reading{dateReadings.length !== 1 ? "s" : ""}
                         </Badge>
                       </button>
@@ -2229,7 +2229,7 @@ export default function PlantLdoFlowMeter() {
                         {r.tankNumber === 2 && r.dryerFedFrom === "TANK_1" && (
                           <Badge
                             variant="outline"
-                            className="text-xs border-amber-500 text-amber-700 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate"
+                            className="text-sm border-amber-500 text-amber-700 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate"
                             title="Dryer is fed from Boiler tank stock"
                             data-testid={`badge-dryer-src-${r.id}`}
                           >
@@ -2365,7 +2365,7 @@ export default function PlantLdoFlowMeter() {
                   </SelectContent>
                 </Select>
                 {dryerFedFrom === "TANK_1" && (
-                  <p className="text-xs text-amber-600 mt-1">Consumption will be debited from Boiler tank stock.</p>
+                  <p className="text-sm text-amber-600 mt-1">Consumption will be debited from Boiler tank stock.</p>
                 )}
               </div>
             )}

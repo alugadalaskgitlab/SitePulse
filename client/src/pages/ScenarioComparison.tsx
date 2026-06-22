@@ -145,8 +145,8 @@ export default function ScenarioComparison() {
     return "";
   }
 
-  const thCls = "px-3 py-2 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
-  const th1Cls = "px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const thCls = "px-3 py-2 text-right text-sm font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const th1Cls = "px-3 py-2 text-left text-sm font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
   const tdR = "px-3 py-2 text-right text-sm tabular-nums";
   const tdL = "px-3 py-2 text-left text-sm font-medium";
 
@@ -209,9 +209,9 @@ export default function ScenarioComparison() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{sc.name}</p>
-                        <p className="text-xs text-muted-foreground">{fmtDateTime(sc.updatedAt || sc.createdAt)}</p>
+                        <p className="text-sm text-muted-foreground">{fmtDateTime(sc.updatedAt || sc.createdAt)}</p>
                       </div>
-                      {!hasState && <Badge variant="outline" className="text-xs shrink-0">Legacy</Badge>}
+                      {!hasState && <Badge variant="outline" className="text-sm shrink-0">Legacy</Badge>}
                     </label>
                   );
                 })}
@@ -442,7 +442,7 @@ export default function ScenarioComparison() {
                         <td key={e.scenario.id} className={`${tdR} font-semibold ${cls}`}>
                           ₹{fmtI(sCost)}
                           {Math.abs(delta) >= 1 && (
-                            <span className="block text-xs mt-0.5">
+                            <span className="block text-sm mt-0.5">
                               ({delta > 0 ? "+" : ""}₹{fmtI(delta)})
                             </span>
                           )}
@@ -465,7 +465,7 @@ export default function ScenarioComparison() {
                           <td key={e.scenario.id} className={`${tdR} ${cls}`}>
                             ₹{fmtR(scAvg)}
                             {Math.abs(delta) >= 0.01 && (
-                              <span className="block text-xs mt-0.5">
+                              <span className="block text-sm mt-0.5">
                                 ({delta > 0 ? "+" : ""}₹{fmtR(delta)})
                               </span>
                             )}
@@ -491,7 +491,7 @@ export default function ScenarioComparison() {
                               : `-₹${fmtI(Math.abs(saving))}`
                           }
                           {bCost > 0 && Math.abs(saving) >= 1 && (
-                            <span className="block text-xs mt-0.5">
+                            <span className="block text-sm mt-0.5">
                               ({(saving / bCost * 100).toFixed(1)}%)
                             </span>
                           )}
@@ -510,7 +510,7 @@ export default function ScenarioComparison() {
               <CardContent className="py-4 overflow-x-auto">
                 <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide">Profitability Comparison</h3>
                 {baseProfitCosts.grandInScopeCost !== baseProfitCosts.grandFullCost && (
-                  <p className="text-xs text-muted-foreground mb-2">Costs reflect Scope Quotation selections from the calculator.</p>
+                  <p className="text-sm text-muted-foreground mb-2">Costs reflect Scope Quotation selections from the calculator.</p>
                 )}
                 <table className="w-full border-collapse text-sm" data-testid="table-profitability">
                   <thead>
@@ -606,7 +606,7 @@ export default function ScenarioComparison() {
                               <>
                                 <span className={bGrandProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(bGrandProfit)}</span>
                                 {bMargin != null && (
-                                  <span className="block text-xs font-normal mt-0.5">
+                                  <span className="block text-sm font-normal mt-0.5">
                                     ({bMargin.toFixed(1)}% margin)
                                   </span>
                                 )}
@@ -630,7 +630,7 @@ export default function ScenarioComparison() {
                                     <>
                                       <span className={sProfit >= 0 ? "text-green-600" : "text-red-600"}>₹{fmtI(sProfit)}</span>
                                       {sMargin != null && (
-                                        <span className="block text-xs font-normal mt-0.5">
+                                        <span className="block text-sm font-normal mt-0.5">
                                           ({sMargin.toFixed(1)}% margin)
                                         </span>
                                       )}

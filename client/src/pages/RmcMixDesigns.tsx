@@ -181,7 +181,7 @@ export default function RmcMixDesigns() {
                       {d.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">{d.plantName}</p>
+                  <p className="text-sm text-muted-foreground">{d.plantName}</p>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {d.targetStrength && (
@@ -211,7 +211,7 @@ export default function RmcMixDesigns() {
                   {(cp.cement || cp.fineAgg || cp.coarseAgg10 || cp.coarseAgg20) && (() => {
                     const total = (Number(cp.cement) || 0) + (Number(cp.fineAgg) || 0) + (Number(cp.coarseAgg10) || 0) + (Number(cp.coarseAgg20) || 0);
                     return (
-                      <div className="mt-2 pt-2 border-t text-xs space-y-1">
+                      <div className="mt-2 pt-2 border-t text-sm space-y-1">
                         <p className="text-muted-foreground font-medium mb-1">Proportions (kg/m³)</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                           {cp.cement && <div>Cement: {cp.cement}</div>}
@@ -231,7 +231,7 @@ export default function RmcMixDesigns() {
                       </div>
                     );
                   })()}
-                  {d.notes && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">{d.notes}</p>}
+                  {d.notes && <p className="text-sm text-muted-foreground mt-2 border-t pt-2">{d.notes}</p>}
                   <div className="flex gap-2 pt-2">
                     {canEdit && (
                       <Button variant="outline" size="sm" onClick={() => openEdit(d)} data-testid={`btn-edit-mix-${d.id}`}>
@@ -307,19 +307,19 @@ export default function RmcMixDesigns() {
               <Label className="text-sm font-semibold">Component Proportions (kg/m³)</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Cement</Label>
+                  <Label className="text-sm">Cement</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.cement} onChange={e => setCP("cement", e.target.value)} data-testid="input-cp-cement" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Fine Aggregate</Label>
+                  <Label className="text-sm">Fine Aggregate</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.fineAgg} onChange={e => setCP("fineAgg", e.target.value)} data-testid="input-cp-fine-agg" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Coarse Agg 10mm</Label>
+                  <Label className="text-sm">Coarse Agg 10mm</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.coarseAgg10} onChange={e => setCP("coarseAgg10", e.target.value)} data-testid="input-cp-ca10" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Coarse Agg 20mm</Label>
+                  <Label className="text-sm">Coarse Agg 20mm</Label>
                   <Input type="number" step="0.1" value={form.componentProportions.coarseAgg20} onChange={e => setCP("coarseAgg20", e.target.value)} data-testid="input-cp-ca20" />
                 </div>
               </div>

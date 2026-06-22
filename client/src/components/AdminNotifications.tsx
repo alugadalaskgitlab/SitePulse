@@ -120,7 +120,7 @@ export function AdminNotifications() {
           {unreadCount > 0 && (
             <Badge 
               variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-sm"
             >
               {unreadCount > 9 ? "9+" : unreadCount}
             </Badge>
@@ -135,7 +135,7 @@ export function AdminNotifications() {
               variant="ghost" 
               size="sm" 
               onClick={() => markAllReadMutation.mutate()}
-              className="text-xs gap-1"
+              className="text-sm gap-1"
               data-testid="button-mark-all-read"
             >
               <CheckCheck className="w-3 h-3" />
@@ -161,8 +161,8 @@ export function AdminNotifications() {
                     {getIcon(notification.type)}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{notification.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
                         {format(new Date(notification.createdAt), "MMM d, h:mm a")}
                       </p>
                     </div>

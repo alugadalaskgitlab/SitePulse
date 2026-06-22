@@ -66,7 +66,7 @@ import { useState } from "react";
                 );
               })}
             </ul>
-            <div className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+            <div className="mt-1 text-sm text-amber-700/80 dark:text-amber-300/80">
               Book balance is based on theoretical dispatch consumption. Opening stock may not have been entered yet — update it in Material Masters to resolve.
             </div>
           </div>
@@ -107,7 +107,7 @@ import { useState } from "react";
                 );
               })}
             </ul>
-            <div className="mt-1 text-xs text-red-700/80 dark:text-red-300/80">
+            <div className="mt-1 text-sm text-red-700/80 dark:text-red-300/80">
               Likely a missing receipt or a dispatch routed to the wrong owner. Check recent receipts, or
               use the admin Stock Reassignment tool to move past entries between parties.
             </div>

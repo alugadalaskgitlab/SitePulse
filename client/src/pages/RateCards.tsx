@@ -385,7 +385,7 @@ export default function RateCards() {
       </td>
       <td className="px-3 py-2">
         <Select value={getEffectiveUnit(item)} onValueChange={(v) => handleUnitChange(item, v)}>
-          <SelectTrigger className="h-8 w-24 text-xs" data-testid={`select-unit-${idx}`}>
+          <SelectTrigger className="h-8 w-24 text-sm" data-testid={`select-unit-${idx}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -416,11 +416,11 @@ export default function RateCards() {
       <td className="px-3 py-2">
         <div className="font-medium text-sm flex items-center gap-2">
           {row.itemLabel}
-          <Badge variant="outline" className="text-[9px] bg-green-100 text-green-700 border-green-300 no-default-hover-elevate no-default-active-elevate">NEW</Badge>
+          <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300 no-default-hover-elevate no-default-active-elevate">NEW</Badge>
         </div>
       </td>
       <td className="px-3 py-2">
-        <span className="text-xs font-mono px-2 py-1 bg-muted rounded">{row.unit}</span>
+        <span className="text-sm font-mono px-2 py-1 bg-muted rounded">{row.unit}</span>
       </td>
       <td className="px-3 py-2">
         <Input
@@ -448,10 +448,10 @@ export default function RateCards() {
       data-testid={`section-header-${category}`}
     >
       <div className="flex items-center gap-2">
-        <Badge variant="outline" className={`text-[10px] ${badgeClass} no-default-hover-elevate no-default-active-elevate`}>
+        <Badge variant="outline" className={`text-[12px] ${badgeClass} no-default-hover-elevate no-default-active-elevate`}>
           {title}
         </Badge>
-        <span className="text-xs text-muted-foreground">{count} item(s)</span>
+        <span className="text-sm text-muted-foreground">{count} item(s)</span>
       </div>
       {collapsedSections[category] ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
     </div>
@@ -471,7 +471,7 @@ export default function RateCards() {
       <Card>
         <CardContent className="pt-4 space-y-3">
           <div>
-            <Label className="text-xs uppercase font-semibold">Select Vendor</Label>
+            <Label className="text-sm uppercase font-semibold">Select Vendor</Label>
             <Select value={selectedVendor} onValueChange={(v) => { setSelectedVendor(v); setRates({}); setUnitOverrides({}); setSearchFilter(""); setManualRows([]); }}>
               <SelectTrigger data-testid="select-vendor">
                 <SelectValue placeholder="Choose a vendor..." />
@@ -500,7 +500,7 @@ export default function RateCards() {
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold">{discoveredItems.length + manualRows.length} ITEMS</span>
-                  <Badge variant="outline" className="text-[10px] bg-green-600 text-white border-green-700 no-default-hover-elevate no-default-active-elevate">
+                  <Badge variant="outline" className="text-[12px] bg-green-600 text-white border-green-700 no-default-hover-elevate no-default-active-elevate">
                     {filledCount} RATES SET
                   </Badge>
                 </div>
@@ -527,9 +527,9 @@ export default function RateCards() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/30">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs">MACHINE TYPE — BILLING MODE</th>
-                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
-                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm">MACHINE TYPE — BILLING MODE</th>
+                        <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -548,9 +548,9 @@ export default function RateCards() {
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Machine Type</Label>
+                          <Label className="text-[12px] uppercase">Machine Type</Label>
                           <Select value={addEqType} onValueChange={setAddEqType}>
-                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-eq-type">
+                            <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-eq-type">
                               <SelectValue placeholder="Select type..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -561,9 +561,9 @@ export default function RateCards() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Billing Mode</Label>
+                          <Label className="text-[12px] uppercase">Billing Mode</Label>
                           <Select value={addEqMode} onValueChange={setAddEqMode}>
-                            <SelectTrigger className="w-40 h-8 text-xs" data-testid="select-add-eq-mode">
+                            <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-eq-mode">
                               <SelectValue placeholder="Select mode..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -592,9 +592,9 @@ export default function RateCards() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/30">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs">MATERIAL NAME</th>
-                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
-                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm">MATERIAL NAME</th>
+                        <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -613,9 +613,9 @@ export default function RateCards() {
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Material</Label>
+                          <Label className="text-[12px] uppercase">Material</Label>
                           <Select value={addMatName} onValueChange={setAddMatName}>
-                            <SelectTrigger className="w-48 h-8 text-xs" data-testid="select-add-mat-name">
+                            <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-add-mat-name">
                               <SelectValue placeholder="Select material..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -626,9 +626,9 @@ export default function RateCards() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Unit</Label>
+                          <Label className="text-[12px] uppercase">Unit</Label>
                           <Select value={addMatUnit} onValueChange={setAddMatUnit}>
-                            <SelectTrigger className="w-28 h-8 text-xs" data-testid="select-add-mat-unit">
+                            <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-add-mat-unit">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -657,9 +657,9 @@ export default function RateCards() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/30">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs">MACHINE TYPE — BILLING MODE</th>
-                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
-                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹)</th>
+                        <th className="px-3 py-2 text-left text-sm">MACHINE TYPE — BILLING MODE</th>
+                        <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-sm w-36">RATE (₹)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -671,7 +671,7 @@ export default function RateCards() {
                     </tbody>
                   </table>
                   <div className="px-3 py-2 border-t">
-                    <div className="text-[10px] text-muted-foreground mb-1">TRIP rates use lead distance x 2 (one-way to two-way)</div>
+                    <div className="text-[12px] text-muted-foreground mb-1">TRIP rates use lead distance x 2 (one-way to two-way)</div>
                     {!showAddTransport ? (
                       <Button variant="outline" size="sm" onClick={() => setShowAddTransport(true)} data-testid="button-add-transport-row">
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
@@ -679,9 +679,9 @@ export default function RateCards() {
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Machine Type</Label>
+                          <Label className="text-[12px] uppercase">Machine Type</Label>
                           <Select value={addTransType} onValueChange={setAddTransType}>
-                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-trans-type">
+                            <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-trans-type">
                               <SelectValue placeholder="Select type..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -692,9 +692,9 @@ export default function RateCards() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Billing Mode</Label>
+                          <Label className="text-[12px] uppercase">Billing Mode</Label>
                           <Select value={addTransMode} onValueChange={setAddTransMode}>
-                            <SelectTrigger className="w-40 h-8 text-xs" data-testid="select-add-trans-mode">
+                            <SelectTrigger className="w-40 h-8 text-sm" data-testid="select-add-trans-mode">
                               <SelectValue placeholder="Select mode..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -718,9 +718,9 @@ export default function RateCards() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/30">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs">LABOUR CATEGORY [GENDER]</th>
-                        <th className="px-3 py-2 text-left text-xs w-28">UNIT</th>
-                        <th className="px-3 py-2 text-right text-xs w-36">RATE (₹ / HEAD-DAY)</th>
+                        <th className="px-3 py-2 text-left text-sm">LABOUR CATEGORY [GENDER]</th>
+                        <th className="px-3 py-2 text-left text-sm w-28">UNIT</th>
+                        <th className="px-3 py-2 text-right text-sm w-36">RATE (₹ / HEAD-DAY)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -732,7 +732,7 @@ export default function RateCards() {
                     </tbody>
                   </table>
                   <div className="px-3 py-2 border-t">
-                    <div className="text-[10px] text-muted-foreground mb-1">Rate per head per day. Add gender only if rates differ by gender; otherwise leave blank for combined rate.</div>
+                    <div className="text-[12px] text-muted-foreground mb-1">Rate per head per day. Add gender only if rates differ by gender; otherwise leave blank for combined rate.</div>
                     {!showAddLabour ? (
                       <Button variant="outline" size="sm" onClick={() => setShowAddLabour(true)} data-testid="button-add-labour-row">
                         <Plus className="w-3 h-3 mr-1" /> ADD ROW
@@ -740,9 +740,9 @@ export default function RateCards() {
                     ) : (
                       <div className="flex items-end gap-2 flex-wrap">
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Labour Category</Label>
+                          <Label className="text-[12px] uppercase">Labour Category</Label>
                           <Select value={addLabCategory} onValueChange={setAddLabCategory}>
-                            <SelectTrigger className="w-44 h-8 text-xs" data-testid="select-add-lab-category">
+                            <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-add-lab-category">
                               <SelectValue placeholder="Select category..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -753,9 +753,9 @@ export default function RateCards() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[10px] uppercase">Gender (optional)</Label>
+                          <Label className="text-[12px] uppercase">Gender (optional)</Label>
                           <Select value={addLabGender || "ANY"} onValueChange={(v) => setAddLabGender(v === "ANY" ? "" : v)}>
-                            <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-add-lab-gender">
+                            <SelectTrigger className="w-36 h-8 text-sm" data-testid="select-add-lab-gender">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>

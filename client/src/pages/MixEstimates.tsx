@@ -368,10 +368,10 @@ export default function MixEstimates({ embedded = false }: Props) {
                       </div>
                     )}
                     {editingContractor !== groupKey && totalMt > 0 && (
-                      <Badge variant="outline" className="text-xs">{totalMt.toFixed(0)} MT total</Badge>
+                      <Badge variant="outline" className="text-sm">{totalMt.toFixed(0)} MT total</Badge>
                     )}
                     {editingContractor !== groupKey && totalAmt > 0 && (
-                      <Badge className="text-xs bg-green-600 text-white border-green-700">{fmtAmt(totalAmt)}</Badge>
+                      <Badge className="text-sm bg-green-600 text-white border-green-700">{fmtAmt(totalAmt)}</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -406,7 +406,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead>
-                        <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                        <tr className="bg-muted/40 text-muted-foreground text-sm uppercase tracking-wide">
                           <th className="text-left px-5 py-2.5 font-semibold">Site Name</th>
                           <th className="text-right px-4 py-2.5 font-semibold">MT</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Amount</th>
@@ -433,7 +433,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                                 <td className="px-4 py-3 text-right font-medium text-foreground">
                                   {fmtAmt(site.amt)}
                                 </td>
-                                <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                                <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                                   <span className="flex items-center justify-end gap-1">
                                     <Calendar className="w-3 h-3" />
                                     {fmtDate(est.updatedAt)}
@@ -443,7 +443,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                                       by {userNameById[est.createdBy]}
                                     </span>
                                   ) : !est.createdBy ? (
-                                    <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-xs" data-testid={`text-owner-site-${est.id}-${idx}`}>
+                                    <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-sm" data-testid={`text-owner-site-${est.id}-${idx}`}>
                                       unassigned owner
                                     </span>
                                   ) : null}
@@ -483,7 +483,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                               <td className="px-5 py-3">
                                 <span className="font-medium text-foreground">{est.name}</span>
                                 {est.contractorList && (
-                                  <span className="block text-xs text-muted-foreground mt-0.5">{est.contractorList}</span>
+                                  <span className="block text-sm text-muted-foreground mt-0.5">{est.contractorList}</span>
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right text-muted-foreground">
@@ -492,7 +492,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                               <td className="px-4 py-3 text-right font-medium text-foreground">
                                 {fmtAmt(est.totalAmt)}
                               </td>
-                              <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                              <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                                 <span className="flex items-center justify-end gap-1">
                                   <Calendar className="w-3 h-3" />
                                   {fmtDate(est.updatedAt)}
@@ -502,7 +502,7 @@ export default function MixEstimates({ embedded = false }: Props) {
                                     by {userNameById[est.createdBy]}
                                   </span>
                                 ) : !est.createdBy ? (
-                                  <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-xs" data-testid={`text-owner-${est.id}`}>
+                                  <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-sm" data-testid={`text-owner-${est.id}`}>
                                     unassigned owner
                                   </span>
                                 ) : null}

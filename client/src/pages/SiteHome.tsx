@@ -128,7 +128,7 @@ export default function SiteHome() {
           <img src={companyLogo} alt="HLC" className="h-7 w-7 rounded object-cover" />
           <div>
             <span className="font-bold text-sm md:text-base tracking-tight">SiteLog</span>
-            <span className="ml-2 text-slate-400 text-xs hidden sm:inline">{companyName}</span>
+            <span className="ml-2 text-slate-400 text-sm hidden sm:inline">{companyName}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export default function SiteHome() {
               <Home className="w-5 h-5" />
             </Button>
           </Link>
-          <div className="w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center font-bold text-xs">
+          <div className="w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">
             {userInitials}
           </div>
         </div>
@@ -146,29 +146,29 @@ export default function SiteHome() {
       {/* Project banner */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Site Management</p>
+          <p className="text-[12px] text-slate-400 uppercase tracking-wider mb-0.5">Site Management</p>
           <h1 className="text-base font-bold flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-amber-400" />
             Daily Operations Dashboard
           </h1>
-          <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-1.5">
+          <p className="text-sm text-slate-300 mt-0.5 flex items-center gap-1.5">
             <Calendar className="w-3 h-3" />
             {format(new Date(), "EEEE, d MMMM yyyy")}
           </p>
         </div>
         {canDprs && (
           <div className="text-right">
-            <p className="text-[10px] text-slate-400">Today's DPR</p>
+            <p className="text-[12px] text-slate-400">Today's DPR</p>
             <div className="flex items-center gap-1.5 mt-1">
               {todayDpr ? (
                 <>
                   <span className="w-2 h-2 bg-green-400 rounded-full" />
-                  <span className="text-xs font-semibold text-green-300">Filed</span>
+                  <span className="text-sm font-semibold text-green-300">Filed</span>
                 </>
               ) : (
                 <>
                   <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-                  <span className="text-xs font-semibold text-amber-300">Pending</span>
+                  <span className="text-sm font-semibold text-amber-300">Pending</span>
                 </>
               )}
             </div>
@@ -180,7 +180,7 @@ export default function SiteHome() {
 
         {/* Quick Actions */}
         <section>
-          <h2 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h2>
+          <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
             {canDprs && (
@@ -191,10 +191,10 @@ export default function SiteHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">New DPR</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Daily progress report</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Daily progress report</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
-                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+                    <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
                       {todayDpr ? "Update" : "Today"}
                     </span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
@@ -211,10 +211,10 @@ export default function SiteHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Material Entry</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Log incoming materials</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Log incoming materials</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
-                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">Quick entry</span>
+                    <span className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">Quick entry</span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                   </div>
                 </button>
@@ -229,10 +229,10 @@ export default function SiteHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Purchase Indent</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Raise a new indent</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Raise a new indent</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
-                    <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full">
+                    <span className="text-[12px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full">
                       {indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length > 0
                         ? `${indents.filter((i: any) => i.status === "pending" || i.status === "stores_check").length} pending`
                         : "Open"}
@@ -251,10 +251,10 @@ export default function SiteHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Diesel Req.</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Daily diesel order</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Daily diesel order</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
-                    <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
+                    <span className="text-[12px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
                       {dieselReqs.find((r: any) => r.date === TODAY && r.status === "approved") ? "Filed ✓" : "Open"}
                     </span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
@@ -275,10 +275,10 @@ export default function SiteHome() {
           {/* Recent Activity */}
           <div className="md:col-span-2">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recent Activity</h2>
+              <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recent Activity</h2>
               {canDprs && (
                 <Link href="/site/dashboard" data-testid="link-all-records">
-                  <button className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-semibold hover:underline">
+                  <button className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 font-semibold hover:underline">
                     All DPRs <ChevronRight className="w-3 h-3" />
                   </button>
                 </Link>
@@ -296,16 +296,16 @@ export default function SiteHome() {
                     <Link href={item.href} key={item.key} data-testid={`link-activity-${item.key}`}>
                       <div className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors ${i < recentActivity.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
                         <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">{item.type}</span>
+                          <span className="text-[12px] font-black text-slate-600 dark:text-slate-300">{item.type}</span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{item.label}</p>
-                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                          <p className="text-sm text-slate-400 flex items-center gap-1 mt-0.5">
                             <Clock className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{format(new Date(item.date + "T00:00:00"), "dd MMM yyyy")} · {item.sub}</span>
                           </p>
                         </div>
-                        <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0 ${color}`}>
+                        <span className={`flex items-center gap-1 text-[12px] font-bold px-2 py-1 rounded-full flex-shrink-0 ${color}`}>
                           <Icon className="w-3 h-3" /> {label}
                         </span>
                       </div>
@@ -319,7 +319,7 @@ export default function SiteHome() {
           {/* Reports Panel */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Reports</h2>
+              <h2 className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Reports</h2>
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               {[
@@ -334,7 +334,7 @@ export default function SiteHome() {
                     <r.icon className={`w-4 h-4 ${r.color} flex-shrink-0`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{r.label}</p>
-                      <p className="text-xs text-slate-400">{r.desc}</p>
+                      <p className="text-sm text-slate-400">{r.desc}</p>
                     </div>
                     <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 flex-shrink-0" />
                   </button>

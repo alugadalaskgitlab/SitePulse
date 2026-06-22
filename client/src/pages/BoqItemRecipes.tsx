@@ -123,26 +123,26 @@ function BulkSelectPanel<T extends { id: number }>({
   return (
     <div className="border border-teal-200 bg-teal-50/40 dark:bg-teal-950/20 rounded-lg p-3 space-y-2 mt-2" data-testid="bulk-select-panel">
       <div className="flex items-center justify-between">
-        <button className="flex items-center gap-1.5 text-[10px] font-medium text-teal-700 hover:text-teal-900" onClick={toggleAll} data-testid="bulk-select-toggle-all">
+        <button className="flex items-center gap-1.5 text-[12px] font-medium text-teal-700 hover:text-teal-900" onClick={toggleAll} data-testid="bulk-select-toggle-all">
           {selected.size === selectableItems.length && selectableItems.length > 0 ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
           {selected.size === selectableItems.length && selectableItems.length > 0 ? "Deselect all" : "Select all"}
         </button>
-        <span className="text-[10px] text-muted-foreground">Shift+click to range-select</span>
+        <span className="text-[12px] text-muted-foreground">Shift+click to range-select</span>
       </div>
       <div className="max-h-52 overflow-y-auto space-y-3 pr-1">
         {Object.entries(groups).map(([groupName, groupItems]) => (
           <div key={groupName}>
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 mb-1">{groupName}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{groupName}</p>
             <div className="space-y-0.5">
               {groupItems.map((item) => {
                 const isAdded = alreadyAddedIds.has(item.id);
                 const isChecked = selected.has(item.id);
                 const flatIdx = selectableItems.findIndex((si) => si.id === item.id);
                 return (
-                  <label key={item.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors text-[11px] ${isAdded ? "opacity-40 cursor-not-allowed" : isChecked ? "bg-teal-100 dark:bg-teal-900/40 text-teal-900" : "hover:bg-white dark:hover:bg-slate-800"}`} data-testid={`bulk-select-item-${item.id}`}>
+                  <label key={item.id} className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors text-xs ${isAdded ? "opacity-40 cursor-not-allowed" : isChecked ? "bg-teal-100 dark:bg-teal-900/40 text-teal-900" : "hover:bg-white dark:hover:bg-slate-800"}`} data-testid={`bulk-select-item-${item.id}`}>
                     <input type="checkbox" className="accent-teal-600 w-3 h-3" checked={isChecked} disabled={isAdded} onChange={() => {}} onClick={(e) => { if (!isAdded) toggle(item.id, e.shiftKey, flatIdx); }} />
                     <span className="flex-1 truncate">{labelOf(item)}</span>
-                    {subLabelOf && <span className="text-[9px] text-muted-foreground shrink-0">{subLabelOf(item)}</span>}
+                    {subLabelOf && <span className="text-xs text-muted-foreground shrink-0">{subLabelOf(item)}</span>}
                     {isAdded && <Badge variant="outline" className="text-[8px] h-3.5 px-1 shrink-0">added</Badge>}
                   </label>
                 );
@@ -150,13 +150,13 @@ function BulkSelectPanel<T extends { id: number }>({
             </div>
           </div>
         ))}
-        {selectableItems.length === 0 && <p className="text-center text-[11px] text-muted-foreground py-4">All types already in recipe</p>}
+        {selectableItems.length === 0 && <p className="text-center text-xs text-muted-foreground py-4">All types already in recipe</p>}
       </div>
       <div className="flex items-center gap-2 pt-1 border-t border-teal-200">
-        <Button size="sm" className="bg-teal-700 hover:bg-teal-800 text-white text-xs h-7 flex-1" disabled={selected.size === 0} onClick={() => { onAdd(selectedItems); setSelected(new Set()); }} data-testid="bulk-select-add-button">
+        <Button size="sm" className="bg-teal-700 hover:bg-teal-800 text-white text-sm h-7 flex-1" disabled={selected.size === 0} onClick={() => { onAdd(selectedItems); setSelected(new Set()); }} data-testid="bulk-select-add-button">
           <Plus className="w-3.5 h-3.5 mr-1" />{selected.size === 0 ? "Add selected" : `Add ${selected.size} selected`}
         </Button>
-        <Button variant="outline" size="sm" className="text-xs h-7" onClick={onClose} data-testid="bulk-select-cancel">Cancel</Button>
+        <Button variant="outline" size="sm" className="text-sm h-7" onClick={onClose} data-testid="bulk-select-cancel">Cancel</Button>
       </div>
     </div>
   );
@@ -325,12 +325,12 @@ function LayerConfigTab({
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] text-muted-foreground">Select the layer type to auto-derive material quantities from plant mix templates or standard layer geometry.</p>
+      <p className="text-xs text-muted-foreground">Select the layer type to auto-derive material quantities from plant mix templates or standard layer geometry.</p>
 
       <div className="space-y-1.5">
-        <Label className="text-[10px]">LAYER TYPE</Label>
+        <Label className="text-[12px]">LAYER TYPE</Label>
         <Select value={layerType} onValueChange={(v) => setLayerType(v as LayerConfig["layerType"])}>
-          <SelectTrigger className="h-8 text-xs" data-testid="select-layer-type">
+          <SelectTrigger className="h-8 text-sm" data-testid="select-layer-type">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -341,12 +341,12 @@ function LayerConfigTab({
 
       {layerType === "bituminous" && (
         <div className="rounded-lg border border-teal-100 p-3 space-y-3">
-          <p className="text-[10px] font-medium text-teal-700">Bituminous Layer Settings</p>
+          <p className="text-[12px] font-medium text-teal-700">Bituminous Layer Settings</p>
 
           {/* Mix template links — project-level links defined in Programme Settings */}
           {mixLinks.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground">Project-linked templates (from Programme Settings):</p>
+              <p className="text-[12px] text-muted-foreground">Project-linked templates (from Programme Settings):</p>
               <div className="flex flex-wrap gap-1.5">
                 {mixLinks.map((lnk) => {
                   const isActive = String(lnk.mixTemplateId) === mixTemplateId;
@@ -354,7 +354,7 @@ function LayerConfigTab({
                     <button
                       key={lnk.id}
                       onClick={() => setMixTemplateId(String(lnk.mixTemplateId))}
-                      className={`text-[11px] px-2 py-0.5 rounded border font-medium transition-colors ${
+                      className={`text-xs px-2 py-0.5 rounded border font-medium transition-colors ${
                         isActive
                           ? "bg-teal-600 text-white border-teal-600"
                           : "bg-white text-teal-700 border-teal-300 hover:bg-teal-50"
@@ -372,9 +372,9 @@ function LayerConfigTab({
 
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-3">
-              <Label className="text-[10px]">MIX TEMPLATE</Label>
+              <Label className="text-[12px]">MIX TEMPLATE</Label>
               <Select value={mixTemplateId} onValueChange={setMixTemplateId}>
-                <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-template">
+                <SelectTrigger className="h-8 text-sm mt-0.5" data-testid="select-mix-template">
                   <SelectValue placeholder="Select mix template…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -387,16 +387,16 @@ function LayerConfigTab({
               </Select>
             </div>
             <div>
-              <Label className="text-[10px]">THICKNESS (mm)</Label>
-              <Input type="number" step="1" min="1" className="h-8 text-xs mt-0.5" placeholder="e.g. 50" value={thicknessMm} onChange={(e) => setThicknessMm(e.target.value)} data-testid="input-thickness-mm" />
+              <Label className="text-[12px]">THICKNESS (mm)</Label>
+              <Input type="number" step="1" min="1" className="h-8 text-sm mt-0.5" placeholder="e.g. 50" value={thicknessMm} onChange={(e) => setThicknessMm(e.target.value)} data-testid="input-thickness-mm" />
             </div>
             <div>
-              <Label className="text-[10px]">DENSITY (T/CUM)</Label>
-              <Input type="number" step="0.01" min="1" className="h-8 text-xs mt-0.5" placeholder="e.g. 2.40" value={densityTPerCum} onChange={(e) => setDensityTPerCum(e.target.value)} data-testid="input-density" />
+              <Label className="text-[12px]">DENSITY (T/CUM)</Label>
+              <Input type="number" step="0.01" min="1" className="h-8 text-sm mt-0.5" placeholder="e.g. 2.40" value={densityTPerCum} onChange={(e) => setDensityTPerCum(e.target.value)} data-testid="input-density" />
             </div>
             <div className="flex items-end pb-0.5">
               {templateDetail?.template.mixType && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[12px] text-muted-foreground">
                   Default: {LAYER_DENSITY_DEFAULTS[templateDetail.template.mixType.toUpperCase()] ?? "—"} T/CUM
                 </span>
               )}
@@ -407,10 +407,10 @@ function LayerConfigTab({
 
       {layerType === "granular" && (
         <div className="rounded-lg border border-amber-100 p-3 space-y-2">
-          <p className="text-[10px] font-medium text-amber-700">Granular Layer Source</p>
+          <p className="text-[12px] font-medium text-amber-700">Granular Layer Source</p>
           <div className="flex gap-3">
             {(["quarry", "plant"] as const).map((src) => (
-              <button key={src} onClick={() => setGranularSource(src)} className={`flex-1 rounded border text-[11px] py-2 font-medium transition-colors ${granularSource === src ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`} data-testid={`btn-granular-${src}`}>
+              <button key={src} onClick={() => setGranularSource(src)} className={`flex-1 rounded border text-xs py-2 font-medium transition-colors ${granularSource === src ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`} data-testid={`btn-granular-${src}`}>
                 {src === "quarry" ? "Direct from Quarry" : "Processed at WMM Plant"}
               </button>
             ))}
@@ -420,22 +420,22 @@ function LayerConfigTab({
 
       {layerType === "spray_coat" && (
         <div className="rounded-lg border border-blue-100 p-3 space-y-3">
-          <p className="text-[10px] font-medium text-blue-700">Spray Coat Settings</p>
+          <p className="text-[12px] font-medium text-blue-700">Spray Coat Settings</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[10px]">COVERAGE RATE (kg/SQM)</Label>
-              <Input type="number" step="0.01" min="0.01" className="h-8 text-xs mt-0.5" placeholder="e.g. 0.30" value={coverageRate} onChange={(e) => setCoverageRate(e.target.value)} data-testid="input-coverage-rate" />
+              <Label className="text-[12px]">COVERAGE RATE (kg/SQM)</Label>
+              <Input type="number" step="0.01" min="0.01" className="h-8 text-sm mt-0.5" placeholder="e.g. 0.30" value={coverageRate} onChange={(e) => setCoverageRate(e.target.value)} data-testid="input-coverage-rate" />
             </div>
             <div>
-              <Label className="text-[10px]">MATERIAL NAME</Label>
-              <Input className="h-8 text-xs mt-0.5" placeholder="e.g. Bitumen Emulsion SS-1" value={coverageMaterial} onChange={(e) => setCoverageMaterial(e.target.value)} data-testid="input-coverage-material" />
+              <Label className="text-[12px]">MATERIAL NAME</Label>
+              <Input className="h-8 text-sm mt-0.5" placeholder="e.g. Bitumen Emulsion SS-1" value={coverageMaterial} onChange={(e) => setCoverageMaterial(e.target.value)} data-testid="input-coverage-material" />
             </div>
           </div>
         </div>
       )}
 
       {layerType === "earthwork" && (
-        <div className="rounded-lg border border-orange-100 bg-orange-50/30 p-3 text-[11px] text-orange-700">
+        <div className="rounded-lg border border-orange-100 bg-orange-50/30 p-3 text-xs text-orange-700">
           Will generate: <span className="font-semibold">Soil / Earth — 1.0 CUM / CUM</span>
         </div>
       )}
@@ -443,10 +443,10 @@ function LayerConfigTab({
       {/* Live preview */}
       {derivedRows.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
-          <p className="text-[10px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived Material Preview ({item.unit})</p>
+          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived Material Preview ({item.unit})</p>
           <div className="space-y-1">
             {derivedRows.map((r, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px]">
+              <div key={i} className="flex items-center gap-2 text-xs">
                 <span className="flex-1 text-slate-700">{r.materialName}</span>
                 <span className="text-muted-foreground">{fmtQty(r.qtyPerBoqUnit, 4)} {r.uom} / {item.unit}</span>
               </div>
@@ -456,21 +456,21 @@ function LayerConfigTab({
       )}
 
       <div className="flex items-center gap-2 pt-2 border-t">
-        <Button size="sm" variant="outline" onClick={() => saveLcMutation.mutate()} disabled={saveLcMutation.isPending} className="text-xs h-7" data-testid="button-save-layer-config">
+        <Button size="sm" variant="outline" onClick={() => saveLcMutation.mutate()} disabled={saveLcMutation.isPending} className="text-sm h-7" data-testid="button-save-layer-config">
           {saveLcMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
           Save Config
         </Button>
         {derivedRows.length > 0 && (
           showApplyConfirm ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-amber-700">
+            <div className="flex items-center gap-1.5 text-xs text-amber-700">
               <span>This will replace all current materials. Sure?</span>
-              <Button size="sm" className="h-6 text-[10px] bg-amber-600 hover:bg-amber-700 text-white" onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} data-testid="button-apply-confirm">
+              <Button size="sm" className="h-6 text-[12px] bg-amber-600 hover:bg-amber-700 text-white" onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} data-testid="button-apply-confirm">
                 {applyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Yes, apply"}
               </Button>
-              <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => setShowApplyConfirm(false)}>Cancel</Button>
+              <Button size="sm" variant="outline" className="h-6 text-[12px]" onClick={() => setShowApplyConfirm(false)}>Cancel</Button>
             </div>
           ) : (
-            <Button size="sm" className="text-xs h-7 bg-teal-700 hover:bg-teal-800 text-white" onClick={() => setShowApplyConfirm(true)} data-testid="button-apply-materials">
+            <Button size="sm" className="text-sm h-7 bg-teal-700 hover:bg-teal-800 text-white" onClick={() => setShowApplyConfirm(true)} data-testid="button-apply-materials">
               <Layers className="w-3.5 h-3.5 mr-1" />Apply to Materials ({derivedRows.length} rows)
             </Button>
           )
@@ -680,7 +680,7 @@ function EquipmentTab({
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-muted-foreground">Equipment attached to this BOQ item drives automatic duration calculation in the Work Programme.</p>
+      <p className="text-xs text-muted-foreground">Equipment attached to this BOQ item drives automatic duration calculation in the Work Programme.</p>
 
       {rows.map((row, idx) => {
         const co = convertedOutputs[idx];
@@ -689,15 +689,15 @@ function EquipmentTab({
         return (
           <div key={row.key} className={`rounded-lg border p-3 space-y-2 ${isBottleneck ? "border-amber-300 bg-amber-50/30" : "border-slate-200 bg-slate-50/50 dark:bg-slate-900/20"}`}>
             {isBottleneck && (
-              <div className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+              <div className="flex items-center gap-1 text-[12px] text-amber-700 font-medium">
                 <AlertTriangle className="w-3 h-3" /> Bottleneck — limits auto-duration
               </div>
             )}
             <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-end">
               <div>
-                <Label className="text-[10px]">EQUIPMENT</Label>
+                <Label className="text-[12px]">EQUIPMENT</Label>
                 <Select value={row.planningEquipTypeId} onValueChange={(v) => updateRow(row.key, "planningEquipTypeId", v)}>
-                  <SelectTrigger className="h-8 text-xs" data-testid={`select-equip-master-${row.key}`}>
+                  <SelectTrigger className="h-8 text-sm" data-testid={`select-equip-master-${row.key}`}>
                     <SelectValue placeholder="Select from planning types…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -706,16 +706,16 @@ function EquipmentTab({
                   </SelectContent>
                 </Select>
                 {row.planningEquipTypeId === "__manual__" && (
-                  <Input className="h-8 text-xs mt-1" placeholder="Equipment name" value={row.equipmentName} onChange={(e) => updateRow(row.key, "equipmentName", e.target.value)} data-testid={`input-equip-name-${row.key}`} />
+                  <Input className="h-8 text-sm mt-1" placeholder="Equipment name" value={row.equipmentName} onChange={(e) => updateRow(row.key, "equipmentName", e.target.value)} data-testid={`input-equip-name-${row.key}`} />
                 )}
               </div>
               <div>
-                <Label className="text-[10px]">HRS / BOQ UNIT</Label>
-                <Input type="number" step="0.001" className="h-8 text-xs" value={row.qtyPerBoqUnit} onChange={(e) => updateRow(row.key, "qtyPerBoqUnit", e.target.value)} data-testid={`input-equip-qty-${row.key}`} />
+                <Label className="text-[12px]">HRS / BOQ UNIT</Label>
+                <Input type="number" step="0.001" className="h-8 text-sm" value={row.qtyPerBoqUnit} onChange={(e) => updateRow(row.key, "qtyPerBoqUnit", e.target.value)} data-testid={`input-equip-qty-${row.key}`} />
               </div>
               <div>
-                <Label className="text-[10px]">COUNT</Label>
-                <Input type="number" min="1" className="h-8 text-xs" value={row.count} onChange={(e) => updateRow(row.key, "count", e.target.value)} data-testid={`input-equip-count-${row.key}`} />
+                <Label className="text-[12px]">COUNT</Label>
+                <Input type="number" min="1" className="h-8 text-sm" value={row.count} onChange={(e) => updateRow(row.key, "count", e.target.value)} data-testid={`input-equip-count-${row.key}`} />
               </div>
               <button className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} data-testid={`button-remove-equip-${row.key}`}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -723,7 +723,7 @@ function EquipmentTab({
             </div>
             {co && co.outputPerHr > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1 text-[10px] text-teal-700">
+                <span className="flex items-center gap-1 text-[12px] text-teal-700">
                   <Zap className="w-3 h-3" />
                   {co.convertedVia === "converted" && co.nativeUnit
                     ? `${fmtQty(co.outputPerHr / (parseInt(row.count) || 1), 2)} ${co.nativeUnit}/hr → `
@@ -736,7 +736,7 @@ function EquipmentTab({
                 )}
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors"
+                  className="flex items-center gap-1 text-[12px] px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors"
                   title={`Auto-fill: 1 ÷ ${fmtQty(co.outputPerHr, 2)} = ${(1 / co.outputPerHr).toFixed(5)} hr/${boqUnit}`}
                   onClick={() => { updateRow(row.key, "qtyPerBoqUnit", (1 / co.outputPerHr).toFixed(5)); setDirty(true); }}
                   data-testid={`button-autofill-equip-${row.key}`}
@@ -746,7 +746,7 @@ function EquipmentTab({
               </div>
             )}
             {planType && !(planType.standardOutputs?.length) && (
-              <div className="flex items-center gap-1 text-[10px] text-amber-600">
+              <div className="flex items-center gap-1 text-[12px] text-amber-600">
                 <Info className="w-3 h-3" /> No standard outputs — duration auto-calc unavailable.
               </div>
             )}
@@ -761,7 +761,7 @@ function EquipmentTab({
       {/* Tipper Fleet Check Panel */}
       {hasTipper && rows.length > 0 && (
         <div className="rounded-lg border border-blue-200 bg-blue-50/30">
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-semibold text-blue-700" onClick={() => setShowTipperFleet(p => !p)}>
+          <button className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-semibold text-blue-700" onClick={() => setShowTipperFleet(p => !p)}>
             <Settings2 className="w-3 h-3" />
             Tipper Fleet Check
             {showTipperFleet ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
@@ -777,13 +777,13 @@ function EquipmentTab({
                   { label: "Unload time (min)", val: unloadTime, set: setUnloadTime, id: "unload-time" },
                 ].map((f) => (
                   <div key={f.id}>
-                    <Label className="text-[9px]">{f.label.toUpperCase()}</Label>
-                    <Input type="number" step="0.1" className="h-7 text-xs" value={f.val} onChange={(e) => f.set(e.target.value)} data-testid={`tipper-${f.id}`} />
+                    <Label className="text-xs">{f.label.toUpperCase()}</Label>
+                    <Input type="number" step="0.1" className="h-7 text-sm" value={f.val} onChange={(e) => f.set(e.target.value)} data-testid={`tipper-${f.id}`} />
                   </div>
                 ))}
               </div>
               {tipperResult && (
-                <div className={`rounded p-2 text-[11px] flex flex-wrap gap-4 ${tipperResult.isAdequate ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
+                <div className={`rounded p-2 text-xs flex flex-wrap gap-4 ${tipperResult.isAdequate ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
                   <span>{tipperResult.isAdequate ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1 text-emerald-600" /> : <AlertTriangle className="w-3.5 h-3.5 inline mr-1 text-red-500" />}
                     {tipperResult.isAdequate ? "Adequate" : "Tipper-limited"}
                   </span>
@@ -799,14 +799,14 @@ function EquipmentTab({
 
       <div className="flex items-center justify-between pt-1 gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="default" size="sm" onClick={() => setShowPanel((p) => !p)} className="text-xs h-7 bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-add-from-master-equip">
+          <Button variant="default" size="sm" onClick={() => setShowPanel((p) => !p)} className="text-sm h-7 bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-add-from-master-equip">
             <List className="w-3.5 h-3.5 mr-1" />Add from Master
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { setRows((p) => [...p, makeEquipRow()]); setDirty(true); }} className="text-xs h-7" data-testid="button-add-equip-row">
+          <Button variant="outline" size="sm" onClick={() => { setRows((p) => [...p, makeEquipRow()]); setDirty(true); }} className="text-sm h-7" data-testid="button-add-equip-row">
             <Plus className="w-3.5 h-3.5 mr-1" /> Manual row
           </Button>
         </div>
-        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-xs h-7" data-testid="button-save-equip-recipe">
+        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-sm h-7" data-testid="button-save-equip-recipe">
           {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}Save
         </Button>
       </div>
@@ -870,26 +870,26 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList }: { boqItemId: number; 
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-muted-foreground">Labour gangs required per unit of this BOQ item.</p>
+      <p className="text-xs text-muted-foreground">Labour gangs required per unit of this BOQ item.</p>
       {rows.map((row) => (
         <div key={row.key} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
           <div className="grid grid-cols-[2fr_1fr_auto] gap-2 items-end">
             <div>
-              <Label className="text-[10px]">LABOUR TYPE</Label>
+              <Label className="text-[12px]">LABOUR TYPE</Label>
               <Select value={row.planningLabourTypeId} onValueChange={(v) => updateLabRow(row.key, "planningLabourTypeId", v)}>
-                <SelectTrigger className="h-8 text-xs" data-testid={`select-labour-type-${row.key}`}><SelectValue placeholder="Select from planning types…" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm" data-testid={`select-labour-type-${row.key}`}><SelectValue placeholder="Select from planning types…" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__manual__">— Enter manually —</SelectItem>
-                  {labourTypeList.map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.designation} <span className="text-[10px] text-muted-foreground">({l.skillTier})</span></SelectItem>)}
+                  {labourTypeList.map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.designation} <span className="text-[12px] text-muted-foreground">({l.skillTier})</span></SelectItem>)}
                 </SelectContent>
               </Select>
               {row.planningLabourTypeId === "__manual__" && (
-                <Input className="h-8 text-xs mt-1" placeholder="e.g. Skilled Mason" value={row.designation} onChange={(e) => updateLabRow(row.key, "designation", e.target.value)} data-testid={`input-labour-cat-${row.key}`} />
+                <Input className="h-8 text-sm mt-1" placeholder="e.g. Skilled Mason" value={row.designation} onChange={(e) => updateLabRow(row.key, "designation", e.target.value)} data-testid={`input-labour-cat-${row.key}`} />
               )}
             </div>
             <div>
-              <Label className="text-[10px]">DAYS / {boqUnit}</Label>
-              <Input type="number" step="0.001" className="h-8 text-xs" value={row.qtyPerBoqUnit} onChange={(e) => updateLabRow(row.key, "qtyPerBoqUnit", e.target.value)} data-testid={`input-labour-qty-${row.key}`} />
+              <Label className="text-[12px]">DAYS / {boqUnit}</Label>
+              <Input type="number" step="0.001" className="h-8 text-sm" value={row.qtyPerBoqUnit} onChange={(e) => updateLabRow(row.key, "qtyPerBoqUnit", e.target.value)} data-testid={`input-labour-qty-${row.key}`} />
             </div>
             <button className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} data-testid={`button-remove-labour-${row.key}`}>
               <Trash2 className="w-3.5 h-3.5" />
@@ -900,10 +900,10 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList }: { boqItemId: number; 
       {showPanel && <BulkSelectPanel items={labourTypeList} groupBy={(l) => l.skillTier} labelOf={(l) => l.designation} alreadyAddedIds={alreadyAddedIds} onAdd={addFromMaster} onClose={() => setShowPanel(false)} />}
       <div className="flex items-center justify-between pt-1 gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="default" size="sm" onClick={() => setShowPanel((p) => !p)} className="text-xs h-7 bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-add-from-master-labour"><List className="w-3.5 h-3.5 mr-1" />Add from Master</Button>
-          <Button variant="outline" size="sm" onClick={() => { setRows((p) => [...p, makeLabRow()]); setDirty(true); }} className="text-xs h-7" data-testid="button-add-labour-row"><Plus className="w-3.5 h-3.5 mr-1" /> Manual row</Button>
+          <Button variant="default" size="sm" onClick={() => setShowPanel((p) => !p)} className="text-sm h-7 bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-add-from-master-labour"><List className="w-3.5 h-3.5 mr-1" />Add from Master</Button>
+          <Button variant="outline" size="sm" onClick={() => { setRows((p) => [...p, makeLabRow()]); setDirty(true); }} className="text-sm h-7" data-testid="button-add-labour-row"><Plus className="w-3.5 h-3.5 mr-1" /> Manual row</Button>
         </div>
-        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-xs h-7" data-testid="button-save-labour-recipe">
+        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-sm h-7" data-testid="button-save-labour-recipe">
           {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}Save
         </Button>
       </div>
@@ -967,14 +967,14 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-muted-foreground">Materials consumed per unit of this BOQ item (drives BOM demand).</p>
+      <p className="text-xs text-muted-foreground">Materials consumed per unit of this BOQ item (drives BOM demand).</p>
 
       {filteredSuggestions.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2">
-          <div className="flex items-center gap-1 mb-1.5"><Sparkles className="w-3 h-3 text-amber-600" /><span className="text-[10px] font-medium text-amber-700">Used elsewhere in this project</span></div>
+          <div className="flex items-center gap-1 mb-1.5"><Sparkles className="w-3 h-3 text-amber-600" /><span className="text-[12px] font-medium text-amber-700">Used elsewhere in this project</span></div>
           <div className="flex flex-wrap gap-1.5">
             {filteredSuggestions.map((s) => (
-              <button key={s.materialName} onClick={() => insertSuggestion(s)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-white border border-amber-200 hover:border-teal-400 hover:bg-teal-50 transition-colors" data-testid={`suggestion-chip-${s.materialName.replace(/\s+/g, "-").toLowerCase()}`}>
+              <button key={s.materialName} onClick={() => insertSuggestion(s)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] bg-white border border-amber-200 hover:border-teal-400 hover:bg-teal-50 transition-colors" data-testid={`suggestion-chip-${s.materialName.replace(/\s+/g, "-").toLowerCase()}`}>
                 <Plus className="w-2.5 h-2.5 text-teal-600" />{s.materialName}{s.uom && <span className="text-muted-foreground">({s.uom})</span>}
               </button>
             ))}
@@ -985,22 +985,22 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
       {/* Auto rows (read-only) */}
       {autoRows.length > 0 && (
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-teal-600 mb-1.5 flex items-center gap-1"><Zap className="w-2.5 h-2.5" /> Auto-derived from Layer Config</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 mb-1.5 flex items-center gap-1"><Zap className="w-2.5 h-2.5" /> Auto-derived from Layer Config</p>
           {autoRows.map((row) => (
             <div key={row.key} className="rounded border border-teal-100 bg-teal-50/30 px-2.5 py-1.5 mb-1.5">
               <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-teal-700 border-teal-300 shrink-0">⚙ Auto</Badge>
-                  <span className="text-[11px] text-slate-700 truncate">{row.materialName}</span>
+                  <span className="text-xs text-slate-700 truncate">{row.materialName}</span>
                 </div>
-                <span className="text-[11px] text-muted-foreground">{row.uom}</span>
-                <span className="text-[11px] font-mono text-right">{row.qtyPerBoqUnit ? fmtQty(parseFloat(row.qtyPerBoqUnit), 4) : "—"}</span>
+                <span className="text-xs text-muted-foreground">{row.uom}</span>
+                <span className="text-xs font-mono text-right">{row.qtyPerBoqUnit ? fmtQty(parseFloat(row.qtyPerBoqUnit), 4) : "—"}</span>
                 <button className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} title="Remove auto row" data-testid={`button-remove-auto-mat-${row.key}`}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
               {row.applicationNote && (
-                <p className="text-[10px] text-blue-600 mt-0.5 flex items-center gap-1">
+                <p className="text-[12px] text-blue-600 mt-0.5 flex items-center gap-1">
                   <Info className="w-3 h-3 shrink-0" />{row.applicationNote}
                 </p>
               )}
@@ -1012,20 +1012,20 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
       {/* Manual rows */}
       {manualRows.length > 0 && (
         <div>
-          {autoRows.length > 0 && <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Manual</p>}
+          {autoRows.length > 0 && <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Manual</p>}
           {manualRows.map((row) => (
             <div key={row.key} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-end mb-2">
               <div>
-                <Label className="text-[10px]">MATERIAL NAME</Label>
-                <Input className="h-8 text-xs" placeholder="e.g. Bitumen VG-30" value={row.materialName} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, materialName: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-name-${row.key}`} />
+                <Label className="text-[12px]">MATERIAL NAME</Label>
+                <Input className="h-8 text-sm" placeholder="e.g. Bitumen VG-30" value={row.materialName} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, materialName: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-name-${row.key}`} />
               </div>
               <div>
-                <Label className="text-[10px]">UNIT</Label>
-                <Input className="h-8 text-xs" placeholder="MT / CUM" value={row.uom} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, uom: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-unit-${row.key}`} />
+                <Label className="text-[12px]">UNIT</Label>
+                <Input className="h-8 text-sm" placeholder="MT / CUM" value={row.uom} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, uom: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-unit-${row.key}`} />
               </div>
               <div>
-                <Label className="text-[10px]">QTY / {boqUnit}</Label>
-                <Input type="number" step="0.001" className="h-8 text-xs" value={row.qtyPerBoqUnit} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, qtyPerBoqUnit: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-qty-${row.key}`} />
+                <Label className="text-[12px]">QTY / {boqUnit}</Label>
+                <Input type="number" step="0.001" className="h-8 text-sm" value={row.qtyPerBoqUnit} onChange={(e) => { setRows((p) => p.map((r) => r.key === row.key ? { ...r, qtyPerBoqUnit: e.target.value } : r)); setDirty(true); }} data-testid={`input-mat-qty-${row.key}`} />
               </div>
               <button className="mb-0.5 p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" onClick={() => { setRows((p) => p.filter((r) => r.key !== row.key)); setDirty(true); }} data-testid={`button-remove-mat-${row.key}`}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -1036,8 +1036,8 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
       )}
 
       <div className="flex items-center justify-between pt-1">
-        <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => { setRows((p) => [...p, makeMatRow()]); setDirty(true); }} data-testid="button-add-mat-row"><Plus className="w-3.5 h-3.5 mr-1" /> Add Material</Button>
-        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-xs h-7" data-testid="button-save-mat-recipe">
+        <Button variant="outline" size="sm" className="text-sm h-7" onClick={() => { setRows((p) => [...p, makeMatRow()]); setDirty(true); }} data-testid="button-add-mat-row"><Plus className="w-3.5 h-3.5 mr-1" /> Add Material</Button>
+        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-sm h-7" data-testid="button-save-mat-recipe">
           {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}Save
         </Button>
       </div>
@@ -1144,7 +1144,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           <DialogTitle className="text-base flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-teal-600" />
             Map to Standard Norm
-            <span className="text-xs font-normal text-muted-foreground truncate max-w-[220px]">— {item.description}</span>
+            <span className="text-sm font-normal text-muted-foreground truncate max-w-[220px]">— {item.description}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -1153,13 +1153,13 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           {existingMapping && (
             <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2">
               <CheckCircle className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-              <span className="text-xs flex-1 text-teal-700">
+              <span className="text-sm flex-1 text-teal-700">
                 Currently mapped · SNL item #{existingMapping.snlItemId} · {existingMapping.projectCategory}{existingMapping.gradingVariant ? ` · ${existingMapping.gradingVariant}` : ""}
               </span>
               <button
                 onClick={() => removeMutation.mutate()}
                 disabled={removeMutation.isPending}
-                className="text-[10px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
+                className="text-[12px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
                 data-testid="button-remove-snl-mapping"
               >
                 {removeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Remove
@@ -1171,7 +1171,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              className="pl-8 h-8 text-xs"
+              className="pl-8 h-8 text-sm"
               placeholder="Search by item code or description (e.g. DBM, WMM, embankment)…"
               value={q}
               onChange={e => setQ(e.target.value)}
@@ -1192,40 +1192,40 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
                 >
                   <div className="flex items-center gap-2 justify-between">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[10px] font-mono font-semibold text-teal-700 shrink-0">{r.itemCode}</span>
-                      <span className="text-xs font-medium truncate">{r.shortLabel}</span>
+                      <span className="text-[12px] font-mono font-semibold text-teal-700 shrink-0">{r.itemCode}</span>
+                      <span className="text-sm font-medium truncate">{r.shortLabel}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[9px] text-muted-foreground">{r.sourceCode}</span>
+                      <span className="text-xs text-muted-foreground">{r.sourceCode}</span>
                       {r.hasGradingVariants && <Badge variant="outline" className="text-[8px] h-3.5 px-1 border-amber-300 text-amber-600">grading</Badge>}
                     </div>
                   </div>
                   {r.shiftOutput && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>
+                    <p className="text-[12px] text-muted-foreground mt-0.5">{r.shiftOutput} {r.outputUnit}/shift</p>
                   )}
                 </button>
               ))}
             </div>
           )}
           {q.length > 1 && !isFetching && results.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-3">No norms found for "{q}".</p>
+            <p className="text-sm text-muted-foreground text-center py-3">No norms found for "{q}".</p>
           )}
           {q.length === 0 && results.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-3">Type to search the norms library (e.g. "WMM", "5.04", "embankment")</p>
+            <p className="text-sm text-muted-foreground text-center py-3">Type to search the norms library (e.g. "WMM", "5.04", "embankment")</p>
           )}
 
           {/* Apply options — shown when an item is selected */}
           {selectedItem && (
             <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3 space-y-3">
-              <p className="text-[10px] font-semibold text-teal-700">Apply Options for {selectedItem.itemCode} — {selectedItem.shortLabel}</p>
+              <p className="text-[12px] font-semibold text-teal-700">Apply Options for {selectedItem.itemCode} — {selectedItem.shortLabel}</p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-[10px]">PROJECT CATEGORY</Label>
+                  <Label className="text-[12px]">PROJECT CATEGORY</Label>
                   <select
                     value={projectCategory}
                     onChange={e => setProjectCategory(e.target.value)}
-                    className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 mt-0.5"
+                    className="w-full h-8 text-sm rounded-md border border-input bg-background px-2 mt-0.5"
                     data-testid="select-project-category"
                   >
                     {CATEGORY_LABELS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1235,11 +1235,11 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
 
                 {gradingOptions.length > 0 && (
                   <div>
-                    <Label className="text-[10px]">GRADING VARIANT</Label>
+                    <Label className="text-[12px]">GRADING VARIANT</Label>
                     <select
                       value={gradingVariant}
                       onChange={e => setGradingVariant(e.target.value)}
-                      className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 mt-0.5"
+                      className="w-full h-8 text-sm rounded-md border border-input bg-background px-2 mt-0.5"
                       data-testid="select-grading-variant"
                     >
                       <option value="">— None / Default —</option>
@@ -1250,7 +1250,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
               </div>
 
               <div className="rounded border border-amber-200 bg-amber-50/40 px-2.5 py-1.5">
-                <p className="text-[10px] text-amber-700">
+                <p className="text-[12px] text-amber-700">
                   <AlertTriangle className="w-3 h-3 inline mr-1" />
                   Applying will <strong>replace</strong> all current equipment, labour and materials on this item with norms from {selectedItem.sourceCode}.
                 </p>
@@ -1310,9 +1310,9 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
             <DialogTitle className="text-base flex items-center gap-2">
               <Package className="w-4 h-4 text-teal-600" />
               Item Recipes — {item.description}
-              <span className="text-xs font-normal text-muted-foreground">({item.unit})</span>
+              <span className="text-sm font-normal text-muted-foreground">({item.unit})</span>
               {existingMapping && (
-                <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-teal-300 text-teal-700 ml-1">
+                <Badge variant="outline" className="text-xs h-4 px-1.5 border-teal-300 text-teal-700 ml-1">
                   <BookOpen className="w-2.5 h-2.5 mr-0.5" />SNL
                 </Badge>
               )}
@@ -1321,10 +1321,10 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
           <div className="flex-1 overflow-y-auto">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="mb-3">
-                <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-xs"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
-                <TabsTrigger value="equipment" className="flex items-center gap-1.5 text-xs"><Wrench className="w-3.5 h-3.5" />Equipment</TabsTrigger>
-                <TabsTrigger value="labour" className="flex items-center gap-1.5 text-xs"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
-                <TabsTrigger value="materials" className="flex items-center gap-1.5 text-xs"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
+                <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-sm"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
+                <TabsTrigger value="equipment" className="flex items-center gap-1.5 text-sm"><Wrench className="w-3.5 h-3.5" />Equipment</TabsTrigger>
+                <TabsTrigger value="labour" className="flex items-center gap-1.5 text-sm"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
+                <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
               <TabsContent value="layer-config"><LayerConfigTab item={item} projectId={item.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
               <TabsContent value="equipment"><EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={item.boqProjectId} /></TabsContent>
@@ -1367,15 +1367,15 @@ export function BoqItemRecipeBadge({ boqItemId }: { boqItemId: number }) {
   if (!hasData) return null;
   return (
     <div className="mt-1">
-      <button className="flex items-center gap-1 text-[10px] text-teal-600 hover:text-teal-800 transition-colors" onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}>
+      <button className="flex items-center gap-1 text-[12px] text-teal-600 hover:text-teal-800 transition-colors" onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}>
         {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         {equipment.length > 0 && <span>{equipment.length} equip</span>}
         {materials.length > 0 && <span>· {materials.length} mat</span>}
       </button>
       {expanded && (
         <div className="mt-1 space-y-0.5 pl-3 border-l-2 border-teal-100">
-          {equipment.map((e) => <p key={e.id} className="text-[10px] text-muted-foreground"><Wrench className="w-2.5 h-2.5 inline mr-0.5" />{e.equipmentName}{e.count && e.count > 1 ? ` ×${e.count}` : ""}</p>)}
-          {materials.map((m) => <p key={m.id} className="text-[10px] text-muted-foreground"><Package className="w-2.5 h-2.5 inline mr-0.5" />{m.materialName}{m.qtyPerBoqUnit ? ` — ${fmtQty(m.qtyPerBoqUnit, 3)} ${m.uom ?? ""}` : ""}{m.isAuto && <Badge variant="outline" className="text-[7px] h-3 px-0.5 ml-0.5">⚙</Badge>}</p>)}
+          {equipment.map((e) => <p key={e.id} className="text-[12px] text-muted-foreground"><Wrench className="w-2.5 h-2.5 inline mr-0.5" />{e.equipmentName}{e.count && e.count > 1 ? ` ×${e.count}` : ""}</p>)}
+          {materials.map((m) => <p key={m.id} className="text-[12px] text-muted-foreground"><Package className="w-2.5 h-2.5 inline mr-0.5" />{m.materialName}{m.qtyPerBoqUnit ? ` — ${fmtQty(m.qtyPerBoqUnit, 3)} ${m.uom ?? ""}` : ""}{m.isAuto && <Badge variant="outline" className="text-[7px] h-3 px-0.5 ml-0.5">⚙</Badge>}</p>)}
         </div>
       )}
     </div>

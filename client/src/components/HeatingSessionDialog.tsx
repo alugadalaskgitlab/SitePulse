@@ -560,7 +560,7 @@ export function HeatingSessionDialog({
                 {/* Recorded on the session for the day's record; routing
                     of dryer-meter consumption is on the matching shift log. */}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="hs-dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
+                  <Label htmlFor="hs-dryer-fed-from" className="text-sm">Which tank feeds the dryer?</Label>
                   <Select value={form.dryerFedFrom} onValueChange={(v) => setField("dryerFedFrom", v as "TANK_1" | "TANK_2")}>
                     <SelectTrigger id="hs-dryer-fed-from" className="h-8 w-36" data-testid="select-hs-dryer-fed-from">
                       <SelectValue />
@@ -580,17 +580,17 @@ export function HeatingSessionDialog({
                   onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
                   data-testid="input-ldo-open" />
                 {form.autoFilledOpening && form.autoFilledSource ? (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
+                  <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
                     Auto-filled from previous closing ({form.autoFilledSource})
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Read the meter at the start of this session</p>
+                  <p className="text-sm text-muted-foreground mt-1">Read the meter at the start of this session</p>
                 )}
               </div>
               <div>
                 <Label>Boiler fuel meter — end reading</Label>
                 <Input type="number" step="0.01" value={form.ldoTank1ClosingMeter} onChange={e => setField("ldoTank1ClosingMeter", e.target.value)} data-testid="input-ldo-close" />
-                <p className="text-xs text-muted-foreground mt-1">Read the meter when the session ends</p>
+                <p className="text-sm text-muted-foreground mt-1">Read the meter when the session ends</p>
               </div>
               <div><Label>Total Consumed (L)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-consumed">{ldoConsumed?.toFixed(2) ?? "—"}</div></div>
               <div><Label>L/Hr</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-ldo-lphr">{ldoLPerHr != null ? ldoLPerHr.toFixed(2) : "—"}</div></div>
@@ -611,14 +611,14 @@ export function HeatingSessionDialog({
                   data-testid="input-ldo-dip-t1-open"
                 />
                 {form.autoFilledDipT1 && form.autoFilledDipT1Source ? (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1">Auto-filled from {form.autoFilledDipT1Source}</p>
+                  <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1">Auto-filled from {form.autoFilledDipT1Source}</p>
                 ) : (
                   ldoDipHint(1, form.ldoTank1OpeningDip)
-                    ? <p className="text-xs font-medium text-foreground mt-1">{ldoDipHint(1, form.ldoTank1OpeningDip)}</p>
-                    : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>
+                    ? <p className="text-sm font-medium text-foreground mt-1">{ldoDipHint(1, form.ldoTank1OpeningDip)}</p>
+                    : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session start, in cm</p>
                 )}
                 {form.autoFilledDipT1 && ldoDipHint(1, form.ldoTank1OpeningDip) && (
-                  <p className="text-xs font-medium text-foreground mt-0.5">{ldoDipHint(1, form.ldoTank1OpeningDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-0.5">{ldoDipHint(1, form.ldoTank1OpeningDip)}</p>
                 )}
               </div>
               <div>
@@ -631,8 +631,8 @@ export function HeatingSessionDialog({
                   data-testid="input-ldo-dip-t1-close"
                 />
                 {ldoDipHint(1, form.ldoTank1ClosingDip)
-                  ? <p className="text-xs font-medium text-foreground mt-1">{ldoDipHint(1, form.ldoTank1ClosingDip)}</p>
-                  : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
+                  ? <p className="text-sm font-medium text-foreground mt-1">{ldoDipHint(1, form.ldoTank1ClosingDip)}</p>
+                  : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
                 }
               </div>
               <div>
@@ -645,14 +645,14 @@ export function HeatingSessionDialog({
                   data-testid="input-ldo-dip-t2-open"
                 />
                 {form.autoFilledDipT2 && form.autoFilledDipT2Source ? (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2">Auto-filled from {form.autoFilledDipT2Source}</p>
+                  <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2">Auto-filled from {form.autoFilledDipT2Source}</p>
                 ) : (
                   ldoDipHint(2, form.ldoTank2OpeningDip)
-                    ? <p className="text-xs font-medium text-foreground mt-1">{ldoDipHint(2, form.ldoTank2OpeningDip)}</p>
-                    : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>
+                    ? <p className="text-sm font-medium text-foreground mt-1">{ldoDipHint(2, form.ldoTank2OpeningDip)}</p>
+                    : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session start, in cm</p>
                 )}
                 {form.autoFilledDipT2 && ldoDipHint(2, form.ldoTank2OpeningDip) && (
-                  <p className="text-xs font-medium text-foreground mt-0.5">{ldoDipHint(2, form.ldoTank2OpeningDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-0.5">{ldoDipHint(2, form.ldoTank2OpeningDip)}</p>
                 )}
               </div>
               <div>
@@ -665,8 +665,8 @@ export function HeatingSessionDialog({
                   data-testid="input-ldo-dip-t2-close"
                 />
                 {ldoDipHint(2, form.ldoTank2ClosingDip)
-                  ? <p className="text-xs font-medium text-foreground mt-1">{ldoDipHint(2, form.ldoTank2ClosingDip)}</p>
-                  : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
+                  ? <p className="text-sm font-medium text-foreground mt-1">{ldoDipHint(2, form.ldoTank2ClosingDip)}</p>
+                  : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>
                 }
               </div>
               {(() => {
@@ -688,7 +688,7 @@ export function HeatingSessionDialog({
                 return (
                   <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4 pt-1" data-testid="text-ldo-dip-consumed-summary">
                     {results.map(r => r && (
-                      <span key={r.label} className={`text-xs font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                      <span key={r.label} className={`text-sm font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
                         {r.label} — {r.isReceipt ? "Net receipt" : "Consumed"}: {r.litres.toLocaleString()} L ({r.mt} MT)
                       </span>
                     ))}
@@ -709,7 +709,7 @@ export function HeatingSessionDialog({
                     onCheckedChange={v => setField("dgMode", v ? "inline" : "none")}
                     data-testid="switch-dg-running"
                   />
-                  <Label htmlFor="hs-dg-running" className="text-xs cursor-pointer">
+                  <Label htmlFor="hs-dg-running" className="text-sm cursor-pointer">
                     DG was running during this session
                   </Label>
                 </div>
@@ -750,28 +750,28 @@ export function HeatingSessionDialog({
                     <div>
                       <Label>Diesel in tank — opening (L)</Label>
                       <Input type="number" step="0.1" value={form.dgOpeningDiesel} onChange={e => setField("dgOpeningDiesel", e.target.value)} data-testid="input-dg-open" />
-                      <p className="text-xs text-muted-foreground mt-1">Check dipstick before starting</p>
+                      <p className="text-sm text-muted-foreground mt-1">Check dipstick before starting</p>
                     </div>
                     <div>
                       <Label>Diesel added to tank (L)</Label>
                       <Input type="number" step="0.1" value={form.dgIssuedDiesel} onChange={e => setField("dgIssuedDiesel", e.target.value)} data-testid="input-dg-issued" />
-                      <p className="text-xs text-muted-foreground mt-1">Leave blank if nothing was added</p>
+                      <p className="text-sm text-muted-foreground mt-1">Leave blank if nothing was added</p>
                     </div>
                     <div>
                       <Label>Diesel in tank — closing (L)</Label>
                       <Input type="number" step="0.1" value={form.dgClosingDiesel} onChange={e => setField("dgClosingDiesel", e.target.value)} data-testid="input-dg-close" />
-                      <p className="text-xs text-muted-foreground mt-1">Check dipstick after stopping</p>
+                      <p className="text-sm text-muted-foreground mt-1">Check dipstick after stopping</p>
                     </div>
                     <div>
                       <Label>Diesel used (L)</Label>
                       <div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-consumed">{dgConsumed?.toFixed(2) ?? "—"}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Calculated automatically</p>
+                      <p className="text-sm text-muted-foreground mt-1">Calculated automatically</p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    className="text-xs text-muted-foreground underline underline-offset-2"
+                    className="text-sm text-muted-foreground underline underline-offset-2"
                     onClick={() => setDgAdvancedOpen(v => !v)}
                     data-testid="button-dg-advanced-toggle"
                   >
@@ -804,7 +804,7 @@ export function HeatingSessionDialog({
                         </div>
                       </div>
                       <div><Label>Diesel used per hour (L/hr)</Label><div className="px-3 py-2 rounded bg-amber-50 dark:bg-amber-950/30 font-semibold text-sm" data-testid="text-dg-lphr">{dgLPerHr != null ? dgLPerHr.toFixed(2) : "—"}</div></div>
-                      <div className="md:col-span-4 text-xs text-muted-foreground">
+                      <div className="md:col-span-4 text-sm text-muted-foreground">
                         The system uses the hour-meter when both opening and closing readings are provided; otherwise it falls back to clock times. DG hours used drives the diesel-per-hour metric.
                       </div>
                     </div>
@@ -812,7 +812,7 @@ export function HeatingSessionDialog({
 
                   <button
                     type="button"
-                    className="text-xs text-muted-foreground underline underline-offset-2"
+                    className="text-sm text-muted-foreground underline underline-offset-2"
                     onClick={() => setField("dgMode", "link")}
                     data-testid="button-dg-switch-to-link"
                   >
@@ -851,13 +851,13 @@ export function HeatingSessionDialog({
                     </SelectContent>
                   </Select>
                   {form.linkSelection?.startsWith("eu-") && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       This is an Equipment Usage entry — on Save it will be mirrored into Generator Logs and linked to this session.
                     </p>
                   )}
                   <button
                     type="button"
-                    className="text-xs text-muted-foreground underline underline-offset-2"
+                    className="text-sm text-muted-foreground underline underline-offset-2"
                     onClick={() => setField("dgMode", "inline")}
                     data-testid="button-dg-switch-to-inline"
                   >

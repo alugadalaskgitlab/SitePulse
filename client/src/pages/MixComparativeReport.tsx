@@ -86,7 +86,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
           <Printer className="w-4 h-4 mr-1" /> Print
         </Button>
         {printable && (
-          <span className="text-xs text-muted-foreground ml-2">
+          <span className="text-sm text-muted-foreground ml-2">
             {contractors.length} contractor{contractors.length !== 1 ? "s" : ""} · {ledgerRows.length} job{ledgerRows.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -105,7 +105,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
           ) : (
             <table className="w-full text-sm border-collapse" data-testid="table-rate-comparison">
               <thead>
-                <tr className="bg-amber-50 dark:bg-amber-950/30 text-xs uppercase tracking-wide">
+                <tr className="bg-amber-50 dark:bg-amber-950/30 text-sm uppercase tracking-wide">
                   <th className="text-left px-4 py-2.5 font-semibold border-b border-border">Mix Type</th>
                   {contractors.map((c) => (
                     <th key={c} className="text-right px-4 py-2.5 font-semibold border-b border-border whitespace-nowrap">
@@ -145,7 +145,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                           >
                             {rate > 0 ? (
                               <>
-                                <span className="block">₹{rate.toFixed(2)} /MT{isMin && <span className="ml-1 text-xs">(L)</span>}{isMax && <span className="ml-1 text-xs">(H)</span>}</span>
+                                <span className="block">₹{rate.toFixed(2)} /MT{isMin && <span className="ml-1 text-sm">(L)</span>}{isMax && <span className="ml-1 text-sm">(H)</span>}</span>
                                 <span className="block">₹{rateCum.toFixed(2)} /CUM</span>
                               </>
                             ) : "—"}
@@ -172,7 +172,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
           ) : (
             <table className="w-full text-sm border-collapse" data-testid="table-job-ledger">
               <thead>
-                <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
+                <tr className="bg-muted/50 text-muted-foreground text-sm uppercase tracking-wide">
                   <th className="text-left px-4 py-2.5 font-semibold">Contractor</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Job</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Mix Type</th>
@@ -206,7 +206,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                             {ri === 0 ? <span className="font-semibold">{contractor}</span> : ""}
                           </td>
                           <td className="px-4 py-2.5 font-mono font-medium text-sm">{row.jobId}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground text-xs">{row.mixType}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground text-sm">{row.mixType}</td>
                           <td className="px-4 py-2.5 text-right font-mono">{row.areaSqm > 0 ? row.areaSqm.toFixed(1) : "—"}</td>
                           <td className="px-4 py-2.5 text-right font-mono">
                             <span className="block">{row.mt > 0 ? `${row.mt.toFixed(1)} MT` : "—"}</span>
@@ -234,7 +234,7 @@ export function MixComparisonContent({ data, printable = false }: ContentProps) 
                         </tr>
                       ))}
                       <tr className="border-t border-primary/20 bg-amber-50/50 dark:bg-amber-950/20">
-                        <td className="px-4 py-2 font-bold text-xs uppercase text-primary" colSpan={5}>
+                        <td className="px-4 py-2 font-bold text-sm uppercase text-primary" colSpan={5}>
                           {contractor} Subtotal
                         </td>
                         <td className="px-4 py-2 text-right font-bold font-mono">
@@ -310,7 +310,7 @@ export default function MixComparativeReport() {
           <h1 className="text-xl font-bold flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-primary" /> Contractor Comparative Rate Statement
           </h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {comparisonData.contractors.length} contractor{comparisonData.contractors.length !== 1 ? "s" : ""} · {estimates.length} estimate{estimates.length !== 1 ? "s" : ""}
           </p>
         </div>

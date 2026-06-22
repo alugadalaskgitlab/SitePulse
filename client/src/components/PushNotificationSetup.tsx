@@ -174,7 +174,7 @@ export function PushNotificationSetup() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-xs" data-testid="button-notification-settings">
+        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sm" data-testid="button-notification-settings">
           <Settings className="w-3 h-3" />
           Push Notification Settings
         </Button>
@@ -202,10 +202,10 @@ export function PushNotificationSetup() {
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
                   Add to Home Screen Required
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
                   On iPhone/iPad, push notifications only work when the app is installed to your Home Screen:
                 </p>
-                <ol className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
+                <ol className="text-sm text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
                   <li className="flex items-center gap-1">
                     Tap the <Share className="w-3 h-3 inline" /> Share button in Safari
                   </li>
@@ -237,7 +237,7 @@ export function PushNotificationSetup() {
                   <CheckCircle className="w-8 h-8 text-green-500 shrink-0" />
                   <div>
                     <p className="text-sm font-medium">Notifications Active</p>
-                    <p className="text-xs text-muted-foreground">This device will receive push notifications for all data entries</p>
+                    <p className="text-sm text-muted-foreground">This device will receive push notifications for all data entries</p>
                   </div>
                 </>
               ) : (
@@ -245,7 +245,7 @@ export function PushNotificationSetup() {
                   <BellOff className="w-8 h-8 text-muted-foreground shrink-0" />
                   <div>
                     <p className="text-sm font-medium">Notifications Off</p>
-                    <p className="text-xs text-muted-foreground">Enable to receive push alerts for DPR submissions, material entries, equipment logs, and more</p>
+                    <p className="text-sm text-muted-foreground">Enable to receive push alerts for DPR submissions, material entries, equipment logs, and more</p>
                   </div>
                 </>
               )}
@@ -264,7 +264,7 @@ export function PushNotificationSetup() {
             )}
 
             <Link href="/notifications/preferences" onClick={() => setOpen(false)}>
-              <a className="flex items-center justify-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground border border-dashed border-muted-foreground/30 rounded-md py-2 px-3 transition-colors hover:border-muted-foreground/60" data-testid="link-notification-preferences">
+              <a className="flex items-center justify-center gap-2 w-full text-sm text-muted-foreground hover:text-foreground border border-dashed border-muted-foreground/30 rounded-md py-2 px-3 transition-colors hover:border-muted-foreground/60" data-testid="link-notification-preferences">
                 <SlidersHorizontal className="w-3 h-3" />
                 Manage which sections notify you
               </a>
@@ -272,14 +272,14 @@ export function PushNotificationSetup() {
 
             {isIos && !isStandalone && !isSubscribed && (
               <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center gap-1">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-1">
                   <Smartphone className="w-3 h-3" />
                   iPhone/iPad Setup
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
                   For push notifications to work, add this app to your Home Screen first:
                 </p>
-                <ol className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
+                <ol className="text-sm text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
                   <li className="flex items-center gap-1">
                     Tap <Share className="w-3 h-3 inline" /> Share in Safari
                   </li>

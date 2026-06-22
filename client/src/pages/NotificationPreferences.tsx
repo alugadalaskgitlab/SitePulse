@@ -74,7 +74,7 @@ export default function NotificationPreferences() {
           <p className="text-sm font-medium text-slate-800">
             Subscribed to <span className="text-orange-600 font-semibold">{subscribedCount}</span> section{subscribedCount !== 1 ? "s" : ""}
           </p>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-500 mt-0.5">
             Push alerts are sent only for sections you subscribe to. You can change this at any time.
           </p>
         </div>
@@ -98,7 +98,7 @@ export default function NotificationPreferences() {
         <div className="text-center py-16 space-y-3">
           <BellOff className="w-10 h-10 mx-auto text-muted-foreground" />
           <p className="text-sm font-medium text-slate-700">No accessible sections</p>
-          <p className="text-xs text-slate-500">You don't have access to any sections that support notifications yet.</p>
+          <p className="text-sm text-slate-500">You don't have access to any sections that support notifications yet.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -118,7 +118,7 @@ export default function NotificationPreferences() {
                   <h3 className="text-sm font-semibold text-slate-700">{group.label}</h3>
                   {activeSections.length > 0 ? (
                     <button
-                      className="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2 transition-colors"
+                      className="text-sm text-slate-500 hover:text-slate-800 underline underline-offset-2 transition-colors"
                       onClick={() => {
                         const newVal = !allOn;
                         const patch: Record<string, boolean> = {};
@@ -131,7 +131,7 @@ export default function NotificationPreferences() {
                       {allOn ? "Unsubscribe all" : someOn ? "Subscribe all" : "Subscribe all"}
                     </button>
                   ) : (
-                    <span className="text-xs text-slate-400 italic">No alerts in this group</span>
+                    <span className="text-sm text-slate-400 italic">No alerts in this group</span>
                   )}
                 </div>
                 <div className="divide-y divide-slate-100">
@@ -158,7 +158,7 @@ export default function NotificationPreferences() {
                           </span>
                           {isActive ? (
                             <span
-                              className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 flex-shrink-0"
+                              className="inline-flex items-center gap-0.5 text-[12px] font-medium px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 flex-shrink-0"
                               data-testid={`badge-push-active-${s}`}
                             >
                               <Zap className="w-2.5 h-2.5" />
@@ -166,7 +166,7 @@ export default function NotificationPreferences() {
                             </span>
                           ) : (
                             <span
-                              className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200 flex-shrink-0"
+                              className="inline-flex items-center text-[12px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200 flex-shrink-0"
                               data-testid={`badge-push-inactive-${s}`}
                             >
                               No alerts yet

@@ -586,15 +586,15 @@ export default function PlantMaterialReturns() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <Label className="text-xs">From Date</Label>
+              <Label className="text-sm">From Date</Label>
               <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
             </div>
             <div>
-              <Label className="text-xs">To Date</Label>
+              <Label className="text-sm">To Date</Label>
               <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
             </div>
             <div>
-              <Label className="text-xs">Material</Label>
+              <Label className="text-sm">Material</Label>
               <Select value={filterMaterialId} onValueChange={setFilterMaterialId}>
                 <SelectTrigger data-testid="filter-material">
                   <SelectValue placeholder="All" />
@@ -658,7 +658,7 @@ export default function PlantMaterialReturns() {
                           <span className="font-semibold">{getMaterialName(ret.materialId)}</span>
                           <Badge variant="secondary">{ret.quantity} {ret.uom}</Badge>
                           {getSiteName((ret as any).siteId) && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                               {getSiteName((ret as any).siteId)}
                             </span>
                           )}
@@ -673,15 +673,15 @@ export default function PlantMaterialReturns() {
                           </div>
                         )}
                         {linkedIssue && (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                             From Issue: {linkedIssue.date} | {linkedIssue.issuedTo} | {linkedIssue.quantity} {linkedIssue.uom}
                           </div>
                         )}
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-sm text-muted-foreground">
                           Stock Owner: {getPartyName(ret.partyId)}
                         </div>
                         {ret.notes && (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                             Notes: {ret.notes}
                           </div>
                         )}

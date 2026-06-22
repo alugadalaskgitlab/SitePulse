@@ -949,11 +949,11 @@ export default function PlantBitumenStock() {
             {/* Summary grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className="text-muted-foreground text-sm mb-1">Total Book Stock (All Parties)</div>
                 <div className={`font-bold text-lg ${bitumenBookStockMT < 0 ? "text-red-600" : "text-foreground"}`}>
                   {bitumenBookStockMT.toFixed(3)} MT
                 </div>
-                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                   {bitumenPartyBalances.map(b => (
                     <div key={b.id} className="flex justify-between gap-2">
                       <span>{parties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
@@ -963,28 +963,28 @@ export default function PlantBitumenStock() {
                 </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Physical Stock (Dip)</div>
+                <div className="text-muted-foreground text-sm mb-1">Physical Stock (Dip)</div>
                 <div className="font-bold text-lg text-amber-700 dark:text-amber-400">
                   {latestTank1 || latestTank2 ? `${(combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT` : "No dip readings"}
                 </div>
-                <div className="text-xs text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
-                <div className="text-xs text-muted-foreground">T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                <div className="text-sm text-muted-foreground">T1: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
+                <div className="text-sm text-muted-foreground">T2: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 col-span-2">
-                <div className="text-muted-foreground text-xs mb-1">Difference (Physical − Book)</div>
+                <div className="text-muted-foreground text-sm mb-1">Difference (Physical − Book)</div>
                 {(latestTank1 || latestTank2) ? (() => {
                   const physMT = combinedTotal * BITUMEN_DENSITY_KG_PER_LITER / 1000;
                   const diff = physMT - bitumenBookStockMT;
                   return (
                     <div className={`font-bold text-lg ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-foreground"}`}>
                       {diff > 0 ? "+" : ""}{diff.toFixed(3)} MT
-                      <span className="text-xs font-normal ml-2 text-muted-foreground">
+                      <span className="text-sm font-normal ml-2 text-muted-foreground">
                         {diff > 0 ? "Surplus (bitumen savings)" : diff < 0 ? "Deficit — check receipts" : "Balanced"}
                       </span>
                     </div>
                   );
                 })() : <div className="text-muted-foreground">—</div>}
-                <div className="text-xs text-muted-foreground mt-1">Post a correction to align a party's book stock with actual physical measurement</div>
+                <div className="text-sm text-muted-foreground mt-1">Post a correction to align a party's book stock with actual physical measurement</div>
               </div>
             </div>
 
@@ -995,7 +995,7 @@ export default function PlantBitumenStock() {
                 {/* Party selector */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Party to Correct</Label>
+                    <Label className="text-sm">Party to Correct</Label>
                     <Select value={corrPartyId} onValueChange={id => setCorrPartyId(id)}>
                       <SelectTrigger data-testid="select-corr-party">
                         <SelectValue placeholder="Select party" />
@@ -1011,23 +1011,23 @@ export default function PlantBitumenStock() {
                       </SelectContent>
                     </Select>
                     {corrPartyId && selectedPartyBalance !== null && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         Current book stock: <span className={selectedPartyBalance < 0 ? "text-red-500 font-medium" : "font-medium"}>{selectedPartyBalance.toFixed(3)} MT</span>
                       </p>
                     )}
                   </div>
                   <div>
-                    <Label className="text-xs">As on Date</Label>
+                    <Label className="text-sm">As on Date</Label>
                     <Input type="date" value={corrDate} onChange={e => setCorrDate(e.target.value)} data-testid="input-corr-date" />
                   </div>
                 </div>
 
                 {/* Per-tank inputs */}
                 <div>
-                  <Label className="text-xs mb-2 block">Physical Stock from Dip Readings (MT)</Label>
+                  <Label className="text-sm mb-2 block">Physical Stock from Dip Readings (MT)</Label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Tank 1</Label>
+                      <Label className="text-sm text-muted-foreground">Tank 1</Label>
                       <Input
                         type="number" step="0.001" min="0"
                         value={corrTank1MT}
@@ -1035,10 +1035,10 @@ export default function PlantBitumenStock() {
                         placeholder={(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}
                         data-testid="input-corr-tank1-mt"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Dip: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                      <p className="text-sm text-muted-foreground mt-1">Dip: {(tank1Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Tank 2</Label>
+                      <Label className="text-sm text-muted-foreground">Tank 2</Label>
                       <Input
                         type="number" step="0.001" min="0"
                         value={corrTank2MT}
@@ -1046,10 +1046,10 @@ export default function PlantBitumenStock() {
                         placeholder={(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)}
                         data-testid="input-corr-tank2-mt"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Dip: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
+                      <p className="text-sm text-muted-foreground mt-1">Dip: {(tank2Volume * BITUMEN_DENSITY_KG_PER_LITER / 1000).toFixed(3)} MT</p>
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2 text-center">
-                      <div className="text-xs text-muted-foreground">Total Physical</div>
+                      <div className="text-sm text-muted-foreground">Total Physical</div>
                       <div className="font-bold text-base">
                         {corrTank1MT || corrTank2MT
                           ? ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)).toFixed(3)
@@ -1062,7 +1062,7 @@ export default function PlantBitumenStock() {
                           ? "bg-green-50 dark:bg-green-900/20"
                           : "bg-red-50 dark:bg-red-900/20"
                       }`}>
-                        <div className="text-xs text-muted-foreground">Adjustment</div>
+                        <div className="text-sm text-muted-foreground">Adjustment</div>
                         <div className={`font-bold text-base ${
                           ((parseFloat(corrTank1MT) || 0) + (parseFloat(corrTank2MT) || 0)) - selectedPartyBalance > 0
                             ? "text-green-700 dark:text-green-400"
@@ -1080,7 +1080,7 @@ export default function PlantBitumenStock() {
                 </div>
 
                 <div>
-                  <Label className="text-xs">Notes (optional)</Label>
+                  <Label className="text-sm">Notes (optional)</Label>
                   <Input value={corrNotes} onChange={e => setCorrNotes(e.target.value)} placeholder="e.g. Weekly dip reconciliation — T1: 6.5 MT, T2: 4.2 MT" data-testid="input-corr-notes" />
                 </div>
 
@@ -1372,8 +1372,8 @@ export default function PlantBitumenStock() {
                           <td className={`p-2 text-right border border-border ${bg} font-semibold`}>{r.depthCm.toFixed(1)}</td>
                           <td className={`p-2 text-right border border-border ${bg}`}>
                             <div className="font-bold">{totalMt.toFixed(3)} MT</div>
-                            <div className="text-xs font-semibold text-green-700 dark:text-green-400">Usable: {usableMt.toFixed(3)} MT</div>
-                            <div className="text-xs text-foreground/60">{Math.round(r.volumeLiters).toLocaleString()} L</div>
+                            <div className="text-sm font-semibold text-green-700 dark:text-green-400">Usable: {usableMt.toFixed(3)} MT</div>
+                            <div className="text-sm text-foreground/60">{Math.round(r.volumeLiters).toLocaleString()} L</div>
                           </td>
                         </>
                       );
@@ -1429,13 +1429,13 @@ export default function PlantBitumenStock() {
                       <td className="p-2 text-right">{row.theoreticalKg !== 0 ? row.variancePercent.toFixed(1) : "-"}%</td>
                       <td className="p-2 text-center" data-testid={`text-variance-status-${row.date}`}>
                         {row.theoreticalKg === 0 ? (
-                          <Badge variant="secondary" className="text-xs">OK</Badge>
+                          <Badge variant="secondary" className="text-sm">OK</Badge>
                         ) : row.varianceKg < 0 ? (
-                          <Badge className="text-xs bg-green-600 dark:bg-green-700">SAVING</Badge>
+                          <Badge className="text-sm bg-green-600 dark:bg-green-700">SAVING</Badge>
                         ) : row.varianceKg > 0 ? (
-                          <Badge variant="destructive" className="text-xs">LOSS</Badge>
+                          <Badge variant="destructive" className="text-sm">LOSS</Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-xs">OK</Badge>
+                          <Badge variant="secondary" className="text-sm">OK</Badge>
                         )}
                       </td>
                     </tr>
@@ -1458,13 +1458,13 @@ export default function PlantBitumenStock() {
                         <td className="p-2 text-right">{totals.theoreticalKg !== 0 ? totalVariancePercent.toFixed(1) : "-"}%</td>
                         <td className="p-2 text-center">
                           {totals.theoreticalKg === 0 ? (
-                            <Badge variant="secondary" className="text-xs">OK</Badge>
+                            <Badge variant="secondary" className="text-sm">OK</Badge>
                           ) : totals.varianceKg < 0 ? (
-                            <Badge className="text-xs bg-green-600 dark:bg-green-700">SAVING</Badge>
+                            <Badge className="text-sm bg-green-600 dark:bg-green-700">SAVING</Badge>
                           ) : totals.varianceKg > 0 ? (
-                            <Badge variant="destructive" className="text-xs">LOSS</Badge>
+                            <Badge variant="destructive" className="text-sm">LOSS</Badge>
                           ) : (
-                            <Badge variant="secondary" className="text-xs">OK</Badge>
+                            <Badge variant="secondary" className="text-sm">OK</Badge>
                           )}
                         </td>
                       </tr>
@@ -1556,7 +1556,7 @@ export default function PlantBitumenStock() {
                         style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
                       />
                       <h3 className="font-semibold">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
-                      <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                      <Badge variant="secondary" className="text-sm no-default-hover-elevate no-default-active-elevate">
                         {dateReadings.length} reading{dateReadings.length !== 1 ? "s" : ""}
                       </Badge>
                     </button>

@@ -590,7 +590,7 @@ function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
   const [raw, setRaw] = useState<string | null>(null);
   return (
     <div className={small ? "" : "space-y-1"}>
-      {label && <Label className="text-xs text-muted-foreground">{label}</Label>}
+      {label && <Label className="text-sm text-muted-foreground">{label}</Label>}
       <div className="flex items-center gap-1">
         <Input
           className="h-8 text-sm"
@@ -601,7 +601,7 @@ function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
           onFocus={e => { setRaw(String(value)); e.target.select(); }}
           placeholder="0"
         />
-        {unit && <span className="text-xs text-muted-foreground whitespace-nowrap">{unit}</span>}
+        {unit && <span className="text-sm text-muted-foreground whitespace-nowrap">{unit}</span>}
       </div>
     </div>
   );
@@ -610,7 +610,7 @@ function NumInput({ label, value, onChange, unit, dec = 0, small = false }: {
 function GradeSelect({ value, onChange, label }: { value: string; onChange: (v: string) => void; label?: string }) {
   return (
     <div className="space-y-1">
-      {label && <Label className="text-xs text-muted-foreground">{label}</Label>}
+      {label && <Label className="text-sm text-muted-foreground">{label}</Label>}
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
         <SelectContent>
@@ -636,7 +636,7 @@ function CATabsInput({ tabs, onChange }: { tabs: CATab[]; onChange: (tabs: CATab
       <div className="flex gap-1">
         {labels.map((l, i) => (
           <button key={l} onClick={() => setActive(i)}
-            className={`px-3 py-1 text-xs rounded border transition-colors ${active === i ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
+            className={`px-3 py-1 text-sm rounded border transition-colors ${active === i ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
             {l}
           </button>
         ))}
@@ -644,7 +644,7 @@ function CATabsInput({ tabs, onChange }: { tabs: CATab[]; onChange: (tabs: CATab
       <div className="grid grid-cols-2 gap-2">
         <NumInput label="Proportion %" value={tab.proportion} onChange={v => upd("proportion", v)} />
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">UoM</Label>
+          <Label className="text-sm text-muted-foreground">UoM</Label>
           <Select value={tab.uom} onValueChange={v => upd("uom", v as AggUom)}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -659,7 +659,7 @@ function CATabsInput({ tabs, onChange }: { tabs: CATab[]; onChange: (tabs: CATab
         <NumInput label="Freight" value={tab.freightRate} onChange={v => upd("freightRate", v)} unit="₹/MT/km" />
         <NumInput label="Payload" value={tab.payload} onChange={v => upd("payload", v)} unit="MT" />
       </div>
-      <p className="text-xs text-muted-foreground">Landed: ₹{fmt(landedPerMT(tab), 0)}/MT</p>
+      <p className="text-sm text-muted-foreground">Landed: ₹{fmt(landedPerMT(tab), 0)}/MT</p>
     </div>
   );
 }
@@ -669,17 +669,17 @@ function FAInput({ fa, onChange }: { fa: FASource; onChange: (fa: FASource) => v
   return (
     <div className="space-y-2">
       <div className="flex gap-2 items-center">
-        <Label className="text-xs text-muted-foreground">Type:</Label>
+        <Label className="text-sm text-muted-foreground">Type:</Label>
         {(["natural", "robosand"] as FAType[]).map(t => (
           <button key={t} onClick={() => upd("type", t)}
-            className={`px-3 py-1 text-xs rounded border transition-colors ${fa.type === t ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
+            className={`px-3 py-1 text-sm rounded border transition-colors ${fa.type === t ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}>
             {t === "natural" ? "Natural Sand" : "Robosand"}
           </button>
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">UoM</Label>
+          <Label className="text-sm text-muted-foreground">UoM</Label>
           <Select value={fa.uom} onValueChange={v => upd("uom", v as AggUom)}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -697,7 +697,7 @@ function FAInput({ fa, onChange }: { fa: FASource; onChange: (fa: FASource) => v
           <NumInput label="Bulkage %" value={fa.bulkagePct} onChange={v => upd("bulkagePct", v)} unit="%" />
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Landed: ₹{fmt(landedPerMT(fa), 0)}/MT{fa.type === "natural" && fa.bulkagePct > 0 ? ` (+${fa.bulkagePct}% bulkage)` : ""}
       </p>
     </div>
@@ -723,7 +723,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
   return (
     <div className="space-y-3">
       {/* Guidance callout */}
-      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded p-2.5 text-xs text-blue-800 dark:text-blue-200 space-y-1">
+      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded p-2.5 text-sm text-blue-800 dark:text-blue-200 space-y-1">
         <p className="font-semibold">Cut length and Nos/m are auto-derived from section dimensions.</p>
         <p>You only need to enter: <strong>bar type, diameter, spacing, and cover</strong>.
           For wall distribution bars, also pick wall coverage (inner or both faces).
@@ -736,7 +736,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
+        <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b bg-muted/20">
               <th className="text-left py-1.5 pr-2 pl-1 font-medium text-muted-foreground w-48">Bar Type</th>
@@ -759,30 +759,30 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
                   <td className="py-1 pr-2 pl-1">
                     <div>
                       <Select value={row.barType} onValueChange={v => updRow(row.id, "barType", v as BarTypeV2)}>
-                        <SelectTrigger className="h-7 text-xs w-full"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-7 text-sm w-full"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {Object.entries(BAR_TYPE_LABELS).map(([k, v]) => (
                             <SelectItem key={k} value={k} title={BAR_TYPE_NOTES[k as BarTypeV2]}>{v}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-muted-foreground mt-0.5 text-[10px] leading-tight pl-0.5">
+                      <p className="text-muted-foreground mt-0.5 text-[12px] leading-tight pl-0.5">
                         {BAR_TYPE_NOTES[row.barType]}
                       </p>
                     </div>
                   </td>
                   <td className="pr-2 align-top pt-1">
-                    <Input type="number" className="h-7 text-xs w-16 text-right"
+                    <Input type="number" className="h-7 text-sm w-16 text-right"
                       value={row.diaMm} onChange={e => updRow(row.id, "diaMm", +e.target.value)} />
                   </td>
                   <td className="pr-2 align-top pt-1">
-                    <Input type="number" className="h-7 text-xs w-20 text-right"
+                    <Input type="number" className="h-7 text-sm w-20 text-right"
                       value={row.spacingMm} onChange={e => updRow(row.id, "spacingMm", +e.target.value)} />
                   </td>
                   <td className="pr-2 align-top pt-1">
                     {row.barType === "wall_dist" && (
                       <Select value={String(wallFaces)} onValueChange={v => updRow(row.id, "wallFaces", +v as 2 | 4)}>
-                        <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-7 text-sm w-36"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="2">Inner face (×2 walls)</SelectItem>
                           <SelectItem value="4">Both faces (×4 walls)</SelectItem>
@@ -791,7 +791,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
                     )}
                     {row.barType === "invert_dist" && (
                       <Select value={String(layers)} onValueChange={v => updRow(row.id, "layers", +v as 1 | 2)}>
-                        <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-7 text-sm w-36"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">Single layer</SelectItem>
                           <SelectItem value="2">Double layer</SelectItem>
@@ -799,7 +799,7 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
                       </Select>
                     )}
                     {row.barType !== "wall_dist" && row.barType !== "invert_dist" && (
-                      <span className="text-muted-foreground text-xs px-2">—</span>
+                      <span className="text-muted-foreground text-sm px-2">—</span>
                     )}
                   </td>
                   <td className="text-right pr-2 align-top pt-1.5 tabular-nums" title={res?.cutFormula}>
@@ -824,19 +824,19 @@ function RebarTable({ rows, section, effectiveWallHMm, onChange }: {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/30">
-              <td colSpan={7} className="py-1.5 text-right pr-2 font-semibold text-xs">
+              <td colSpan={7} className="py-1.5 text-right pr-2 font-semibold text-sm">
                 Total Steel &nbsp;
-                <span className="font-normal text-muted-foreground text-[10px]">
+                <span className="font-normal text-muted-foreground text-[12px]">
                   (overallW={overallWMm}mm)
                 </span>
               </td>
-              <td className="text-right font-bold text-xs tabular-nums pr-1">{fmtM(rebar.totalKgPerM)} kg/m</td>
+              <td className="text-right font-bold text-sm tabular-nums pr-1">{fmtM(rebar.totalKgPerM)} kg/m</td>
               <td />
             </tr>
           </tfoot>
         </table>
       </div>
-      <Button variant="outline" size="sm" onClick={addRow} className="h-7 text-xs gap-1">
+      <Button variant="outline" size="sm" onClick={addRow} className="h-7 text-sm gap-1">
         <Plus className="h-3 w-3" /> Add Bar Row
       </Button>
     </div>
@@ -856,21 +856,21 @@ function SubZoneEditor({ subZones, defaultHeight, onChange }: {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Define zones with varying wall heights (e.g., for changing invert levels)</p>
-        <Button variant="outline" size="sm" onClick={add} className="h-7 text-xs gap-1">
+        <p className="text-sm text-muted-foreground">Define zones with varying wall heights (e.g., for changing invert levels)</p>
+        <Button variant="outline" size="sm" onClick={add} className="h-7 text-sm gap-1">
           <Plus className="h-3 w-3" /> Add Zone
         </Button>
       </div>
       {subZones.length === 0 && (
-        <p className="text-xs text-muted-foreground italic">No sub-zones — using uniform wall height from section dimensions above.</p>
+        <p className="text-sm text-muted-foreground italic">No sub-zones — using uniform wall height from section dimensions above.</p>
       )}
       {subZones.map(z => (
         <div key={z.id} className="flex items-center gap-2">
-          <Input className="h-7 text-xs flex-1" placeholder="Zone label" value={z.label}
+          <Input className="h-7 text-sm flex-1" placeholder="Zone label" value={z.label}
             onChange={e => upd(z.id, "label", e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-24" placeholder="Wall H mm"
+          <Input type="number" className="h-7 text-sm w-24" placeholder="Wall H mm"
             value={z.wallHeightMm || ""} onChange={e => upd(z.id, "wallHeightMm", +e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-20" placeholder="Length m"
+          <Input type="number" className="h-7 text-sm w-20" placeholder="Length m"
             value={z.lengthM || ""} onChange={e => upd(z.id, "lengthM", +e.target.value)} />
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => del(z.id)}>
             <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -878,7 +878,7 @@ function SubZoneEditor({ subZones, defaultHeight, onChange }: {
         </div>
       ))}
       {subZones.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Effective length: {fmt(subZones.reduce((s, z) => s + z.lengthM, 0), 1)}m ·
           Avg wall height: {fmt(subZones.reduce((s, z) => s + z.wallHeightMm, 0) / subZones.length, 0)}mm
         </p>
@@ -897,18 +897,18 @@ function FixturesInput({ fixtures, onChange }: { fixtures: FixtureV2[]; onChange
     <div className="space-y-2">
       {fixtures.map(f => (
         <div key={f.id} className="flex items-center gap-2">
-          <Input className="h-7 text-xs flex-1" placeholder="Fixture name"
+          <Input className="h-7 text-sm flex-1" placeholder="Fixture name"
             value={f.name} onChange={e => upd(f.id, "name", e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-28" placeholder="Rate ₹/nos"
+          <Input type="number" className="h-7 text-sm w-28" placeholder="Rate ₹/nos"
             value={f.ratePerNos || ""} onChange={e => upd(f.id, "ratePerNos", +e.target.value)} />
-          <Input type="number" className="h-7 text-xs w-24" placeholder="Spacing m"
+          <Input type="number" className="h-7 text-sm w-24" placeholder="Spacing m"
             value={f.spacingM || ""} onChange={e => upd(f.id, "spacingM", +e.target.value)} />
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => del(f.id)}>
             <Trash2 className="h-3 w-3 text-destructive" />
           </Button>
         </div>
       ))}
-      <Button variant="outline" size="sm" onClick={add} className="h-7 text-xs gap-1">
+      <Button variant="outline" size="sm" onClick={add} className="h-7 text-sm gap-1">
         <Plus className="h-3 w-3" /> Add Fixture
       </Button>
     </div>
@@ -942,7 +942,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
             <div className="flex items-center gap-1">
               <NumInput value={loc.lengthM} onChange={v => upd("lengthM", v)} unit="m" small />
             </div>
-            <Badge variant="secondary" className="text-xs shrink-0">₹{fmt(cost.totalPerM, 0)}/m</Badge>
+            <Badge variant="secondary" className="text-sm shrink-0">₹{fmt(cost.totalPerM, 0)}/m</Badge>
             <div className="flex gap-1">
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onDuplicate} title="Duplicate">
                 <Copy className="h-3.5 w-3.5" />
@@ -958,7 +958,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
             <div className="flex flex-wrap gap-1 border-b pb-2">
               {(["section", "aggregates", "rebar", "fixtures", "costs"] as const).map(t => (
                 <button key={t} onClick={() => setSecTab(t)}
-                  className={`px-3 py-1 text-xs rounded transition-colors ${secTab === t ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                  className={`px-3 py-1 text-sm rounded transition-colors ${secTab === t ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                   {t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
               ))}
@@ -979,33 +979,33 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
 
                 {/* Concrete Cover — per element face */}
                 <div className="border rounded p-3 space-y-2 bg-muted/20">
-                  <p className="text-xs font-semibold text-muted-foreground">Concrete Cover (mm) — per element face</p>
+                  <p className="text-sm font-semibold text-muted-foreground">Concrete Cover (mm) — per element face</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
                     <div>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Walls</p>
+                      <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Walls</p>
                       <div className="flex gap-2">
                         <NumInput label="Outer (earth)" value={loc.section.wallOuterCoverMm ?? 50} onChange={v => updSec("wallOuterCoverMm", v)} />
                         <NumInput label="Inner (water)" value={loc.section.wallInnerCoverMm ?? 40} onChange={v => updSec("wallInnerCoverMm", v)} />
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Invert Slab</p>
+                      <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Invert Slab</p>
                       <div className="flex gap-2">
                         <NumInput label="Bottom (earth)" value={loc.section.invertBotCoverMm ?? 50} onChange={v => updSec("invertBotCoverMm", v)} />
                         <NumInput label="Top (water)" value={loc.section.invertTopCoverMm ?? 40} onChange={v => updSec("invertTopCoverMm", v)} />
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Cover Slab</p>
+                      <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Cover Slab</p>
                       <div className="flex gap-2">
                         <NumInput label="Top" value={loc.section.slabTopCoverMm ?? 40} onChange={v => updSec("slabTopCoverMm", v)} />
                         <NumInput label="Bottom (water)" value={loc.section.slabBotCoverMm ?? 40} onChange={v => updSec("slabBotCoverMm", v)} />
                       </div>
                     </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Outer cover drives bar cut lengths &amp; spacing counts. Inner/top/bottom covers are for your reference and will be used for hook-depth checks.</p>
+                  <p className="text-[12px] text-muted-foreground">Outer cover drives bar cut lengths &amp; spacing counts. Inner/top/bottom covers are for your reference and will be used for hook-depth checks.</p>
                 </div>
-                <div className="bg-muted/30 rounded p-3 text-xs">
+                <div className="bg-muted/30 rounded p-3 text-sm">
                   <p className="font-semibold text-muted-foreground mb-1">Computed Volumes (per metre run)</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
                     {[
@@ -1026,7 +1026,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                 </div>
                 <Separator />
                 <div>
-                  <p className="text-xs font-medium mb-2">Variable-Height Sub-Zones (optional)</p>
+                  <p className="text-sm font-medium mb-2">Variable-Height Sub-Zones (optional)</p>
                   <SubZoneEditor
                     subZones={loc.subZones}
                     defaultHeight={loc.section.wallHeightMm}
@@ -1061,7 +1061,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
 
             {secTab === "fixtures" && (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Fixtures (gratings, weepholes, expansion joints, etc.)</p>
+                <p className="text-sm text-muted-foreground">Fixtures (gratings, weepholes, expansion joints, etc.)</p>
                 <FixturesInput fixtures={loc.fixtures} onChange={f => upd("fixtures", f)} />
               </div>
             )}
@@ -1076,7 +1076,7 @@ function LocationCard({ loc, project, index, onUpdate, onDelete, onDuplicate }: 
                   <NumInput label="Overhead %" value={loc.overheadPct} onChange={v => upd("overheadPct", v)} unit="%" dec={1} />
                   <NumInput label="Margin %" value={loc.marginPct} onChange={v => upd("marginPct", v)} unit="%" dec={1} />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[12px] text-muted-foreground">
                   Batching, placing labour, admixture, curing &amp; petty labour rates are set in Cost Rates &amp; Parameters (project-wide).
                 </p>
               </div>
@@ -1202,11 +1202,11 @@ function RateSheet({ state }: { state: StateV2 }) {
   );
 
   // ── Style classes ─────────────────────────────────────────────────────────
-  const th = "text-right p-2 text-xs font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
-  const td = "text-right p-2 text-xs border-b border-r last:border-r-0 tabular-nums";
+  const th = "text-right p-2 text-sm font-semibold text-muted-foreground border-b border-r last:border-r-0 bg-muted/20";
+  const td = "text-right p-2 text-sm border-b border-r last:border-r-0 tabular-nums";
   const tdBold = td + " font-bold";
-  const rowLabel = "p-2 text-xs font-medium border-b border-r whitespace-nowrap";
-  const unitCell = "p-2 text-xs text-muted-foreground border-b border-r";
+  const rowLabel = "p-2 text-sm font-medium border-b border-r whitespace-nowrap";
+  const unitCell = "p-2 text-sm text-muted-foreground border-b border-r";
 
   type SheetRow = {
     label: string;
@@ -1309,18 +1309,18 @@ function RateSheet({ state }: { state: StateV2 }) {
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-sm">Concrete Grade Rate Build-Up</h3>
-          <span className="text-xs text-muted-foreground">(rates incl. OH & Margin from {firstLoc.name})</span>
+          <span className="text-sm text-muted-foreground">(rates incl. OH & Margin from {firstLoc.name})</span>
           {ohsDiffer && (
-            <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded">
+            <span className="text-sm text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded">
               OH / Margin varies by zone
             </span>
           )}
         </div>
         {/* Mix Design Basis — shown below grade cards, always visible (prints with the report) */}
-        <div className="border rounded-md overflow-hidden text-xs mb-1">
+        <div className="border rounded-md overflow-hidden text-sm mb-1">
           <div className="bg-slate-800 dark:bg-slate-700 text-white px-3 py-1.5 flex items-center gap-2">
             <span className="font-semibold">Mix Design Basis</span>
-            <span className="text-slate-300 text-[11px]">IS 10262:2019 / IS 456:2000</span>
+            <span className="text-slate-300 text-xs">IS 10262:2019 / IS 456:2000</span>
           </div>
           <table className="w-full border-collapse">
             <thead>
@@ -1342,7 +1342,7 @@ function RateSheet({ state }: { state: StateV2 }) {
               ))}
             </tbody>
           </table>
-          <p className="text-[9px] text-muted-foreground px-3 py-1 border-t border-slate-200 dark:border-slate-700">
+          <p className="text-xs text-muted-foreground px-3 py-1 border-t border-slate-200 dark:border-slate-700">
             Target fck = fck + 1.65 × σ &nbsp;·&nbsp; Values reflect any manual overrides entered in the Settings tab
           </p>
         </div>
@@ -1350,7 +1350,7 @@ function RateSheet({ state }: { state: StateV2 }) {
           {gradeBreakdowns.map(bd => {
             const isCollapsed = collapsedGrades.has(bd.grade);
             return (
-              <div key={bd.grade} className="border rounded-lg overflow-hidden text-xs">
+              <div key={bd.grade} className="border rounded-lg overflow-hidden text-sm">
                 <button
                   type="button"
                   onClick={() => toggleGrade(bd.grade)}
@@ -1358,18 +1358,18 @@ function RateSheet({ state }: { state: StateV2 }) {
                 >
                   <span className="flex items-center gap-2">
                     <span className="font-bold text-sm">{bd.grade}</span>
-                    <span className="text-slate-300 text-[11px]">{bd.elements.join(" · ")}</span>
+                    <span className="text-slate-300 text-xs">{bd.elements.join(" · ")}</span>
                   </span>
-                  <span className="text-slate-300 text-[11px] flex items-center gap-1">
+                  <span className="text-slate-300 text-xs flex items-center gap-1">
                     <span className="font-semibold tabular-nums">₹{fmt(bd.allInPerM3, 0)}/m³</span>
                     <span>{isCollapsed ? "▶" : "▼"}</span>
                   </span>
                 </button>
                 {!isCollapsed && (
                   <>
-                    <div className="px-2 py-1 bg-muted/20 text-[10px] text-muted-foreground border-b space-y-0.5">
+                    <div className="px-2 py-1 bg-muted/20 text-[12px] text-muted-foreground border-b space-y-0.5">
                       <div>Mix: {bd.mix.cementKg} kg cement · {bd.mix.caKg} kg CA · {bd.mix.faKg} kg FA</div>
-                      <div className="text-[9px] text-blue-600 dark:text-blue-400" title="IS 10262:2019 — Target mean strength fck + 1.65σ  |  IS 456:2000 — Max W/C ratio">
+                      <div className="text-xs text-blue-600 dark:text-blue-400" title="IS 10262:2019 — Target mean strength fck + 1.65σ  |  IS 456:2000 — Max W/C ratio">
                         IS ref: Target fck {getGradeTargetFck(bd.grade, project)} MPa (σ={bd.mix.sigma}) · W/C ≤ {getGradeWcRatio(bd.grade, project).toFixed(2)}
                       </div>
                     </div>
@@ -1416,7 +1416,7 @@ function RateSheet({ state }: { state: StateV2 }) {
         <h3 className="font-semibold text-sm">Abstract of Quantities &amp; Costs — Location / Zone-wise</h3>
         <div className="overflow-x-auto">
           <table
-            className="border-collapse border text-xs"
+            className="border-collapse border text-sm"
             style={{ minWidth: `${Math.max(520, 270 + locations.length * 220)}px` }}
           >
             <thead>
@@ -1428,7 +1428,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                   <th key={l.id} colSpan={5} className={`${th} text-center`}>
                     {l.name}
                     <br/>
-                    <span className="font-normal text-muted-foreground text-[10px]">
+                    <span className="font-normal text-muted-foreground text-[12px]">
                       {fmtM(costs[i].geom.effectiveLengthM)} m
                     </span>
                   </th>
@@ -1437,7 +1437,7 @@ function RateSheet({ state }: { state: StateV2 }) {
                   <th colSpan={3} className={`${th} text-center bg-blue-50 dark:bg-blue-950`}>
                     Combined
                     <br/>
-                    <span className="font-normal text-[10px]">{fmtM(totalLen)} m</span>
+                    <span className="font-normal text-[12px]">{fmtM(totalLen)} m</span>
                   </th>
                 )}
               </tr>
@@ -1548,8 +1548,8 @@ function RateSheet({ state }: { state: StateV2 }) {
         <table className="border-collapse border text-sm" style={{ minWidth: `${Math.max(500, 260 + locations.length * 240)}px` }}>
           <thead>
             <tr className="bg-muted/50">
-              <th className="p-2 text-left text-xs font-semibold border-b border-r">Item</th>
-              <th className="p-2 text-xs font-semibold text-muted-foreground border-b border-r">Unit</th>
+              <th className="p-2 text-left text-sm font-semibold border-b border-r">Item</th>
+              <th className="p-2 text-sm font-semibold text-muted-foreground border-b border-r">Unit</th>
               {locations.map((l, i) => (
                 <th key={l.id} colSpan={3} className={`${th} text-center`}>
                   {l.name}<br/>
@@ -1564,13 +1564,13 @@ function RateSheet({ state }: { state: StateV2 }) {
               )}
             </tr>
             <tr className="bg-amber-50/60 dark:bg-amber-950/20">
-              <th className="p-1 border-b border-r text-[10px] text-amber-700 dark:text-amber-400 font-medium text-left">
+              <th className="p-1 border-b border-r text-[12px] text-amber-700 dark:text-amber-400 font-medium text-left">
                 OH / Margin
               </th>
               <th className="p-1 border-b border-r" />
               {locations.map(l => (
                 <th key={l.id} colSpan={3}
-                  className="p-1 text-center text-[10px] text-amber-700 dark:text-amber-400 border-b border-r font-normal italic">
+                  className="p-1 text-center text-[12px] text-amber-700 dark:text-amber-400 border-b border-r font-normal italic">
                   OH {l.overheadPct}% &nbsp;·&nbsp; Margin {l.marginPct}%
                 </th>
               ))}
@@ -1975,7 +1975,7 @@ export default function ConcreteCalculatorV2() {
                   <div key={est.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
                     <div>
                       <p className="font-medium text-sm">{est.name}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         {est.structureType} · {est.contractor || "—"} · {est.totalLengthM ? fmt(est.totalLengthM, 1) + "m" : "—"}
                       </p>
                     </div>
@@ -2003,24 +2003,24 @@ export default function ConcreteCalculatorV2() {
             <CardContent className="p-3 pt-0">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="space-y-1 md:col-span-2">
-                  <Label className="text-xs text-muted-foreground">Estimate / Project Name</Label>
+                  <Label className="text-sm text-muted-foreground">Estimate / Project Name</Label>
                   <Input className="h-8 text-sm" value={state.project.name}
                     onChange={e => updProject("name", e.target.value)} placeholder="e.g. NH-44 Road Drain Ch.0–5km" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Date</Label>
+                  <Label className="text-sm text-muted-foreground">Date</Label>
                   <Input className="h-8 text-sm" type="date" value={state.project.date} onChange={e => updProject("date", e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Client / Contractor</Label>
+                  <Label className="text-sm text-muted-foreground">Client / Contractor</Label>
                   <Input className="h-8 text-sm" value={state.project.contractor} onChange={e => updProject("contractor", e.target.value)} placeholder="Client or contractor name" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Prepared By</Label>
+                  <Label className="text-sm text-muted-foreground">Prepared By</Label>
                   <Input className="h-8 text-sm" value={state.project.preparedBy} onChange={e => updProject("preparedBy", e.target.value)} placeholder="Name" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Structure Type</Label>
+                  <Label className="text-sm text-muted-foreground">Structure Type</Label>
                   <Select value={state.project.structureType} onValueChange={v => updProject("structureType", v)}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -2042,7 +2042,7 @@ export default function ConcreteCalculatorV2() {
 
               {/* Concrete Grades */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Concrete Grades</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Concrete Grades</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <GradeSelect label="PCC Grade" value={state.project.pccGrade} onChange={v => updProject("pccGrade", v)} />
                   <GradeSelect label="Invert Slab Grade" value={state.project.invertGrade} onChange={v => updProject("invertGrade", v)} />
@@ -2057,11 +2057,11 @@ export default function ConcreteCalculatorV2() {
                   ])).sort((a, b) => parseInt(a.replace("M","")) - parseInt(b.replace("M","")));
                   return (
                     <div className="mt-2 rounded border border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/30 px-3 py-2">
-                      <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">
+                      <p className="text-[12px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">
                         IS Design Basis — editable (IS 10262:2019 / IS 456:2000)
                       </p>
                       <div className="overflow-x-auto">
-                        <table className="text-[11px] w-full">
+                        <table className="text-xs w-full">
                           <thead>
                             <tr className="text-blue-600 dark:text-blue-400">
                               <th className="text-left font-medium pr-3 pb-1">Grade</th>
@@ -2094,7 +2094,7 @@ export default function ConcreteCalculatorV2() {
                                           const v = parseFloat(e.target.value);
                                           updProject("targetFckOverrides", { ...state.project.targetFckOverrides, [g]: isNaN(v) ? preset.targetFck : v });
                                         }}
-                                        className="w-16 text-right text-[11px] border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        className="w-16 text-right text-xs border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400"
                                         data-testid={`input-target-fck-${g}`}
                                       />
                                       {hasTargetOverride && (
@@ -2102,7 +2102,7 @@ export default function ConcreteCalculatorV2() {
                                           const next = { ...state.project.targetFckOverrides };
                                           delete next[g];
                                           updProject("targetFckOverrides", next);
-                                        }} className="text-[9px] text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
+                                        }} className="text-xs text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
                                           reset to {preset.targetFck}
                                         </button>
                                       )}
@@ -2117,7 +2117,7 @@ export default function ConcreteCalculatorV2() {
                                           const v = parseFloat(e.target.value);
                                           updProject("wcRatioOverrides", { ...state.project.wcRatioOverrides, [g]: isNaN(v) ? preset.wcRatio : v });
                                         }}
-                                        className="w-14 text-right text-[11px] border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        className="w-14 text-right text-xs border border-blue-200 dark:border-blue-700 rounded px-1 py-0.5 bg-white dark:bg-slate-800 tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-400"
                                         data-testid={`input-wc-ratio-${g}`}
                                       />
                                       {hasWcOverride && (
@@ -2125,7 +2125,7 @@ export default function ConcreteCalculatorV2() {
                                           const next = { ...state.project.wcRatioOverrides };
                                           delete next[g];
                                           updProject("wcRatioOverrides", next);
-                                        }} className="text-[9px] text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
+                                        }} className="text-xs text-blue-400 hover:text-blue-600 leading-none" title="Reset to IS default">
                                           reset to {preset.wcRatio.toFixed(2)}
                                         </button>
                                       )}
@@ -2137,7 +2137,7 @@ export default function ConcreteCalculatorV2() {
                           </tbody>
                         </table>
                       </div>
-                      <p className="text-[9px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         IS defaults: Target fck = fck + 1.65 × σ (IS 10262:2019 Table 1) · Max W/C per IS 456:2000 · Values editable for site-specific QC data
                       </p>
                     </div>
@@ -2149,7 +2149,7 @@ export default function ConcreteCalculatorV2() {
 
               {/* Cement */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cement</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cement</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <NumInput label="Cement Price" value={state.project.cementBagPrice} onChange={v => updProject("cementBagPrice", v)} unit="₹/bag (50 kg)" />
                 </div>
@@ -2159,7 +2159,7 @@ export default function ConcreteCalculatorV2() {
 
               {/* Batching & Placing */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Plant — Batching &amp; Placing</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Plant — Batching &amp; Placing</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <NumInput label="Batching / Transit Mix" value={state.project.batchingRatePerM3} onChange={v => updProject("batchingRatePerM3", v)} unit="₹/m³" />
                   <NumInput label="RCC Placing Labour" value={state.project.placingRatePerM3} onChange={v => updProject("placingRatePerM3", v)} unit="₹/m³" />
@@ -2172,9 +2172,9 @@ export default function ConcreteCalculatorV2() {
               {/* Admixture */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Admixture</p>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Admixture</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{state.project.admixEnabled ? "Included" : "Not used"}</span>
+                    <span className="text-sm text-muted-foreground">{state.project.admixEnabled ? "Included" : "Not used"}</span>
                     <Switch
                       checked={state.project.admixEnabled}
                       onCheckedChange={v => updProject("admixEnabled", v)}
@@ -2185,7 +2185,7 @@ export default function ConcreteCalculatorV2() {
                   <NumInput label="Dosage" value={state.project.admixDosageL} onChange={v => updProject("admixDosageL", v)} unit="L/m³" dec={2} />
                   <NumInput label="Rate" value={state.project.admixRatePerL} onChange={v => updProject("admixRatePerL", v)} unit="₹/L" />
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Cost</Label>
+                    <Label className="text-sm text-muted-foreground">Cost</Label>
                     <div className="h-8 flex items-center text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
                       {state.project.admixEnabled ? `₹${fmt(state.project.admixDosageL * state.project.admixRatePerL, 0)}/m³` : "—"}
                     </div>
@@ -2197,19 +2197,19 @@ export default function ConcreteCalculatorV2() {
 
               {/* Curing — Water */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Curing — Water</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Curing — Water</p>
                 <div className="flex items-center gap-3 mb-3">
                   <button
                     type="button"
                     onClick={() => updProject("curingMode", "tanker")}
-                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "tanker" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
+                    className={`text-sm px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "tanker" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
                   >
                     Water Tanker
                   </button>
                   <button
                     type="button"
                     onClick={() => updProject("curingMode", "flat")}
-                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "flat" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
+                    className={`text-sm px-3 py-1 rounded-full border transition-colors ${state.project.curingMode === "flat" ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
                   >
                     Flat Rate
                   </button>
@@ -2231,11 +2231,11 @@ export default function ConcreteCalculatorV2() {
                 <div className="mt-3 rounded-lg border bg-muted/20 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-xs font-semibold">Curing Compound</p>
-                      <p className="text-[10px] text-muted-foreground">Applied in addition to water curing</p>
+                      <p className="text-sm font-semibold">Curing Compound</p>
+                      <p className="text-[12px] text-muted-foreground">Applied in addition to water curing</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{state.project.curingCompoundEnabled ? "ON" : "OFF"}</span>
+                      <span className="text-sm text-muted-foreground">{state.project.curingCompoundEnabled ? "ON" : "OFF"}</span>
                       <Switch
                         checked={state.project.curingCompoundEnabled}
                         onCheckedChange={v => updProject("curingCompoundEnabled", v)}
@@ -2248,7 +2248,7 @@ export default function ConcreteCalculatorV2() {
                     <NumInput label="Surface per RM" value={state.project.curingCompoundSurfacePerRM} onChange={v => updProject("curingCompoundSurfacePerRM", v)} unit="m²/m" dec={2} />
                     {state.project.curingCompoundEnabled && (
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Cost per RM</Label>
+                        <Label className="text-sm text-muted-foreground">Cost per RM</Label>
                         <div className="h-8 flex items-center text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
                           ₹{fmt(
                             (state.project.curingCompoundSurfacePerRM / (state.project.curingCompoundCoverageM2perL || 1)) * state.project.curingCompoundRatePerL,
@@ -2267,11 +2267,11 @@ export default function ConcreteCalculatorV2() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Petty Labour Contract</p>
-                    <p className="text-[10px] text-muted-foreground">Site formwork, setting-out, minor works — per running metre</p>
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Petty Labour Contract</p>
+                    <p className="text-[12px] text-muted-foreground">Site formwork, setting-out, minor works — per running metre</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{state.project.pettyLabourEnabled ? "Active" : "Not used"}</span>
+                    <span className="text-sm text-muted-foreground">{state.project.pettyLabourEnabled ? "Active" : "Not used"}</span>
                     <Switch
                       checked={state.project.pettyLabourEnabled}
                       onCheckedChange={v => updProject("pettyLabourEnabled", v)}
@@ -2287,7 +2287,7 @@ export default function ConcreteCalculatorV2() {
 
               {/* Overhead, Margin & Commercial */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Overhead, Margin &amp; Commercial</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Overhead, Margin &amp; Commercial</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <NumInput label="Default Overhead %" value={state.project.defaultOverheadPct} onChange={v => updProject("defaultOverheadPct", v)} unit="%" dec={1} />
                   <NumInput label="Default Margin %" value={state.project.defaultMarginPct} onChange={v => updProject("defaultMarginPct", v)} unit="%" dec={1} />
@@ -2302,7 +2302,7 @@ export default function ConcreteCalculatorV2() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">Locations ({state.locations.length})</h2>
-              <Button size="sm" onClick={addLocation} className="gap-1 h-7 text-xs">
+              <Button size="sm" onClick={addLocation} className="gap-1 h-7 text-sm">
                 <Plus className="h-3.5 w-3.5" /> Add Location
               </Button>
             </div>

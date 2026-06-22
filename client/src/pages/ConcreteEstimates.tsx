@@ -243,10 +243,10 @@ export default function ConcreteEstimates() {
                     <span className="font-bold text-base text-foreground">{key}</span>
                     <span className="text-sm text-muted-foreground">{ests.length} estimate{ests.length !== 1 ? "s" : ""}</span>
                     {totalCum > 0 && (
-                      <Badge variant="outline" className="text-xs">{totalCum.toFixed(0)} m³ total</Badge>
+                      <Badge variant="outline" className="text-sm">{totalCum.toFixed(0)} m³ total</Badge>
                     )}
                     {totalAmt > 0 && (
-                      <Badge className="text-xs bg-blue-600 text-white border-blue-700">{fmtAmt(totalAmt)}</Badge>
+                      <Badge className="text-sm bg-blue-600 text-white border-blue-700">{fmtAmt(totalAmt)}</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -264,7 +264,7 @@ export default function ConcreteEstimates() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead>
-                        <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                        <tr className="bg-muted/40 text-muted-foreground text-sm uppercase tracking-wide">
                           <th className="text-left px-5 py-2.5 font-semibold">Estimate Name</th>
                           <th className="text-left px-4 py-2.5 font-semibold">Type</th>
                           <th className="text-right px-4 py-2.5 font-semibold">Volume (m³)</th>
@@ -288,7 +288,7 @@ export default function ConcreteEstimates() {
                               </td>
                               <td className="px-4 py-3">
                                 {est.structureType && (
-                                  <Badge variant="outline" className={`text-xs ${STRUCTURE_TYPE_COLORS[est.structureType] || ""}`}>
+                                  <Badge variant="outline" className={`text-sm ${STRUCTURE_TYPE_COLORS[est.structureType] || ""}`}>
                                     {est.structureType}
                                   </Badge>
                                 )}
@@ -302,7 +302,7 @@ export default function ConcreteEstimates() {
                               <td className="px-4 py-3 text-right text-muted-foreground">
                                 {ratePerCum ? `₹${Math.round(ratePerCum).toLocaleString("en-IN")}/m³` : "—"}
                               </td>
-                              <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                              <td className="px-4 py-3 text-right text-sm text-muted-foreground">
                                 <span className="flex items-center justify-end gap-1">
                                   <Calendar className="w-3 h-3" />
                                   {fmtDate(est.updatedAt)}
@@ -312,7 +312,7 @@ export default function ConcreteEstimates() {
                                     by {userNameById[est.createdBy]}
                                   </span>
                                 ) : !est.createdBy ? (
-                                  <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-xs" data-testid={`text-owner-${est.id}`}>
+                                  <span className="block text-right text-muted-foreground/40 mt-0.5 italic text-sm" data-testid={`text-owner-${est.id}`}>
                                     unassigned owner
                                   </span>
                                 ) : null}

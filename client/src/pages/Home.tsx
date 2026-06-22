@@ -130,8 +130,8 @@ export default function Home() {
                   <span className="text-sm font-normal text-slate-400"> / {activeSites.length}</span>
                 )}
               </p>
-              <p className="text-xs text-slate-700 mt-1 font-medium">DPRs Filed Today</p>
-              <p className={`text-[11px] mt-0.5 font-medium ${activeSites.length > todayDprs.length ? "text-rose-500" : "text-teal-600"}`}>
+              <p className="text-sm text-slate-700 mt-1 font-medium">DPRs Filed Today</p>
+              <p className={`text-xs mt-0.5 font-medium ${activeSites.length > todayDprs.length ? "text-rose-500" : "text-teal-600"}`}>
                 {activeSites.length > todayDprs.length
                   ? `${activeSites.length - todayDprs.length} site${activeSites.length - todayDprs.length > 1 ? "s" : ""} pending`
                   : "All sites filed"}
@@ -146,8 +146,8 @@ export default function Home() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900 leading-none">{todayDispatchCount}</p>
-              <p className="text-xs text-slate-700 mt-1 font-medium">Dispatches Today</p>
-              <p className="text-[11px] mt-0.5 font-medium text-slate-500">
+              <p className="text-sm text-slate-700 mt-1 font-medium">Dispatches Today</p>
+              <p className="text-xs mt-0.5 font-medium text-slate-500">
                 {todayDispatchMT > 0 ? `${todayDispatchMT.toFixed(1)} MT total` : "No dispatches yet"}
               </p>
             </div>
@@ -163,8 +163,8 @@ export default function Home() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900 leading-none">{totalPending}</p>
-              <p className="text-xs text-slate-700 mt-1 font-medium">Pending Approvals</p>
-              <p className={`text-[11px] mt-0.5 font-medium ${totalPending > 0 ? "text-rose-500" : "text-slate-500"}`}>
+              <p className="text-sm text-slate-700 mt-1 font-medium">Pending Approvals</p>
+              <p className={`text-xs mt-0.5 font-medium ${totalPending > 0 ? "text-rose-500" : "text-slate-500"}`}>
                 {pendingDiesel.length > 0 && `${pendingDiesel.length} diesel`}
                 {pendingDiesel.length > 0 && pendingIndents.length > 0 && " · "}
                 {pendingIndents.length > 0 && `${pendingIndents.length} indent`}
@@ -180,8 +180,8 @@ export default function Home() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900 leading-none">{activeSites.length}</p>
-              <p className="text-xs text-slate-700 mt-1 font-medium">Active Sites</p>
-              <p className="text-[11px] mt-0.5 font-medium text-slate-500">
+              <p className="text-sm text-slate-700 mt-1 font-medium">Active Sites</p>
+              <p className="text-xs mt-0.5 font-medium text-slate-500">
                 {dprSiteNames.size} reported today
               </p>
             </div>
@@ -203,7 +203,7 @@ export default function Home() {
                     <h3 className="text-sm font-semibold text-slate-800">Today's Site DPR Status</h3>
                   </div>
                   <Link href="/site/hub">
-                    <a className="text-xs text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
+                    <a className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
                       View all <ChevronRight className="w-3 h-3" />
                     </a>
                   </Link>
@@ -223,13 +223,13 @@ export default function Home() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate">{site.name}</p>
                             {dpr
-                              ? <p className="text-xs text-slate-500 mt-0.5">Filed by {dpr.engineer || "—"}</p>
-                              : <p className="text-xs text-amber-500 font-medium mt-0.5">DPR not yet filed</p>
+                              ? <p className="text-sm text-slate-500 mt-0.5">Filed by {dpr.engineer || "—"}</p>
+                              : <p className="text-sm text-amber-500 font-medium mt-0.5">DPR not yet filed</p>
                             }
                           </div>
                           {dpr
-                            ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium flex-shrink-0">Filed</span>
-                            : <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium flex-shrink-0">Pending</span>
+                            ? <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium flex-shrink-0">Filed</span>
+                            : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium flex-shrink-0">Pending</span>
                           }
                         </div>
                       );
@@ -247,7 +247,7 @@ export default function Home() {
                   <h3 className="text-sm font-semibold text-slate-800">Recent DPRs</h3>
                 </div>
                 <Link href="/site/hub">
-                  <a className="text-xs text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
+                  <a className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5">
                     View all <ChevronRight className="w-3 h-3" />
                   </a>
                 </Link>
@@ -268,7 +268,7 @@ export default function Home() {
                           <span className="text-slate-600">{r.detail}</span>
                         </p>
                       </div>
-                      <span className="text-[11px] text-slate-400 flex-shrink-0 mt-0.5">{r.time}</span>
+                      <span className="text-xs text-slate-400 flex-shrink-0 mt-0.5">{r.time}</span>
                     </div>
                   ))}
                 </div>
@@ -285,7 +285,7 @@ export default function Home() {
                   <h3 className="text-sm font-semibold text-slate-800">Pending Actions</h3>
                 </div>
                 {totalPending > 0 && (
-                  <span className="text-xs bg-rose-100 text-rose-600 font-semibold px-1.5 py-0.5 rounded-full">{totalPending}</span>
+                  <span className="text-sm bg-rose-100 text-rose-600 font-semibold px-1.5 py-0.5 rounded-full">{totalPending}</span>
                 )}
               </div>
               <div className="divide-y divide-slate-50">
@@ -298,16 +298,16 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-slate-800 leading-snug">Purchase Indents</p>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIndents.length > 0 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                      <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIndents.length > 0 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
                         {pendingIndents.length > 0 ? `${pendingIndents.length} pending` : "0"}
                       </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingIndents.length > 0 ? "text-rose-500 font-medium" : "text-slate-400"}`}>
+                    <p className={`text-xs mt-0.5 leading-snug ${pendingIndents.length > 0 ? "text-rose-500 font-medium" : "text-slate-400"}`}>
                       {pendingIndents.length > 0 ? `${pendingIndents.length} awaiting approval` : "All clear"}
                     </p>
                     {pendingIndents.length > 0 && (
                       <Link href="/plant/purchase-indents?returnTo=/">
-                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-indents">
+                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-indents">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </a>
                       </Link>
@@ -323,16 +323,16 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-slate-800 leading-snug">Diesel Requirements</p>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingDiesel.length > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                      <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingDiesel.length > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
                         {pendingDiesel.length > 0 ? `${pendingDiesel.length} pending` : "0"}
                       </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingDiesel.length > 0 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                    <p className={`text-xs mt-0.5 leading-snug ${pendingDiesel.length > 0 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
                       {pendingDiesel.length > 0 ? `${pendingDiesel.length} awaiting approval` : "All clear"}
                     </p>
                     {pendingDiesel.length > 0 && (
                       <Link href="/plant/diesel-requirements?returnTo=/">
-                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-diesel">
+                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-diesel">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </a>
                       </Link>
@@ -349,18 +349,18 @@ export default function Home() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-slate-800 leading-snug">Unassigned Sites</p>
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-rose-50 text-rose-700 border-rose-200">
+                        <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded-full border bg-rose-50 text-rose-700 border-rose-200">
                           {totalUnassigned} unassigned
                         </span>
                       </div>
-                      <p className="text-[11px] mt-0.5 leading-snug text-rose-500 font-medium">
+                      <p className="text-xs mt-0.5 leading-snug text-rose-500 font-medium">
                         {unassignedDiesel > 0 && `${unassignedDiesel} diesel`}
                         {unassignedDiesel > 0 && unassignedIndents > 0 && " · "}
                         {unassignedIndents > 0 && `${unassignedIndents} indent`}
                         {" "}need site assigned
                       </p>
                       <Link href="/admin/site-backfill">
-                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-backfill">
+                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-backfill">
                           Assign sites <ArrowUpRight className="w-3 h-3" />
                         </a>
                       </Link>
@@ -377,16 +377,16 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-slate-800 leading-snug">Internal Requisitions</p>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIRN > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                      <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded-full border ${pendingIRN > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
                         {pendingIRN > 0 ? `${pendingIRN} pending` : "0"}
                       </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 leading-snug ${pendingIRN > 0 ? "text-indigo-600 font-medium" : "text-slate-400"}`}>
+                    <p className={`text-xs mt-0.5 leading-snug ${pendingIRN > 0 ? "text-indigo-600 font-medium" : "text-slate-400"}`}>
                       {pendingIRN > 0 ? `${pendingIRN} awaiting approval` : "All clear"}
                     </p>
                     {pendingIRN > 0 && (
                       <Link href="/irn?status=pending_stores">
-                        <a className="mt-1.5 text-[11px] font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
+                        <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-review-irn">
                           Review <ArrowUpRight className="w-3 h-3" />
                         </a>
                       </Link>

@@ -77,7 +77,7 @@ function ViewDetailsLink({ href, label = "View Details", testId }: { href: strin
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
+        className="h-7 gap-1 text-sm text-muted-foreground hover:text-foreground px-2"
         data-testid={testId}
       >
         <ExternalLink className="h-3 w-3" />
@@ -375,7 +375,7 @@ export default function ManagementReport() {
         </Link>
         <div className="flex-1">
           <h1 className="text-lg font-semibold text-foreground">Management Report</h1>
-          <p className="text-xs text-muted-foreground">Cross-site aggregated view</p>
+          <p className="text-sm text-muted-foreground">Cross-site aggregated view</p>
         </div>
         <Button
           size="sm"
@@ -407,12 +407,12 @@ export default function ManagementReport() {
               {/* Date range */}
               <div className="flex items-end gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Label className="text-sm text-muted-foreground">From</Label>
                   <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                     className="h-8 w-36 text-sm" data-testid="input-date-from" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Label className="text-sm text-muted-foreground">To</Label>
                   <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                     className="h-8 w-36 text-sm" data-testid="input-date-to" />
                 </div>
@@ -422,7 +422,7 @@ export default function ManagementReport() {
               <div className="flex gap-1.5">
                 {PRESETS.map((p) => (
                   <Button key={p.label} size="sm" variant="outline"
-                    className="h-8 text-xs px-2.5"
+                    className="h-8 text-sm px-2.5"
                     onClick={() => { setDateFrom(p.from); setDateTo(p.to); }}
                     data-testid={`btn-preset-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
                   >
@@ -433,7 +433,7 @@ export default function ManagementReport() {
 
               {/* Sites */}
               <div className="flex-1 min-w-[200px]">
-                <Label className="text-xs text-muted-foreground block mb-1.5">
+                <Label className="text-sm text-muted-foreground block mb-1.5">
                   Sites / Projects
                 </Label>
                 <div className="flex flex-wrap gap-2 items-center">
@@ -470,19 +470,19 @@ export default function ManagementReport() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-5 h-auto">
-            <TabsTrigger value="materials"  className="gap-1.5 text-xs py-2" data-testid="tab-materials">
+            <TabsTrigger value="materials"  className="gap-1.5 text-sm py-2" data-testid="tab-materials">
               <Package className="h-3.5 w-3.5" /> Materials
             </TabsTrigger>
-            <TabsTrigger value="production" className="gap-1.5 text-xs py-2" data-testid="tab-production">
+            <TabsTrigger value="production" className="gap-1.5 text-sm py-2" data-testid="tab-production">
               <Factory className="h-3.5 w-3.5" /> Production
             </TabsTrigger>
-            <TabsTrigger value="fuel"       className="gap-1.5 text-xs py-2" data-testid="tab-fuel">
+            <TabsTrigger value="fuel"       className="gap-1.5 text-sm py-2" data-testid="tab-fuel">
               <Fuel className="h-3.5 w-3.5" /> Fuel &amp; LDO
             </TabsTrigger>
-            <TabsTrigger value="labour"     className="gap-1.5 text-xs py-2" data-testid="tab-labour">
+            <TabsTrigger value="labour"     className="gap-1.5 text-sm py-2" data-testid="tab-labour">
               <Users className="h-3.5 w-3.5" /> Labour
             </TabsTrigger>
-            <TabsTrigger value="financials" className="gap-1.5 text-xs py-2" data-testid="tab-financials">
+            <TabsTrigger value="financials" className="gap-1.5 text-sm py-2" data-testid="tab-financials">
               <Receipt className="h-3.5 w-3.5" /> Financials
             </TabsTrigger>
           </TabsList>
@@ -520,13 +520,13 @@ export default function ManagementReport() {
                       <TableBody>
                         {materialsData.map((r, i) => (
                           <TableRow key={i} className="text-sm" data-testid={`row-material-${i}`}>
-                            <TableCell className="font-medium text-xs text-muted-foreground">{r.siteName}</TableCell>
+                            <TableCell className="font-medium text-sm text-muted-foreground">{r.siteName}</TableCell>
                             <TableCell>{r.itemName}</TableCell>
-                            <TableCell><Badge variant="outline" className="text-xs">{r.category}</Badge></TableCell>
+                            <TableCell><Badge variant="outline" className="text-sm">{r.category}</Badge></TableCell>
                             <TableCell className="text-right tabular-nums">{fmt(r.qtyReceived)}</TableCell>
                             <TableCell className="text-right tabular-nums">{fmt(r.qtyIssued)}</TableCell>
                             <TableCell className="text-right tabular-nums font-medium">{fmt(r.qtyReceived - r.qtyIssued)}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{r.uom}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{r.uom}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
                                 href={buildDeepLink("/site/materials-received", { dateFrom, dateTo, site: r.siteName, from: "management-report" })}
@@ -538,7 +538,7 @@ export default function ManagementReport() {
                         ))}
                         {/* Per-site totals */}
                         {matBySite.map((s, i) => (
-                          <TableRow key={`st-${i}`} className="bg-amber-50/40 dark:bg-amber-950/20 text-xs font-semibold" data-testid={`row-site-total-${i}`}>
+                          <TableRow key={`st-${i}`} className="bg-amber-50/40 dark:bg-amber-950/20 text-sm font-semibold" data-testid={`row-site-total-${i}`}>
                             <TableCell colSpan={3} className="text-amber-700 dark:text-amber-400">↳ {s.siteName} subtotal</TableCell>
                             <TableCell className="text-right tabular-nums">{fmt(s.qtyReceived)}</TableCell>
                             <TableCell className="text-right tabular-nums">{fmt(s.qtyIssued)}</TableCell>
@@ -595,13 +595,13 @@ export default function ManagementReport() {
                       <TableBody>
                         {productionData.map((r, i) => (
                           <TableRow key={i} className="text-sm" data-testid={`row-prod-${i}`}>
-                            <TableCell className="text-xs text-muted-foreground font-medium">{r.siteName}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground font-medium">{r.siteName}</TableCell>
                             <TableCell>{r.plantName}</TableCell>
                             <TableCell>
-                              <Badge variant={r.type === "HMP" ? "default" : "secondary"} className="text-xs">{r.type}</Badge>
+                              <Badge variant={r.type === "HMP" ? "default" : "secondary"} className="text-sm">{r.type}</Badge>
                             </TableCell>
                             <TableCell className="text-right tabular-nums font-medium">{fmt(r.mtProduced)}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{r.unit}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{r.unit}</TableCell>
                             <TableCell className="text-right tabular-nums">{r.dispatchCount}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
@@ -636,7 +636,7 @@ export default function ManagementReport() {
                   ].map((item) => (
                     <Card key={item.label}>
                       <CardContent className="pt-3 pb-3">
-                        <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                        <p className="text-sm text-muted-foreground mb-1">{item.label}</p>
                         <p className="text-xl font-bold tabular-nums">{item.value}</p>
                       </CardContent>
                     </Card>
@@ -674,7 +674,7 @@ export default function ManagementReport() {
                         <TableBody>
                           {fuelData.plants.map((r, i) => (
                             <TableRow key={i} className="text-sm" data-testid={`row-fuel-${i}`}>
-                              <TableCell className="text-xs text-muted-foreground font-medium">{r.siteName}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground font-medium">{r.siteName}</TableCell>
                               <TableCell>{r.plantName}</TableCell>
                               <TableCell className="text-right tabular-nums">{fmt(r.ldoConsumedL)}</TableCell>
                               <TableCell className="text-right tabular-nums">{fmt(r.mtProduced)}</TableCell>
@@ -744,9 +744,9 @@ export default function ManagementReport() {
                       <TableBody>
                         {labourData.map((r, i) => (
                           <TableRow key={i} className="text-sm" data-testid={`row-labour-${i}`}>
-                            <TableCell className="text-xs text-muted-foreground font-medium">{r.siteName}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground font-medium">{r.siteName}</TableCell>
                             <TableCell>{r.contractor}</TableCell>
-                            <TableCell><Badge variant="outline" className="text-xs">{r.category}</Badge></TableCell>
+                            <TableCell><Badge variant="outline" className="text-sm">{r.category}</Badge></TableCell>
                             <TableCell className="text-right tabular-nums font-medium">{r.totalMandays}</TableCell>
                             <TableCell>
                               <ViewDetailsLink
@@ -840,7 +840,7 @@ export default function ManagementReport() {
                     <div className="flex items-center gap-4">
                       <Building2 className="h-8 w-8 text-muted-foreground flex-shrink-0" />
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Purchase Indents</p>
+                        <p className="text-sm text-muted-foreground mb-0.5">Purchase Indents</p>
                         <p className="text-2xl font-bold tabular-nums">{financialsData.indents.count}</p>
                         <p className="text-sm text-muted-foreground">
                           Est. value: <span className="font-semibold text-foreground">{fmtCur(financialsData.indents.value)}</span>

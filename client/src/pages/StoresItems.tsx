@@ -121,7 +121,7 @@ export default function StoresItems() {
             <Package className="w-5 h-5 text-blue-600" />
             <h1 className="text-xl font-bold">Item Master</h1>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowInactive(!showInactive)} className="text-xs" data-testid="button-toggle-inactive">
+          <Button variant="outline" size="sm" onClick={() => setShowInactive(!showInactive)} className="text-sm" data-testid="button-toggle-inactive">
             {showInactive ? "Hide Inactive" : "Show All"}
           </Button>
           <Button onClick={openNew} size="sm" className="gap-1" data-testid="button-add-item">
@@ -170,12 +170,12 @@ export default function StoresItems() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Name</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Category</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">UOM</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Min Stock</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Current Stock</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Name</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Category</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">UOM</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Min Stock</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Current Stock</th>
+                    <th className="text-center px-4 py-3 text-sm font-semibold text-muted-foreground">Status</th>
                     <th className="px-4 py-3 w-20"></th>
                   </tr>
                 </thead>
@@ -195,7 +195,7 @@ export default function StoresItems() {
                         <div className="flex items-center gap-2">
                           {item.name}
                           {isLow && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200" data-testid={`badge-low-stock-${item.id}`}>
+                            <span className="inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200" data-testid={`badge-low-stock-${item.id}`}>
                               <AlertTriangle className="w-2.5 h-2.5" />
                               Low Stock
                             </span>
@@ -209,7 +209,7 @@ export default function StoresItems() {
                         {stock !== undefined ? stock.balance : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${item.isActive === 1 ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                        <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${item.isActive === 1 ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
                           {item.isActive === 1 ? "Active" : "Inactive"}
                         </span>
                       </td>
@@ -258,7 +258,7 @@ export default function StoresItems() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Minimum Stock Level <span className="text-muted-foreground text-xs">(optional — triggers low-stock alert)</span></Label>
+              <Label>Minimum Stock Level <span className="text-muted-foreground text-sm">(optional — triggers low-stock alert)</span></Label>
               <Input type="number" min="0" step="any" value={form.minStockQty} onChange={e => setForm(f => ({ ...f, minStockQty: e.target.value }))} placeholder="Leave blank for no alert" data-testid="input-min-stock" />
             </div>
             <div className="flex justify-end gap-2 pt-2">

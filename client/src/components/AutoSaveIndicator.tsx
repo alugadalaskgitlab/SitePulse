@@ -57,7 +57,7 @@ export function AutoSaveIndicator({ lastSavedAt, isDirty, className }: AutoSaveI
       <span
         data-testid="unsaved-changes-indicator"
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300",
+          "inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2 py-0.5 text-sm font-medium text-amber-700 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300",
           className
         )}
       >
@@ -73,7 +73,7 @@ export function AutoSaveIndicator({ lastSavedAt, isDirty, className }: AutoSaveI
     <span
       data-testid="autosave-indicator"
       className={cn(
-        "inline-flex items-center gap-1 text-xs text-muted-foreground",
+        "inline-flex items-center gap-1 text-sm text-muted-foreground",
         className
       )}
     >

@@ -100,7 +100,7 @@ function PlantMaterialCombobox({
           autoComplete="off"
         />
         {linkedName && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-700 bg-green-50 border border-green-200 px-1 rounded font-medium whitespace-nowrap">
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[12px] text-green-700 bg-green-50 border border-green-200 px-1 rounded font-medium whitespace-nowrap">
             linked
           </span>
         )}
@@ -113,18 +113,18 @@ function PlantMaterialCombobox({
         >
           {filteredPlant.length > 0 && (
             <>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-green-700 uppercase tracking-wide bg-green-50 border-b">
+              <div className="px-3 pt-2 pb-1 text-[12px] font-semibold text-green-700 uppercase tracking-wide bg-green-50 border-b">
                 Plant Stock Materials
               </div>
               {filteredPlant.map(m => (
                 <div
                   key={m.id}
-                  className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center justify-between text-xs"
+                  className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center justify-between text-sm"
                   onClick={() => selectPlant(m)}
                 >
                   <span className="font-medium">{m.name}</span>
                   <span className="flex items-center gap-2">
-                    <span className="text-gray-400 text-[10px]">{m.category}</span>
+                    <span className="text-gray-400 text-[12px]">{m.category}</span>
                     {m.id === materialId && <Check className="h-3 w-3 text-green-600" />}
                   </span>
                 </div>
@@ -133,14 +133,14 @@ function PlantMaterialCombobox({
           )}
           {q && (
             <div
-              className="px-3 py-2 cursor-pointer hover:bg-amber-50 text-amber-700 font-medium flex items-center gap-1.5 text-xs border-t"
+              className="px-3 py-2 cursor-pointer hover:bg-amber-50 text-amber-700 font-medium flex items-center gap-1.5 text-sm border-t"
               onClick={() => selectFreeText(query.trim())}
             >
               <Plus className="h-3 w-3" /> Use "{query.trim()}" (free text)
             </div>
           )}
           {!q && filteredPlant.length === 0 && (
-            <div className="px-3 py-2 text-gray-400 italic text-xs">Type to search…</div>
+            <div className="px-3 py-2 text-gray-400 italic text-sm">Type to search…</div>
           )}
         </div>
       )}
@@ -317,13 +317,13 @@ export default function IrnRaisePage() {
           {isLocked && (
             <Badge
               variant="outline"
-              className={`text-xs font-medium ml-1 ${sectionColor[prefillLabel] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}
+              className={`text-sm font-medium ml-1 ${sectionColor[prefillLabel] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}
             >
               {prefillLabel}
             </Badge>
           )}
         </div>
-        <p className="text-xs text-gray-500 ml-[88px]">Materials will be checked against store stock before procurement</p>
+        <p className="text-sm text-gray-500 ml-[88px]">Materials will be checked against store stock before procurement</p>
       </div>
 
       <form onSubmit={form.handleSubmit((d) => mutation.mutate(d))}>
@@ -338,7 +338,7 @@ export default function IrnRaisePage() {
 
               {/* Raised From — locked badge or select */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
+                <Label className="text-sm font-medium">
                   Raised From <span className="text-red-500">*</span>
                 </Label>
                 {isLocked ? (
@@ -365,7 +365,7 @@ export default function IrnRaisePage() {
                       </SelectContent>
                     </Select>
                     {form.formState.errors.raisedFrom && (
-                      <p className="text-xs text-red-500">{form.formState.errors.raisedFrom.message}</p>
+                      <p className="text-sm text-red-500">{form.formState.errors.raisedFrom.message}</p>
                     )}
                   </>
                 )}
@@ -373,7 +373,7 @@ export default function IrnRaisePage() {
 
               {/* Raised By */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Raised By <span className="text-red-500">*</span></Label>
+                <Label className="text-sm font-medium">Raised By <span className="text-red-500">*</span></Label>
                 <PersonnelCombobox
                   value={form.watch("raisedBy")}
                   onChange={(v) => form.setValue("raisedBy", v, { shouldValidate: true })}
@@ -381,13 +381,13 @@ export default function IrnRaisePage() {
                   data-testid="input-raised-by"
                 />
                 {form.formState.errors.raisedBy && (
-                  <p className="text-xs text-red-500">{form.formState.errors.raisedBy.message}</p>
+                  <p className="text-sm text-red-500">{form.formState.errors.raisedBy.message}</p>
                 )}
               </div>
 
               {/* Date */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Date</Label>
+                <Label className="text-sm font-medium">Date</Label>
                 <Input
                   value={format(new Date(), "dd MMM yyyy")}
                   readOnly
@@ -398,7 +398,7 @@ export default function IrnRaisePage() {
 
               {/* Site / Location — always visible for tracking material flow */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium flex items-center gap-1">
+                <Label className="text-sm font-medium flex items-center gap-1">
                   <MapPin className="h-3 w-3 text-gray-400" />
                   Site / Location
                 </Label>
@@ -423,7 +423,7 @@ export default function IrnRaisePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">General Remarks (optional)</Label>
+              <Label className="text-sm font-medium">General Remarks (optional)</Label>
               <Textarea
                 {...form.register("remarks")}
                 placeholder="Special instructions for the storekeeper…"
@@ -439,7 +439,7 @@ export default function IrnRaisePage() {
               <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <Package className="h-4 w-4 text-gray-400" />
                 Material Items
-                <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-1.5 py-0.5 rounded">
+                <span className="bg-amber-100 text-amber-700 text-sm font-semibold px-1.5 py-0.5 rounded">
                   {fields.length}
                 </span>
               </h2>
@@ -448,7 +448,7 @@ export default function IrnRaisePage() {
                 size="sm"
                 variant="outline"
                 onClick={() => append({ material: "", materialId: null, qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" })}
-                className="h-7 text-xs gap-1"
+                className="h-7 text-sm gap-1"
                 data-testid="btn-add-item"
               >
                 <Plus className="h-3.5 w-3.5" /> Add Item
@@ -457,7 +457,7 @@ export default function IrnRaisePage() {
             <Separator className="mb-4" />
 
             {hasUrgent && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded p-2.5 mb-4 text-xs text-red-700">
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded p-2.5 mb-4 text-sm text-red-700">
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>One or more items marked <strong>Urgent</strong> — stores will fast-track these.</span>
               </div>
@@ -467,7 +467,7 @@ export default function IrnRaisePage() {
               {fields.map((field, idx) => (
                 <div key={field.id} className="border rounded-md p-3 space-y-3 bg-gray-50/60" data-testid={`item-row-${idx}`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-500">Item {idx + 1}</span>
+                    <span className="text-sm font-semibold text-gray-500">Item {idx + 1}</span>
                     {fields.length > 1 && (
                       <button
                         type="button"
@@ -483,7 +483,7 @@ export default function IrnRaisePage() {
                   {/* Row 1: Material + Need By Date */}
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-7 space-y-1">
-                      <Label className="text-xs">Material <span className="text-red-500">*</span></Label>
+                      <Label className="text-sm">Material <span className="text-red-500">*</span></Label>
                       <PlantMaterialCombobox
                         value={form.watch(`items.${idx}.material`)}
                         materialId={form.watch(`items.${idx}.materialId`)}
@@ -499,16 +499,16 @@ export default function IrnRaisePage() {
                         }}
                       />
                       {form.watch(`items.${idx}.materialId`) && (
-                        <p className="text-[10px] text-green-700 flex items-center gap-0.5">
+                        <p className="text-[12px] text-green-700 flex items-center gap-0.5">
                           <Check className="h-3 w-3" /> Linked to plant stock — stock will update on issue
                         </p>
                       )}
                       {form.formState.errors.items?.[idx]?.material && (
-                        <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.material?.message}</p>
+                        <p className="text-sm text-red-500">{form.formState.errors.items[idx]?.material?.message}</p>
                       )}
                     </div>
                     <div className="col-span-5 space-y-1">
-                      <Label className="text-xs">Need By Date <span className="text-red-500">*</span></Label>
+                      <Label className="text-sm">Need By Date <span className="text-red-500">*</span></Label>
                       <Input
                         type="date"
                         min={today}
@@ -517,7 +517,7 @@ export default function IrnRaisePage() {
                         data-testid={`input-need-by-${idx}`}
                       />
                       {form.formState.errors.items?.[idx]?.needByDate && (
-                        <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.needByDate?.message}</p>
+                        <p className="text-sm text-red-500">{form.formState.errors.items[idx]?.needByDate?.message}</p>
                       )}
                     </div>
                   </div>
@@ -525,7 +525,7 @@ export default function IrnRaisePage() {
                   {/* Row 2: Qty + UOM + Urgency */}
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-3 space-y-1">
-                      <Label className="text-xs">Qty <span className="text-red-500">*</span></Label>
+                      <Label className="text-sm">Qty <span className="text-red-500">*</span></Label>
                       <Input
                         type="number"
                         step="0.001"
@@ -536,7 +536,7 @@ export default function IrnRaisePage() {
                       />
                     </div>
                     <div className="col-span-3 space-y-1">
-                      <Label className="text-xs">UOM</Label>
+                      <Label className="text-sm">UOM</Label>
                       <Input
                         list="irn-uom-options"
                         value={form.watch(`items.${idx}.uom`)}
@@ -549,7 +549,7 @@ export default function IrnRaisePage() {
                       </datalist>
                     </div>
                     <div className="col-span-6 space-y-1">
-                      <Label className="text-xs">Urgency</Label>
+                      <Label className="text-sm">Urgency</Label>
                       <Select
                         value={form.watch(`items.${idx}.urgency`)}
                         onValueChange={(v) => form.setValue(`items.${idx}.urgency`, v as any)}
@@ -571,7 +571,7 @@ export default function IrnRaisePage() {
 
                   {/* Row 3: Purpose */}
                   <div className="space-y-1">
-                    <Label className="text-xs">Purpose / Usage <span className="text-red-500">*</span></Label>
+                    <Label className="text-sm">Purpose / Usage <span className="text-red-500">*</span></Label>
                     <Input
                       {...form.register(`items.${idx}.purpose`)}
                       placeholder="Where / why this material is needed…"
@@ -579,7 +579,7 @@ export default function IrnRaisePage() {
                       data-testid={`input-purpose-${idx}`}
                     />
                     {form.formState.errors.items?.[idx]?.purpose && (
-                      <p className="text-xs text-red-500">{form.formState.errors.items[idx]?.purpose?.message}</p>
+                      <p className="text-sm text-red-500">{form.formState.errors.items[idx]?.purpose?.message}</p>
                     )}
                   </div>
                 </div>
@@ -588,7 +588,7 @@ export default function IrnRaisePage() {
           </div>
 
           {/* Flow hint */}
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700 flex items-start gap-2">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
               After submission, the <strong>Storekeeper</strong> will verify stock for each item

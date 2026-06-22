@@ -140,7 +140,7 @@ export default function SiteReport() {
             <h1 className="text-2xl font-bold font-display">Site Report</h1>
             {dpr && (
               <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium whitespace-nowrap ${
                   (dpr as any).workType === "structure"
                     ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
                     : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
@@ -201,7 +201,7 @@ export default function SiteReport() {
         <Card>
           <CardContent className="p-4 text-center">
             <div className="flex items-center justify-center gap-2 mb-1">
-              <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-xs">
+              <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-sm">
                 {(dpr as any).workType === "structure" ? "Structure" : "Road"}
               </Badge>
             </div>
@@ -255,7 +255,7 @@ export default function SiteReport() {
           <CardTitle>
             {(dpr as any).workType === "structure" ? "Structure Works Progress" : "Activity Progress"}
           </CardTitle>
-          <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-xs">
+          <Badge variant={(dpr as any).workType === "structure" ? "default" : "outline"} className="text-sm">
             {(dpr as any).workType === "structure" ? "Structure DPR" : "Road DPR"}
           </Badge>
         </CardHeader>
@@ -282,13 +282,13 @@ export default function SiteReport() {
                   {(dpr as any).structureItems?.map((item: any, i: number) => (
                     <TableRow key={i} data-testid={`row-structure-${i}`}>
                       <TableCell><Badge variant="secondary">{item.structureType}</Badge></TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{item.structureSubType || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{item.structureSubType || '-'}</TableCell>
                       <TableCell className="font-medium">{item.structureName || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{item.stage || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{item.stage || '-'}</TableCell>
                       <TableCell>{item.itemOfWork}</TableCell>
                       <TableCell className="text-right font-semibold">{item.quantity != null ? item.quantity : '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.uom || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{item.remarks || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{item.remarks || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -322,10 +322,10 @@ export default function SiteReport() {
                         <TableCell className="font-medium">
                           <div>{item.activity}</div>
                           {item.noSiteWorkDescription && (
-                            <div className="text-xs text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
+                            <div className="text-sm text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
                           )}
                           {personnelNames && (
-                            <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                            <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                           )}
                         </TableCell>
                         <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
@@ -343,7 +343,7 @@ export default function SiteReport() {
                       <TableCell className="font-medium">
                         <div>{item.activity}</div>
                         {personnelNames && (
-                          <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                          <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                         )}
                       </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
@@ -430,31 +430,31 @@ export default function SiteReport() {
                       <TableRow key={i} data-testid={`row-equipment-${i}`}>
                         <TableCell className="font-medium">
                           {item.machine}
-                          {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
-                          {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
-                          {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
-                          {et === "trip_based" && <Badge variant="outline" className="ml-1 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
+                          {et === "hourly" && <Badge variant="outline" className="ml-1 text-[12px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
+                          {et === "daily" && <Badge variant="outline" className="ml-1 text-[12px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
+                          {et === "monthly" && <Badge variant="outline" className="ml-1 text-[12px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
+                          {et === "trip_based" && <Badge variant="outline" className="ml-1 text-[12px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
                         </TableCell>
                         <TableCell>{item.vehicleNo || '-'}</TableCell>
                         <TableCell>{item.operator || '-'}</TableCell>
                         <TableCell className="text-sm">{item.task || '-'}</TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="text-sm">
                           {readingSource}
                           {isTripBased && item.numberOfTrips && item.tripDistance && (
-                            <div className="text-[10px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km</div>
+                            <div className="text-[12px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km</div>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
                           {hours != null ? hours.toFixed(3) : '-'}
                           {isTripBased && item.numberOfTrips && item.tripDistance && (
-                            <div className="text-[10px] text-muted-foreground">{(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
+                            <div className="text-[12px] text-muted-foreground">{(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
                           )}
                         </TableCell>
                         <TableCell className="text-right">{item.diesel || '-'}</TableCell>
                         <TableCell>
-                          <span className="text-xs">{dieselSourceLabel}</span>
+                          <span className="text-sm">{dieselSourceLabel}</span>
                           {item.dieselSource === 'direct_purchase' && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
+                            <div className="text-sm text-muted-foreground mt-0.5">
                               {item.fuelStation && <span>{item.fuelStation}</span>}
                               {item.billNumber && <span> | Bill: {item.billNumber}</span>}
                               {item.amountPaid && <span> | Rs. {item.amountPaid}</span>}
@@ -561,9 +561,9 @@ export default function SiteReport() {
                       <p className="text-sm font-medium">{item.material}</p>
                       <div className="flex items-baseline gap-1 mt-1">
                         <p className="text-xl font-bold text-primary">{item.total.toFixed(3)}</p>
-                        <p className="text-xs text-muted-foreground">{item.uom}</p>
+                        <p className="text-sm text-muted-foreground">{item.uom}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         {item.trips} trip{item.trips > 1 ? 's' : ''}
                       </p>
                     </div>

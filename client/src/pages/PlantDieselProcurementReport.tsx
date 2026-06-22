@@ -233,11 +233,11 @@ export default function PlantDieselProcurementReport() {
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <Label className="text-xs">From Date</Label>
+            <Label className="text-sm">From Date</Label>
             <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="input-date-from" />
           </div>
           <div>
-            <Label className="text-xs">To Date</Label>
+            <Label className="text-sm">To Date</Label>
             <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="input-date-to" />
           </div>
         </CardContent>
@@ -248,10 +248,10 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <Package className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Plant Receipts</span>
+              <span className="text-sm text-muted-foreground">Plant Receipts</span>
             </div>
             <p className="text-2xl font-bold text-primary">{totalPlantReceipts.toFixed(3)} L</p>
-            <p className="text-xs text-muted-foreground">{plantStockReceipts.length} entries</p>
+            <p className="text-sm text-muted-foreground">{plantStockReceipts.length} entries</p>
           </CardContent>
         </Card>
 
@@ -259,10 +259,10 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <MapPin className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Direct Site Purchases</span>
+              <span className="text-sm text-muted-foreground">Direct Site Purchases</span>
             </div>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDirectPurchases.toFixed(3)} L</p>
-            <p className="text-xs text-muted-foreground">{directPurchaseEntries.length} entries</p>
+            <p className="text-sm text-muted-foreground">{directPurchaseEntries.length} entries</p>
           </CardContent>
         </Card>
 
@@ -270,7 +270,7 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <Fuel className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Total Procured</span>
+              <span className="text-sm text-muted-foreground">Total Procured</span>
             </div>
             <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalProcured.toFixed(3)} L</p>
           </CardContent>
@@ -280,7 +280,7 @@ export default function PlantDieselProcurementReport() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Direct Site Purchase Cost</span>
+              <span className="text-sm text-muted-foreground">Direct Site Purchase Cost</span>
             </div>
             <p className="text-2xl font-bold">Rs. {totalAmountPaid.toFixed(0)}</p>
           </CardContent>
@@ -297,7 +297,7 @@ export default function PlantDieselProcurementReport() {
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4" />
               Plant Stock Receipts
-              <span className="text-xs font-normal text-muted-foreground">({plantStockReceipts.length} entries)</span>
+              <span className="text-sm font-normal text-muted-foreground">({plantStockReceipts.length} entries)</span>
             </div>
             {plantReceiptsOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </CardTitle>
@@ -339,7 +339,7 @@ export default function PlantDieselProcurementReport() {
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4" />
               Direct Site Purchases
-              <span className="text-xs font-normal text-muted-foreground">({directPurchaseEntries.length} entries)</span>
+              <span className="text-sm font-normal text-muted-foreground">({directPurchaseEntries.length} entries)</span>
             </div>
             {directPurchasesOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </CardTitle>
@@ -373,7 +373,7 @@ export default function PlantDieselProcurementReport() {
                       <div className="text-right">
                         <Badge variant="secondary" className="font-bold">{(entry.quantityIn || 0).toFixed(3)} L</Badge>
                         {amountMatch && (
-                          <p className="text-xs text-muted-foreground mt-1">Rs. {parseFloat(amountMatch[1]).toFixed(0)}</p>
+                          <p className="text-sm text-muted-foreground mt-1">Rs. {parseFloat(amountMatch[1]).toFixed(0)}</p>
                         )}
                       </div>
                     </div>

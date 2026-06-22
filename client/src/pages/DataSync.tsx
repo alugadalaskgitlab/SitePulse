@@ -276,7 +276,7 @@ export default function DataSync() {
                   <h3 className="text-sm font-semibold uppercase text-muted-foreground mb-2">TABLES IN FILE</h3>
                   <div className="flex flex-wrap gap-2">
                     {Object.keys(importData).filter(k => !k.startsWith("_")).map(table => (
-                      <Badge key={table} variant="outline" className="text-xs">
+                      <Badge key={table} variant="outline" className="text-sm">
                         {exportableTables?.[table] || table}
                       </Badge>
                     ))}

@@ -154,10 +154,10 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                         <TableCell className="font-medium">
                           <div>{item.activity}</div>
                           {item.noSiteWorkDescription && (
-                            <div className="text-xs text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
+                            <div className="text-sm text-muted-foreground mt-1">{item.noSiteWorkDescription}</div>
                           )}
                           {personnelNames && (
-                            <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                            <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                           )}
                         </TableCell>
                         <TableCell colSpan={8} className="text-muted-foreground italic">No site work</TableCell>
@@ -175,7 +175,7 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       <TableCell className="font-medium">
                         <div>{item.activity}</div>
                         {personnelNames && (
-                          <div className="text-xs text-muted-foreground mt-1">Personnel: {personnelNames}</div>
+                          <div className="text-sm text-muted-foreground mt-1">Personnel: {personnelNames}</div>
                         )}
                       </TableCell>
                       <TableCell><Badge variant="outline">{item.side || '-'}</Badge></TableCell>
@@ -230,19 +230,19 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     <TableCell className="font-medium">
                       <div>
                         {item.machine}
-                        {et === "hourly" && <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">HOURLY</Badge>}
-                        {et === "daily" && <Badge variant="outline" className="ml-1 text-[10px] bg-amber-50 text-amber-700 border-amber-200">DAILY HIRE</Badge>}
-                        {et === "monthly" && <Badge variant="outline" className="ml-1 text-[10px] bg-purple-50 text-purple-700 border-purple-200">MONTHLY HIRE</Badge>}
-                        {isTripBased && <Badge variant="outline" className="ml-1 text-[10px] bg-green-50 text-green-700 border-green-200">TRIP BASED</Badge>}
+                        {et === "hourly" && <Badge variant="outline" className="ml-1 text-[12px] bg-blue-50 text-blue-700 border-blue-200">HOURLY</Badge>}
+                        {et === "daily" && <Badge variant="outline" className="ml-1 text-[12px] bg-amber-50 text-amber-700 border-amber-200">DAILY HIRE</Badge>}
+                        {et === "monthly" && <Badge variant="outline" className="ml-1 text-[12px] bg-purple-50 text-purple-700 border-purple-200">MONTHLY HIRE</Badge>}
+                        {isTripBased && <Badge variant="outline" className="ml-1 text-[12px] bg-green-50 text-green-700 border-green-200">TRIP BASED</Badge>}
                       </div>
                       {item.vehicleNo && (
-                        <div className="text-xs text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>Reg: {item.vehicleNo}</div>
+                        <div className="text-sm text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>Reg: {item.vehicleNo}</div>
                       )}
                       {(() => {
                         const equip = item.equipmentId && equipmentList ? equipmentList.find(e => e.id === item.equipmentId) : null;
                         if (equip) {
                           return (
-                            <div className="text-xs text-muted-foreground" data-testid={`text-owner-info-${i}`}>
+                            <div className="text-sm text-muted-foreground" data-testid={`text-owner-info-${i}`}>
                               {equip.ownership === "hired" ? `HIRED: ${equip.vendorName || "Unknown Vendor"}` : "HLC OWN"}
                             </div>
                           );
@@ -256,10 +256,10 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                     <TableCell>{item.endTime || '-'}</TableCell>
                     <TableCell className="text-right">{item.openingReading != null ? item.openingReading : '-'}</TableCell>
                     <TableCell className="text-right">{item.closingReading != null ? item.closingReading : '-'}</TableCell>
-                    <TableCell className="text-right text-xs">
+                    <TableCell className="text-right text-sm">
                       {displayHours || '-'}
                       {isTripBased && item.numberOfTrips && item.tripDistance && (
-                        <div className="text-[10px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km = {(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
+                        <div className="text-[12px] text-muted-foreground">{item.numberOfTrips} trips × {item.tripDistance} km = {(item.numberOfTrips * item.tripDistance * 2).toFixed(1)} km</div>
                       )}
                     </TableCell>
                     <TableCell className="text-right">{item.diesel || '-'}</TableCell>
@@ -359,9 +359,9 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: Si
                       <p className="text-sm font-medium">{item.material}</p>
                       <div className="flex items-baseline gap-1 mt-1">
                         <p className="text-lg font-bold text-primary">{item.total.toFixed(3)}</p>
-                        <p className="text-xs text-muted-foreground">{item.uom}</p>
+                        <p className="text-sm text-muted-foreground">{item.uom}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         {item.trips} trip{item.trips > 1 ? 's' : ''}
                       </p>
                     </div>

@@ -71,7 +71,7 @@ function EquipTypeDialog({
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Name</Label>
+              <Label className="text-sm">Name</Label>
               <Input
                 className="h-8 text-sm mt-1"
                 value={name}
@@ -81,7 +81,7 @@ function EquipTypeDialog({
               />
             </div>
             <div>
-              <Label className="text-xs">Category</Label>
+              <Label className="text-sm">Category</Label>
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-equip-type-category">
                   <SelectValue />
@@ -96,28 +96,28 @@ function EquipTypeDialog({
           </div>
 
           <div>
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Standard Outputs (per hour)</Label>
+            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Standard Outputs (per hour)</Label>
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-[1fr_1.5fr_1fr] gap-2 pb-1">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Output / hr</span>
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Daily (8 hrs)</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold">Output / hr</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Daily (8 hrs)</span>
               </div>
               {CANONICAL_UNITS.map((unit) => {
                 const val = outputMap[unit] ?? "";
                 const num = val ? parseFloat(val) : 0;
                 return (
                   <div key={unit} className="grid grid-cols-[1fr_1.5fr_1fr] gap-2 items-center">
-                    <Label className="text-xs font-semibold text-slate-600">{unit}</Label>
+                    <Label className="text-sm font-semibold text-slate-600">{unit}</Label>
                     <Input
                       type="number" step="0.1" min="0"
-                      className="h-7 text-xs"
+                      className="h-7 text-sm"
                       value={val}
                       onChange={(e) => setOutputMap((p) => ({ ...p, [unit]: e.target.value }))}
                       placeholder="—"
                       data-testid={`input-plan-equip-output-${unit}`}
                     />
-                    <span className={`text-[11px] text-right ${num > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
+                    <span className={`text-xs text-right ${num > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
                       {num > 0 ? (num * 8).toFixed(1) : "—"}
                     </span>
                   </div>
@@ -198,7 +198,7 @@ function LabourTypeDialog({
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Designation</Label>
+              <Label className="text-sm">Designation</Label>
               <Input
                 className="h-8 text-sm mt-1"
                 value={designation}
@@ -208,7 +208,7 @@ function LabourTypeDialog({
               />
             </div>
             <div>
-              <Label className="text-xs">Skill Tier</Label>
+              <Label className="text-sm">Skill Tier</Label>
               <Select value={skillTier} onValueChange={setSkillTier}>
                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-labour-type-tier">
                   <SelectValue />
@@ -223,28 +223,28 @@ function LabourTypeDialog({
           </div>
 
           <div>
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Productivity (per person-day)</Label>
+            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Productivity (per person-day)</Label>
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-[1fr_1.5fr_1fr] gap-2 pb-1">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Output / day</span>
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Monthly (26 days)</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold">Output / day</span>
+                <span className="text-[12px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Monthly (26 days)</span>
               </div>
               {CANONICAL_UNITS.map((unit) => {
                 const val = outputMap[unit] ?? "";
                 const num = val ? parseFloat(val) : 0;
                 return (
                   <div key={unit} className="grid grid-cols-[1fr_1.5fr_1fr] gap-2 items-center">
-                    <Label className="text-xs font-semibold text-slate-600">{unit}</Label>
+                    <Label className="text-sm font-semibold text-slate-600">{unit}</Label>
                     <Input
                       type="number" step="0.01" min="0"
-                      className="h-7 text-xs"
+                      className="h-7 text-sm"
                       value={val}
                       onChange={(e) => setOutputMap((p) => ({ ...p, [unit]: e.target.value }))}
                       placeholder="—"
                       data-testid={`input-plan-labour-output-${unit}`}
                     />
-                    <span className={`text-[11px] text-right ${num > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
+                    <span className={`text-xs text-right ${num > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
                       {num > 0 ? (num * 26).toFixed(1) : "—"}
                     </span>
                   </div>
@@ -359,7 +359,7 @@ function EquipmentTypesTab() {
         if (!rows.length) return null;
         return (
           <div key={cat}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{cat}</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{cat}</h3>
             <div className="space-y-1.5">
               {rows.map((t) => (
                 <EquipTypeRow
@@ -399,7 +399,7 @@ function EquipTypeRow({ item, onEdit, onDelete }: { item: PlanningEquipmentType;
         <span className="text-sm font-medium flex-1">{item.name}</span>
         {outputCount > 0 ? (
           <button
-            className="flex items-center gap-1 text-[10px] text-teal-600 hover:text-teal-800"
+            className="flex items-center gap-1 text-[12px] text-teal-600 hover:text-teal-800"
             onClick={() => setExpanded((p) => !p)}
             data-testid={`button-expand-equip-${item.id}`}
           >
@@ -407,7 +407,7 @@ function EquipTypeRow({ item, onEdit, onDelete }: { item: PlanningEquipmentType;
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
         ) : (
-          <span className="text-[10px] text-muted-foreground">no outputs</span>
+          <span className="text-[12px] text-muted-foreground">no outputs</span>
         )}
         <button
           className="p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
@@ -427,7 +427,7 @@ function EquipTypeRow({ item, onEdit, onDelete }: { item: PlanningEquipmentType;
       {expanded && item.standardOutputs && item.standardOutputs.length > 0 && (
         <div className="mt-2 pl-5 flex flex-wrap gap-1.5">
           {item.standardOutputs.map((o) => (
-            <Badge key={o.unit} variant="secondary" className="text-[10px] font-medium">
+            <Badge key={o.unit} variant="secondary" className="text-[12px] font-medium">
               {o.unit}: {o.outputPerHr}/hr · {(o.outputPerHr * 8).toFixed(0)}/day
             </Badge>
           ))}
@@ -487,7 +487,7 @@ function LabourTypesTab() {
         if (!rows.length) return null;
         return (
           <div key={tier}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{tier}</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{tier}</h3>
             <div className="space-y-1.5">
               {rows.map((t) => (
                 <LabourTypeRow
@@ -527,7 +527,7 @@ function LabourTypeRow({ item, onEdit, onDelete }: { item: PlanningLabourType; o
         <span className="text-sm font-medium flex-1">{item.designation}</span>
         {outputCount > 0 ? (
           <button
-            className="flex items-center gap-1 text-[10px] text-teal-600 hover:text-teal-800"
+            className="flex items-center gap-1 text-[12px] text-teal-600 hover:text-teal-800"
             onClick={() => setExpanded((p) => !p)}
             data-testid={`button-expand-labour-${item.id}`}
           >
@@ -535,7 +535,7 @@ function LabourTypeRow({ item, onEdit, onDelete }: { item: PlanningLabourType; o
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
         ) : (
-          <span className="text-[10px] text-muted-foreground">supervisory / no output</span>
+          <span className="text-[12px] text-muted-foreground">supervisory / no output</span>
         )}
         <button
           className="p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
@@ -555,7 +555,7 @@ function LabourTypeRow({ item, onEdit, onDelete }: { item: PlanningLabourType; o
       {expanded && item.standardOutputs && item.standardOutputs.length > 0 && (
         <div className="mt-2 pl-5 flex flex-wrap gap-1.5">
           {item.standardOutputs.map((o) => (
-            <Badge key={o.unit} variant="secondary" className="text-[10px] font-medium">
+            <Badge key={o.unit} variant="secondary" className="text-[12px] font-medium">
               {o.unit}: {o.outputPerDay}/day · {(o.outputPerDay * 26).toFixed(0)}/mo
             </Badge>
           ))}

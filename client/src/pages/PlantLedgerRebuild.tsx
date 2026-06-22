@@ -132,15 +132,15 @@ export default function PlantLedgerRebuild() {
               <div className="grid grid-cols-3 gap-4 mt-3">
                 <div className="text-center p-3 rounded bg-background border">
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{result.dispatches}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Dispatches<br/>processed</p>
+                  <p className="text-sm text-muted-foreground mt-1">Dispatches<br/>processed</p>
                 </div>
                 <div className="text-center p-3 rounded bg-background border">
                   <p className="text-2xl font-bold text-red-600 dark:text-red-400">{result.ledgerRowsDeleted}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Rows<br/>deleted</p>
+                  <p className="text-sm text-muted-foreground mt-1">Rows<br/>deleted</p>
                 </div>
                 <div className="text-center p-3 rounded bg-background border">
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{result.ledgerRowsCreated}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Rows<br/>created</p>
+                  <p className="text-sm text-muted-foreground mt-1">Rows<br/>created</p>
                 </div>
               </div>
               {result.errors.length > 0 && (
@@ -149,7 +149,7 @@ export default function PlantLedgerRebuild() {
                     <AlertTriangle className="w-4 h-4" />
                     {result.errors.length} warning{result.errors.length !== 1 ? "s" : ""}
                   </p>
-                  <ul className="text-xs text-amber-600 dark:text-amber-500 list-disc list-inside mt-1 space-y-0.5">
+                  <ul className="text-sm text-amber-600 dark:text-amber-500 list-disc list-inside mt-1 space-y-0.5">
                     {result.errors.map((e, i) => <li key={i}>{e}</li>)}
                   </ul>
                 </div>
@@ -177,7 +177,7 @@ export default function PlantLedgerRebuild() {
               <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-semibold">Before proceeding:</p>
-                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                <ul className="list-disc list-inside space-y-0.5 text-sm">
                   <li>This deletes existing aggregate ledger rows for the selected template's dispatches at or after the cutoff.</li>
                   <li>New rows are created using the <strong>current</strong> component proportions.</li>
                   <li>Bitumen and LDO ledger entries are <strong>not</strong> affected.</li>
@@ -213,7 +213,7 @@ export default function PlantLedgerRebuild() {
                     onChange={(e) => setFromDate(e.target.value)}
                     data-testid="input-rebuild-from-date"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Dispatches on or after this date will be rebuilt</p>
+                  <p className="text-sm text-muted-foreground mt-1">Dispatches on or after this date will be rebuilt</p>
                 </div>
                 <div>
                   <Label htmlFor="from-time">Cutoff Time</Label>
@@ -224,14 +224,14 @@ export default function PlantLedgerRebuild() {
                     onChange={(e) => setFromTime(e.target.value)}
                     data-testid="input-rebuild-from-time"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Only dispatches at or after this time on the cutoff date</p>
+                  <p className="text-sm text-muted-foreground mt-1">Only dispatches at or after this time on the cutoff date</p>
                 </div>
               </div>
 
               {templateId && fromDate && (
                 <div className="rounded-md bg-muted/50 border p-3 text-sm">
                   <p className="font-medium">{selectedTemplate?.name}</p>
-                  <p className="text-muted-foreground text-xs mt-1">
+                  <p className="text-muted-foreground text-sm mt-1">
                     Will rebuild all dispatches from <strong>{fromDate}</strong> at <strong>{fromTime}</strong> onward.
                   </p>
                 </div>

@@ -91,7 +91,7 @@ export default function DryerSourceFixDialog({ open, onOpenChange, target, onFix
               {" "}All {target.sessionIds.length} conflicting sessions will be updated at once.
               {target.sessionDetails && target.sessionDetails.length > 0 && (
                 <ul
-                  className="mt-2 max-h-40 overflow-y-auto divide-y divide-border rounded border border-border text-xs"
+                  className="mt-2 max-h-40 overflow-y-auto divide-y divide-border rounded border border-border text-sm"
                   data-testid="list-conflicting-sessions"
                 >
                   {target.sessionDetails.map((s) => (

@@ -50,7 +50,7 @@ export default function StoresHome() {
           </div>
           <div>
             <span className="font-bold text-sm md:text-base tracking-tight">Stores</span>
-            <span className="ml-2 text-slate-400 text-xs hidden sm:inline">Inventory & Issue Tracking</span>
+            <span className="ml-2 text-slate-400 text-sm hidden sm:inline">Inventory & Issue Tracking</span>
           </div>
         </div>
         <Link href={params.get("returnTo") || "/"}>
@@ -90,7 +90,7 @@ export default function StoresHome() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">Material Receipts</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">Record incoming materials by party/job</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">Record incoming materials by party/job</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
                     </CardContent>
@@ -105,7 +105,7 @@ export default function StoresHome() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">Material Issues</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">Issue materials to sites from plant</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">Issue materials to sites from plant</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
                     </CardContent>
@@ -120,7 +120,7 @@ export default function StoresHome() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">Material Returns</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">Return issued materials to plant stock</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">Return issued materials to plant stock</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
                     </CardContent>
@@ -135,7 +135,7 @@ export default function StoresHome() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">Stock Ledger</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">View material-wise stock balances</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">View material-wise stock balances</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
                     </CardContent>
@@ -153,19 +153,19 @@ export default function StoresHome() {
               <Card>
                 <CardContent className="p-4 text-center">
                   <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">{totalItems}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Active Items</div>
+                  <div className="text-sm text-muted-foreground mt-1">Active Items</div>
                 </CardContent>
               </Card>
               <Card className={totalLow > 0 ? "border-red-300 dark:border-red-800" : ""}>
                 <CardContent className="p-4 text-center">
                   <div className={`text-2xl font-bold ${totalLow > 0 ? "text-red-600 dark:text-red-400" : "text-slate-800 dark:text-slate-100"}`}>{totalLow}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Low Stock</div>
+                  <div className="text-sm text-muted-foreground mt-1">Low Stock</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4 text-center">
                   <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">{Object.keys(byCategory).length}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Categories</div>
+                  <div className="text-sm text-muted-foreground mt-1">Categories</div>
                 </CardContent>
               </Card>
             </div>
@@ -179,7 +179,7 @@ export default function StoresHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">GRN</p>
-                    <p className="text-xs text-slate-500">Goods Received Notes</p>
+                    <p className="text-sm text-slate-500">Goods Received Notes</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-green-500 ml-auto" />
                 </button>
@@ -191,7 +191,7 @@ export default function StoresHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Issue Vouchers</p>
-                    <p className="text-xs text-slate-500">Issue items to plant/site</p>
+                    <p className="text-sm text-slate-500">Issue items to plant/site</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-orange-500 ml-auto" />
                 </button>
@@ -203,7 +203,7 @@ export default function StoresHome() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Item Master</p>
-                    <p className="text-xs text-slate-500">Manage catalogue</p>
+                    <p className="text-sm text-slate-500">Manage catalogue</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 ml-auto" />
                 </button>
@@ -223,11 +223,11 @@ export default function StoresHome() {
                       <div className="flex items-center justify-between py-1.5 cursor-pointer hover:opacity-80" data-testid={`low-stock-${s.itemId}`}>
                         <div>
                           <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{s.itemName}</span>
-                          <span className="ml-2 text-xs text-slate-500">{s.category}</span>
+                          <span className="ml-2 text-sm text-slate-500">{s.category}</span>
                         </div>
                         <div className="text-right">
                           <span className="text-sm font-bold text-red-600 dark:text-red-400">{s.balance.toFixed(2)} {s.uom}</span>
-                          <span className="ml-1 text-xs text-slate-400">(min: {s.minStockQty})</span>
+                          <span className="ml-1 text-sm text-slate-400">(min: {s.minStockQty})</span>
                         </div>
                       </div>
                     </Link>
@@ -242,10 +242,10 @@ export default function StoresHome() {
                 <h3 className="font-semibold text-sm text-slate-700 dark:text-slate-200">Current Stock</h3>
                 <div className="flex gap-2">
                   <Link href={`/stores/grns?returnTo=${ITEMS_RETURN}`}>
-                    <Button variant="outline" size="sm" className="text-xs h-7" data-testid="button-view-grns">GRN History</Button>
+                    <Button variant="outline" size="sm" className="text-sm h-7" data-testid="button-view-grns">GRN History</Button>
                   </Link>
                   <Link href={`/stores/issues?returnTo=${ITEMS_RETURN}`}>
-                    <Button variant="outline" size="sm" className="text-xs h-7" data-testid="button-view-issues">Issue History</Button>
+                    <Button variant="outline" size="sm" className="text-sm h-7" data-testid="button-view-issues">Issue History</Button>
                   </Link>
                 </div>
               </div>
@@ -261,11 +261,11 @@ export default function StoresHome() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-800/50">
-                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Item</th>
-                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Category</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">Balance</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500">UOM</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500">Status</th>
+                        <th className="text-left px-4 py-2.5 text-sm font-semibold text-slate-500">Item</th>
+                        <th className="text-left px-4 py-2.5 text-sm font-semibold text-slate-500">Category</th>
+                        <th className="text-right px-4 py-2.5 text-sm font-semibold text-slate-500">Balance</th>
+                        <th className="text-right px-4 py-2.5 text-sm font-semibold text-slate-500">UOM</th>
+                        <th className="text-center px-4 py-2.5 text-sm font-semibold text-slate-500">Status</th>
                         <th className="px-4 py-2.5 w-8"></th>
                       </tr>
                     </thead>
@@ -278,11 +278,11 @@ export default function StoresHome() {
                           <td className="px-4 py-2.5 text-right text-slate-500">{s.uom}</td>
                           <td className="px-4 py-2.5 text-center">
                             {s.isLowStock ? (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">LOW</span>
+                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">LOW</span>
                             ) : s.balance === 0 ? (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">NIL</span>
+                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">NIL</span>
                             ) : (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">OK</span>
+                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">OK</span>
                             )}
                           </td>
                           <td className="px-4 py-2.5 text-center">

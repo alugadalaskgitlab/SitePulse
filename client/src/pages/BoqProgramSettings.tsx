@@ -116,7 +116,7 @@ function SectionCard({ icon, title, subtitle, children }: {
           {icon}
           <span className="text-sm font-semibold text-slate-700">{title}</span>
         </div>
-        {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </CardHeader>
       <CardContent className="px-4 pb-4">{children}</CardContent>
     </Card>
@@ -182,19 +182,19 @@ function MixLinksSection({ projectId }: { projectId: number }) {
       subtitle="Map standard layer types (BC/DBM/WMM…) to plant mix templates. The planning engine uses these to resolve material demand and production capacity per layer."
     >
       {linksLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
         </div>
       ) : links.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic py-1">No mix links set. Add links below to enable material demand cross-referencing.</p>
+        <p className="text-sm text-muted-foreground italic py-1">No mix links set. Add links below to enable material demand cross-referencing.</p>
       ) : (
         <div className="space-y-1.5 mb-3">
           {links.map(link => (
             <div key={link.id}
-              className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs"
+              className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm"
               data-testid={`mix-link-row-${link.id}`}>
               <span className="font-mono font-bold text-violet-700 w-14 flex-shrink-0">{link.mixType}</span>
-              <span className="text-muted-foreground text-[10px]">→</span>
+              <span className="text-muted-foreground text-[12px]">→</span>
               <span className="text-slate-700 flex-1 min-w-0 truncate">{link.mixTemplateName ?? `Template #${link.mixTemplateId}`}</span>
               <button
                 onClick={() => deleteMutation.mutate(link.id)}
@@ -212,19 +212,19 @@ function MixLinksSection({ projectId }: { projectId: number }) {
       {/* Add new link */}
       {availableTypes.length > 0 && (
         <div className="rounded-md border border-dashed border-slate-300 bg-white p-3 space-y-2">
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Add Mix Link</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add Mix Link</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[10px]">MIX TYPE</Label>
+              <Label className="text-[12px]">MIX TYPE</Label>
               <Select value={addMixType} onValueChange={setAddMixType}>
-                <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-type">
+                <SelectTrigger className="h-8 text-sm mt-0.5" data-testid="select-mix-link-type">
                   <SelectValue placeholder="Select type…" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableTypes.map(t => (
                     <SelectItem key={t} value={t}>
                       <span className="font-mono font-semibold">{t}</span>
-                      <span className="text-muted-foreground text-[10px] ml-1.5">
+                      <span className="text-muted-foreground text-[12px] ml-1.5">
                         {DEFAULT_PRODUCTIVITY[t as StdMixType]?.hint}
                       </span>
                     </SelectItem>
@@ -233,9 +233,9 @@ function MixLinksSection({ projectId }: { projectId: number }) {
               </Select>
             </div>
             <div>
-              <Label className="text-[10px]">PLANT MIX TEMPLATE</Label>
+              <Label className="text-[12px]">PLANT MIX TEMPLATE</Label>
               <Select value={addTemplateId} onValueChange={setAddTemplateId}>
-                <SelectTrigger className="h-8 text-xs mt-0.5" data-testid="select-mix-link-template">
+                <SelectTrigger className="h-8 text-sm mt-0.5" data-testid="select-mix-link-template">
                   <SelectValue placeholder="Select template…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -250,7 +250,7 @@ function MixLinksSection({ projectId }: { projectId: number }) {
             <div className="col-span-2 flex justify-end">
               <Button
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 text-sm"
                 onClick={() => createMutation.mutate()}
                 disabled={!addMixType || !addTemplateId || createMutation.isPending}
                 data-testid="button-add-mix-link"
@@ -265,7 +265,7 @@ function MixLinksSection({ projectId }: { projectId: number }) {
         </div>
       )}
       {availableTypes.length === 0 && links.length > 0 && (
-        <p className="text-[11px] text-emerald-600 mt-1">All standard mix types are linked.</p>
+        <p className="text-xs text-emerald-600 mt-1">All standard mix types are linked.</p>
       )}
     </SectionCard>
   );
@@ -327,7 +327,7 @@ function ProductivityOverridesSection({
 
   return (
     <div className="mt-3 space-y-3">
-      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
         Plant Output Rates (override SNL norms when mode = Project)
       </p>
       <div className="grid grid-cols-3 gap-3">
@@ -337,29 +337,29 @@ function ProductivityOverridesSection({
             color === "teal"  ? "border-teal-200 bg-teal-50/40" :
                                 "border-blue-200 bg-blue-50/40"
           }`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wide ${
+            <p className={`text-[12px] font-bold uppercase tracking-wide ${
               color === "amber" ? "text-amber-700" :
               color === "teal"  ? "text-teal-700" :
                                   "text-blue-700"
             }`}>{label}</p>
-            <p className="text-[10px] text-muted-foreground leading-tight">{sublabel}</p>
+            <p className="text-[12px] text-muted-foreground leading-tight">{sublabel}</p>
             <div className="flex items-center gap-1.5">
               <Input
                 type="number"
                 min="0"
                 step="1"
-                className="h-8 text-xs flex-1"
+                className="h-8 text-sm flex-1"
                 placeholder={placeholder}
                 value={current[key]?.outputPerHr ?? ""}
                 onChange={e => updatePlant(key, unit.split("/")[0], e.target.value)}
                 data-testid={`input-output-${key.toLowerCase()}`}
               />
-              <span className="text-[10px] text-muted-foreground whitespace-nowrap">{unit}</span>
+              <span className="text-[12px] text-muted-foreground whitespace-nowrap">{unit}</span>
             </div>
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[12px] text-muted-foreground">
         Leave blank to fall back to SNL standard norms. Values here apply only when Productivity Mode is "Project".
       </p>
     </div>
@@ -488,7 +488,7 @@ export default function BoqProgramSettings() {
     <Form {...form}>
       <div className="space-y-5 max-w-2xl">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Link href="/work-program">
             <a className="hover:text-slate-700 transition-colors flex items-center gap-1">
               <FileSpreadsheet className="w-3.5 h-3.5" /> Work Program &amp; BOQ
@@ -508,18 +508,18 @@ export default function BoqProgramSettings() {
             <Settings2 className="w-5 h-5 text-teal-600 flex-shrink-0" />
             <div>
               <h1 className="text-xl font-bold text-slate-800">Program Settings</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">{project.name}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{project.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {savedAt && (
-              <span className="text-[11px] text-emerald-600 flex items-center gap-1">
+              <span className="text-xs text-emerald-600 flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Saved {savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
             {saveMutation.isPending && (
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
               </span>
             )}
@@ -534,7 +534,7 @@ export default function BoqProgramSettings() {
         >
           <FormField control={form.control} name="projectStartDate" render={({ field }) => (
             <FormItem className="mb-4">
-              <FormLabel className="text-xs">PROJECT START DATE</FormLabel>
+              <FormLabel className="text-sm">PROJECT START DATE</FormLabel>
               <FormControl>
                 <Input
                   type="date"
@@ -545,7 +545,7 @@ export default function BoqProgramSettings() {
                   data-testid="input-project-start-date"
                 />
               </FormControl>
-              <FormDescription className="text-[10px]">
+              <FormDescription className="text-[12px]">
                 Sets the calendar date for Month 1 in the Work Programme Gantt — month headers show real month names (e.g. "Jun '25")
               </FormDescription>
             </FormItem>
@@ -553,7 +553,7 @@ export default function BoqProgramSettings() {
           <div className="grid grid-cols-2 gap-4">
             <FormField control={form.control} name="workingDaysPerMonth" render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">WORKING DAYS / MONTH</FormLabel>
+                <FormLabel className="text-sm">WORKING DAYS / MONTH</FormLabel>
                 <FormControl>
                   <Input type="number" min="1" max="31" step="1" className="h-9"
                     placeholder={String(WORKING_DAYS_DEFAULT)}
@@ -562,12 +562,12 @@ export default function BoqProgramSettings() {
                     data-testid="input-working-days"
                   />
                 </FormControl>
-                <FormDescription className="text-[10px]">Default: {WORKING_DAYS_DEFAULT} days/month</FormDescription>
+                <FormDescription className="text-[12px]">Default: {WORKING_DAYS_DEFAULT} days/month</FormDescription>
               </FormItem>
             )} />
             <FormField control={form.control} name="shiftHours" render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">SHIFT HOURS / DAY</FormLabel>
+                <FormLabel className="text-sm">SHIFT HOURS / DAY</FormLabel>
                 <FormControl>
                   <Input type="number" min="1" max="24" step="0.5" className="h-9"
                     placeholder={String(WORKING_HRS_DEFAULT)}
@@ -576,7 +576,7 @@ export default function BoqProgramSettings() {
                     data-testid="input-shift-hours"
                   />
                 </FormControl>
-                <FormDescription className="text-[10px]">Default: {WORKING_HRS_DEFAULT} hrs/shift</FormDescription>
+                <FormDescription className="text-[12px]">Default: {WORKING_HRS_DEFAULT} hrs/shift</FormDescription>
               </FormItem>
             )} />
           </div>
@@ -590,8 +590,8 @@ export default function BoqProgramSettings() {
                 />
               </FormControl>
               <div>
-                <FormLabel className="text-xs font-semibold text-slate-700">Double Shift</FormLabel>
-                <FormDescription className="text-[10px]">
+                <FormLabel className="text-sm font-semibold text-slate-700">Double Shift</FormLabel>
+                <FormDescription className="text-[12px]">
                   Enables 2× effective hours per day — duration calculations use shift hrs × 2.
                 </FormDescription>
               </div>
@@ -614,7 +614,7 @@ export default function BoqProgramSettings() {
             ].map(({ name, label, placeholder, step, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormLabel className="text-sm">{label}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" step={step} className="h-9 mt-0.5"
                       placeholder={placeholder}
@@ -637,7 +637,7 @@ export default function BoqProgramSettings() {
           subtitle="Point-to-point distances between supply sources and destinations. The planning engine uses these to compute haul cycles and tipper demand per layer type."
         >
           {/* Bituminous group */}
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 mt-1">Bituminous</p>
+          <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-2 mt-1">Bituminous</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
             {[
               { name: "hmpToSiteKm" as const, label: "HMP → SITE (km)", hint: "BC / DBM / BM / SDBC layer haul", testId: "input-hmp-to-site" },
@@ -645,7 +645,7 @@ export default function BoqProgramSettings() {
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormLabel className="text-sm">{label}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
                       placeholder="km"
@@ -655,14 +655,14 @@ export default function BoqProgramSettings() {
                       data-testid={testId}
                     />
                   </FormControl>
-                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                  <FormDescription className="text-[12px]">{hint}</FormDescription>
                 </FormItem>
               )} />
             ))}
           </div>
 
           {/* Granular / WMM group */}
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Granular / WMM</p>
+          <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Granular / WMM</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
             {[
               { name: "wmmPlantToSiteKm" as const, label: "WMM PLANT → SITE (km)", hint: "WMM / GSB plant-mix haul to site", testId: "input-wmm-plant-to-site" },
@@ -671,7 +671,7 @@ export default function BoqProgramSettings() {
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormLabel className="text-sm">{label}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
                       placeholder="km"
@@ -681,21 +681,21 @@ export default function BoqProgramSettings() {
                       data-testid={testId}
                     />
                   </FormControl>
-                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                  <FormDescription className="text-[12px]">{hint}</FormDescription>
                 </FormItem>
               )} />
             ))}
           </div>
 
           {/* Concrete group */}
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Concrete</p>
+          <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Concrete</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
             {[
               { name: "rmcToSiteKm" as const, label: "RMC PLANT → SITE (km)", hint: "Ready-mix / M20/M25/M30/M35 haul", testId: "input-rmc-to-site" },
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormLabel className="text-sm">{label}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
                       placeholder="km"
@@ -705,14 +705,14 @@ export default function BoqProgramSettings() {
                       data-testid={testId}
                     />
                   </FormControl>
-                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                  <FormDescription className="text-[12px]">{hint}</FormDescription>
                 </FormItem>
               )} />
             ))}
           </div>
 
           {/* Earthwork group */}
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Earthwork</p>
+          <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Earthwork</p>
           <div className="grid grid-cols-2 gap-4">
             {[
               { name: "borrowToSiteKm" as const, label: "BORROW AREA → SITE (km)", hint: "Earthwork fill / embankment haul", testId: "input-borrow-to-site" },
@@ -720,7 +720,7 @@ export default function BoqProgramSettings() {
             ].map(({ name, label, hint, testId }) => (
               <FormField key={name} control={form.control} name={name} render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">{label}</FormLabel>
+                  <FormLabel className="text-sm">{label}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" step="0.1" className="h-9 mt-0.5"
                       placeholder="km"
@@ -730,7 +730,7 @@ export default function BoqProgramSettings() {
                       data-testid={testId}
                     />
                   </FormControl>
-                  <FormDescription className="text-[10px]">{hint}</FormDescription>
+                  <FormDescription className="text-[12px]">{hint}</FormDescription>
                 </FormItem>
               )} />
             ))}
@@ -738,10 +738,10 @@ export default function BoqProgramSettings() {
 
           {/* Distance summary matrix */}
           <div className="mt-4 rounded-md bg-slate-50 border border-slate-200 p-2.5">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
               Layer type → haul distance used by planning engine
             </p>
-            <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
+            <div className="grid grid-cols-4 gap-1.5 text-center text-[12px]">
               {[
                 { label: "BC/DBM→site", val: vals.hmpToSiteKm },
                 { label: "Qry→HMP", val: vals.quarryToHmpKm },
@@ -753,7 +753,7 @@ export default function BoqProgramSettings() {
                 { label: "Disposal", val: vals.disposalDistanceKm },
               ].map(({ label, val }) => (
                 <div key={label} className="rounded border border-slate-200 bg-white py-1.5 px-1">
-                  <p className="text-[9px] text-muted-foreground leading-tight">{label}</p>
+                  <p className="text-xs text-muted-foreground leading-tight">{label}</p>
                   <p className="font-bold text-slate-700 mt-0.5">
                     {val != null ? `${val} km` : "—"}
                   </p>
@@ -771,7 +771,7 @@ export default function BoqProgramSettings() {
         >
           <FormField control={form.control} name="productivityMode" render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-xs">MODE</FormLabel>
+              <FormLabel className="text-sm">MODE</FormLabel>
               <Select
                 value={field.value}
                 onValueChange={v => {
@@ -786,24 +786,24 @@ export default function BoqProgramSettings() {
                   <SelectItem value="snl">
                     <div>
                       <p className="font-medium">SNL / Standard Norms</p>
-                      <p className="text-[10px] text-muted-foreground">Uses IRC/MoRTH SNL tables for all items</p>
+                      <p className="text-[12px] text-muted-foreground">Uses IRC/MoRTH SNL tables for all items</p>
                     </div>
                   </SelectItem>
                   <SelectItem value="company">
                     <div>
                       <p className="font-medium">Company Norms</p>
-                      <p className="text-[10px] text-muted-foreground">Uses company-configured standard outputs</p>
+                      <p className="text-[12px] text-muted-foreground">Uses company-configured standard outputs</p>
                     </div>
                   </SelectItem>
                   <SelectItem value="project">
                     <div>
                       <p className="font-medium">Project-Specific</p>
-                      <p className="text-[10px] text-muted-foreground">Per-layer-type overrides defined below</p>
+                      <p className="text-[12px] text-muted-foreground">Per-layer-type overrides defined below</p>
                     </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <div className="mt-2 rounded-md px-3 py-2 text-[11px] bg-slate-50 border border-slate-200 text-slate-600">
+              <div className="mt-2 rounded-md px-3 py-2 text-xs bg-slate-50 border border-slate-200 text-slate-600">
                 {field.value === "snl" && (
                   <>
                     <strong>SNL mode:</strong> auto-durations use IRC/MoRTH standard norms library values.

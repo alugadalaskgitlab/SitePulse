@@ -52,13 +52,13 @@ export default function StoresLedger() {
             <BookOpen className="w-5 h-5 text-blue-600" />
             <div>
               <h1 className="text-xl font-bold leading-tight">{item?.itemName ?? "Stock Ledger"}</h1>
-              {item && <p className="text-xs text-muted-foreground">{item.category} · {item.uom}</p>}
+              {item && <p className="text-sm text-muted-foreground">{item.category} · {item.uom}</p>}
             </div>
           </div>
           {item && (
             <div className="text-right">
               <div className="text-xl font-bold">{item.balance.toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground">{item.uom} in stock</div>
+              <div className="text-sm text-muted-foreground">{item.uom} in stock</div>
             </div>
           )}
         </div>
@@ -68,15 +68,15 @@ export default function StoresLedger() {
           <div className="grid grid-cols-3 gap-3">
             <Card><CardContent className="p-3 text-center">
               <div className="text-lg font-bold text-green-600 dark:text-green-400">{totalIn.toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground">{item?.uom} Received</div>
+              <div className="text-sm text-muted-foreground">{item?.uom} Received</div>
             </CardContent></Card>
             <Card><CardContent className="p-3 text-center">
               <div className="text-lg font-bold text-orange-600 dark:text-orange-400">{totalOut.toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground">{item?.uom} Issued</div>
+              <div className="text-sm text-muted-foreground">{item?.uom} Issued</div>
             </CardContent></Card>
             <Card><CardContent className="p-3 text-center">
               <div className="text-lg font-bold">{(totalIn - totalOut).toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground">{item?.uom} Balance</div>
+              <div className="text-sm text-muted-foreground">{item?.uom} Balance</div>
             </CardContent></Card>
           </div>
         )}
@@ -84,15 +84,15 @@ export default function StoresLedger() {
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">From</Label>
-            <Input type="date" className="h-8 w-36 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
+            <Label className="text-sm text-muted-foreground">From</Label>
+            <Input type="date" className="h-8 w-36 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
           </div>
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">To</Label>
-            <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
+            <Label className="text-sm text-muted-foreground">To</Label>
+            <Input type="date" className="h-8 w-36 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
           </div>
           {(dateFrom || dateTo) && (
-            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</Button>
+            <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</Button>
           )}
         </div>
 
@@ -107,18 +107,18 @@ export default function StoresLedger() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Document</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Party / Purpose</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-green-600">In</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-orange-600">Out</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Balance</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Date</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Document</th>
+                    <th className="text-left px-4 py-3 text-sm font-semibold text-muted-foreground">Party / Purpose</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-green-600">In</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-orange-600">Out</th>
+                    <th className="text-right px-4 py-3 text-sm font-semibold text-muted-foreground">Balance</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ledger.map((entry, i) => (
                     <tr key={i} className="border-b border-muted/50 hover:bg-muted/20" data-testid={`ledger-row-${i}`}>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                      <td className="px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
                         {format(new Date(entry.date + "T00:00:00"), "dd MMM yyyy")}
                       </td>
                       <td className="px-4 py-2.5">
@@ -126,10 +126,10 @@ export default function StoresLedger() {
                           {entry.type === "GRN"
                             ? <ArrowDownToLine className="w-3 h-3 text-green-600 flex-shrink-0" />
                             : <ArrowUpFromLine className="w-3 h-3 text-orange-600 flex-shrink-0" />}
-                          <span className="font-mono text-xs font-semibold">{entry.docNumber}</span>
+                          <span className="font-mono text-sm font-semibold">{entry.docNumber}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-xs">
+                      <td className="px-4 py-2.5 text-sm">
                         <div>{entry.counterparty || "—"}</div>
                         {entry.purpose && <div className="text-muted-foreground">{entry.purpose}</div>}
                       </td>
@@ -151,7 +151,7 @@ export default function StoresLedger() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted/50 border-t font-semibold">
-                    <td colSpan={3} className="px-4 py-2.5 text-xs text-right text-muted-foreground">Totals</td>
+                    <td colSpan={3} className="px-4 py-2.5 text-sm text-right text-muted-foreground">Totals</td>
                     <td className="px-4 py-2.5 text-right font-mono text-green-600">{totalIn.toFixed(2)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-orange-600">{totalOut.toFixed(2)}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{(totalIn - totalOut).toFixed(2)}</td>

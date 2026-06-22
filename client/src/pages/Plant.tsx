@@ -231,7 +231,7 @@ function PlantHomeCards({
                 <div className="relative w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
                   <Wrench className="w-7 h-7 text-blue-600 dark:text-blue-400" />
                   {openBreakdownCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center">{openBreakdownCount}</span>
+                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-sm font-bold flex items-center justify-center">{openBreakdownCount}</span>
                   )}
                 </div>
                 <div className="flex-1">
@@ -420,7 +420,7 @@ function EquipmentFleetView({ plantName }: { plantName?: string }) {
               <div className="relative w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
                 <Wrench className="w-7 h-7 text-red-600 dark:text-red-400" />
                 {openBreakdownCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-sm font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
                 )}
               </div>
               <div className="flex-1">
@@ -557,7 +557,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
             <div className="relative w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
               <Wrench className="w-7 h-7 text-red-600 dark:text-red-400" />
               {openBreakdownCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-sm font-bold flex items-center justify-center" data-testid="badge-open-breakdowns">{openBreakdownCount}</span>
               )}
             </div>
             <div className="flex-1">
@@ -656,13 +656,13 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
               </div>
               <div>
                 <h3 className="font-semibold text-base leading-tight">Today's RMC Production</h3>
-                <p className="text-xs text-muted-foreground">{todayStr}</p>
+                <p className="text-sm text-muted-foreground">{todayStr}</p>
               </div>
               {rmcSummaryLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
               {!rmcSummaryLoading && rmcSummary && (
                 <div className="ml-auto text-right">
                   <p className="text-2xl font-bold text-teal-700 dark:text-teal-400" data-testid="text-rmc-total-volume">{rmcSummary.totalVolumeM3.toFixed(2)} m³</p>
-                  <p className="text-xs text-muted-foreground">{rmcSummary.totalBatches} batch{rmcSummary.totalBatches !== 1 ? "es" : ""}</p>
+                  <p className="text-sm text-muted-foreground">{rmcSummary.totalBatches} batch{rmcSummary.totalBatches !== 1 ? "es" : ""}</p>
                 </div>
               )}
               {!rmcSummaryLoading && !rmcSummary && (
@@ -671,7 +671,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
             </div>
             {rmcSummary && rmcSummary.byGrade.length > 0 ? (
               <div className="mt-3 border-t border-teal-100 dark:border-teal-800 pt-3">
-                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-sm font-medium text-muted-foreground mb-1 px-1">
                   <span>Grade</span>
                   <span className="text-right">Batches</span>
                   <span className="text-right">Volume (m³)</span>
@@ -749,7 +749,7 @@ function OperationsTab({ plantType = "hma", plantName }: { plantType?: string; p
             <div className="relative w-14 h-14 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center shrink-0">
               <TestTube className="w-7 h-7 text-teal-600 dark:text-teal-400" />
               {cubeTestFailCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center" data-testid="badge-cube-failures">{cubeTestFailCount}</span>
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-sm font-bold flex items-center justify-center" data-testid="badge-cube-failures">{cubeTestFailCount}</span>
               )}
             </div>
             <div className="flex-1">
@@ -1093,7 +1093,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 <div className="mt-2 flex items-center gap-3 text-sm" data-testid="text-ldo-stock-summary">
                   <span className="font-bold text-blue-700 dark:text-blue-300">{ldoTankSummary.totalL.toFixed(0)} L</span>
                   <span className="text-muted-foreground">({ldoTankSummary.totalMT.toFixed(3)} MT)</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     T1: {ldoTankSummary.tank1L !== null ? `${ldoTankSummary.tank1L.toFixed(0)} L` : "—"} |
                     T2: {ldoTankSummary.tank2L !== null ? `${ldoTankSummary.tank2L.toFixed(0)} L` : "—"}
                   </span>
@@ -1130,11 +1130,11 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
             {/* Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">Total Book Stock (All Parties)</div>
+                <div className="text-muted-foreground text-sm mb-1">Total Book Stock (All Parties)</div>
                 <div className={`font-bold text-lg ${dieselBookStockL < 0 ? "text-red-600" : "text-foreground"}`}>
                   {dieselBookStockL.toFixed(0)} L
                 </div>
-                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                   {dieselPartyBalances.map(b => (
                     <div key={b.id} className="flex justify-between gap-2">
                       <span>{allParties?.find(p => p.id === b.partyId)?.name ?? `Party ${b.partyId}`}:</span>
@@ -1145,7 +1145,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 </div>
               </div>
               <div className="bg-muted/50 rounded-lg p-3">
-                <div className="text-muted-foreground text-xs mb-1">How to use</div>
+                <div className="text-muted-foreground text-sm mb-1">How to use</div>
                 <div className="text-sm text-muted-foreground">
                   Select a party, enter their physical diesel quantity from a dip-stick reading, and post the correction to align the book stock.
                 </div>
@@ -1159,7 +1159,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 {/* Party + date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Party to Correct</Label>
+                    <Label className="text-sm">Party to Correct</Label>
                     <Select value={dieselCorrPartyId} onValueChange={id => setDieselCorrPartyId(id)}>
                       <SelectTrigger data-testid="select-diesel-corr-party">
                         <SelectValue placeholder="Select party" />
@@ -1175,13 +1175,13 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                       </SelectContent>
                     </Select>
                     {dieselCorrPartyId && dieselSelectedPartyBalanceL !== null && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         Current book stock: <span className={dieselSelectedPartyBalanceL < 0 ? "text-red-500 font-medium" : "font-medium"}>{dieselSelectedPartyBalanceL.toFixed(0)} L</span>
                       </p>
                     )}
                   </div>
                   <div>
-                    <Label className="text-xs">As on Date</Label>
+                    <Label className="text-sm">As on Date</Label>
                     <Input type="date" value={dieselCorrDate} onChange={e => setDieselCorrDate(e.target.value)} data-testid="input-diesel-corr-date" />
                   </div>
                 </div>
@@ -1189,7 +1189,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                 {/* Physical qty + preview */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                   <div>
-                    <Label className="text-xs">Physical Stock (Liters)</Label>
+                    <Label className="text-sm">Physical Stock (Liters)</Label>
                     <Input
                       type="number" step="1" min="0"
                       value={dieselCorrPhysicalL}
@@ -1197,7 +1197,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                       placeholder="e.g. 850"
                       data-testid="input-diesel-corr-physical-l"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">From dip-stick reading</p>
+                    <p className="text-sm text-muted-foreground mt-1">From dip-stick reading</p>
                   </div>
                   {dieselCorrPartyId && dieselSelectedPartyBalanceL !== null && dieselCorrPhysicalL && (
                     <div className={`rounded-lg p-2 text-center ${
@@ -1205,7 +1205,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                         ? "bg-green-50 dark:bg-green-900/20"
                         : "bg-red-50 dark:bg-red-900/20"
                     }`}>
-                      <div className="text-xs text-muted-foreground">Adjustment</div>
+                      <div className="text-sm text-muted-foreground">Adjustment</div>
                       <div className={`font-bold text-base ${
                         parseFloat(dieselCorrPhysicalL) - dieselSelectedPartyBalanceL > 0
                           ? "text-green-700 dark:text-green-400"
@@ -1219,7 +1219,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                     </div>
                   )}
                   <div>
-                    <Label className="text-xs">Notes (optional)</Label>
+                    <Label className="text-sm">Notes (optional)</Label>
                     <Input value={dieselCorrNotes} onChange={e => setDieselCorrNotes(e.target.value)} placeholder="e.g. Dip stick reading" data-testid="input-diesel-corr-notes" />
                   </div>
                 </div>
@@ -1338,7 +1338,7 @@ function StockDetailsTab({ plantType = "hma", rmcEnabled = false }: { plantType?
                   <h3 className="font-semibold text-lg">Backfill Dispatch Notes</h3>
                   <p className="text-sm text-muted-foreground">Update old ledger notes to "Mix — Site" format</p>
                   {dispatchNotesBackfillResult && (
-                    <p className="text-xs text-green-700 dark:text-green-400 mt-1" data-testid="text-dispatch-notes-backfill-result">
+                    <p className="text-sm text-green-700 dark:text-green-400 mt-1" data-testid="text-dispatch-notes-backfill-result">
                       Updated: {dispatchNotesBackfillResult.updated} · Skipped: {dispatchNotesBackfillResult.skipped} · Errors: {dispatchNotesBackfillResult.errors}
                     </p>
                   )}
@@ -1407,14 +1407,14 @@ function TankSlotEditor({
         />
         <span className="font-medium text-sm">{label}</span>
         {enabled && capacity > 0 && (
-          <span className="ml-auto text-xs text-muted-foreground">{Math.round(capacity).toLocaleString()} L capacity</span>
+          <span className="ml-auto text-sm text-muted-foreground">{Math.round(capacity).toLocaleString()} L capacity</span>
         )}
       </div>
 
       {enabled && config && (
         <>
           <div>
-            <Label className="text-xs">Tank Shape</Label>
+            <Label className="text-sm">Tank Shape</Label>
             <Select value={shape} onValueChange={(v) => onChange(defaultForShape(v))}>
               <SelectTrigger className="mt-1 h-8 text-sm" data-testid={`select-tank-${slotKey}-shape`}>
                 <SelectValue />
@@ -1429,30 +1429,30 @@ function TankSlotEditor({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs">Diameter (cm)</Label>
+              <Label className="text-sm">Diameter (cm)</Label>
               {numField(config.diameterCm, "diameterCm")}
             </div>
             {config.shape === "horizontal_cylinder" && (
               <div>
-                <Label className="text-xs">Length (cm)</Label>
+                <Label className="text-sm">Length (cm)</Label>
                 {numField(config.lengthCm, "lengthCm")}
               </div>
             )}
             {config.shape === "vertical_cylinder" && (
               <div>
-                <Label className="text-xs">Height (cm)</Label>
+                <Label className="text-sm">Height (cm)</Label>
                 {numField(config.heightCm, "heightCm")}
               </div>
             )}
             {config.shape === "vertical_cone_top" && (
               <>
                 <div>
-                  <Label className="text-xs">Cylinder Height (cm)</Label>
+                  <Label className="text-sm">Cylinder Height (cm)</Label>
                   {numField(config.cylinderHeightCm, "cylinderHeightCm")}
                 </div>
                 <div className="col-span-2 grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs">Cone Height (cm)</Label>
+                    <Label className="text-sm">Cone Height (cm)</Label>
                     {numField(config.coneHeightCm, "coneHeightCm")}
                   </div>
                   <div />
@@ -1460,7 +1460,7 @@ function TankSlotEditor({
               </>
             )}
             <div>
-              <Label className="text-xs">Dead Stock Depth (cm)</Label>
+              <Label className="text-sm">Dead Stock Depth (cm)</Label>
               <Input type="number" min={0} value={config.deadStockDepthCm ?? ""}
                 placeholder="e.g. 12"
                 onChange={(e) => update({ deadStockDepthCm: parseFloat(e.target.value) || undefined })}
@@ -1470,8 +1470,8 @@ function TankSlotEditor({
 
           {preview && (
             <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Chart Preview</p>
-              <div className="grid grid-cols-3 text-xs gap-x-4 gap-y-0.5">
+              <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Chart Preview</p>
+              <div className="grid grid-cols-3 text-sm gap-x-4 gap-y-0.5">
                 <span className="text-muted-foreground font-medium">% Full</span>
                 <span className="text-muted-foreground font-medium">Dip (cm)</span>
                 <span className="text-muted-foreground font-medium">Volume (L)</span>
@@ -1739,14 +1739,14 @@ export function PlantTypeConfigSection() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium text-sm truncate" data-testid={`text-plant-name-${s.plantName}`}>{s.plantName}</p>
                     {s.siteName ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" data-testid={`badge-site-${s.plantName}`}>
+                      <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" data-testid={`badge-site-${s.plantName}`}>
                         {s.siteName}
                       </span>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground" data-testid={`badge-no-site-${s.plantName}`}>Shared / Mobile</span>
+                      <span className="text-[12px] text-muted-foreground" data-testid={`badge-no-site-${s.plantName}`}>Shared / Mobile</span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">{PLANT_TYPE_LABELS[s.plantType ?? "hma"] ?? s.plantType}</p>
+                  <p className="text-sm text-muted-foreground">{PLANT_TYPE_LABELS[s.plantType ?? "hma"] ?? s.plantType}</p>
                 </div>
                 <Button
                   variant="outline"
@@ -1822,7 +1822,7 @@ export function PlantTypeConfigSection() {
             Add Another Plant
           </Button>
 
-          <p className="text-xs text-muted-foreground pt-1">
+          <p className="text-sm text-muted-foreground pt-1">
             HMA shows shift logs, heating, and dispatch tracking. RMC shows batch records, cube tests, and raw material receipts. Mixed shows both.
           </p>
         </CardContent>
@@ -1874,7 +1874,7 @@ export function PlantTypeConfigSection() {
           <div className="space-y-4 py-2">
             <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-sm text-amber-700 dark:text-amber-300">
                 Renaming only updates this settings entry. Existing shift logs, daily reports, dispatch records, and any other data that references <strong>{renameTarget?.plantName}</strong> will <em>not</em> be updated automatically.
               </p>
             </div>
@@ -1943,7 +1943,7 @@ export function PlantTypeConfigSection() {
                 className="mt-1"
                 data-testid="input-add-plant-name"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 This name appears across all plant records, reports, and shift logs for this plant.
               </p>
             </div>
@@ -1961,7 +1961,7 @@ export function PlantTypeConfigSection() {
               </Select>
             </div>
             <div>
-              <Label>Site / Project <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Label>Site / Project <span className="text-muted-foreground text-sm">(optional)</span></Label>
               <Select value={addSiteId || "__none__"} onValueChange={v => setAddSiteId(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1" data-testid="select-add-plant-site">
                   <SelectValue placeholder="Not assigned to a site" />
@@ -1973,7 +1973,7 @@ export function PlantTypeConfigSection() {
               </Select>
             </div>
             <div>
-              <Label>Primary Party <span className="text-muted-foreground text-xs">(optional — default contractor for manpower)</span></Label>
+              <Label>Primary Party <span className="text-muted-foreground text-sm">(optional — default contractor for manpower)</span></Label>
               <Select value={addPartyId || "__none__"} onValueChange={v => setAddPartyId(v === "__none__" ? "" : v)}>
                 <SelectTrigger className="mt-1" data-testid="select-add-plant-party">
                   <SelectValue placeholder="No default party" />
@@ -2101,7 +2101,7 @@ export function PlantTypeConfigSection() {
                 />
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Tip: For horizontal cylinders, enter the inner diameter and the internal barrel length. For vertical tanks, diameter and fill height. Dead stock depth excludes the unpumpable bottom layer from usable volume calculations.
             </p>
             <div className="flex justify-end gap-2">
@@ -2371,10 +2371,10 @@ export function SitesMasterSection() {
                     <div className="flex-1 flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium" data-testid={`text-site-name-${site.id}`}>{site.name}</span>
                       {site.partyId && (
-                        <Badge variant="outline" className="text-xs">{getPartyName(site.partyId) || "Unknown"}</Badge>
+                        <Badge variant="outline" className="text-sm">{getPartyName(site.partyId) || "Unknown"}</Badge>
                       )}
                       {site.isActive === 0 && (
-                        <Badge variant="outline" className="text-xs border-slate-400 text-slate-500" data-testid={`badge-closed-${site.id}`}>Closed</Badge>
+                        <Badge variant="outline" className="text-sm border-slate-400 text-slate-500" data-testid={`badge-closed-${site.id}`}>Closed</Badge>
                       )}
                     </div>
                     {canEdit && (
@@ -2936,20 +2936,20 @@ export function MaterialMaster() {
                     <SelectItem value="bulk_plant">Bulk Material</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <p className="text-sm text-muted-foreground mt-0.5">
                   {procurementRoute === "bulk_plant" ? "Goes directly to Plant Material Receipt after purchaser action." : "Goes through Stores handover → GRN after purchaser action."}
                 </p>
               </div>
 
               {/* Bulk Density for volume→weight conversion */}
               <div className="rounded-md border border-dashed border-border p-3 space-y-3 bg-muted/30">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Volume → Weight Conversion (optional)</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Volume → Weight Conversion (optional)</p>
+                <p className="text-sm text-muted-foreground">
                   Fill this only if the material is sometimes received in volume units (CFT / Cum) but tracked in weight (MT / Ton).
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Volume UOM at Receipt</Label>
+                    <Label className="text-sm">Volume UOM at Receipt</Label>
                     <Select value={volumeUom} onValueChange={setVolumeUom}>
                       <SelectTrigger data-testid="select-volume-uom" className="h-8 text-sm">
                         <SelectValue />
@@ -2961,7 +2961,7 @@ export function MaterialMaster() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">Bulk Density (MT/m³)</Label>
+                    <Label className="text-sm">Bulk Density (MT/m³)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -2976,7 +2976,7 @@ export function MaterialMaster() {
                   </div>
                 </div>
                 {parseFloat(bulkDensity) > 0 && (
-                  <div className="text-xs rounded bg-background border px-3 py-2 space-y-0.5">
+                  <div className="text-sm rounded bg-background border px-3 py-2 space-y-0.5">
                     <p className="font-medium text-foreground">Derived conversion factor:</p>
                     {volumeUom === "CFT" ? (
                       <>
@@ -3014,13 +3014,13 @@ export function MaterialMaster() {
               <div key={material.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
                 <div>
                   <p className="font-medium">{material.name}</p>
-                  <p className="text-xs text-muted-foreground">{material.category} - {material.defaultUom}</p>
+                  <p className="text-sm text-muted-foreground">{material.category} - {material.defaultUom}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {(material as any).procurementRoute === "bulk_plant" && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK MATERIAL</span>
+                      <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">BULK MATERIAL</span>
                     )}
                     {(material as any).bulkDensity != null && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                         {(material as any).bulkDensity} MT/m³ · {(material as any).conversionFromUom || "CFT"}→Ton
                       </span>
                     )}
@@ -3056,7 +3056,7 @@ export function MaterialMaster() {
                 <div key={os.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30 border" data-testid={`opening-stock-entry-${os.id}`}>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{getMaterialName(os.materialId)}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {os.quantity} {os.uom} | {getPartyName(os.partyId)} | {os.date}{os.tankNumber ? ` | Tank ${os.tankNumber}` : ""}
                       {os.notes ? ` | ${os.notes}` : ""}
                     </p>
@@ -3584,7 +3584,7 @@ export function MixTemplateMaster() {
               <div className="space-y-2">
                 <Label>Aggregate Proportions</Label>
                 <div className="rounded-md border overflow-hidden">
-                  <table className="w-full text-xs">
+                  <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="px-2 py-1.5 text-left font-medium">Material</th>
@@ -3602,7 +3602,7 @@ export function MixTemplateMaster() {
                         const hasAdj = mc > 0 || wf > 0;
                         return (
                           <tr key={mat.id} className={idx % 2 === 0 ? "" : "bg-muted/20"}>
-                            <td className="px-2 py-1 font-medium text-xs">{mat.name}</td>
+                            <td className="px-2 py-1 font-medium text-sm">{mat.name}</td>
                             <td className="px-2 py-1">
                               <Input
                                 type="number"
@@ -3612,7 +3612,7 @@ export function MixTemplateMaster() {
                                 value={aggregateProportions[mat.id] || ""}
                                 onChange={(e) => setAggregateProportions(prev => ({ ...prev, [mat.id]: e.target.value }))}
                                 placeholder="0"
-                                className="h-7 text-xs text-center"
+                                className="h-7 text-sm text-center"
                                 data-testid={`input-aggregate-${mat.id}`}
                               />
                             </td>
@@ -3625,7 +3625,7 @@ export function MixTemplateMaster() {
                                 value={aggregateMoistureContent[mat.id] || ""}
                                 onChange={(e) => setAggregateMoistureContent(prev => ({ ...prev, [mat.id]: e.target.value }))}
                                 placeholder="0"
-                                className="h-7 text-xs text-center"
+                                className="h-7 text-sm text-center"
                                 data-testid={`input-mc-${mat.id}`}
                               />
                             </td>
@@ -3638,12 +3638,12 @@ export function MixTemplateMaster() {
                                 value={aggregateWastageFactors[mat.id] || ""}
                                 onChange={(e) => setAggregateWastageFactors(prev => ({ ...prev, [mat.id]: e.target.value }))}
                                 placeholder="0"
-                                className="h-7 text-xs text-center"
+                                className="h-7 text-sm text-center"
                                 data-testid={`input-wf-${mat.id}`}
                               />
                             </td>
                             <td className="px-2 py-1 text-center">
-                              <span className={`font-mono text-xs ${hasAdj ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
+                              <span className={`font-mono text-sm ${hasAdj ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
                                 {hasAdj ? `×${multiplier.toFixed(3)}` : "—"}
                               </span>
                             </td>
@@ -3653,11 +3653,11 @@ export function MixTemplateMaster() {
                     </tbody>
                   </table>
                 </div>
-                <div className={`text-xs ${Math.abs(totalPercent - 100) < 0.5 ? "text-green-600" : "text-amber-600"}`}>
+                <div className={`text-sm ${Math.abs(totalPercent - 100) < 0.5 ? "text-green-600" : "text-amber-600"}`}>
                   Mix total: {totalPercent.toFixed(1)}% (Bitumen: {bitumenVal}% + Aggregates: {aggregateTotal.toFixed(1)}%)
                   {Math.abs(totalPercent - 100) >= 0.5 && " — Should equal 100%"}
                 </div>
-                <p className="text-xs text-muted-foreground">MC = moisture content (water in as-received material). WF = wastage factor (handling losses). Both increase the required supply quantity.</p>
+                <p className="text-sm text-muted-foreground">MC = moisture content (water in as-received material). WF = wastage factor (handling losses). Both increase the required supply quantity.</p>
               </div>
 
               <div>
@@ -3711,7 +3711,7 @@ export function MixTemplateMaster() {
             <div className="space-y-4">
               <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4 space-y-2">
                 <p className="font-semibold text-green-800 dark:text-green-300">Rebuild complete for <span className="font-bold">{rebuildTemplateName}</span></p>
-                <p className="text-xs text-green-600 dark:text-green-500">Cutoff: {rebuildResult.fromDateTime.replace("T", " at ")}</p>
+                <p className="text-sm text-green-600 dark:text-green-500">Cutoff: {rebuildResult.fromDateTime.replace("T", " at ")}</p>
                 <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
                   <p>Dispatches processed: <strong>{rebuildResult.dispatches}</strong></p>
                   <p>Ledger rows deleted: <strong>{rebuildResult.ledgerRowsDeleted}</strong></p>
@@ -3720,7 +3720,7 @@ export function MixTemplateMaster() {
                 {rebuildResult.errors.length > 0 && (
                   <div className="mt-2">
                     <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Warnings ({rebuildResult.errors.length}):</p>
-                    <ul className="text-xs text-amber-600 dark:text-amber-500 list-disc list-inside mt-1 space-y-0.5">
+                    <ul className="text-sm text-amber-600 dark:text-amber-500 list-disc list-inside mt-1 space-y-0.5">
                       {rebuildResult.errors.map((e, i) => <li key={i}>{e}</li>)}
                     </ul>
                   </div>
@@ -3735,7 +3735,7 @@ export function MixTemplateMaster() {
               <p className="text-sm text-muted-foreground">
                 Rebuilds aggregate stock ledger entries for <strong>{rebuildTemplateName}</strong> from the chosen date and time onward using the current component proportions. Bitumen and LDO entries are not affected.
               </p>
-              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 flex gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <span>This permanently modifies stock ledger data. Use only after confirming the cutoff date and time.</span>
               </div>
@@ -3830,7 +3830,7 @@ export function MixTemplateMaster() {
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1 text-xs h-7 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/40"
+                className="gap-1 text-sm h-7 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/40"
                 onClick={() => {
                   const tpl = templates?.find(t => t.id === postSaveAlertTemplate.id);
                   if (tpl) openRebuildDialog(tpl);
@@ -3870,20 +3870,20 @@ export function MixTemplateMaster() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium">{template.name}</p>
                         {template.partyId != null
-                          ? <Badge variant="secondary" className="text-xs">{parties?.find(p => p.id === template.partyId)?.name ?? `Party #${template.partyId}`}</Badge>
-                          : <Badge variant="outline" className="text-xs text-muted-foreground">Shared</Badge>
+                          ? <Badge variant="secondary" className="text-sm">{parties?.find(p => p.id === template.partyId)?.name ?? `Party #${template.partyId}`}</Badge>
+                          : <Badge variant="outline" className="text-sm text-muted-foreground">Shared</Badge>
                         }
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {template.mixType} — Bitumen: {template.bitumenPercent}% — LDO: {template.ldoNorm || 6} L/ton
                       </p>
                       {template.createdAt && (
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Created: {format(new Date(template.createdAt), "dd-MMM-yyyy HH:mm")}
                         </p>
                       )}
                       {templateComponents.length > 0 && (
-                        <div className="mt-2 text-xs text-muted-foreground">
+                        <div className="mt-2 text-sm text-muted-foreground">
                           <span className="font-medium">Aggregates:</span>{" "}
                           <span className="inline-flex flex-wrap gap-x-2 gap-y-1">
                             {templateComponents.map((c) => {
@@ -3918,7 +3918,7 @@ export function MixTemplateMaster() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="gap-1 text-xs text-amber-700 dark:text-amber-400 hover:text-amber-900"
+                            className="gap-1 text-sm text-amber-700 dark:text-amber-400 hover:text-amber-900"
                             onClick={() => openRebuildDialog(template)}
                             data-testid={`button-rebuild-ledger-${template.id}`}
                           >
@@ -4140,7 +4140,7 @@ export function EquipmentMasterSection() {
         </CardTitle>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={filterPlantName} onValueChange={setFilterPlantName}>
-            <SelectTrigger className="h-8 w-44 text-xs" data-testid="select-filter-plant-equipment">
+            <SelectTrigger className="h-8 w-44 text-sm" data-testid="select-filter-plant-equipment">
               <SelectValue placeholder="All Plants" />
             </SelectTrigger>
             <SelectContent>
@@ -4242,7 +4242,7 @@ export function EquipmentMasterSection() {
                 />
               </div>
               <div>
-                <Label>Plant <span className="text-muted-foreground text-xs">(leave blank if shared across plants)</span></Label>
+                <Label>Plant <span className="text-muted-foreground text-sm">(leave blank if shared across plants)</span></Label>
                 <Select value={plantNameField || "__none__"} onValueChange={v => setPlantNameField(v === "__none__" ? "" : v)}>
                   <SelectTrigger data-testid="select-equipment-plant">
                     <SelectValue placeholder="Shared / Not assigned" />
@@ -4265,10 +4265,10 @@ export function EquipmentMasterSection() {
                   data-testid="button-toggle-planning-output"
                 >
                   <span className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-teal-600">Standard Outputs</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">(for auto-duration in Work Programme)</span>
+                    <span className="text-[12px] font-bold uppercase tracking-wide text-teal-600">Standard Outputs</span>
+                    <span className="text-[12px] text-muted-foreground font-normal">(for auto-duration in Work Programme)</span>
                     {CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length > 0 && (
-                      <span className="ml-1 bg-teal-100 text-teal-700 text-[9px] font-semibold px-1.5 py-0.5 rounded-full">
+                      <span className="ml-1 bg-teal-100 text-teal-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
                         {CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length} unit{CANONICAL_UNITS.filter(u => standardOutputsMap[u] && parseFloat(standardOutputsMap[u]) > 0).length !== 1 ? "s" : ""} set
                       </span>
                     )}
@@ -4279,9 +4279,9 @@ export function EquipmentMasterSection() {
                   <div className="px-3 pb-3 space-y-2">
                     {/* Column headers */}
                     <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 pt-1 pb-0.5">
-                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
-                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">Output / hr</span>
-                      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold text-right">Daily (8 hrs)</span>
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Unit</span>
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Output / hr</span>
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold text-right">Daily (8 hrs)</span>
                     </div>
                     {/* One row per canonical unit */}
                     {CANONICAL_UNITS.map(unit => {
@@ -4290,31 +4290,31 @@ export function EquipmentMasterSection() {
                       const daily = numVal > 0 ? (numVal * 8).toFixed(1) : "—";
                       return (
                         <div key={unit} className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 items-center">
-                          <Label className="text-xs font-semibold text-slate-600">{unit}</Label>
+                          <Label className="text-sm font-semibold text-slate-600">{unit}</Label>
                           <Input
                             type="number"
                             step="0.1"
                             min="0"
-                            className="h-7 text-xs"
+                            className="h-7 text-sm"
                             value={val}
                             onChange={e => setStandardOutputsMap(prev => ({ ...prev, [unit]: e.target.value }))}
                             placeholder="—"
                             data-testid={`input-std-output-${unit}`}
                           />
-                          <span className={`text-[11px] text-right ${numVal > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
+                          <span className={`text-xs text-right ${numVal > 0 ? "text-teal-600 font-medium" : "text-muted-foreground"}`}>
                             {daily}
                           </span>
                         </div>
                       );
                     })}
                     <div className="pt-1 border-t border-teal-100 mt-1">
-                      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Efficiency (%) — applies to fallback theoretical output only</Label>
+                      <Label className="text-[12px] uppercase tracking-wide text-muted-foreground">Efficiency (%) — applies to fallback theoretical output only</Label>
                       <Input
                         type="number" min="0" max="100" step="1"
                         placeholder="75"
                         value={outputEfficiency}
                         onChange={e => setOutputEfficiency(e.target.value)}
-                        className="h-7 text-xs mt-1 w-24"
+                        className="h-7 text-sm mt-1 w-24"
                         data-testid="input-output-efficiency"
                       />
                     </div>
@@ -4355,11 +4355,11 @@ export function EquipmentMasterSection() {
                   <p className="font-medium flex items-center gap-2 flex-wrap">
                     {equip.name}
                     {equippedPlantName ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" data-testid={`badge-plant-${equip.id}`}>{equippedPlantName}</span>
+                      <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" data-testid={`badge-plant-${equip.id}`}>{equippedPlantName}</span>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">Shared</span>
+                      <span className="text-[12px] text-muted-foreground">Shared</span>
                     )}
-                    {isInactive && <Badge variant="outline" className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
+                    {isInactive && <Badge variant="outline" className="text-sm bg-gray-100 dark:bg-gray-800 text-gray-500">Inactive</Badge>}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {(equip as any).registrationNumber && <span className="font-medium">{(equip as any).registrationNumber} | </span>}
@@ -4577,7 +4577,7 @@ export function PersonnelMasterSection() {
               onCheckedChange={(checked) => setShowInactive(checked === true)}
               data-testid="checkbox-show-inactive-personnel"
             />
-            <Label htmlFor="show-inactive-personnel" className="text-xs cursor-pointer">Show Inactive</Label>
+            <Label htmlFor="show-inactive-personnel" className="text-sm cursor-pointer">Show Inactive</Label>
           </div>
           {canCreate && (
             <Button size="sm" onClick={openCreate} data-testid="button-add-personnel">
@@ -4602,12 +4602,12 @@ export function PersonnelMasterSection() {
                 <div className="flex items-center gap-3">
                   <div>
                     <div className="font-medium">{person.name}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       {person.role}
                       {person.phone && ` · ${person.phone}`}
                     </div>
                   </div>
-                  {!person.isActive && <Badge variant="outline" className="text-xs">Inactive</Badge>}
+                  {!person.isActive && <Badge variant="outline" className="text-sm">Inactive</Badge>}
                 </div>
                 <div className="flex items-center gap-1">
                   {canEdit && (

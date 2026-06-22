@@ -84,7 +84,7 @@ export default function PlantAuditReport() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Label className="text-sm text-muted-foreground">DATE FROM</Label>
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -93,7 +93,7 @@ export default function PlantAuditReport() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Label className="text-sm text-muted-foreground">DATE TO</Label>
               <Input
                 type="date"
                 value={filterDateTo}
@@ -196,12 +196,12 @@ export default function PlantAuditReport() {
                     const dispatchInfo = getDispatchInfo(entry.dispatchId);
                     return (
                       <tr key={entry.id} className="border-b hover:bg-muted/50">
-                        <td className="p-2 text-xs">
+                        <td className="p-2 text-sm">
                           {entry.createdAt && format(new Date(entry.createdAt), "dd MMM yyyy HH:mm")}
                         </td>
                         <td className="p-2">
                           {dispatchInfo ? (
-                            <div className="text-xs">
+                            <div className="text-sm">
                               <div className="font-mono">{dispatchInfo.truckNumber}</div>
                               <div className="text-muted-foreground">{dispatchInfo.date} • {dispatchInfo.loadWeight} MT</div>
                             </div>
@@ -247,7 +247,7 @@ export default function PlantAuditReport() {
                         <td className="p-2">
                           <Badge variant="outline">{entry.adjustedBy}</Badge>
                         </td>
-                        <td className="p-2 text-muted-foreground text-xs max-w-[150px] truncate">
+                        <td className="p-2 text-muted-foreground text-sm max-w-[150px] truncate">
                           {entry.reason || "-"}
                         </td>
                       </tr>

@@ -550,7 +550,7 @@ export default function DieselRequirements() {
                   <Fuel className="w-5 h-5 text-amber-600" />
                   DAILY DIESEL REQUIREMENT
                 </h1>
-                <p className="text-xs text-muted-foreground">Plan, approve, and track daily diesel purchases</p>
+                <p className="text-sm text-muted-foreground">Plan, approve, and track daily diesel purchases</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -570,34 +570,34 @@ export default function DieselRequirements() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card data-testid="card-summary-total">
               <CardContent className="p-4 text-center">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">THIS MONTH</p>
+                <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">THIS MONTH</p>
                 <p className="text-2xl font-bold mt-1">{summary?.total ?? 0}</p>
-                <p className="text-[11px] text-muted-foreground">Requirements raised</p>
+                <p className="text-xs text-muted-foreground">Requirements raised</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-planned">
               <CardContent className="p-4 text-center">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">TOTAL PLANNED</p>
+                <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">TOTAL PLANNED</p>
                 <p className="text-2xl font-bold mt-1 text-amber-600">
                   {requirements ? Math.round(requirements.reduce((s, r) => s + (r.totalPlanned || 0), 0)).toLocaleString() : 0} L
                 </p>
-                <p className="text-[11px] text-muted-foreground">Diesel required</p>
+                <p className="text-xs text-muted-foreground">Diesel required</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-purchased">
               <CardContent className="p-4 text-center">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">TOTAL PURCHASED</p>
+                <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">TOTAL PURCHASED</p>
                 <p className="text-2xl font-bold mt-1 text-blue-600">
                   {requirements ? Math.round(requirements.reduce((s, r) => s + (r.qtyPurchased || 0), 0)).toLocaleString() : 0} L
                 </p>
-                <p className="text-[11px] text-muted-foreground">Actually bought</p>
+                <p className="text-xs text-muted-foreground">Actually bought</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-pending">
               <CardContent className="p-4 text-center">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">PENDING</p>
+                <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">PENDING</p>
                 <p className="text-2xl font-bold mt-1 text-amber-500">{summary?.pending ?? 0}</p>
-                <p className="text-[11px] text-muted-foreground">Awaiting approval</p>
+                <p className="text-xs text-muted-foreground">Awaiting approval</p>
               </CardContent>
             </Card>
           </div>
@@ -606,15 +606,15 @@ export default function DieselRequirements() {
             <CardContent className="p-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <Label className="text-xs">DATE FROM</Label>
+                  <Label className="text-sm">DATE FROM</Label>
                   <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
                 </div>
                 <div>
-                  <Label className="text-xs">DATE TO</Label>
+                  <Label className="text-sm">DATE TO</Label>
                   <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
                 </div>
                 <div>
-                  <Label className="text-xs">STATUS</Label>
+                  <Label className="text-sm">STATUS</Label>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger data-testid="filter-status">
                       <SelectValue placeholder="All" />
@@ -629,7 +629,7 @@ export default function DieselRequirements() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">LOCATION</Label>
+                  <Label className="text-sm">LOCATION</Label>
                   <Select value={filterLocation} onValueChange={setFilterLocation}>
                     <SelectTrigger data-testid="filter-location">
                       <SelectValue placeholder="All" />
@@ -685,13 +685,13 @@ export default function DieselRequirements() {
                             {(() => {
                               const loc = locationLabel({ siteId: (req as any).siteId ?? null, raisedFrom: (req as any).raisedFrom ?? null }, sitesList);
                               return (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${req.id}`}>
+                                <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${req.id}`}>
                                   {loc}
                                 </Badge>
                               );
                             })()}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             Raised by {req.raisedBy}
                             {req.items && ` \u2022 ${req.items.length} equipment/DGs`}
                             {req.approvedBy && ` \u2022 Approved by ${req.approvedBy}`}
@@ -702,7 +702,7 @@ export default function DieselRequirements() {
                             <p className={`font-bold text-lg ${req.status === "purchased" ? "text-blue-600" : req.status === "approved" ? "text-green-600" : "text-amber-600"}`} data-testid={`text-qty-${req.id}`}>
                               {Math.round(req.totalPlanned)} L
                             </p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {req.status === "purchased" && req.qtyPurchased
                                 ? `Planned: ${Math.round(req.totalPlanned)} L \u2022 Bought: ${Math.round(req.qtyPurchased)} L`
                                 : req.status === "approved" && !req.qtyPurchased
@@ -743,15 +743,15 @@ export default function DieselRequirements() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-xs">DATE</Label>
+                  <Label className="text-sm">DATE</Label>
                   <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} data-testid="input-form-date" />
                 </div>
                 <div>
-                  <Label className="text-xs">RAISED BY</Label>
+                  <Label className="text-sm">RAISED BY</Label>
                   <Input value={formRaisedBy} onChange={(e) => setFormRaisedBy(e.target.value)} onBlur={(e) => setFormRaisedBy(e.target.value.toUpperCase())} placeholder="E.G., RAJU" className="uppercase" data-testid="input-form-raised-by" />
                 </div>
                 <div>
-                  <Label className="text-xs">RAISED FROM <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm">RAISED FROM <span className="text-red-500">*</span></Label>
                   <LocationPicker
                     value={{ siteId: formSiteId, raisedFrom: formRaisedFrom }}
                     onChange={(val) => { setFormSiteId(val.siteId); setFormRaisedFrom(val.raisedFrom); }}
@@ -761,7 +761,7 @@ export default function DieselRequirements() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">REMARKS</Label>
+                  <Label className="text-sm">REMARKS</Label>
                   <Input value={formRemarks} onChange={(e) => setFormRemarks(e.target.value)} onBlur={(e) => setFormRemarks(e.target.value.toUpperCase())} placeholder="E.G., HEAVY WORK DAY" className="uppercase" data-testid="input-form-remarks" />
                 </div>
               </div>
@@ -779,12 +779,12 @@ export default function DieselRequirements() {
               <table className="w-full text-sm" data-testid="table-equipment-form">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[5%]">#</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[30%]">EQUIPMENT / DG</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[16%]">PURPOSE</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">HRS / KM</th>
-                    <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">NORM</th>
-                    <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2 w-[12%]">DIESEL (L)</th>
+                    <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2 w-[5%]">#</th>
+                    <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2 w-[30%]">EQUIPMENT / DG</th>
+                    <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2 w-[16%]">PURPOSE</th>
+                    <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2 w-[12%]">HRS / KM</th>
+                    <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2 w-[12%]">NORM</th>
+                    <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2 w-[12%]">DIESEL (L)</th>
                     <th className="p-2 w-[5%]"></th>
                   </tr>
                 </thead>
@@ -821,13 +821,13 @@ export default function DieselRequirements() {
                                 <>
                                   {recentItems.length > 0 && (
                                     <SelectGroup>
-                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Recently Used</SelectLabel>
+                                      <SelectLabel className="text-[12px] uppercase tracking-wide text-muted-foreground">Recently Used</SelectLabel>
                                       {recentItems.map(renderItem)}
                                     </SelectGroup>
                                   )}
                                   <SelectGroup>
                                     {recentItems.length > 0 && (
-                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">All Equipment</SelectLabel>
+                                      <SelectLabel className="text-[12px] uppercase tracking-wide text-muted-foreground">All Equipment</SelectLabel>
                                     )}
                                     {remainingItems.map(renderItem)}
                                   </SelectGroup>
@@ -837,7 +837,7 @@ export default function DieselRequirements() {
                           </SelectContent>
                         </Select>
                         {item.equipmentId && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                          <p className="text-[12px] text-muted-foreground mt-0.5">
                             {isDistance ? "📏 vehicle (km-based)" : "⏱ machinery (hrs-based)"}
                           </p>
                         )}
@@ -860,11 +860,11 @@ export default function DieselRequirements() {
                           placeholder={isDistance ? "km" : "hrs"}
                           data-testid={`input-hours-${i}`}
                         />
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{isDistance ? "Est. km" : "Est. hours"}</p>
+                        <p className="text-[12px] text-muted-foreground mt-0.5">{isDistance ? "Est. km" : "Est. hours"}</p>
                       </td>
                       <td className="p-2 text-muted-foreground text-sm">
                         <p>{normVal > 0 ? `${item.norm} ${isDistance ? "L/km" : "L/hr"}` : "—"}</p>
-                        {mileageHint && <p className="text-[10px] text-blue-600 font-medium">({mileageHint})</p>}
+                        {mileageHint && <p className="text-[12px] text-blue-600 font-medium">({mileageHint})</p>}
                       </td>
                       <td className="p-2 bg-amber-50 dark:bg-amber-900/10">
                         <Input
@@ -966,42 +966,42 @@ export default function DieselRequirements() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">DATE</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">DATE</p>
                       <p className="font-semibold mt-1" data-testid="text-detail-date">{formatDate(selectedRequirement.date)}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
                       <p className="font-semibold mt-1" data-testid="text-detail-raised-by">{selectedRequirement.raisedBy}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">RAISED FROM</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED FROM</p>
                       <p className="font-semibold mt-1" data-testid="text-detail-location">
                         {locationLabel({ siteId: (selectedRequirement as any).siteId ?? null, raisedFrom: (selectedRequirement as any).raisedFrom ?? null }, sitesList)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">EQUIPMENT</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">EQUIPMENT</p>
                       <p className="font-semibold mt-1">{selectedRequirement.items?.length || 0} ITEMS</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">TOTAL REQUIRED</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL REQUIRED</p>
                       <p className="font-semibold mt-1 text-amber-600" data-testid="text-detail-total">{Math.round(selectedRequirement.totalPlanned)} L</p>
                     </div>
                   </div>
                   {selectedRequirement.remarks && (
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">REMARKS</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">REMARKS</p>
                       <p className="mt-1 text-sm">{selectedRequirement.remarks}</p>
                     </div>
                   )}
                   {selectedRequirement.rejectionReason && (
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">REJECTION REASON</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">REJECTION REASON</p>
                       <p className="mt-1 text-sm text-red-600">{selectedRequirement.rejectionReason}</p>
                     </div>
                   )}
                   <div>
-                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
+                    <p className="text-[12px] font-bold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedRequirement.status} />
                   </div>
                 </CardContent>
@@ -1013,21 +1013,21 @@ export default function DieselRequirements() {
                     {selectedRequirement.status === "pending" ? "EQUIPMENT BREAKDOWN — APPROVE QUANTITIES" : "EQUIPMENT BREAKDOWN"}
                   </CardTitle>
                   {selectedRequirement.status === "pending" && (
-                    <p className="text-[11px] text-muted-foreground">Admin can reduce diesel qty per equipment</p>
+                    <p className="text-xs text-muted-foreground">Admin can reduce diesel qty per equipment</p>
                   )}
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
                   <table className="w-full text-sm" data-testid="table-equipment-detail">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">#</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">PURPOSE</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">HRS / KM</th>
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">NORM</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">#</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">PURPOSE</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">HRS / KM</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">NORM</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
                         {(selectedRequirement.status === "pending" || selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") && (
-                          <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">
+                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">
                             {selectedRequirement.status === "pending" ? "APPROVE (L)" : "APPROVED (L)"}
                           </th>
                         )}
@@ -1052,7 +1052,7 @@ export default function DieselRequirements() {
                                 <span>
                                   {item.norm} {(item as any).normType === "distance" ? "L/km" : "L/hr"}
                                   {(item as any).normType === "distance" && item.norm > 0 && (
-                                    <span className="text-[10px] text-blue-600 ml-1">({(1/item.norm).toFixed(2)} km/L)</span>
+                                    <span className="text-[12px] text-blue-600 ml-1">({(1/item.norm).toFixed(2)} km/L)</span>
                                   )}
                                 </span>
                               ) : "\u2014"}
@@ -1075,7 +1075,7 @@ export default function DieselRequirements() {
                                   data-testid={`input-approve-qty-${item.id}`}
                                 />
                                 {isReduced && (
-                                  <p className="text-[10px] text-amber-600 font-semibold mt-1">Reduced from {Math.round(item.plannedQty)}</p>
+                                  <p className="text-[12px] text-amber-600 font-semibold mt-1">Reduced from {Math.round(item.plannedQty)}</p>
                                 )}
                               </td>
                             ) : (selectedRequirement.status === "approved" || selectedRequirement.status === "purchased") ? (
@@ -1197,24 +1197,24 @@ export default function DieselRequirements() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">TOTAL PLANNED</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL PLANNED</p>
                       <p className="font-semibold mt-1 text-amber-600">{Math.round(selectedRequirement.totalPlanned)} L</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">RAISED BY</p>
                       <p className="font-semibold mt-1">{selectedRequirement.raisedBy}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">APPROVED BY</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">APPROVED BY</p>
                       <p className="font-semibold mt-1">{selectedRequirement.approvedBy || "\u2014"}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase">STATUS</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground uppercase">STATUS</p>
                       <p className="font-semibold mt-1 text-green-600">{selectedRequirement.status.toUpperCase()}</p>
                     </div>
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
+                    <p className="text-[12px] font-bold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedRequirement.status} />
                   </div>
                 </CardContent>
@@ -1227,7 +1227,7 @@ export default function DieselRequirements() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label className="text-xs">QTY PURCHASED (LITERS)</Label>
+                      <Label className="text-sm">QTY PURCHASED (LITERS)</Label>
                       <Input
                         type="number"
                         value={purchaseQty}
@@ -1240,20 +1240,20 @@ export default function DieselRequirements() {
                         className="text-lg font-bold text-center"
                         data-testid="input-purchase-qty"
                       />
-                      <p className="text-[11px] text-muted-foreground mt-1">Planned: {Math.round(selectedRequirement.totalPlanned)} L</p>
+                      <p className="text-xs text-muted-foreground mt-1">Planned: {Math.round(selectedRequirement.totalPlanned)} L</p>
                     </div>
                     <div>
-                      <Label className="text-xs">FUEL STATION / SUPPLIER</Label>
+                      <Label className="text-sm">FUEL STATION / SUPPLIER</Label>
                       <Input value={purchaseSupplier} onChange={(e) => setPurchaseSupplier(e.target.value)} onBlur={(e) => setPurchaseSupplier(e.target.value.toUpperCase())} placeholder="HP PETROL PUMP, KURNOOL" className="uppercase" data-testid="input-purchase-supplier" />
                     </div>
                     <div>
-                      <Label className="text-xs">BILL NO.</Label>
+                      <Label className="text-sm">BILL NO.</Label>
                       <Input value={purchaseBillNo} onChange={(e) => setPurchaseBillNo(e.target.value)} onBlur={(e) => setPurchaseBillNo(e.target.value.toUpperCase())} placeholder="HP/KNL/28456" className="uppercase" data-testid="input-purchase-bill" />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label className="text-xs">RATE PER LITER</Label>
+                      <Label className="text-sm">RATE PER LITER</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1268,7 +1268,7 @@ export default function DieselRequirements() {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">TOTAL AMOUNT</Label>
+                      <Label className="text-sm">TOTAL AMOUNT</Label>
                       <Input
                         type="number"
                         value={purchaseAmount}
@@ -1276,17 +1276,17 @@ export default function DieselRequirements() {
                         className="bg-muted font-bold"
                         data-testid="text-purchase-amount"
                       />
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {purchaseQty && purchaseRate ? `Auto: ${purchaseQty} x ${purchaseRate}` : ""}
                       </p>
                     </div>
                     <div>
-                      <Label className="text-xs">PURCHASED AT</Label>
+                      <Label className="text-sm">PURCHASED AT</Label>
                       <Input type="time" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} data-testid="input-purchased-at" />
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs">REMARKS</Label>
+                    <Label className="text-sm">REMARKS</Label>
                     <Textarea
                       value={purchaseRemarks}
                       onChange={(e) => setPurchaseRemarks(e.target.value)}
@@ -1327,11 +1327,11 @@ export default function DieselRequirements() {
             <CardContent className="p-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-xs">DATE FROM</Label>
+                  <Label className="text-sm">DATE FROM</Label>
                   <Input type="date" value={reportDateFrom} onChange={(e) => { setReportDateFrom(e.target.value); setReportGenerated(false); }} data-testid="input-report-date-from" />
                 </div>
                 <div>
-                  <Label className="text-xs">DATE TO</Label>
+                  <Label className="text-sm">DATE TO</Label>
                   <Input type="date" value={reportDateTo} onChange={(e) => { setReportDateTo(e.target.value); setReportGenerated(false); }} data-testid="input-report-date-to" />
                 </div>
                 <div className="flex items-end">
@@ -1356,16 +1356,16 @@ export default function DieselRequirements() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Card data-testid="card-report-planned">
                   <CardContent className="p-4 text-center">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase">TOTAL PLANNED</p>
+                    <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL PLANNED</p>
                     <p className="text-2xl font-bold mt-1 text-amber-600">{Math.round(comparisonReport.totals?.totalPlanned || 0).toLocaleString()} L</p>
-                    <p className="text-[11px] text-muted-foreground">{comparisonReport.dateWise?.length || 0} days</p>
+                    <p className="text-xs text-muted-foreground">{comparisonReport.dateWise?.length || 0} days</p>
                   </CardContent>
                 </Card>
                 <Card data-testid="card-report-purchased">
                   <CardContent className="p-4 text-center">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase">TOTAL PURCHASED</p>
+                    <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL PURCHASED</p>
                     <p className="text-2xl font-bold mt-1 text-blue-600">{Math.round(comparisonReport.totals?.totalPurchased || 0).toLocaleString()} L</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {comparisonReport.totals?.totalPlanned
                         ? `${((comparisonReport.totals.totalPurchased / comparisonReport.totals.totalPlanned) * 100).toFixed(1)}% of planned`
                         : "\u2014"}
@@ -1374,9 +1374,9 @@ export default function DieselRequirements() {
                 </Card>
                 <Card data-testid="card-report-actual">
                   <CardContent className="p-4 text-center">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase">TOTAL ACTUAL ISSUED</p>
+                    <p className="text-[12px] font-semibold text-muted-foreground uppercase">TOTAL ACTUAL ISSUED</p>
                     <p className="text-2xl font-bold mt-1 text-green-600">{Math.round(comparisonReport.totals?.totalActual || 0).toLocaleString()} L</p>
-                    <p className="text-[11px] text-muted-foreground">From equipment logs</p>
+                    <p className="text-xs text-muted-foreground">From equipment logs</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1384,18 +1384,18 @@ export default function DieselRequirements() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">DATE-WISE COMPARISON</CardTitle>
-                  <p className="text-[11px] text-muted-foreground">Actual issued = sum of diesel from DPR + Plant equipment</p>
+                  <p className="text-xs text-muted-foreground">Actual issued = sum of diesel from DPR + Plant equipment</p>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
                   <table className="w-full text-sm" data-testid="table-report-datewise">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">DATE</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PURCHASED (L)</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PLANNED VS PURCHASED</th>
-                        <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PURCHASED VS ISSUED</th>
+                        <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">DATE</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PURCHASED (L)</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED VS PURCHASED</th>
+                        <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PURCHASED VS ISSUED</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1442,16 +1442,16 @@ export default function DieselRequirements() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-2">
                     <CardTitle className="text-base">EQUIPMENT-WISE DIESEL BREAKDOWN</CardTitle>
-                    <p className="text-[11px] text-muted-foreground">Aggregated for the selected period</p>
+                    <p className="text-xs text-muted-foreground">Aggregated for the selected period</p>
                   </CardHeader>
                   <CardContent className="p-0 overflow-x-auto">
                     <table className="w-full text-sm" data-testid="table-report-equipment">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left text-[10px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
-                          <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
-                          <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
-                          <th className="text-right text-[10px] font-bold text-muted-foreground uppercase p-2">VARIANCE</th>
+                          <th className="text-left text-[12px] font-bold text-muted-foreground uppercase p-2">EQUIPMENT / DG</th>
+                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">PLANNED (L)</th>
+                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">ACTUAL ISSUED (L)</th>
+                          <th className="text-right text-[12px] font-bold text-muted-foreground uppercase p-2">VARIANCE</th>
                         </tr>
                       </thead>
                       <tbody>

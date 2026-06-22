@@ -73,7 +73,7 @@ export function PersonnelCombobox({
           onMouseDown={e => e.preventDefault()}
         >
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-gray-400 italic text-xs">
+            <div className="px-3 py-2 text-gray-400 italic text-sm">
               {query.trim()
                 ? `No match — "${query.trim().toUpperCase()}" will be saved as typed`
                 : "No active personnel found"}
@@ -82,7 +82,7 @@ export function PersonnelCombobox({
             filtered.map(p => (
               <div
                 key={p.id}
-                className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2 text-xs"
+                className="px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center justify-between gap-2 text-sm"
                 onClick={() => select(p.name)}
               >
                 <div className="flex items-center gap-2 min-w-0">

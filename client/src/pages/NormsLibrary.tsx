@@ -109,7 +109,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 function catBadge(cat: string) {
   const cls = CATEGORY_COLORS[cat] ?? "bg-slate-100 text-slate-600 border-slate-200";
-  return <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${cls}`}>{cat}</span>;
+  return <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${cls}`}>{cat}</span>;
 }
 
 function fmtNum(n: number | null | undefined, d = 3) {
@@ -147,30 +147,30 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-mono font-semibold text-teal-700">{item.itemCode}</span>
+            <span className="text-sm font-mono font-semibold text-teal-700">{item.itemCode}</span>
             {catBadge(item.workCategory)}
-            {item.isMixSpecific && <Badge variant="outline" className="text-[9px] h-4 px-1 border-purple-300 text-purple-700">Mix-specific</Badge>}
-            {item.hasGradingVariants && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-300 text-amber-700">Grading variants</Badge>}
+            {item.isMixSpecific && <Badge variant="outline" className="text-xs h-4 px-1 border-purple-300 text-purple-700">Mix-specific</Badge>}
+            {item.hasGradingVariants && <Badge variant="outline" className="text-xs h-4 px-1 border-amber-300 text-amber-700">Grading variants</Badge>}
           </div>
           <p className="text-sm font-medium mt-0.5">{item.description}</p>
-          <p className="text-[11px] text-muted-foreground">Unit: <span className="font-medium">{item.unit}</span> · Source: {item.source.code} ({item.source.year}) · {item.source.authority}</p>
+          <p className="text-xs text-muted-foreground">Unit: <span className="font-medium">{item.unit}</span> · Source: {item.source.code} ({item.source.year}) · {item.source.authority}</p>
         </div>
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
           {cats.filter(c => c !== "ALL").length > 1 && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground">Category:</span>
+              <span className="text-[12px] text-muted-foreground">Category:</span>
               {cats.filter(c => c !== "ALL").map(c => (
-                <button key={c} onClick={() => setCatFilter(c)} className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${catFilter === c ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>{c}</button>
+                <button key={c} onClick={() => setCatFilter(c)} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${catFilter === c ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>{c}</button>
               ))}
             </div>
           )}
           {gradings.filter(Boolean).length > 1 && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground">Grading:</span>
-              <button onClick={() => setGradingFilter("")} className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${!gradingFilter ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`}>All</button>
+              <span className="text-[12px] text-muted-foreground">Grading:</span>
+              <button onClick={() => setGradingFilter("")} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${!gradingFilter ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`}>All</button>
               {gradings.filter(Boolean).map(g => (
-                <button key={g} onClick={() => setGradingFilter(g)} className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${gradingFilter === g ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`}>{g}</button>
+                <button key={g} onClick={() => setGradingFilter(g)} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${gradingFilter === g ? "bg-amber-600 text-white border-amber-600" : "border-slate-200 text-slate-600 hover:border-amber-400"}`}>{g}</button>
               ))}
             </div>
           )}
@@ -180,33 +180,33 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
       {/* Productivity */}
       {prod.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
-          <p className="text-[10px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><BarChart3 className="w-3 h-3" />SHIFT PRODUCTIVITY</p>
+          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><BarChart3 className="w-3 h-3" />SHIFT PRODUCTIVITY</p>
           <div className="grid grid-cols-3 gap-3">
             {prod.map(p => (
               <div key={p.id} className="text-center">
-                <p className="text-[9px] text-muted-foreground">{p.projectCategory}</p>
+                <p className="text-xs text-muted-foreground">{p.projectCategory}</p>
                 <p className="text-lg font-bold text-teal-700">{fmtNum(p.shiftOutput)}</p>
-                <p className="text-[10px] text-slate-600">{p.outputUnit}</p>
-                {p.workingHoursPerShift && <p className="text-[9px] text-muted-foreground">{p.workingHoursPerShift} hr/shift</p>}
+                <p className="text-[12px] text-slate-600">{p.outputUnit}</p>
+                {p.workingHoursPerShift && <p className="text-xs text-muted-foreground">{p.workingHoursPerShift} hr/shift</p>}
               </div>
             ))}
           </div>
-          {prod[0]?.basis && <p className="text-[9px] text-muted-foreground mt-2">Basis: {prod[0].basis}</p>}
+          {prod[0]?.basis && <p className="text-xs text-muted-foreground mt-2">Basis: {prod[0].basis}</p>}
         </div>
       )}
 
       <Tabs defaultValue="equipment">
         <TabsList className="h-7">
-          <TabsTrigger value="equipment" className="text-xs h-6 px-2"><Wrench className="w-3 h-3 mr-1" />Equipment ({equip.length})</TabsTrigger>
-          <TabsTrigger value="labour" className="text-xs h-6 px-2"><Users className="w-3 h-3 mr-1" />Labour ({labour.length})</TabsTrigger>
-          <TabsTrigger value="materials" className="text-xs h-6 px-2"><Package className="w-3 h-3 mr-1" />Materials ({mats.length})</TabsTrigger>
+          <TabsTrigger value="equipment" className="text-sm h-6 px-2"><Wrench className="w-3 h-3 mr-1" />Equipment ({equip.length})</TabsTrigger>
+          <TabsTrigger value="labour" className="text-sm h-6 px-2"><Users className="w-3 h-3 mr-1" />Labour ({labour.length})</TabsTrigger>
+          <TabsTrigger value="materials" className="text-sm h-6 px-2"><Package className="w-3 h-3 mr-1" />Materials ({mats.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="equipment">
-          {equip.length === 0 ? <p className="text-xs text-muted-foreground py-3 text-center">No equipment data for this category.</p> : (
-            <table className="w-full text-xs border-collapse mt-2">
+          {equip.length === 0 ? <p className="text-sm text-muted-foreground py-3 text-center">No equipment data for this category.</p> : (
+            <table className="w-full text-sm border-collapse mt-2">
               <thead>
-                <tr className="text-[10px] text-muted-foreground border-b">
+                <tr className="text-[12px] text-muted-foreground border-b">
                   <th className="text-left py-1 pr-2 font-medium">#</th>
                   <th className="text-left py-1 pr-2 font-medium">Equipment</th>
                   <th className="text-left py-1 pr-2 font-medium">Purpose</th>
@@ -220,10 +220,10 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
                   <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                     <td className="py-1.5 pr-2 text-muted-foreground">{e.sortOrder || i + 1}</td>
                     <td className="py-1.5 pr-2 font-medium">{e.equipmentType}{e.equipmentSpec && <span className="text-muted-foreground ml-1">({e.equipmentSpec})</span>}</td>
-                    <td className="py-1.5 pr-2 text-muted-foreground text-[10px]">{e.purpose ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-muted-foreground text-[12px]">{e.purpose ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-right">{fmtNum(e.quantityPerShift, 3)} {e.unit}</td>
                     <td className="py-1.5 pr-2 text-right text-teal-700">{e.derivedPerUnit != null ? fmtNum(e.derivedPerUnit, 5) : "—"}</td>
-                    <td className="py-1.5 text-[9px] text-muted-foreground">{e.formulaType !== "FIXED" ? <span className="font-mono bg-slate-100 px-1 rounded">{e.formulaExpr}</span> : "FIXED"}</td>
+                    <td className="py-1.5 text-xs text-muted-foreground">{e.formulaType !== "FIXED" ? <span className="font-mono bg-slate-100 px-1 rounded">{e.formulaExpr}</span> : "FIXED"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -232,10 +232,10 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
         </TabsContent>
 
         <TabsContent value="labour">
-          {labour.length === 0 ? <p className="text-xs text-muted-foreground py-3 text-center">No labour data for this category.</p> : (
-            <table className="w-full text-xs border-collapse mt-2">
+          {labour.length === 0 ? <p className="text-sm text-muted-foreground py-3 text-center">No labour data for this category.</p> : (
+            <table className="w-full text-sm border-collapse mt-2">
               <thead>
-                <tr className="text-[10px] text-muted-foreground border-b">
+                <tr className="text-[12px] text-muted-foreground border-b">
                   <th className="text-left py-1 pr-2 font-medium">#</th>
                   <th className="text-left py-1 pr-2 font-medium">Designation</th>
                   <th className="text-left py-1 pr-2 font-medium">Skill</th>
@@ -259,10 +259,10 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
         </TabsContent>
 
         <TabsContent value="materials">
-          {mats.length === 0 ? <p className="text-xs text-muted-foreground py-3 text-center">No materials data{gradingFilter ? ` for grading "${gradingFilter}"` : ""}.</p> : (
-            <table className="w-full text-xs border-collapse mt-2">
+          {mats.length === 0 ? <p className="text-sm text-muted-foreground py-3 text-center">No materials data{gradingFilter ? ` for grading "${gradingFilter}"` : ""}.</p> : (
+            <table className="w-full text-sm border-collapse mt-2">
               <thead>
-                <tr className="text-[10px] text-muted-foreground border-b">
+                <tr className="text-[12px] text-muted-foreground border-b">
                   <th className="text-left py-1 pr-2 font-medium">#</th>
                   <th className="text-left py-1 pr-2 font-medium">Material</th>
                   <th className="text-left py-1 pr-2 font-medium">Category</th>
@@ -275,7 +275,7 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
                   <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                     <td className="py-1.5 pr-2 text-muted-foreground">{m.sortOrder || i + 1}</td>
                     <td className="py-1.5 pr-2 font-medium">{m.materialName}{m.isDesignSpecific && <Badge variant="outline" className="text-[8px] h-3.5 px-0.5 ml-1 text-blue-600 border-blue-300">design</Badge>}</td>
-                    <td className="py-1.5 pr-2 text-[10px] text-muted-foreground">{m.materialCategory}</td>
+                    <td className="py-1.5 pr-2 text-[12px] text-muted-foreground">{m.materialCategory}</td>
                     <td className="py-1.5 pr-2 text-right text-teal-700 font-medium">{fmtNum(m.derivedPerUnit, 4)}</td>
                     <td className="py-1.5 text-muted-foreground">{m.unit}</td>
                   </tr>
@@ -313,9 +313,9 @@ function SourceItemsList({ sourceId }: { sourceId: number }) {
       <div className="w-72 shrink-0 space-y-1 overflow-y-auto pr-1">
         {/* Category filter */}
         <div className="flex flex-wrap gap-1 mb-2">
-          <button onClick={() => setCatFilter("")} className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${!catFilter ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>All</button>
+          <button onClick={() => setCatFilter("")} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${!catFilter ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>All</button>
           {categories.map(c => (
-            <button key={c} onClick={() => setCatFilter(c)} className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${catFilter === c ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>{c}</button>
+            <button key={c} onClick={() => setCatFilter(c)} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${catFilter === c ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>{c}</button>
           ))}
         </div>
         {items.map(item => (
@@ -326,14 +326,14 @@ function SourceItemsList({ sourceId }: { sourceId: number }) {
             data-testid={`snl-item-${item.id}`}
           >
             <div className="flex items-center gap-1.5 justify-between">
-              <span className="text-[10px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
+              <span className="text-[12px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
               {catBadge(item.workCategory)}
             </div>
-            <p className="text-xs font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
-            {item.shiftOutput && <p className="text-[10px] text-muted-foreground mt-0.5">{fmtNum(item.shiftOutput)} {item.outputUnit}/shift</p>}
+            <p className="text-sm font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
+            {item.shiftOutput && <p className="text-[12px] text-muted-foreground mt-0.5">{fmtNum(item.shiftOutput)} {item.outputUnit}/shift</p>}
           </button>
         ))}
-        {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No items found.</p>}
+        {items.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No items found.</p>}
       </div>
 
       <div className="flex-1 min-w-0 overflow-y-auto">
@@ -371,7 +371,7 @@ function SearchPanel() {
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
           <Input
-            className="pl-8 h-8 text-xs"
+            className="pl-8 h-8 text-sm"
             placeholder="Search by code or description…"
             value={q}
             onChange={e => setQ(e.target.value)}
@@ -387,15 +387,15 @@ function SearchPanel() {
             data-testid={`snl-search-result-${item.id}`}
           >
             <div className="flex items-center gap-1.5 justify-between">
-              <span className="text-[10px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
+              <span className="text-[12px] font-mono font-semibold text-teal-600">{item.itemCode}</span>
               {catBadge(item.workCategory)}
             </div>
-            <p className="text-xs font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">{item.sourceName}</p>
+            <p className="text-sm font-medium mt-0.5 leading-tight">{item.shortLabel}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{item.sourceName}</p>
           </button>
         ))}
         {q.length > 1 && !isLoading && results.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">No results for "{q}".</p>
+          <p className="text-sm text-muted-foreground text-center py-4">No results for "{q}".</p>
         )}
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto">
@@ -485,13 +485,13 @@ export default function NormsLibrary() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs font-mono font-bold text-teal-700">{src.code}</p>
+                    <p className="text-sm font-mono font-bold text-teal-700">{src.code}</p>
                     <p className="text-sm font-semibold leading-tight mt-0.5">{src.name}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{src.authority} · {src.year}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{src.authority} · {src.year}</p>
                   </div>
                   <Badge className="bg-teal-100 text-teal-700 border-teal-200 shrink-0">{src.itemCount} items</Badge>
                 </div>
-                {src.description && <p className="text-[10px] text-muted-foreground mt-2 line-clamp-2">{src.description}</p>}
+                {src.description && <p className="text-[12px] text-muted-foreground mt-2 line-clamp-2">{src.description}</p>}
               </button>
             ))}
           </div>
@@ -499,14 +499,14 @@ export default function NormsLibrary() {
           {/* Tabs: Browse / Search */}
           <Tabs value={tab} onValueChange={(v) => setTab(v as "browse" | "search")}>
             <TabsList className="h-8">
-              <TabsTrigger value="browse" className="text-xs h-7">Browse Source</TabsTrigger>
-              <TabsTrigger value="search" className="text-xs h-7"><Search className="w-3 h-3 mr-1" />Search All</TabsTrigger>
+              <TabsTrigger value="browse" className="text-sm h-7">Browse Source</TabsTrigger>
+              <TabsTrigger value="search" className="text-sm h-7"><Search className="w-3 h-3 mr-1" />Search All</TabsTrigger>
             </TabsList>
 
             <TabsContent value="browse" className="mt-3">
               {selectedSourceId && activeSource ? (
                 <div className="rounded-xl border p-4 min-h-[400px]">
-                  <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">{activeSource.name} — {activeSource.itemCount} items</p>
+                  <p className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">{activeSource.name} — {activeSource.itemCount} items</p>
                   <SourceItemsList sourceId={selectedSourceId} />
                 </div>
               ) : (

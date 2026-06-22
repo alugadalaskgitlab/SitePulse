@@ -211,17 +211,17 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-lg font-bold text-orange-700 dark:text-orange-400" data-testid="text-issue-detail-number">{selectedIssue.issueNumber}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(selectedIssue.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                    <Badge variant="outline" className="text-[10px]">{sectionLabel(selectedIssue.issuedToSection)}</Badge>
+                    <Badge variant="outline" className="text-[12px]">{sectionLabel(selectedIssue.issuedToSection)}</Badge>
                     {selectedIssue.siteId && siteName(selectedIssue.siteId)
-                      ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">{siteName(selectedIssue.siteId)}</Badge>
+                      ? <Badge variant="outline" className="text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">{siteName(selectedIssue.siteId)}</Badge>
                       : null}
                   </div>
                   {/* Show site name from FK if available; fall back to free-text detail for legacy records */}
                   {!selectedIssue.siteId && selectedIssue.issuedToDetail && (
                     <p className="text-base font-semibold mt-1">{selectedIssue.issuedToDetail}</p>
                   )}
-                  {selectedIssue.purpose && <p className="text-xs text-muted-foreground">{selectedIssue.purpose}</p>}
-                  {selectedIssue.remarks && <p className="text-xs text-muted-foreground italic mt-1">{selectedIssue.remarks}</p>}
+                  {selectedIssue.purpose && <p className="text-sm text-muted-foreground">{selectedIssue.purpose}</p>}
+                  {selectedIssue.remarks && <p className="text-sm text-muted-foreground italic mt-1">{selectedIssue.remarks}</p>}
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={closeDetail} data-testid="button-close-detail">
                   <X className="w-4 h-4" />
@@ -231,19 +231,19 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="text-left px-3 py-2 text-xs">Item</th>
-                      <th className="text-left px-3 py-2 text-xs">Category</th>
-                      <th className="text-right px-3 py-2 text-xs">Qty</th>
-                      <th className="text-left px-2 py-2 text-xs">UOM</th>
+                      <th className="text-left px-3 py-2 text-sm">Item</th>
+                      <th className="text-left px-3 py-2 text-sm">Category</th>
+                      <th className="text-right px-3 py-2 text-sm">Qty</th>
+                      <th className="text-left px-2 py-2 text-sm">UOM</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedIssue.items.map((it, i) => (
                       <tr key={i} className="border-t" data-testid={`row-detail-item-${i}`}>
                         <td className="px-3 py-2 font-medium">{it.itemName}</td>
-                        <td className="px-3 py-2 text-muted-foreground text-xs">{it.category}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-sm">{it.category}</td>
                         <td className="px-3 py-2 text-right">{it.qty}</td>
-                        <td className="px-2 py-2 text-xs">{it.uom}</td>
+                        <td className="px-2 py-2 text-sm">{it.uom}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -273,7 +273,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     <ArrowUpFromLine className="w-4 h-4 text-orange-600" /> New Issue Voucher
                   </h3>
                   {previewNum?.number && (
-                    <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-issue-preview-number">
+                    <span className="text-sm font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-issue-preview-number">
                       {previewNum.number}
                     </span>
                   )}
@@ -285,11 +285,11 @@ export default function StoresIssue({ isNew, detailId }: Props) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs">Date *</Label>
+                    <Label className="text-sm">Date *</Label>
                     <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required data-testid="input-issue-date" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Issued To (Section) *</Label>
+                    <Label className="text-sm">Issued To (Section) *</Label>
                     <Select value={form.issuedToSection} onValueChange={handleSectionChange}>
                       <SelectTrigger data-testid="select-section"><SelectValue /></SelectTrigger>
                       <SelectContent>{SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
@@ -299,7 +299,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                   {/* Site → dropdown; plant/other → free text */}
                   {form.issuedToSection === "site" ? (
                     <div className="space-y-2">
-                      <Label className="text-xs">Site / Project *</Label>
+                      <Label className="text-sm">Site / Project *</Label>
                       <Select value={form.siteId || "__none__"} onValueChange={v => v === "__none__" ? handleSiteSelect("") : handleSiteSelect(v)}>
                         <SelectTrigger data-testid="select-site-issue"><SelectValue placeholder="Select site" /></SelectTrigger>
                         <SelectContent>
@@ -312,13 +312,13 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Label className="text-xs">Detail (Equipment / Location)</Label>
+                      <Label className="text-sm">Detail (Equipment / Location)</Label>
                       <Input value={form.issuedToDetail} onChange={e => setForm(f => ({ ...f, issuedToDetail: e.target.value }))} placeholder="e.g. Paver MH-01, Workshop" data-testid="input-issued-to-detail" />
                     </div>
                   )}
 
                   <div className="space-y-2">
-                    <Label className="text-xs">Purpose</Label>
+                    <Label className="text-sm">Purpose</Label>
                     <Select value={form.purpose || "__none__"} onValueChange={v => setForm(f => ({ ...f, purpose: v === "__none__" ? "" : v }))}>
                       <SelectTrigger data-testid="select-purpose"><SelectValue placeholder="Select purpose" /></SelectTrigger>
                       <SelectContent>
@@ -328,13 +328,13 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     </Select>
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label className="text-xs">Remarks</Label>
+                    <Label className="text-sm">Remarks</Label>
                     <Input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" data-testid="input-issue-remarks" />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Items Issued *</Label>
+                  <Label className="text-sm font-semibold">Items Issued *</Label>
                   {lines.map((line, idx) => {
                     const selectedItem = items.find(i => String(i.id) === line.itemId);
                     const avail = selectedItem ? (stockMap[selectedItem.id] ?? 0) : null;
@@ -357,14 +357,14 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                             return (
                               <div className="relative" ref={el => { itemComboRefs.current[idx] = el; }}>
                                 <div
-                                  className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-xs cursor-text w-full"
+                                  className="flex items-center border rounded-md h-8 px-2 gap-1 bg-background text-sm cursor-text w-full"
                                   onClick={() => setItemComboOpen(prev => ({ ...prev, [idx]: true }))}
                                   data-testid={`select-issue-item-${idx}`}
                                 >
                                   {isOpen ? (
                                     <input
                                       autoFocus
-                                      className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-xs"
+                                      className="flex-1 min-w-0 outline-none bg-transparent placeholder:text-muted-foreground text-sm"
                                       placeholder="Type to search items…"
                                       value={search}
                                       onChange={e => setItemComboSearch(prev => ({ ...prev, [idx]: e.target.value }))}
@@ -393,13 +393,13 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                                   )}
                                 </div>
                                 {isOpen && (
-                                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-xs">
+                                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
                                     {filteredItems.length === 0 && (
                                       <div className="px-3 py-2 text-muted-foreground italic">No items match "{search}"</div>
                                     )}
                                     {recentItems.length > 0 && (
                                       <>
-                                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+                                        <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
                                           Recently Used
                                         </div>
                                         {recentItems.map(it => (
@@ -420,7 +420,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                                           </div>
                                         ))}
                                         {remainingItems.length > 0 && (
-                                          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                                          <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
                                             All Items
                                           </div>
                                         )}
@@ -449,16 +449,16 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                             );
                           })()}
                           {avail !== null && (
-                            <p className={`text-[10px] mt-0.5 ${over ? "text-red-600" : "text-muted-foreground"}`}>
+                            <p className={`text-[12px] mt-0.5 ${over ? "text-red-600" : "text-muted-foreground"}`}>
                               Available: {avail.toFixed(2)} {selectedItem?.uom} {over ? "⚠ exceeds stock" : ""}
                             </p>
                           )}
                         </div>
                         <div className="col-span-3">
-                          <Input type="number" min="0" step="any" className={`h-8 text-xs ${over ? "border-red-400" : ""}`} placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-issue-qty-${idx}`} />
+                          <Input type="number" min="0" step="any" className={`h-8 text-sm ${over ? "border-red-400" : ""}`} placeholder="Qty" value={line.qty} onChange={e => updateLine(idx, "qty", e.target.value)} data-testid={`input-issue-qty-${idx}`} />
                         </div>
                         <div className="col-span-3">
-                          <Input className="h-8 text-xs" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-issue-uom-${idx}`} />
+                          <Input className="h-8 text-sm" placeholder="UOM" value={line.uom} onChange={e => updateLine(idx, "uom", e.target.value)} data-testid={`input-issue-uom-${idx}`} />
                         </div>
                         <div className="col-span-1 flex justify-center">
                           {lines.length > 1 && (
@@ -470,7 +470,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                       </div>
                     );
                   })}
-                  <Button type="button" variant="outline" size="sm" className="text-xs gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-issue-line">
+                  <Button type="button" variant="outline" size="sm" className="text-sm gap-1" onClick={() => setLines(prev => [...prev, emptyLine()])} data-testid="button-add-issue-line">
                     <Plus className="w-3 h-3" /> Add Line
                   </Button>
                 </div>
@@ -492,37 +492,37 @@ export default function StoresIssue({ isNew, detailId }: Props) {
             {/* Filters */}
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="date" className="h-8 w-36 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
+                <Label className="text-sm text-muted-foreground">From</Label>
+                <Input type="date" className="h-8 w-36 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from" />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="date" className="h-8 w-36 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
+                <Label className="text-sm text-muted-foreground">To</Label>
+                <Input type="date" className="h-8 w-36 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to" />
               </div>
               <Select value={sectionFilter} onValueChange={setSectionFilter}>
-                <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-section-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-section-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Sections</SelectItem>
                   {SECTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={siteFilter} onValueChange={setSiteFilter}>
-                <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-site-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-site-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Sites</SelectItem>
                   {sites.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>
-                <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-category-filter"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-category-filter"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All Categories</SelectItem>
                   {STORE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input className="h-8 w-36 text-xs" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
+              <Input className="h-8 w-36 text-sm" placeholder="Item name" value={itemFilter} onChange={e => setItemFilter(e.target.value)} data-testid="input-item-filter" />
               {hasFilters && (
-                <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); setCategoryFilter(""); setItemFilter(""); }}>Clear</Button>
+                <Button variant="ghost" size="sm" className="text-sm h-8" onClick={() => { setDateFrom(""); setDateTo(""); setSectionFilter("__all__"); setSiteFilter("__all__"); setCategoryFilter(""); setItemFilter(""); }}>Clear</Button>
               )}
             </div>
 
@@ -543,17 +543,17 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono text-sm font-bold text-orange-700 dark:text-orange-400">{issue.issueNumber}</span>
-                              <span className="text-xs text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                              <span className="text-sm text-muted-foreground">{format(new Date(issue.date + "T00:00:00"), "dd MMM yyyy")}</span>
+                              <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
                                 {sectionLabel(issue.issuedToSection)}
                               </span>
                               {issueSiteName && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                                   {issueSiteName}
                                 </span>
                               )}
                               {distinctCategories.map(cat => (
-                                <span key={cat} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" data-testid={`badge-category-${issue.id}-${cat}`}>
+                                <span key={cat} className="text-[12px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" data-testid={`badge-category-${issue.id}-${cat}`}>
                                   {cat}
                                 </span>
                               ))}
@@ -562,8 +562,8 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                             {!issue.siteId && issue.issuedToDetail && (
                               <div className="text-sm font-medium mt-1">{issue.issuedToDetail}</div>
                             )}
-                            {issue.purpose && <div className="text-xs text-muted-foreground">{issue.purpose}</div>}
-                            <div className="mt-1 text-xs text-muted-foreground">
+                            {issue.purpose && <div className="text-sm text-muted-foreground">{issue.purpose}</div>}
+                            <div className="mt-1 text-sm text-muted-foreground">
                               {issue.items.length} item{issue.items.length !== 1 ? "s" : ""}
                               {" — "}
                               {issue.items.map(it => `${it.itemName} (${it.qty} ${it.uom})`).join(", ")}

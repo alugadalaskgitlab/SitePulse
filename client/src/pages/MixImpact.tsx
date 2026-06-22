@@ -135,8 +135,8 @@ function ScenarioComparison({
   baseState: CalcState;
   baseCalc: ReturnType<typeof calcMixRatesAndJobs>;
 }) {
-  const thCls = "px-3 py-2 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
-  const th1Cls = "px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const thCls = "px-3 py-2 text-right text-sm font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
+  const th1Cls = "px-3 py-2 text-left text-sm font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap";
   const tdBase = "px-3 py-2.5 text-right align-top";
 
   const [openSections, setOpenSections] = useState({ inputs: false, rates: true, jobs: true });
@@ -144,11 +144,11 @@ function ScenarioComparison({
 
   function DeltaLine({ base, revised }: { base: number; revised: number }) {
     const delta = revised - base;
-    if (Math.abs(delta) < 0.001) return <span className="block text-xs text-muted-foreground/60 mt-0.5">—</span>;
+    if (Math.abs(delta) < 0.001) return <span className="block text-sm text-muted-foreground/60 mt-0.5">—</span>;
     const sign = delta > 0 ? "+" : "";
     const cls = delta > 0 ? "text-red-600" : "text-green-600";
     return (
-      <span className={`block text-xs font-semibold mt-0.5 ${cls}`}>
+      <span className={`block text-sm font-semibold mt-0.5 ${cls}`}>
         {sign}₹{delta.toFixed(2)}
       </span>
     );
@@ -203,7 +203,7 @@ function ScenarioComparison({
                 const sign = up ? "+" : "\u2212";
                 return (
                   <div key={scenario.id} className="rounded-md border border-border p-3" data-testid={`variation-summary-${scenario.id}`}>
-                    {scenarioCalcs.length > 1 && <div className="text-xs font-semibold text-muted-foreground mb-1.5">{scenario.name}</div>}
+                    {scenarioCalcs.length > 1 && <div className="text-sm font-semibold text-muted-foreground mb-1.5">{scenario.name}</div>}
                     <div className="space-y-0.5 text-sm">
                       <div>{up ? "Cost Increase" : "Cost Decrease"}: <span className={`font-bold ${cls}`}>{sign}₹{fmtI(Math.abs(Math.round(ci)))}</span></div>
                       <div>Impact: <span className={`font-bold ${cls}`}>{sign}₹{Math.abs(iMT).toFixed(2)} /MT</span>{totalCUM > 0 && <>{" | "}<span className={`font-bold ${cls}`}>{sign}₹{Math.abs(iCUM).toFixed(2)} /CUM</span></>}</div>
@@ -232,7 +232,7 @@ function ScenarioComparison({
                 <strong> Save Scenario &amp; Return</strong>.
               </div>
               <div className="overflow-x-auto border-t border-amber-200 dark:border-amber-800">
-                <table className="w-full text-xs">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-amber-100/60 dark:bg-amber-900/30">
                       <th className="px-3 py-1.5 text-left font-semibold text-amber-700 dark:text-amber-400">Rate Input</th>
@@ -276,11 +276,11 @@ function ScenarioComparison({
           <div>
             <button
               onClick={() => toggleSection("inputs")}
-              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
             >
               {openSections.inputs ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
               Changed Input Rates
-              <span className="ml-auto font-normal normal-case text-[10px]">{openSections.inputs ? "Collapse" : "Expand"}</span>
+              <span className="ml-auto font-normal normal-case text-[12px]">{openSections.inputs ? "Collapse" : "Expand"}</span>
             </button>
             {openSections.inputs && <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse min-w-[500px]">
@@ -305,7 +305,7 @@ function ScenarioComparison({
                       <tr key={key} className="border-t border-border/40 hover:bg-muted/20">
                         <td className="px-3 py-2.5 font-medium text-sm">
                           {label}
-                          <span className="block text-xs text-muted-foreground font-normal">{unit}</span>
+                          <span className="block text-sm text-muted-foreground font-normal">{unit}</span>
                         </td>
                         <td className={`${tdBase} font-medium`}>
                           ₹{displayBaseVal.toFixed(2)}
@@ -359,11 +359,11 @@ function ScenarioComparison({
             <div>
               <button
                 onClick={() => toggleSection("rates")}
-                className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+                className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
               >
                 {openSections.rates ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                 Final Laid Rate by Mix Type
-                <span className="ml-auto font-normal normal-case text-[10px]">{openSections.rates ? "Collapse" : "Expand"}</span>
+                <span className="ml-auto font-normal normal-case text-[12px]">{openSections.rates ? "Collapse" : "Expand"}</span>
               </button>
               {openSections.rates && <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse min-w-[500px]">
@@ -378,7 +378,7 @@ function ScenarioComparison({
                         </th>
                       ))}
                     </tr>
-                    <tr className="bg-muted/20 border-b border-border text-xs text-muted-foreground">
+                    <tr className="bg-muted/20 border-b border-border text-sm text-muted-foreground">
                       <th /><th className={thCls}>₹/MT · ₹/CUM</th><th />
                       {scenarioCalcs.map(({ scenario }) => (
                         <Fragment key={scenario.id}>
@@ -457,11 +457,11 @@ function ScenarioComparison({
           <div>
             <button
               onClick={() => toggleSection("jobs")}
-              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-xs font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
+              className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wide hover:bg-muted/30 cursor-pointer transition-colors"
             >
               {openSections.jobs ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
               Job-wise Cost Impact
-              <span className="ml-auto font-normal normal-case text-[10px]">{openSections.jobs ? "Collapse" : "Expand"}</span>
+              <span className="ml-auto font-normal normal-case text-[12px]">{openSections.jobs ? "Collapse" : "Expand"}</span>
             </button>
             {openSections.jobs && <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse min-w-[500px]">
@@ -482,7 +482,7 @@ function ScenarioComparison({
                   {baseCalc.jobResults.map((baseJob, i) => (
                     <tr key={baseJob.id} className="border-t border-border/40 hover:bg-muted/20" data-testid={`cmp-job-${baseJob.id}`}>
                       <td className="px-3 py-2.5 font-semibold">
-                        {baseJob.siteName && <span className="block text-[10px] font-normal text-muted-foreground">{baseJob.siteName}</span>}
+                        {baseJob.siteName && <span className="block text-[12px] font-normal text-muted-foreground">{baseJob.siteName}</span>}
                         {baseJob.id}
                       </td>
                       <td className={`${tdBase} text-muted-foreground`}>{baseJob.totalMt > 0 ? baseJob.totalMt.toFixed(1) : "—"}</td>
@@ -506,14 +506,14 @@ function ScenarioComparison({
                             <span className={`font-medium ${changed ? (rev > fBaseAmt ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
                               ₹{Math.round(rev).toLocaleString("en-IN")}
                             </span>
-                            <span className="block mt-0.5 text-xs"><DeltaAmt base={fBaseAmt} revised={rev} /></span>
+                            <span className="block mt-0.5 text-sm"><DeltaAmt base={fBaseAmt} revised={rev} /></span>
                             {changed && bMT > 0 && (
-                              <span className={`block text-xs font-semibold mt-0.5 ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                              <span className={`block text-sm font-semibold mt-0.5 ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                                 {jobDelta > 0 ? "+" : "\u2212"}₹{Math.abs(jobDelta / bMT).toFixed(2)} /MT
                               </span>
                             )}
                             {changed && bCUM > 0 && (
-                              <span className={`block text-xs font-semibold ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                              <span className={`block text-sm font-semibold ${jobDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                                 {jobDelta > 0 ? "+" : "\u2212"}₹{Math.abs(jobDelta / bCUM).toFixed(2)} /CUM
                               </span>
                             )}
@@ -541,14 +541,14 @@ function ScenarioComparison({
                           <span className={changed ? (rev > fBaseGrand ? "text-red-600" : "text-green-600") : ""}>
                             ₹{Math.round(rev).toLocaleString("en-IN")}
                           </span>
-                          <span className="block mt-0.5 text-xs"><DeltaAmt base={fBaseGrand} revised={rev} /></span>
+                          <span className="block mt-0.5 text-sm"><DeltaAmt base={fBaseGrand} revised={rev} /></span>
                           {changed && gMT > 0 && (
-                            <span className={`block text-xs font-semibold mt-0.5 ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                            <span className={`block text-sm font-semibold mt-0.5 ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                               {gDelta > 0 ? "+" : "\u2212"}₹{Math.abs(gDelta / gMT).toFixed(2)} /MT
                             </span>
                           )}
                           {changed && gCUM > 0 && (
-                            <span className={`block text-xs font-semibold ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
+                            <span className={`block text-sm font-semibold ${gDelta > 0 ? "text-red-600" : "text-green-600"}`}>
                               {gDelta > 0 ? "+" : "\u2212"}₹{Math.abs(gDelta / gCUM).toFixed(2)} /CUM
                             </span>
                           )}
@@ -692,7 +692,7 @@ export default function MixImpact() {
             <h1 className="text-xl font-bold flex items-center gap-2">
               <FlaskConical className="w-5 h-5 text-primary" /> Price Impact Analysis
             </h1>
-            <p className="text-xs text-muted-foreground">Create scenarios to compare full calculator states</p>
+            <p className="text-sm text-muted-foreground">Create scenarios to compare full calculator states</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -734,7 +734,7 @@ export default function MixImpact() {
             </select>
           </div>
           {estimate && (
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
               Base: <span className="font-medium">{estimate.name}</span>
               {estimate.updatedAt && (
                 <span className="ml-2">· Last edited {fmtDateTime(estimate.updatedAt)}</span>
@@ -829,7 +829,7 @@ export default function MixImpact() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">{sc.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-sm text-muted-foreground mt-0.5">
                       {sc.state
                         ? <span className="text-green-700 dark:text-green-400 font-medium">Full state saved</span>
                         : <span className="text-amber-600 dark:text-amber-400">Legacy (price overrides only)</span>

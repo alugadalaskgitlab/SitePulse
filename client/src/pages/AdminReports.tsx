@@ -482,7 +482,7 @@ export default function AdminReports() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm">Management Report</p>
-              <p className="text-xs text-muted-foreground">Cross-site aggregated view — materials, production, fuel, labour &amp; financials</p>
+              <p className="text-sm text-muted-foreground">Cross-site aggregated view — materials, production, fuel, labour &amp; financials</p>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           </CardContent>

@@ -28,7 +28,7 @@ function SectionHeader({ icon: Icon, title, badge }: { icon: React.ElementType; 
       <Icon className="w-4 h-4 text-teal-600" />
       <h2 className="text-sm font-bold text-slate-700">{title}</h2>
       {badge != null && (
-        <Badge variant="outline" className="text-[10px] text-teal-700 border-teal-200 bg-teal-50">
+        <Badge variant="outline" className="text-[12px] text-teal-700 border-teal-200 bg-teal-50">
           {badge} items
         </Badge>
       )}
@@ -68,7 +68,7 @@ function MaterialsTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
+      <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Material</th>
@@ -99,11 +99,11 @@ function MaterialsTable({
                       }
                       <span className="font-medium text-slate-700">{row.materialName}</span>
                       {row.hasAutoSource ? (
-                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0">
+                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0">
                           <Zap className="w-2.5 h-2.5" />Auto
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex-shrink-0">
+                        <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex-shrink-0">
                           <PencilLine className="w-2.5 h-2.5" />Manual
                         </span>
                       )}
@@ -128,9 +128,9 @@ function MaterialsTable({
                 {isExpanded && (
                   <tr key={`${row.materialName}__drill`} className="bg-teal-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[10px] font-semibold text-teal-700 mb-1.5 uppercase tracking-wide">Source BOQ Items</p>
+                      <p className="text-[12px] font-semibold text-teal-700 mb-1.5 uppercase tracking-wide">Source BOQ Items</p>
                       <div className="rounded-lg border border-teal-100 bg-white overflow-hidden">
-                        <table className="text-[11px] w-full border-collapse">
+                        <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
@@ -149,11 +149,11 @@ function MaterialsTable({
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
                                 <td className="px-2 py-1.5 text-center">
                                   {b.isAuto ? (
-                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-teal-100 text-teal-700">
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-teal-100 text-teal-700">
                                       <Zap className="w-2.5 h-2.5" />Auto
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold bg-slate-100 text-slate-500">
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
                                       <PencilLine className="w-2.5 h-2.5" />Manual
                                     </span>
                                   )}
@@ -199,7 +199,7 @@ function EquipmentTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
+      <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Equipment</th>
@@ -250,9 +250,9 @@ function EquipmentTable({
                 {isExpanded && (
                   <tr key={`${row.equipmentName}__drill`} className="bg-blue-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[10px] font-semibold text-blue-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: hr/unit × work qty = hours</p>
+                      <p className="text-[12px] font-semibold text-blue-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: hr/unit × work qty = hours</p>
                       <div className="rounded-lg border border-blue-100 bg-white overflow-hidden">
-                        <table className="text-[11px] w-full border-collapse">
+                        <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
@@ -309,7 +309,7 @@ function LabourTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
+      <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour Category</th>
@@ -360,9 +360,9 @@ function LabourTable({
                 {isExpanded && (
                   <tr key={`${row.designation}__drill`} className="bg-purple-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[10px] font-semibold text-purple-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: day/unit × work qty = days</p>
+                      <p className="text-[12px] font-semibold text-purple-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: day/unit × work qty = days</p>
                       <div className="rounded-lg border border-purple-100 bg-white overflow-hidden">
-                        <table className="text-[11px] w-full border-collapse">
+                        <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
@@ -480,42 +480,42 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
         >
           {open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
-            <span className="text-xs font-semibold text-slate-700 truncate">
-              {row.itemCode ? <span className="font-mono text-[10px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
+            <span className="text-sm font-semibold text-slate-700 truncate">
+              {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
               {row.description}
             </span>
           </div>
-          <span className="text-[11px] font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
+          <span className="text-xs font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
             {fmtQty(row.workQty, 1)} {row.unit || "unit"}
           </span>
           <div className="flex gap-1 flex-shrink-0">
             {row.materials.length > 0 && (
-              <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+              <span className="text-[12px] font-semibold text-teal-600 bg-teal-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
                 <Package className="w-2.5 h-2.5" />{row.materials.length}
               </span>
             )}
             {row.equipment.length > 0 && (
-              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+              <span className="text-[12px] font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
                 <Wrench className="w-2.5 h-2.5" />{row.equipment.length}
               </span>
             )}
             {row.labour.length > 0 && (
-              <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+              <span className="text-[12px] font-semibold text-purple-600 bg-purple-50 rounded px-1.5 py-0.5 flex items-center gap-0.5">
                 <Users className="w-2.5 h-2.5" />{row.labour.length}
               </span>
             )}
-            {totalRes === 0 && <span className="text-[10px] text-muted-foreground">no recipes</span>}
+            {totalRes === 0 && <span className="text-[12px] text-muted-foreground">no recipes</span>}
           </div>
         </div>
         {open && (
           <div className="border-t px-3 py-2 space-y-3 bg-white">
             {row.materials.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-teal-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                <p className="text-[12px] font-semibold text-teal-700 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <Package className="w-3 h-3" /> Materials
                 </p>
-                <table className="w-full text-[11px]">
-                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Material</th>
                     <th className="text-right py-0.5 font-medium">Rate/Unit</th>
                     <th className="text-right py-0.5 font-medium">Work Qty</th>
@@ -525,8 +525,8 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
                   <tbody>{row.materials.map(m => (
                     <tr key={m.name} className="border-b border-slate-50">
                       <td className="py-1 text-slate-700">{m.name}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(m.qtyPerUnit, 4)}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(m.qtyPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-teal-700">{fmtQty(m.qty, 2)}</td>
                       <td className="py-1 text-right text-muted-foreground">{m.uom}</td>
                     </tr>
@@ -536,11 +536,11 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
             )}
             {row.equipment.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                <p className="text-[12px] font-semibold text-blue-700 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <Wrench className="w-3 h-3" /> Equipment
                 </p>
-                <table className="w-full text-[11px]">
-                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Equipment</th>
                     <th className="text-right py-0.5 font-medium">hr/Unit</th>
                     <th className="text-right py-0.5 font-medium">Work Qty</th>
@@ -549,8 +549,8 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
                   <tbody>{row.equipment.map(e => (
                     <tr key={e.name} className="border-b border-slate-50">
                       <td className="py-1 text-slate-700">{e.name}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(e.hrsPerUnit, 4)}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(e.hrsPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-blue-700">{fmtQty(e.hours, 1)} hr</td>
                     </tr>
                   ))}</tbody>
@@ -559,11 +559,11 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
             )}
             {row.labour.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-purple-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                <p className="text-[12px] font-semibold text-purple-700 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <Users className="w-3 h-3" /> Labour
                 </p>
-                <table className="w-full text-[11px]">
-                  <thead><tr className="text-[10px] text-muted-foreground border-b">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[12px] text-muted-foreground border-b">
                     <th className="text-left py-0.5 font-medium">Category</th>
                     <th className="text-right py-0.5 font-medium">day/Unit</th>
                     <th className="text-right py-0.5 font-medium">Work Qty</th>
@@ -572,8 +572,8 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
                   <tbody>{row.labour.map(l => (
                     <tr key={l.name} className="border-b border-slate-50">
                       <td className="py-1 text-slate-700">{l.name}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(l.daysPerUnit, 4)}</td>
-                      <td className="py-1 text-right font-mono text-slate-500 text-[10px]">{fmtQty(row.workQty, 2)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(l.daysPerUnit, 4)}</td>
+                      <td className="py-1 text-right font-mono text-slate-500 text-[12px]">{fmtQty(row.workQty, 2)}</td>
                       <td className="py-1 text-right font-mono font-semibold text-purple-700">{fmtQty(l.days, 1)} day</td>
                     </tr>
                   ))}</tbody>
@@ -597,7 +597,7 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
         <div className="space-y-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-            <p className="text-[11px] text-amber-800">
+            <p className="text-xs text-amber-800">
               <span className="font-semibold">Not programmed ({unprogrammed.length} item{unprogrammed.length > 1 ? "s" : ""}):</span>{" "}
               demand calculated from full BOQ quantity. Add work programme bars to distribute across months.
             </p>
@@ -629,12 +629,12 @@ interface ShortageData {
 
 function SuggestionBadge({ suggestion }: { suggestion: ShortageRow["suggestion"] }) {
   if (suggestion === "adequate") return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
       <CheckCircle2 className="w-3 h-3" /> Adequate
     </span>
   );
   if (suggestion === "monitor") return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
       <Info className="w-3 h-3" /> Monitor stock
     </span>
   );
@@ -642,14 +642,14 @@ function SuggestionBadge({ suggestion }: { suggestion: ShortageRow["suggestion"]
     <div className="flex flex-wrap gap-1">
       {suggestion === "raise_irn" && (
         <Link href="/irn/new">
-          <a className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors">
+          <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors">
             <ShoppingCart className="w-3 h-3" /> Raise IRN
           </a>
         </Link>
       )}
       {suggestion === "raise_pi" && (
         <Link href="/plant/purchase-indents">
-          <a className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors">
+          <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors">
             <ShoppingCart className="w-3 h-3" /> Raise PI
           </a>
         </Link>
@@ -674,7 +674,7 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
   return (
     <div className="space-y-3">
       {/* Info note */}
-      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800">
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
         <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
         <div>
           <span className="font-semibold">Planning intelligence only.</span>{" "}
@@ -691,14 +691,14 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
       {shortageCount > 0 && (
         <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200">
           <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <span className="text-xs text-red-800 font-semibold">
+          <span className="text-sm text-red-800 font-semibold">
             {shortageCount} material{shortageCount > 1 ? "s" : ""} below demand. Action recommended.
           </span>
         </div>
       )}
 
       <div className="overflow-x-auto rounded-xl border">
-        <table className="text-xs border-collapse w-full" style={{ minWidth: 600 }}>
+        <table className="text-sm border-collapse w-full" style={{ minWidth: 600 }}>
           <thead>
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
@@ -719,7 +719,7 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
                 <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${row.shortfall > 0 ? "bg-red-50/50" : "bg-white"}`}>
                   <span className="text-slate-700">{row.materialName}</span>
                   {!row.stockMatched && (
-                    <span className="ml-1 text-[9px] text-amber-500 italic">(no stock match)</span>
+                    <span className="ml-1 text-xs text-amber-500 italic">(no stock match)</span>
                   )}
                 </td>
                 <td className="px-2 py-2 text-right text-muted-foreground">{row.uom}</td>
@@ -810,7 +810,7 @@ export default function WorkDemand() {
   return (
     <div className="space-y-4">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground" aria-label="breadcrumb">
         <Link href="/work-program">
           <a className="hover:text-slate-700 transition-colors flex items-center gap-1">
             <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -841,7 +841,7 @@ export default function WorkDemand() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">BOM &amp; Resource Demand</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {project?.name}
             {project?.roadLengthKm ? ` · ${project.roadLengthKm} km` : ""}
             {project?.totalMonths ? ` · ${project.totalMonths} months` : ""}
@@ -868,7 +868,7 @@ export default function WorkDemand() {
           <CardContent className="p-10 text-center text-muted-foreground space-y-2">
             <BookOpen className="w-10 h-10 text-slate-200 mx-auto" />
             <p className="text-sm font-medium">No data to compute BOM</p>
-            <p className="text-xs">
+            <p className="text-sm">
               {!bomData?.bars?.length
                 ? "Add stretches to the Work Programme first."
                 : "Configure equipment, labour, and material recipes on BOQ items to see demand."}
@@ -885,7 +885,7 @@ export default function WorkDemand() {
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 <Package className="w-5 h-5 text-teal-600" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Materials</p>
+                  <p className="text-sm text-muted-foreground">Materials</p>
                   <p className="text-lg font-bold text-teal-800">{demand.materials.length}</p>
                 </div>
               </CardContent>
@@ -894,7 +894,7 @@ export default function WorkDemand() {
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 <Wrench className="w-5 h-5 text-blue-600" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Equipment</p>
+                  <p className="text-sm text-muted-foreground">Equipment</p>
                   <p className="text-lg font-bold text-blue-800">{demand.equipment.length}</p>
                 </div>
               </CardContent>
@@ -903,7 +903,7 @@ export default function WorkDemand() {
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 <Users className="w-5 h-5 text-purple-600" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Labour</p>
+                  <p className="text-sm text-muted-foreground">Labour</p>
                   <p className="text-lg font-bold text-purple-800">{demand.labour.length}</p>
                 </div>
               </CardContent>
@@ -912,7 +912,7 @@ export default function WorkDemand() {
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 <ShoppingCart className="w-5 h-5 text-orange-600" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Shortages</p>
+                  <p className="text-sm text-muted-foreground">Shortages</p>
                   <p className={`text-lg font-bold ${shortageAlertCount > 0 ? "text-red-700" : "text-orange-800"}`}>
                     {shortageAlertCount > 0 ? shortageAlertCount : "—"}
                   </p>
@@ -926,7 +926,7 @@ export default function WorkDemand() {
               <TabsTrigger value="materials" className="flex items-center gap-1.5" data-testid="tab-materials">
                 <Package className="w-3.5 h-3.5" /> Materials
                 {demand.materials.length > 0 && (
-                  <span className="ml-1 rounded-full bg-teal-100 text-teal-700 text-[10px] font-bold px-1.5 py-0.5">
+                  <span className="ml-1 rounded-full bg-teal-100 text-teal-700 text-[12px] font-bold px-1.5 py-0.5">
                     {demand.materials.length}
                   </span>
                 )}
@@ -934,7 +934,7 @@ export default function WorkDemand() {
               <TabsTrigger value="equipment" className="flex items-center gap-1.5" data-testid="tab-equipment">
                 <Wrench className="w-3.5 h-3.5" /> Equipment
                 {demand.equipment.length > 0 && (
-                  <span className="ml-1 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5">
+                  <span className="ml-1 rounded-full bg-blue-100 text-blue-700 text-[12px] font-bold px-1.5 py-0.5">
                     {demand.equipment.length}
                   </span>
                 )}
@@ -942,7 +942,7 @@ export default function WorkDemand() {
               <TabsTrigger value="labour" className="flex items-center gap-1.5" data-testid="tab-labour">
                 <Users className="w-3.5 h-3.5" /> Labour
                 {demand.labour.length > 0 && (
-                  <span className="ml-1 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5">
+                  <span className="ml-1 rounded-full bg-purple-100 text-purple-700 text-[12px] font-bold px-1.5 py-0.5">
                     {demand.labour.length}
                   </span>
                 )}
@@ -953,7 +953,7 @@ export default function WorkDemand() {
               <TabsTrigger value="procurement" className="flex items-center gap-1.5" data-testid="tab-procurement">
                 <ShoppingCart className="w-3.5 h-3.5" /> Procurement
                 {shortageAlertCount > 0 && (
-                  <span className="ml-1 rounded-full bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5">
+                  <span className="ml-1 rounded-full bg-red-100 text-red-700 text-[12px] font-bold px-1.5 py-0.5">
                     {shortageAlertCount}
                   </span>
                 )}

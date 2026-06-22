@@ -229,14 +229,14 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {STEPS.map((label, i) => (
             <div key={i} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors flex-shrink-0 ${
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0 ${
                 step > i ? "bg-emerald-500 text-white" :
                 step === i ? "bg-blue-600 text-white" :
                 "bg-slate-200 text-slate-500"
               }`}>
                 {step > i ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </div>
-              <span className={`text-xs font-medium ${step === i ? "text-blue-700" : "text-muted-foreground"}`}>{label}</span>
+              <span className={`text-sm font-medium ${step === i ? "text-blue-700" : "text-muted-foreground"}`}>{label}</span>
               {i < STEPS.length - 1 && <ArrowRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />}
             </div>
           ))}
@@ -257,7 +257,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             >
               <FileSpreadsheet className="w-12 h-12 text-blue-400 mx-auto mb-3" />
               <p className="text-sm font-semibold text-slate-700">Drop your Excel file here</p>
-              <p className="text-xs text-muted-foreground mt-1">or click to browse — .xlsx or .xls</p>
+              <p className="text-sm text-muted-foreground mt-1">or click to browse — .xlsx or .xls</p>
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
                 onChange={handleFileChange} data-testid="input-file-excel" />
             </div>
@@ -269,10 +269,10 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             )}
             {rawRows.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                <p className="text-sm font-semibold text-muted-foreground mb-1.5">
                   PREVIEW — {fileName} ({dataRows.length} data rows)
                 </p>
-                <div className="overflow-x-auto rounded-lg border text-xs">
+                <div className="overflow-x-auto rounded-lg border text-sm">
                   <table className="min-w-full">
                     <thead className="bg-slate-50">
                       <tr>
@@ -298,7 +298,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                 </div>
               </div>
             )}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Expected columns: Item Code, Description, Unit, BOQ Qty, Client Rate. The wizard will help you map them.
             </p>
           </div>
@@ -307,7 +307,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         {/* ── Step 1: Map Columns ── */}
         {step === 1 && (
           <div className="space-y-4">
-            <div className="text-xs text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-center gap-2">
+            <div className="text-sm text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-blue-500 flex-shrink-0" />
               <span>Loaded <strong>{dataRows.length} data rows</strong> from <strong>{fileName}</strong>. Map each field to its Excel column below.</span>
             </div>
@@ -321,7 +321,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                 { field: "clientRate", label: "Client Rate (₹)", required: false },
               ] as { field: keyof ColumnMap; label: string; required: boolean }[]).map(({ field, label, required }) => (
                 <div key={field}>
-                  <Label className="text-xs">{label.toUpperCase()} {required && <span className="text-red-500">*</span>}</Label>
+                  <Label className="text-sm">{label.toUpperCase()} {required && <span className="text-red-500">*</span>}</Label>
                   <Select
                     value={colMap[field] != null ? String(colMap[field]) : "__unmapped__"}
                     onValueChange={v => setMapField(field, v)}
@@ -341,8 +341,8 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             </div>
 
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1.5">DATA PREVIEW (first 10 rows)</p>
-              <div className="overflow-x-auto rounded-lg border text-xs">
+              <p className="text-sm font-semibold text-muted-foreground mb-1.5">DATA PREVIEW (first 10 rows)</p>
+              <div className="overflow-x-auto rounded-lg border text-sm">
                 <table className="min-w-full">
                   <thead className="bg-slate-50">
                     <tr>
@@ -374,7 +374,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             </div>
 
             {!canProceedStep1 && (
-              <p className="text-xs text-amber-600 flex items-center gap-1">
+              <p className="text-sm text-amber-600 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" />
                 Map Description, Unit, and BOQ Qty to proceed.
               </p>
@@ -385,7 +385,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         {/* ── Step 2: Work Category Assignment ── */}
         {step === 2 && (
           <div className="space-y-4">
-            <div className="text-xs text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-start gap-2">
+            <div className="text-sm text-muted-foreground bg-slate-50 rounded-lg p-3 flex items-start gap-2">
               <Tags className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
               <span>
                 Assign each item to a standard MoRTH/NHAI work category. Items with standard item codes (like 3.xx, 5.xx) are auto-suggested.
@@ -395,23 +395,23 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
 
             {/* Bulk assign */}
             <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-              <span className="text-xs font-medium text-amber-800 flex-shrink-0">
+              <span className="text-sm font-medium text-amber-800 flex-shrink-0">
                 Bulk assign:
               </span>
               <Select value={bulkCat} onValueChange={setBulkCat}>
-                <SelectTrigger className="h-7 text-xs flex-1" data-testid="select-bulk-category">
+                <SelectTrigger className="h-7 text-sm flex-1" data-testid="select-bulk-category">
                   <SelectValue placeholder="Select category…" />
                 </SelectTrigger>
                 <SelectContent>
                   {BOQ_WORK_CATEGORIES.map(cat => (
-                    <SelectItem key={cat.code} value={cat.code} className="text-xs">{cat.label}</SelectItem>
+                    <SelectItem key={cat.code} value={cat.code} className="text-sm">{cat.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                className="h-7 text-sm border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
                 onClick={applyBulkCat}
                 disabled={!bulkCat}
                 data-testid="button-bulk-assign-unassigned"
@@ -421,7 +421,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                className="h-7 text-sm border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
                 onClick={applyBulkCatAll}
                 disabled={!bulkCat}
                 data-testid="button-bulk-assign-all"
@@ -433,7 +433,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             {/* Per-item table */}
             <div className="border rounded-lg overflow-hidden">
               <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
-                <table className="min-w-full text-xs">
+                <table className="min-w-full text-sm">
                   <thead className="bg-slate-800 sticky top-0 z-10">
                     <tr>
                       <th className="px-2 py-2 text-left font-semibold text-slate-300 w-14">Code</th>
@@ -473,15 +473,15 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                               }}
                             >
                               <SelectTrigger
-                                className={`h-7 text-xs ${isUnassigned ? "border-red-300 text-red-600" : "border-slate-200"}`}
+                                className={`h-7 text-sm ${isUnassigned ? "border-red-300 text-red-600" : "border-slate-200"}`}
                                 data-testid={`select-item-cat-${idx}`}
                               >
                                 <SelectValue placeholder="— Select —" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none__" className="text-xs text-muted-foreground">— Select category —</SelectItem>
+                                <SelectItem value="__none__" className="text-sm text-muted-foreground">— Select category —</SelectItem>
                                 {BOQ_WORK_CATEGORIES.map(cat => (
-                                  <SelectItem key={cat.code} value={cat.code} className="text-xs">{cat.label}</SelectItem>
+                                  <SelectItem key={cat.code} value={cat.code} className="text-sm">{cat.label}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -495,7 +495,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             </div>
 
             {unassignedCount > 0 && (
-              <p className="text-xs text-red-600 flex items-center gap-1">
+              <p className="text-sm text-red-600 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" />
                 {unassignedCount} item{unassignedCount !== 1 ? "s" : ""} still need a work category assigned before you can continue.
               </p>
@@ -509,11 +509,11 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             {/* Existing items warning + mode selector */}
             {existingItemCount > 0 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
-                <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                <p className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                   This project already has {existingItemCount} BOQ item{existingItemCount !== 1 ? "s" : ""}
                 </p>
-                <p className="text-xs text-amber-700">Choose how to handle the existing items:</p>
+                <p className="text-sm text-amber-700">Choose how to handle the existing items:</p>
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -525,7 +525,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                       className="accent-amber-600"
                       data-testid="radio-import-append"
                     />
-                    <span className="text-xs font-medium text-amber-900">
+                    <span className="text-sm font-medium text-amber-900">
                       Add to existing — keeps current {existingItemCount} items and appends new ones
                     </span>
                   </label>
@@ -539,7 +539,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                       className="accent-red-600"
                       data-testid="radio-import-replace"
                     />
-                    <span className="text-xs font-medium text-red-800">
+                    <span className="text-sm font-medium text-red-800">
                       Replace all — deletes all {existingItemCount} existing items and their Gantt bars, then imports fresh
                     </span>
                   </label>
@@ -552,25 +552,25 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
                   <p className="text-2xl font-bold text-emerald-700">{parsedItems.length}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">BOQ Items</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">BOQ Items</p>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
                   <p className="text-2xl font-bold text-emerald-700">{workCatSet.size}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Work Categories</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Work Categories</p>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
                   <p className="text-2xl font-bold text-emerald-700">
                     {parsedItems.filter(i => i.clientRate).length}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Items with Rate</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Items with Rate</p>
                 </div>
               </div>
               {workCatSet.size > 0 && (
                 <div>
-                  <p className="text-xs text-emerald-700 font-medium mb-1">Work categories in this import:</p>
+                  <p className="text-sm text-emerald-700 font-medium mb-1">Work categories in this import:</p>
                   <div className="flex flex-wrap gap-1">
                     {Array.from(workCatSet).map(code => (
-                      <Badge key={code} variant="outline" className="text-xs bg-white border-emerald-200 text-emerald-700">
+                      <Badge key={code} variant="outline" className="text-sm bg-white border-emerald-200 text-emerald-700">
                         {getWorkCategoryLabel(code)}
                       </Badge>
                     ))}
@@ -580,23 +580,23 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
             </div>
 
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1.5">FIRST 5 ITEMS TO IMPORT</p>
+              <p className="text-sm font-semibold text-muted-foreground mb-1.5">FIRST 5 ITEMS TO IMPORT</p>
               <div className="space-y-1.5">
                 {parsedItems.slice(0, 5).map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
+                  <div key={i} className="flex items-center gap-3 text-sm bg-slate-50 rounded-lg px-3 py-2">
                     {item.itemCode && <span className="font-mono text-slate-500 w-16 flex-shrink-0 truncate">{item.itemCode}</span>}
                     <span className="flex-1 truncate font-medium">{item.description}</span>
                     <span className="text-slate-500 flex-shrink-0">{item.boqQty} {item.unit}</span>
                     {item.clientRate && <span className="text-slate-500 flex-shrink-0">₹{item.clientRate}</span>}
                     {itemWorkCats[i] && (
-                      <Badge variant="outline" className="text-[10px] flex-shrink-0 border-blue-200 text-blue-700">
+                      <Badge variant="outline" className="text-[12px] flex-shrink-0 border-blue-200 text-blue-700">
                         {getWorkCategoryLabel(itemWorkCats[i])}
                       </Badge>
                     )}
                   </div>
                 ))}
                 {parsedItems.length > 5 && (
-                  <p className="text-xs text-center text-muted-foreground">…and {parsedItems.length - 5} more items</p>
+                  <p className="text-sm text-center text-muted-foreground">…and {parsedItems.length - 5} more items</p>
                 )}
               </div>
             </div>

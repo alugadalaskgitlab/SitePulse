@@ -94,7 +94,7 @@ export default function EstimatorLogin() {
         </CardContent>
       </Card>
 
-      <p className="mt-6 text-xs text-muted-foreground text-center">
+      <p className="mt-6 text-sm text-muted-foreground text-center">
         <Calculator className="w-3 h-3 inline mr-1" />
         Bituminous Mix &amp; Concrete Rate Calculators
       </p>

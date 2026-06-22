@@ -118,7 +118,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                 <span className="font-black text-sm tracking-tight text-white">Site</span>
                 <span className="font-black text-sm tracking-tight text-orange-400">Pulse</span>
               </div>
-              <p className="text-[10px] text-slate-500 leading-none mt-0.5 truncate max-w-[150px]">{companyName}</p>
+              <p className="text-[12px] text-slate-500 leading-none mt-0.5 truncate max-w-[150px]">{companyName}</p>
             </div>
           </a>
         </Link>
@@ -126,7 +126,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto flex flex-col">
-        <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
+        <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
         {mainNavItems.map((item) => {
           const active = isNavActive(item);
           const showUnassignedBadge = item.href === "/" && unassignedCount > 0;
@@ -146,7 +146,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                 {showUnassignedBadge && (
                   <span
                     data-testid="badge-dashboard-unassigned"
-                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
+                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[12px] font-bold flex items-center justify-center leading-none"
                   >
                     {unassignedCount}
                   </span>
@@ -154,7 +154,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                 {showIrnBadge && (
                   <span
                     data-testid="badge-irn-pending"
-                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
+                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[12px] font-bold flex items-center justify-center leading-none"
                   >
                     {pendingIrnCount}
                   </span>
@@ -170,7 +170,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
         {/* Bottom nav items (Estimator, Settings) */}
         {bottomNavItems.length > 0 && (
           <>
-            <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
+            <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
             {bottomNavItems.map((item) => {
               const active = isNavActive(item);
               const showBadge = item.href === "/masters/hub" && unassignedCount > 0;
@@ -189,7 +189,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                     {showBadge && (
                       <span
                         data-testid="badge-masters-unassigned"
-                        className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center leading-none"
+                        className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[12px] font-bold flex items-center justify-center leading-none"
                       >
                         {unassignedCount}
                       </span>
@@ -210,14 +210,14 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
               className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity"
               data-testid="link-account"
             >
-              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0">
+              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0">
                 {initials}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white truncate leading-snug">
                   {user?.fullName || user?.email}
                 </p>
-                <p className="text-[11px] text-slate-400">{roleLabel}</p>
+                <p className="text-xs text-slate-400">{roleLabel}</p>
               </div>
             </a>
           </Link>
@@ -283,7 +283,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
             )}
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-slate-800 truncate">{title}</h1>
-              {subtitle && <p className="text-[11px] text-slate-500 truncate hidden sm:block">{subtitle}</p>}
+              {subtitle && <p className="text-xs text-slate-500 truncate hidden sm:block">{subtitle}</p>}
             </div>
           </div>
 

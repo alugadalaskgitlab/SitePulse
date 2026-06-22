@@ -19,7 +19,7 @@ function KpiCard({ label, value, sub, highlight }: {
       highlight === "green" ? "border-green-200" :
       "border-slate-200"
     }`}>
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
       <p className={`text-3xl font-bold tracking-tight ${
         highlight === "amber" ? "text-amber-700" :
         highlight === "green" ? "text-green-700" :
@@ -27,7 +27,7 @@ function KpiCard({ label, value, sub, highlight }: {
       }`}>
         {value !== undefined ? value : <span className="text-slate-300">—</span>}
       </p>
-      {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+      {sub && <p className="text-sm text-slate-400 mt-1">{sub}</p>}
     </div>
   );
 }

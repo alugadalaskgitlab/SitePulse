@@ -47,27 +47,27 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-muted-foreground text-xs">DC Number</p>
+            <p className="text-muted-foreground text-sm">DC Number</p>
             <p className="font-semibold">{record.dcNumber || "—"}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Date</p>
+            <p className="text-muted-foreground text-sm">Date</p>
             <p className="font-semibold">{record.date}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Customer / Client</p>
+            <p className="text-muted-foreground text-sm">Customer / Client</p>
             <p className="font-semibold">{record.customerName || "—"}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Delivery Site</p>
+            <p className="text-muted-foreground text-sm">Delivery Site</p>
             <p className="font-semibold">{record.deliverySite || "—"}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Truck Number</p>
+            <p className="text-muted-foreground text-sm">Truck Number</p>
             <p className="font-semibold">{record.truckNumber || "—"}</p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Plant</p>
+            <p className="text-muted-foreground text-sm">Plant</p>
             <p className="font-semibold">{record.plantName}</p>
           </div>
         </div>
@@ -89,19 +89,19 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
         </table>
         {record.remarks && (
           <div>
-            <p className="text-muted-foreground text-xs">Remarks</p>
+            <p className="text-muted-foreground text-sm">Remarks</p>
             <p>{record.remarks}</p>
           </div>
         )}
         <div className="grid grid-cols-3 gap-4 pt-8 border-t">
           <div className="text-center">
-            <div className="border-t border-black w-full mt-8 pt-1 text-xs">Prepared By</div>
+            <div className="border-t border-black w-full mt-8 pt-1 text-sm">Prepared By</div>
           </div>
           <div className="text-center">
-            <div className="border-t border-black w-full mt-8 pt-1 text-xs">Checked By</div>
+            <div className="border-t border-black w-full mt-8 pt-1 text-sm">Checked By</div>
           </div>
           <div className="text-center">
-            <div className="border-t border-black w-full mt-8 pt-1 text-xs">Customer Signature</div>
+            <div className="border-t border-black w-full mt-8 pt-1 text-sm">Customer Signature</div>
           </div>
         </div>
       </div>
@@ -281,11 +281,11 @@ export default function RmcBatchRecords() {
         <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
           <CardContent className="p-4 flex gap-6">
             <div>
-              <p className="text-xs text-muted-foreground">Total Volume</p>
+              <p className="text-sm text-muted-foreground">Total Volume</p>
               <p className="text-xl font-bold text-blue-700 dark:text-blue-300">{totalVol.toFixed(2)} m³</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Dispatches</p>
+              <p className="text-sm text-muted-foreground">Dispatches</p>
               <p className="text-xl font-bold">{records.length}</p>
             </div>
           </CardContent>
@@ -310,8 +310,8 @@ export default function RmcBatchRecords() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge className="text-sm font-bold">{r.grade}</Badge>
                     <span className="font-semibold text-blue-600 dark:text-blue-400">{r.totalVolumeM3.toFixed(2)} m³</span>
-                    {r.batchesCount && <span className="text-xs text-muted-foreground">{r.batchesCount} batches</span>}
-                    {r.dcNumber && <span className="text-xs bg-muted px-2 py-0.5 rounded">DC: {r.dcNumber}</span>}
+                    {r.batchesCount && <span className="text-sm text-muted-foreground">{r.batchesCount} batches</span>}
+                    {r.dcNumber && <span className="text-sm bg-muted px-2 py-0.5 rounded">DC: {r.dcNumber}</span>}
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-3">
                     <span>{r.date}</span>
@@ -319,7 +319,7 @@ export default function RmcBatchRecords() {
                     {r.deliverySite && <span>→ {r.deliverySite}</span>}
                     {r.truckNumber && <span>🚚 {r.truckNumber}</span>}
                   </div>
-                  {r.remarks && <p className="text-xs text-muted-foreground mt-1">{r.remarks}</p>}
+                  {r.remarks && <p className="text-sm text-muted-foreground mt-1">{r.remarks}</p>}
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setPrintRecord(r)} data-testid={`btn-print-dc-${r.id}`}>

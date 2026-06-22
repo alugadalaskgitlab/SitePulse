@@ -846,15 +846,15 @@ export default function PlantHeatingSessions() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1">
-            <Label className="text-xs whitespace-nowrap">From</Label>
+            <Label className="text-sm whitespace-nowrap">From</Label>
             <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-40" data-testid="input-filter-date-from" />
           </div>
           <div className="flex items-center gap-1">
-            <Label className="text-xs whitespace-nowrap">To</Label>
+            <Label className="text-sm whitespace-nowrap">To</Label>
             <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-40" data-testid="input-filter-date-to" />
           </div>
           <Select value={filterDryerSource} onValueChange={v => setFilterDryerSource(v as "all" | "TANK_1" | "TANK_2")}>
-            <SelectTrigger className="w-36 h-9 text-xs" data-testid="select-dryer-filter">
+            <SelectTrigger className="w-36 h-9 text-sm" data-testid="select-dryer-filter">
               <SelectValue placeholder="Dryer fed from" />
             </SelectTrigger>
             <SelectContent>
@@ -894,7 +894,7 @@ export default function PlantHeatingSessions() {
                         >
                           <Badge
                             variant="destructive"
-                            className="text-[10px] cursor-pointer"
+                            className="text-[12px] cursor-pointer"
                             data-testid={`badge-recon-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
                           >
                             ⚠ {rec.plantName} Boiler Meter mismatch ({rec.reconciliation.mismatches.length}) →
@@ -906,7 +906,7 @@ export default function PlantHeatingSessions() {
                     {(reconByDate.get(date) || []).map(rec => (
                       <div
                         key={`detail-${date}-${rec.plantName}`}
-                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5 mb-2"
+                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm space-y-0.5 mb-2"
                         data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -914,7 +914,7 @@ export default function PlantHeatingSessions() {
                             {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                           </div>
                           <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
-                            <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
+                            <Button variant="destructive" size="sm" className="h-6 text-[12px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
                               Review →
                             </Button>
                           </Link>
@@ -970,7 +970,7 @@ export default function PlantHeatingSessions() {
                       style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
                     />
                     <h3 className="font-semibold text-lg">{format(parseISO(date), "EEEE, dd MMM yyyy")}</h3>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-sm">
                       {dateSessions.length} session{dateSessions.length !== 1 ? "s" : ""}
                     </Badge>
                     {totalLdo > 0 && (
@@ -979,7 +979,7 @@ export default function PlantHeatingSessions() {
                     {reconMismatches.length > 0 && (
                       <Badge
                         variant="destructive"
-                        className="text-[10px]"
+                        className="text-[12px]"
                         title={reconMismatches.map(r => `${r.plantName}: ${r.reconciliation.mismatches.length} mismatch${r.reconciliation.mismatches.length !== 1 ? "es" : ""}`).join(" • ")}
                       >
                         ⚠ Boiler meter mismatch{reconMismatches.length > 1 ? ` (${reconMismatches.length} plants)` : ""}
@@ -988,7 +988,7 @@ export default function PlantHeatingSessions() {
                     {dryerMismatches.length > 0 && (
                       <Badge
                         variant="outline"
-                        className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400"
+                        className="text-[12px] border-orange-400 text-orange-700 dark:text-orange-400"
                         title={dryerMismatches.map(d => `${d.plantName}: ${d.conflictingSessions.length + (d.intraSessionConflicts?.length || 0)} session${d.conflictingSessions.length + (d.intraSessionConflicts?.length || 0) !== 1 ? "s" : ""} in conflict`).join(" • ")}
                       >
                         ⚠ Dryer conflict{dryerMismatches.length > 1 ? ` (${dryerMismatches.length} plants)` : ""}
@@ -1014,7 +1014,7 @@ export default function PlantHeatingSessions() {
                             return (
                               <div
                                 key={`dryer-dm-${dm.plantName}`}
-                                className="rounded-md border border-orange-300 bg-orange-50/60 dark:border-orange-800 dark:bg-orange-950/20 px-3 py-2 text-xs space-y-1.5"
+                                className="rounded-md border border-orange-300 bg-orange-50/60 dark:border-orange-800 dark:bg-orange-950/20 px-3 py-2 text-sm space-y-1.5"
                               >
                                 {/* Shift-log mismatch: show guided one-click fix */}
                                 {hasShiftLogConflict && (() => {
@@ -1029,14 +1029,14 @@ export default function PlantHeatingSessions() {
                                       <p className="text-orange-800 dark:text-orange-300 leading-snug">
                                         ⚠ <strong>{dm.plantName}</strong> shift log says <strong>{slLabel}</strong>, but {n} heating session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} <strong>{oppLabel}</strong>.
                                       </p>
-                                      <p className="text-orange-700 dark:text-orange-400 text-[11px] font-medium" data-testid={`text-dryer-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                      <p className="text-orange-700 dark:text-orange-400 text-xs font-medium" data-testid={`text-dryer-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                         Shift log: {slLabel} · {n} session{n !== 1 ? "s" : ""} {n !== 1 ? "say" : "says"} {oppLabel}
                                       </p>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                          className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
                                           onClick={() => {
                                             setDryerFixTarget({
                                               mode: "heating-session",
@@ -1056,7 +1056,7 @@ export default function PlantHeatingSessions() {
                                           <Button
                                             size="sm"
                                             variant="outline"
-                                            className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                            className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
                                             disabled={alignMutation.isPending}
                                             onClick={() => {
                                               setDryerFixTarget({
@@ -1090,12 +1090,12 @@ export default function PlantHeatingSessions() {
                                         ⚠ <strong>{dm.plantName}</strong> — {n} heating session{n !== 1 ? "s" : ""} disagree with each other on dryer source{hasShiftLogConflict ? " (separate from shift-log conflict above)" : ""}. Choose which is correct:
                                       </p>
                                       {!hasShiftLogConflict && (
-                                        <p className="text-orange-700 dark:text-orange-400 text-[11px] font-medium" data-testid={`text-intra-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        <p className="text-orange-700 dark:text-orange-400 text-xs font-medium" data-testid={`text-intra-conflict-summary-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {n} session{n !== 1 ? "s" : ""} disagree · choose one below
                                         </p>
                                       )}
                                       {!hasShiftLogConflict && dm.shiftLogId == null && (
-                                        <p className="text-orange-700 dark:text-orange-400 text-[11px]">
+                                        <p className="text-orange-700 dark:text-orange-400 text-xs">
                                           No shift log exists for this date yet.{" "}
                                           <Link
                                             href={appendPlantContext(`/plant/shift-log/${dm.date}?plant=${encodeURIComponent(dm.plantName)}&focus=dryerFedFrom`, { forceTab: "operations" })}
@@ -1136,11 +1136,11 @@ export default function PlantHeatingSessions() {
                                         })}
                                       </ul>
                                       <div className="flex flex-wrap gap-2">
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_1" })} data-testid={`button-align-intra-tank1-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Boiler tank
                                         </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-intra-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
+                                        <Button size="sm" variant="outline" className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900" disabled={alignMutation.isPending} onClick={() => alignMutation.mutate({ sessionIds: allIds, targetValue: "TANK_2" })} data-testid={`button-align-intra-tank2-${date}-${dm.plantName.replace(/\s+/g, "-")}`}>
                                           {alignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                                           Set all → Dryer tank
                                         </Button>
@@ -1159,7 +1159,7 @@ export default function PlantHeatingSessions() {
                     {reconMismatches.map(rec => (
                       <div
                         key={`detail-${rec.plantName}`}
-                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs space-y-0.5"
+                        className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm space-y-0.5"
                         data-testid={`panel-recon-${date}-${rec.plantName.replace(/\s+/g, "_")}`}
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1167,7 +1167,7 @@ export default function PlantHeatingSessions() {
                             {rec.plantName} — The boiler fuel meter totals don't agree (difference exceeds {rec.reconciliation.thresholdL} L)
                           </div>
                           <Link href={appendPlantContext(`/plant/ldo-mismatch/${date}?plant=${encodeURIComponent(rec.plantName)}`, { forceTab: "operations" })}>
-                            <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
+                            <Button variant="destructive" size="sm" className="h-6 text-[12px] px-2" data-testid={`button-review-ldo-mismatch-${date}-${rec.plantName.replace(/\s+/g, "_")}`}>
                               Review →
                             </Button>
                           </Link>
@@ -1214,19 +1214,19 @@ export default function PlantHeatingSessions() {
                               </Badge>
                               <span className="font-medium">{s.startTime || "—"} → {s.endTime || "—"}</span>
                               <span className="text-sm text-muted-foreground">({s.durationHours ?? 0} h)</span>
-                              <span className="text-xs text-muted-foreground">{s.plantName}</span>
+                              <span className="text-sm text-muted-foreground">{s.plantName}</span>
                               {s.generatorLogId != null && (
-                                <Badge variant="outline" className="text-xs border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-dg-linked-${s.id}`}>
+                                <Badge variant="outline" className="text-sm border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-dg-linked-${s.id}`}>
                                   DG #{s.generatorLogId}{s.dgGeneratorName ? ` · ${s.dgGeneratorName}` : ""}
                                 </Badge>
                               )}
                               {s.generatorLogId == null && s.dgMode === "inline" && (
-                                <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dg-pending-${s.id}`}>
+                                <Badge variant="outline" className="text-sm border-amber-400 text-amber-700 dark:text-amber-400" data-testid={`badge-dg-pending-${s.id}`}>
                                   DG inline (unsaved)
                                 </Badge>
                               )}
                               {(s.dryerFedFrom === "TANK_1" || s.dryerFedFrom === "TANK_2") && (
-                                <Badge variant="outline" className="text-xs border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
+                                <Badge variant="outline" className="text-sm border-sky-400 text-sky-700 dark:text-sky-400" data-testid={`badge-dryer-fed-${s.id}`}>
                                   Dryer fed from: {s.dryerFedFrom === "TANK_1" ? "Boiler tank" : "Dryer tank"}
                                 </Badge>
                               )}
@@ -1254,7 +1254,7 @@ export default function PlantHeatingSessions() {
                                     <span className="inline-flex items-center gap-1.5">
                                       <Badge
                                         variant="outline"
-                                        className="text-[10px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
+                                        className="text-[12px] border-orange-400 text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950"
                                         title={tooltipText}
                                         onClick={() => {
                                           const currentVal = s.dryerFedFrom as "TANK_1" | "TANK_2";
@@ -1278,7 +1278,7 @@ export default function PlantHeatingSessions() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          className="h-5 text-[10px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                          className="h-5 text-[12px] px-1.5 border-orange-400 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950"
                                           onClick={() => {
                                             const slCurrent = dm!.shiftLogValue ?? (s.dryerFedFrom === "TANK_1" ? "TANK_2" : "TANK_1") as "TANK_1" | "TANK_2";
                                             setDryerFixTarget({
@@ -1300,17 +1300,17 @@ export default function PlantHeatingSessions() {
                                           href={appendPlantContext(`/plant/shift-log/${s.date}?plant=${encodeURIComponent(s.plantName)}&focus=dryerFedFrom`, { forceTab: "operations" })}
                                           data-testid={`link-create-shiftlog-session-${s.id}`}
                                         >
-                                          <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[10px]">Create shift log →</span>
+                                          <span className="text-orange-600 dark:text-orange-400 underline underline-offset-2 cursor-pointer hover:opacity-80 text-[12px]">Create shift log →</span>
                                         </Link>
                                       )}
                                     </span>
                                     {isShiftLogConflict && slLabel2 && (
-                                      <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
+                                      <span className="text-orange-600 dark:text-orange-400 text-[12px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
                                         Shift log: {slLabel2} · This session says {hsLabel}
                                       </span>
                                     )}
                                     {isIntraConflict && !isShiftLogConflict && (
-                                      <span className="text-orange-600 dark:text-orange-400 text-[10px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
+                                      <span className="text-orange-600 dark:text-orange-400 text-[12px] font-medium" data-testid={`text-session-dryer-summary-${s.id}`}>
                                         This session says {hsLabel} · disagrees with other sessions{dm?.shiftLogId == null ? " · no shift log yet" : ""}
                                       </span>
                                     )}
@@ -1318,7 +1318,7 @@ export default function PlantHeatingSessions() {
                                 );
                               })()}
                             </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1 text-muted-foreground">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm mt-1 text-muted-foreground">
                               <span>Staff: {s.staffName || "—"}</span>
                               <span>LDO: {s.ldoTank1Consumed?.toFixed(1) ?? "—"} L
                                 {sessLdoLPerHr != null && <span className="ml-1">({sessLdoLPerHr.toFixed(2)} L/Hr)</span>}
@@ -1345,7 +1345,7 @@ export default function PlantHeatingSessions() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs"
+                        className="text-sm"
                         onClick={() => openNewForDate(date)}
                         data-testid={`button-add-session-${date}`}
                       >
@@ -1405,7 +1405,7 @@ export default function PlantHeatingSessions() {
                 onClick={() => setShowTemps(v => !v)}
                 data-testid="button-toggle-temps"
               >
-                <span className="text-xs">{showTemps ? "▼" : "▶"}</span>
+                <span className="text-sm">{showTemps ? "▼" : "▶"}</span>
                 Hot-Oil & Bitumen Temperatures
                 {!showTemps && (
                   <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -1451,7 +1451,7 @@ export default function PlantHeatingSessions() {
                     onChange={e => setForm(p => ({ ...p, ldoTank1OpeningMeter: e.target.value, autoFilledOpening: false }))}
                     data-testid="input-ldo-open" />
                   {form.autoFilledOpening && form.autoFilledSource && (
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-hint">
                       Auto-filled from previous closing ({form.autoFilledSource})
                     </p>
                   )}
@@ -1471,11 +1471,11 @@ export default function PlantHeatingSessions() {
                     onChange={e => setForm(p => ({ ...p, ldoTank1OpeningDip: e.target.value, autoFilledDipT1: false }))}
                     data-testid="input-ldo-dip-t1-open" />
                   {form.autoFilledDipT1 && form.autoFilledDipT1Source ? (
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT1Source}</p>
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT1Source}</p>
                   ) : (
                     (() => {
                       const hint = form.ldoTank1OpeningDip ? (() => { const v = getLdoVolumeAtDepth(1, parseFloat(form.ldoTank1OpeningDip)); const dead = getLdoDeadStockVolume(1); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
-                      return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
+                      return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
                     })()
                   )}
                 </div>
@@ -1486,7 +1486,7 @@ export default function PlantHeatingSessions() {
                     data-testid="input-ldo-dip-t1-close" />
                   {(() => {
                     const hint = form.ldoTank1ClosingDip ? (() => { const v = getLdoVolumeAtDepth(1, parseFloat(form.ldoTank1ClosingDip)); const dead = getLdoDeadStockVolume(1); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
-                    return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
+                    return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
                   })()}
                 </div>
                 <div>
@@ -1495,11 +1495,11 @@ export default function PlantHeatingSessions() {
                     onChange={e => setForm(p => ({ ...p, ldoTank2OpeningDip: e.target.value, autoFilledDipT2: false }))}
                     data-testid="input-ldo-dip-t2-open" />
                   {form.autoFilledDipT2 && form.autoFilledDipT2Source ? (
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT2Source}</p>
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">Auto-filled from {form.autoFilledDipT2Source}</p>
                   ) : (
                     (() => {
                       const hint = form.ldoTank2OpeningDip ? (() => { const v = getLdoVolumeAtDepth(2, parseFloat(form.ldoTank2OpeningDip)); const dead = getLdoDeadStockVolume(2); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
-                      return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
+                      return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session start, in cm</p>;
                     })()
                   )}
                 </div>
@@ -1510,7 +1510,7 @@ export default function PlantHeatingSessions() {
                     data-testid="input-ldo-dip-t2-close" />
                   {(() => {
                     const hint = form.ldoTank2ClosingDip ? (() => { const v = getLdoVolumeAtDepth(2, parseFloat(form.ldoTank2ClosingDip)); const dead = getLdoDeadStockVolume(2); return v != null ? `≈ ${(v - (dead ?? 0)).toFixed(0)} L usable` : null; })() : null;
-                    return hint ? <p className="text-xs font-medium text-foreground mt-1">{hint}</p> : <p className="text-xs text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
+                    return hint ? <p className="text-sm font-medium text-foreground mt-1">{hint}</p> : <p className="text-sm text-muted-foreground mt-1">Dip-stick at session end, in cm</p>;
                   })()}
                 </div>
               </CardContent>

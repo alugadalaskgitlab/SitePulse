@@ -143,11 +143,11 @@ export default function DeviceApproval() {
                         <tr key={d.id} className="border-b last:border-0" data-testid={`row-device-${d.id}`}>
                           <td className="py-2 pr-4">
                             <div className="font-medium">{d.userName || "(unknown)"}</div>
-                            <div className="text-muted-foreground text-xs">{d.userEmail}</div>
+                            <div className="text-muted-foreground text-sm">{d.userEmail}</div>
                           </td>
                           <td className="py-2 pr-4">
                             <div className="font-medium">{d.deviceLabel}</div>
-                            <div className="text-xs text-muted-foreground line-clamp-1 max-w-xs">
+                            <div className="text-sm text-muted-foreground line-clamp-1 max-w-xs">
                               {d.userAgent}
                             </div>
                           </td>

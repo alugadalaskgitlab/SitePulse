@@ -193,7 +193,7 @@ export default function DprDetails() {
           <div>
             <h1 className="text-2xl font-bold font-display">Report Details</h1>
             {user?.fullName && (
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {isAdmin ? "Admin" : user.fullName}
               </p>
             )}
@@ -283,7 +283,7 @@ export default function DprDetails() {
                         {item.boqItemId && boqItemMap.has(item.boqItemId) ? (
                           <span className="flex items-center gap-1.5 flex-wrap">
                             {boqItemMap.get(item.boqItemId)!.itemCode && (
-                              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono text-teal-700 border-teal-300 bg-teal-50 shrink-0">
+                              <Badge variant="outline" className="text-[12px] h-4 px-1 font-mono text-teal-700 border-teal-300 bg-teal-50 shrink-0">
                                 {boqItemMap.get(item.boqItemId)!.itemCode}
                               </Badge>
                             )}
@@ -293,7 +293,7 @@ export default function DprDetails() {
                           <span className="flex items-center gap-1.5">
                             {item.activity}
                             {item.boqItemId && (
-                              <Badge variant="outline" className="text-[10px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
+                              <Badge variant="outline" className="text-[12px] h-4 px-1 text-blue-600 border-blue-300">BOQ</Badge>
                             )}
                           </span>
                         )}
@@ -376,12 +376,12 @@ export default function DprDetails() {
                             <div>
                               <span>{item.machine}</span>
                               {item.vehicleNo && (
-                                <p className="text-xs text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>
+                                <p className="text-sm text-muted-foreground" data-testid={`text-vehicle-no-${i}`}>
                                   Reg: {item.vehicleNo}
                                 </p>
                               )}
                               {ownerLabel && (
-                                <p className="text-xs text-muted-foreground" data-testid={`text-owner-info-${i}`}>
+                                <p className="text-sm text-muted-foreground" data-testid={`text-owner-info-${i}`}>
                                   {ownerLabel}
                                 </p>
                               )}
@@ -486,7 +486,7 @@ export default function DprDetails() {
                   >
                     <p className="text-sm font-medium">{item.material}</p>
                     <p className="text-2xl font-bold">{item.totalQty.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{item.uom}</span></p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {item.trips} trip{item.trips > 1 ? 's' : ''}
                     </p>
                   </div>

@@ -178,7 +178,7 @@ export default function SitePurchasesReport() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <Label className="text-xs">From Date</Label>
+                <Label className="text-sm">From Date</Label>
                 <Input
                   type="date"
                   value={filters.dateFrom}
@@ -187,7 +187,7 @@ export default function SitePurchasesReport() {
                 />
               </div>
               <div>
-                <Label className="text-xs">To Date</Label>
+                <Label className="text-sm">To Date</Label>
                 <Input
                   type="date"
                   value={filters.dateTo}
@@ -196,7 +196,7 @@ export default function SitePurchasesReport() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Site</Label>
+                <Label className="text-sm">Site</Label>
                 <Select value={filters.site || "all"} onValueChange={(v) => setFilters(f => ({ ...f, site: v === "all" ? "" : v }))}>
                   <SelectTrigger data-testid="select-site-filter">
                     <SelectValue placeholder="All Sites" />
@@ -210,7 +210,7 @@ export default function SitePurchasesReport() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Work Type</Label>
+                <Label className="text-sm">Work Type</Label>
                 <Select value={filters.workType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "all" ? "" : v }))}>
                   <SelectTrigger data-testid="select-worktype-filter">
                     <SelectValue placeholder="All Types" />
@@ -276,17 +276,17 @@ export default function SitePurchasesReport() {
                         <td className="p-2 whitespace-nowrap">{format(new Date(p.date + 'T00:00:00'), "dd-MMM-yyyy").toUpperCase()}</td>
                         <td className="p-2">{p.site}</td>
                         <td className="p-2 text-center">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.source === 'diesel' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700'}`}>
+                          <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${p.source === 'diesel' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700'}`}>
                             {p.source === 'diesel' ? 'DIESEL' : 'PURCHASE'}
                           </span>
                         </td>
                         <td className="p-2 text-center">
                           {p.workType ? (
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                            <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${p.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
                               {p.workType === "structure" ? "STRUCTURE" : "ROAD"}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground">-</span>
+                            <span className="text-[12px] text-muted-foreground">-</span>
                           )}
                         </td>
                         <td className="p-2">{p.itemDescription}</td>
@@ -307,7 +307,7 @@ export default function SitePurchasesReport() {
                               <Pencil className="w-4 h-4" />
                             </Button>
                           ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
+                            <span className="text-sm text-muted-foreground">-</span>
                           )}
                         </td>
                       </tr>
@@ -334,7 +334,7 @@ export default function SitePurchasesReport() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Item Description</Label>
+              <Label className="text-sm">Item Description</Label>
               <Input
                 value={editForm.itemDescription}
                 onChange={(e) => setEditForm(f => ({ ...f, itemDescription: e.target.value.toUpperCase() }))}
@@ -343,7 +343,7 @@ export default function SitePurchasesReport() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Quantity</Label>
+                <Label className="text-sm">Quantity</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -353,7 +353,7 @@ export default function SitePurchasesReport() {
                 />
               </div>
               <div>
-                <Label className="text-xs">UOM</Label>
+                <Label className="text-sm">UOM</Label>
                 <Input
                   value={editForm.uom}
                   onChange={(e) => setEditForm(f => ({ ...f, uom: e.target.value.toUpperCase() }))}
@@ -362,7 +362,7 @@ export default function SitePurchasesReport() {
               </div>
             </div>
             <div>
-              <Label className="text-xs">Vendor</Label>
+              <Label className="text-sm">Vendor</Label>
               <Input
                 value={editForm.vendor}
                 onChange={(e) => setEditForm(f => ({ ...f, vendor: e.target.value.toUpperCase() }))}
@@ -371,7 +371,7 @@ export default function SitePurchasesReport() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Bill No</Label>
+                <Label className="text-sm">Bill No</Label>
                 <Input
                   value={editForm.billNo}
                   onChange={(e) => setEditForm(f => ({ ...f, billNo: e.target.value.toUpperCase() }))}
@@ -379,7 +379,7 @@ export default function SitePurchasesReport() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Amount</Label>
+                <Label className="text-sm">Amount</Label>
                 <Input
                   type="number"
                   step="0.01"

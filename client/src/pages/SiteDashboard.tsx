@@ -980,7 +980,7 @@ export default function SiteDashboard() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">Date From</Label>
+                  <Label className="text-sm">Date From</Label>
                   <Input
                     type="date"
                     value={filters.dateFrom}
@@ -989,7 +989,7 @@ export default function SiteDashboard() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Date To</Label>
+                  <Label className="text-sm">Date To</Label>
                   <Input
                     type="date"
                     value={filters.dateTo}
@@ -998,7 +998,7 @@ export default function SiteDashboard() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Site</Label>
+                  <Label className="text-sm">Site</Label>
                   <Select value={filters.site || "all"} onValueChange={(value) => setFilters({ ...filters, site: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-site">
                       <SelectValue placeholder="All Sites" />
@@ -1012,7 +1012,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Engineer</Label>
+                  <Label className="text-sm">Engineer</Label>
                   <Select value={filters.engineer || "all"} onValueChange={(value) => setFilters({ ...filters, engineer: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-engineer">
                       <SelectValue placeholder="All Engineers" />
@@ -1026,7 +1026,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Activity</Label>
+                  <Label className="text-sm">Activity</Label>
                   <Select value={filters.activity || "all"} onValueChange={(value) => setFilters({ ...filters, activity: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-activity">
                       <SelectValue placeholder="All Activities" />
@@ -1040,7 +1040,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Equipment</Label>
+                  <Label className="text-sm">Equipment</Label>
                   <Select value={filters.equipment || "all"} onValueChange={(value) => setFilters({ ...filters, equipment: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-equipment">
                       <SelectValue placeholder="All Equipment" />
@@ -1054,7 +1054,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Diesel Usage</Label>
+                  <Label className="text-sm">Diesel Usage</Label>
                   <Select value={filters.hasDiesel ? "yes" : "all"} onValueChange={(value) => setFilters({ ...filters, hasDiesel: value === "yes" })}>
                     <SelectTrigger data-testid="select-diesel">
                       <SelectValue placeholder="All" />
@@ -1066,7 +1066,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Material</Label>
+                  <Label className="text-sm">Material</Label>
                   <Select value={filters.material || "all"} onValueChange={(value) => setFilters({ ...filters, material: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-material">
                       <SelectValue placeholder="All Materials" />
@@ -1080,7 +1080,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Supplier</Label>
+                  <Label className="text-sm">Supplier</Label>
                   <Select value={filters.supplier || "all"} onValueChange={(value) => setFilters({ ...filters, supplier: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-supplier">
                       <SelectValue placeholder="All Suppliers" />
@@ -1094,7 +1094,7 @@ export default function SiteDashboard() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Work Type</Label>
+                  <Label className="text-sm">Work Type</Label>
                   <Select value={filters.workType || "all"} onValueChange={(value) => setFilters({ ...filters, workType: value === "all" ? "" : value })}>
                     <SelectTrigger data-testid="select-work-type">
                       <SelectValue placeholder="All Types" />
@@ -1198,12 +1198,12 @@ export default function SiteDashboard() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold truncate">{dpr.site}</h3>
                                 {(dpr as any).workType === "structure" ? (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Structure</span>
                                 ) : (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 whitespace-nowrap" data-testid={`badge-worktype-${dpr.id}`}>Road</span>
                                 )}
                                 {pendingClosingCount > 0 && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap" data-testid={`badge-pending-closing-${dpr.id}`}>
                                     <Clock className="w-3 h-3" />
                                     Pending Closing ({pendingClosingCount})
                                   </span>
@@ -1254,7 +1254,7 @@ export default function SiteDashboard() {
                                   <Calendar className="w-4 h-4" /> Progress Entries
                                 </h4>
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs border-collapse">
+                                  <table className="w-full text-sm border-collapse">
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Activity</th>
@@ -1289,7 +1289,7 @@ export default function SiteDashboard() {
                                   <Wrench className="w-4 h-4" /> Equipment Log
                                 </h4>
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs border-collapse">
+                                  <table className="w-full text-sm border-collapse">
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Machine</th>
@@ -1347,7 +1347,7 @@ export default function SiteDashboard() {
                                   <Users className="w-4 h-4" /> Labour Strength
                                 </h4>
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs border-collapse">
+                                  <table className="w-full text-sm border-collapse">
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Category</th>
@@ -1380,7 +1380,7 @@ export default function SiteDashboard() {
                                   <Package className="w-4 h-4" /> Materials
                                 </h4>
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs border-collapse">
+                                  <table className="w-full text-sm border-collapse">
                                     <thead>
                                       <tr className="bg-muted/50">
                                         <th className="text-left p-2 border">Type</th>

@@ -578,14 +578,14 @@ export default function SiteEntry() {
               <Button
                 size="sm"
                 variant={workType === "road" ? "default" : "ghost"}
-                className="h-7 px-3 text-xs"
+                className="h-7 px-3 text-sm"
                 onClick={() => setWorkType("road")}
                 data-testid="button-work-type-road"
               >Road</Button>
               <Button
                 size="sm"
                 variant={workType === "structure" ? "default" : "ghost"}
-                className="h-7 px-3 text-xs"
+                className="h-7 px-3 text-sm"
                 onClick={() => setWorkType("structure")}
                 data-testid="button-work-type-structure"
               >Structure</Button>
@@ -638,14 +638,14 @@ export default function SiteEntry() {
               return (
               <div key={idx} className="p-4 border rounded-lg bg-muted/30 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground">Structure Item #{idx + 1}</span>
+                  <span className="text-sm font-semibold text-muted-foreground">Structure Item #{idx + 1}</span>
                   <Button size="icon" variant="ghost" onClick={() => setStructureItems(prev => prev.filter((_, i) => i !== idx))} disabled={structureItems.length === 1} data-testid={`button-remove-structure-${idx}`}>
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Structure Type</Label>
+                    <Label className="text-sm">Structure Type</Label>
                     <Select value={selectType} onValueChange={handleTypeChange}>
                       <SelectTrigger data-testid={`select-structure-type-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -653,7 +653,7 @@ export default function SiteEntry() {
                     {isOtherType && <Input placeholder="Specify type…" value={item.structureType !== "Other" ? item.structureType : ""} onChange={(e) => updateField("structureType", e.target.value || "Other")} data-testid={`input-structure-type-other-${idx}`} />}
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Sub-type</Label>
+                    <Label className="text-sm">Sub-type</Label>
                     <Select value={selectSubType} onValueChange={handleSubTypeChange}>
                       <SelectTrigger data-testid={`select-structure-subtype-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{subTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -661,11 +661,11 @@ export default function SiteEntry() {
                     {isOtherSubType && <Input placeholder="Specify sub-type…" value={item.structureSubType !== "Other" ? item.structureSubType : ""} onChange={(e) => updateField("structureSubType", e.target.value || "Other")} data-testid={`input-structure-subtype-other-${idx}`} />}
                   </div>
                   <div className="sm:col-span-2">
-                    <Label className="text-xs">Structure Name / Location</Label>
+                    <Label className="text-sm">Structure Name / Location</Label>
                     <Input placeholder="e.g. Culvert at km 12+400" value={item.structureName} onChange={(e) => updateField("structureName", e.target.value)} data-testid={`input-structure-name-${idx}`} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Stage / Part</Label>
+                    <Label className="text-sm">Stage / Part</Label>
                     <Select value={selectStage} onValueChange={(val) => updateField("stage", val)}>
                       <SelectTrigger data-testid={`select-structure-stage-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{stages.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -673,7 +673,7 @@ export default function SiteEntry() {
                     {isOtherStage && <Input placeholder="Specify stage…" value={item.stage !== "Other" ? item.stage : ""} onChange={(e) => updateField("stage", e.target.value || "Other")} data-testid={`input-structure-stage-other-${idx}`} />}
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Item of Work</Label>
+                    <Label className="text-sm">Item of Work</Label>
                     <Select value={selectItem} onValueChange={(val) => updateField("itemOfWork", val)}>
                       <SelectTrigger data-testid={`select-structure-item-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_ITEMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
@@ -681,18 +681,18 @@ export default function SiteEntry() {
                     {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
                   </div>
                   <div>
-                    <Label className="text-xs">Quantity</Label>
+                    <Label className="text-sm">Quantity</Label>
                     <Input type="number" step="0.01" placeholder="0" value={item.quantity ?? ""} onChange={(e) => updateField("quantity", e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-structure-qty-${idx}`} />
                   </div>
                   <div>
-                    <Label className="text-xs">Unit</Label>
+                    <Label className="text-sm">Unit</Label>
                     <Select value={item.uom} onValueChange={(val) => updateField("uom", val)}>
                       <SelectTrigger data-testid={`select-structure-uom-${idx}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{STRUCTURE_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="sm:col-span-2 md:col-span-4">
-                    <Label className="text-xs">Remarks (optional)</Label>
+                    <Label className="text-sm">Remarks (optional)</Label>
                     <Input placeholder="Any remarks..." value={item.remarks} onChange={(e) => updateField("remarks", e.target.value)} data-testid={`input-structure-remarks-${idx}`} />
                   </div>
                 </div>
@@ -727,7 +727,7 @@ export default function SiteEntry() {
                       }}
                       data-testid={`checkbox-no-site-work-${idx}`}
                     />
-                    <Label htmlFor={`no-site-work-${idx}`} className="text-xs cursor-pointer">No Site Work</Label>
+                    <Label htmlFor={`no-site-work-${idx}`} className="text-sm cursor-pointer">No Site Work</Label>
                   </div>
                 </div>
                 <Button 
@@ -744,7 +744,7 @@ export default function SiteEntry() {
               {entry.noSiteWork ? (
                 <div className="space-y-3">
                   <div>
-                    <Label className="text-xs">Activity</Label>
+                    <Label className="text-sm">Activity</Label>
                     <Input
                       placeholder="e.g., MACHINERY SHIFTING, OFFICE WORK"
                       value={entry.activity}
@@ -758,7 +758,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Description</Label>
+                    <Label className="text-sm">Description</Label>
                     <Textarea
                       placeholder="Describe what was done..."
                       value={entry.noSiteWorkDescription}
@@ -778,7 +778,7 @@ export default function SiteEntry() {
                   <div className="col-span-2">
                     {/* When site has a BOQ project, Activity becomes a BOQ item selector.
                         boqItemId is stored on the progress entry and sent with the DPR payload. */}
-                    <Label className="text-xs">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
                     {siteBoqItems.length > 0 ? (
                       <Select
                         value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
@@ -796,7 +796,7 @@ export default function SiteEntry() {
                         }}
                         data-testid={`select-boq-item-${idx}`}
                       >
-                        <SelectTrigger className="uppercase text-xs">
+                        <SelectTrigger className="uppercase text-sm">
                           <SelectValue placeholder="Select BOQ item…" />
                         </SelectTrigger>
                         <SelectContent>
@@ -823,7 +823,7 @@ export default function SiteEntry() {
                     )}
                   </div>
                   <div>
-                    <Label className="text-xs">Side</Label>
+                    <Label className="text-sm">Side</Label>
                     <Select
                       value={entry.side}
                       onValueChange={(val) => {
@@ -841,7 +841,7 @@ export default function SiteEntry() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">From (Ch.)</Label>
+                    <Label className="text-sm">From (Ch.)</Label>
                     <Input
                       placeholder="0+000"
                       value={entry.chainageFrom}
@@ -857,7 +857,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">To (Ch.)</Label>
+                    <Label className="text-sm">To (Ch.)</Label>
                     <Input
                       placeholder="0+000"
                       value={entry.chainageTo}
@@ -873,7 +873,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">L (m)</Label>
+                    <Label className="text-sm">L (m)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -888,7 +888,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">W (m)</Label>
+                    <Label className="text-sm">W (m)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -903,7 +903,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">T (m)</Label>
+                    <Label className="text-sm">T (m)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -918,7 +918,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">UOM</Label>
+                    <Label className="text-sm">UOM</Label>
                     <Select
                       value={entry.uom}
                       onValueChange={(val) => {
@@ -936,7 +936,7 @@ export default function SiteEntry() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">Qty</Label>
+                    <Label className="text-sm">Qty</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -955,11 +955,11 @@ export default function SiteEntry() {
 
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Label className="text-xs text-muted-foreground">Personnel:</Label>
+                <Label className="text-sm text-muted-foreground">Personnel:</Label>
                 {entry.personnelIds.map(pid => {
                   const person = personnelList?.find(p => p.id === pid);
                   return person ? (
-                    <Badge key={pid} variant="secondary" className="text-xs gap-1">
+                    <Badge key={pid} variant="secondary" className="text-sm gap-1">
                       {person.name}
                       <X className="w-3 h-3 cursor-pointer" onClick={() => {
                         const updated = [...progress];
@@ -984,7 +984,7 @@ export default function SiteEntry() {
                     }
                   }}
                 >
-                  <SelectTrigger className="w-[140px] h-7 text-xs" data-testid={`select-personnel-${idx}`}>
+                  <SelectTrigger className="w-[140px] h-7 text-sm" data-testid={`select-personnel-${idx}`}>
                     <SelectValue placeholder="+ Add person" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1039,7 +1039,7 @@ export default function SiteEntry() {
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
-                    <Label className="text-xs">Equipment</Label>
+                    <Label className="text-sm">Equipment</Label>
                     <Select
                       value={entry.equipmentId ? String(entry.equipmentId) : ""}
                       onValueChange={(val) => {
@@ -1071,14 +1071,14 @@ export default function SiteEntry() {
                       </SelectContent>
                     </Select>
                     {entry.equipmentId && entry.vehicleNo && (
-                      <p className="text-xs text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
+                      <p className="text-sm text-muted-foreground mt-1">Reg: {entry.vehicleNo}</p>
                     )}
                     {(() => {
                       const selectedEquipForType = activeEquipment.find(e => e.id === entry.equipmentId);
                       if (!selectedEquipForType || selectedEquipForType.ownership !== "hired") return null;
                       return (
                         <div className="mt-2">
-                          <Label className="text-xs">Entry Type</Label>
+                          <Label className="text-sm">Entry Type</Label>
                           <div className="flex items-center gap-2">
                             <Select
                               value={entry.entryType ?? "time_meter"}
@@ -1115,7 +1115,7 @@ export default function SiteEntry() {
                     })()}
                   </div>
                   <div>
-                    <Label className="text-xs">Operator</Label>
+                    <Label className="text-sm">Operator</Label>
                     <Input
                       placeholder="Operator name"
                       value={entry.operator}
@@ -1129,7 +1129,7 @@ export default function SiteEntry() {
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Task</Label>
+                    <Label className="text-sm">Task</Label>
                     <Input
                       placeholder="Task performed"
                       value={entry.task}
@@ -1145,14 +1145,14 @@ export default function SiteEntry() {
                 </div>
 
                 <>
-                    <p className="text-xs font-semibold text-muted-foreground border-b pb-1">
+                    <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
                       {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
                     </p>
-                    <p className="text-xs text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
+                    <p className="text-sm text-muted-foreground italic">Enter opening reading and diesel in the morning. Closing reading and end time can be added later.</p>
                     
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                       <div>
-                        <Label className="text-xs">Start Time</Label>
+                        <Label className="text-sm">Start Time</Label>
                         <Input
                           type="time"
                           value={entry.startTime}
@@ -1165,7 +1165,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">End Time</Label>
+                        <Label className="text-sm">End Time</Label>
                         <Input
                           type="time"
                           value={entry.endTime}
@@ -1178,13 +1178,13 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-muted-foreground">Duration</Label>
+                        <Label className="text-sm text-muted-foreground">Duration</Label>
                         <div className="bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded border border-amber-200 dark:border-amber-700 font-semibold text-amber-700 dark:text-amber-400 text-sm" data-testid={`display-time-duration-${idx}`}>
                           {formatTimeDuration(entry.startTime, entry.endTime) ?? "-"}
                         </div>
                       </div>
                       <div>
-                        <Label className="text-xs">Opening Hour Meter</Label>
+                        <Label className="text-sm">Opening Hour Meter</Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -1199,7 +1199,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Closing Hour Meter</Label>
+                        <Label className="text-sm">Closing Hour Meter</Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -1217,7 +1217,7 @@ export default function SiteEntry() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs">Working Hours</Label>
+                        <Label className="text-sm">Working Hours</Label>
                         <div 
                           className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
                           data-testid={`display-working-hours-${idx}`}
@@ -1226,7 +1226,7 @@ export default function SiteEntry() {
                         </div>
                       </div>
                       <div>
-                        <Label className="text-xs">Diesel Issued (L)</Label>
+                        <Label className="text-sm">Diesel Issued (L)</Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -1245,10 +1245,10 @@ export default function SiteEntry() {
 
                 {isTripBased && (
                   <>
-                    <p className="text-xs font-semibold text-muted-foreground border-b pb-1">Trip Based Entry</p>
+                    <p className="text-sm font-semibold text-muted-foreground border-b pb-1">Trip Based Entry</p>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
-                        <Label className="text-xs">No. of Trips</Label>
+                        <Label className="text-sm">No. of Trips</Label>
                         <Input
                           type="number"
                           step="1"
@@ -1266,7 +1266,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Trip Distance (km one-way)</Label>
+                        <Label className="text-sm">Trip Distance (km one-way)</Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -1284,7 +1284,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Total KM (round trip)</Label>
+                        <Label className="text-sm">Total KM (round trip)</Label>
                         <div 
                           className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
                           data-testid={`display-total-km-${idx}`}
@@ -1293,7 +1293,7 @@ export default function SiteEntry() {
                         </div>
                       </div>
                       <div>
-                        <Label className="text-xs">Diesel Issued (L)</Label>
+                        <Label className="text-sm">Diesel Issued (L)</Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -1313,10 +1313,10 @@ export default function SiteEntry() {
 
                 {isWaterTanker && (
                   <>
-                    <p className="text-xs font-semibold text-blue-600 border-b border-blue-200 pb-1">Water Delivery</p>
+                    <p className="text-sm font-semibold text-blue-600 border-b border-blue-200 pb-1">Water Delivery</p>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
-                        <Label className="text-xs">Water Quantity (Liters)</Label>
+                        <Label className="text-sm">Water Quantity (Liters)</Label>
                         <Input
                           type="number"
                           step="1"
@@ -1331,7 +1331,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">No. of Trips</Label>
+                        <Label className="text-sm">No. of Trips</Label>
                         <Input
                           type="number"
                           step="1"
@@ -1351,7 +1351,7 @@ export default function SiteEntry() {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <Label className="text-xs">Diesel Source</Label>
+                    <Label className="text-sm">Diesel Source</Label>
                     <Select 
                       value={entry.dieselSource ?? "plant_stock"} 
                       onValueChange={(value) => {
@@ -1373,7 +1373,7 @@ export default function SiteEntry() {
                   {entry.dieselSource === "direct_purchase" && (
                     <>
                       <div>
-                        <Label className="text-xs">Fuel Station</Label>
+                        <Label className="text-sm">Fuel Station</Label>
                         <Input
                           placeholder="HP / BPCL"
                           value={entry.fuelStation || ""}
@@ -1387,7 +1387,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Bill No.</Label>
+                        <Label className="text-sm">Bill No.</Label>
                         <Input
                           placeholder="Receipt #"
                           value={entry.billNumber || ""}
@@ -1401,7 +1401,7 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Amount (Rs)</Label>
+                        <Label className="text-sm">Amount (Rs)</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1443,7 +1443,7 @@ export default function SiteEntry() {
           {labour.map((entry, idx) => (
             <div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 border rounded-lg bg-muted/30">
               <div>
-                <Label className="text-xs">Category</Label>
+                <Label className="text-sm">Category</Label>
                 <Select
                   value={entry.category}
                   onValueChange={(val) => {
@@ -1461,7 +1461,7 @@ export default function SiteEntry() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Gender</Label>
+                <Label className="text-sm">Gender</Label>
                 <Select
                   value={entry.gender}
                   onValueChange={(val) => {
@@ -1479,7 +1479,7 @@ export default function SiteEntry() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Count</Label>
+                <Label className="text-sm">Count</Label>
                 <Input
                   type="number"
                   min="0"
@@ -1493,7 +1493,7 @@ export default function SiteEntry() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Task/Work</Label>
+                <Label className="text-sm">Task/Work</Label>
                 <Input
                   placeholder="e.g. Spreading WMM"
                   value={entry.task}
@@ -1507,7 +1507,7 @@ export default function SiteEntry() {
                 />
               </div>
               <div>
-                <Label className="text-xs">Contractor/Gang</Label>
+                <Label className="text-sm">Contractor/Gang</Label>
                 <Input
                   placeholder="e.g. Raju Gang"
                   value={entry.contractor}

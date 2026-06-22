@@ -58,14 +58,14 @@ export function LocationPicker({ value, onChange, sitesList, placeholder, "data-
       </SelectTrigger>
       <SelectContent>
         {(sitesList ?? []).length > 0 && (
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-2 py-1 text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
             Field Sites
           </div>
         )}
         {(sitesList ?? []).map((s) => (
           <SelectItem key={`site:${s.id}`} value={`site:${s.id}`}>{s.name}</SelectItem>
         ))}
-        <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-t mt-1">
+        <div className="px-2 pt-2 pb-1 text-[12px] font-semibold uppercase tracking-wider text-muted-foreground border-t mt-1">
           Sections
         </div>
         {SECTION_OPTIONS.filter(o => !("rmcOnly" in o) || rmcEnabled).map(o => (

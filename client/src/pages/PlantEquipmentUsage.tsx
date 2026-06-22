@@ -1034,7 +1034,7 @@ export default function PlantEquipmentUsage() {
                     <button
                       type="button"
                       onClick={() => setShowAllPlantEquipment(v => !v)}
-                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                      className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
                     >
                       {showAllPlantEquipment ? `Show ${contextPlantName} only` : "Show all plants"}
                     </button>
@@ -1443,7 +1443,7 @@ export default function PlantEquipmentUsage() {
                       placeholder="Total hire charge for this entry"
                       data-testid="input-hire-amount"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {entryType === "hourly" ? "Hourly hire charge for the hours worked" : entryType === "daily" ? "Daily hire rate for this equipment" : entryType === "monthly" ? "Monthly hire charge (prorated if partial)" : "Hire charge for trips performed"}
                     </p>
                   </div>
@@ -1542,7 +1542,7 @@ export default function PlantEquipmentUsage() {
                     data-testid={`chip-working-plant-${value}`}
                     onClick={() => setFilterWorkingPlant(value)}
                     className={[
-                      "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      "px-2.5 py-0.5 rounded-full text-sm font-medium border transition-colors",
                       filterWorkingPlant === value
                         ? value === "HMP PLANT"
                           ? "bg-orange-100 text-orange-700 border-orange-400 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-600"
@@ -1820,25 +1820,25 @@ export default function PlantEquipmentUsage() {
                                 {/* Line 1: name, ownership, entry-type badges */}
                                 <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-sm">
                                   <span className="font-semibold">{equip?.name || "Unknown"}{(equip as any)?.registrationNumber ? ` (${(equip as any).registrationNumber})` : ""}</span>
-                                  {equip && <span className="text-xs text-muted-foreground">{ownerLabel}</span>}
+                                  {equip && <span className="text-sm text-muted-foreground">{ownerLabel}</span>}
                                   {(() => {
                                     const loc = (entry as any).siteName;
                                     if (!loc) return null;
-                                    if (loc === "HMP PLANT") return <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-700">HMP</Badge>;
-                                    if (loc === "RMC PLANT") return <Badge variant="outline" className="text-xs bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700">RMC</Badge>;
-                                    return <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300">{loc}</Badge>;
+                                    if (loc === "HMP PLANT") return <Badge variant="outline" className="text-sm bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-700">HMP</Badge>;
+                                    if (loc === "RMC PLANT") return <Badge variant="outline" className="text-sm bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700">RMC</Badge>;
+                                    return <Badge variant="outline" className="text-sm bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300">{loc}</Badge>;
                                   })()}
-                                  {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
-                                  {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
-                                  {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
-                                  {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
-                                  {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
-                                  {isDieselIncluded && <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
-                                  {isPartialEntry(entry) && <Badge variant="outline" className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
+                                  {(entry as any).entryType === "hourly" && <Badge variant="outline" className="text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Hourly Hire</Badge>}
+                                  {(entry as any).entryType === "daily" && <Badge variant="outline" className="text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Daily Hire</Badge>}
+                                  {(entry as any).entryType === "monthly" && <Badge variant="outline" className="text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700">Monthly Hire</Badge>}
+                                  {(entry as any).entryType === "trip_based" && <Badge variant="outline" className="text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">Trip Based</Badge>}
+                                  {(entry as any).entryType === "shifting" && <Badge variant="outline" className="text-sm bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700">Mobilization</Badge>}
+                                  {isDieselIncluded && <Badge variant="outline" className="text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">Diesel by Contractor</Badge>}
+                                  {isPartialEntry(entry) && <Badge variant="outline" className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700">Pending Closing</Badge>}
                                 </div>
                                 {/* Line 2: inline operational detail */}
                                 {(entry as any).entryType === "shifting" ? (
-                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-xs text-muted-foreground mt-1">
+                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-sm text-muted-foreground mt-1">
                                     <span className="font-medium text-foreground">{(entry as any).shiftFrom || "?"} → {(entry as any).shiftTo || "?"}</span>
                                     {(() => {
                                       const tEquip = equipment?.find(e => e.id === (entry as any).transportEquipmentId);
@@ -1847,7 +1847,7 @@ export default function PlantEquipmentUsage() {
                                     {(entry as any).transportDistance ? <span>{(entry as any).transportDistance} km</span> : null}
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-xs text-muted-foreground mt-1">
+                                  <div className="flex items-center gap-x-4 gap-y-0.5 flex-wrap text-sm text-muted-foreground mt-1">
                                     {/* Time or meter range */}
                                     {!isPartialEntry(entry) && entry.openingReading != null && entry.closingReading != null && (
                                       <span>Meter: {entry.openingReading} → {entry.closingReading}</span>
@@ -1900,13 +1900,13 @@ export default function PlantEquipmentUsage() {
                             {needsExpand && isExpanded && (
                               <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-1.5">
                                 {(entry as any).hireAmount != null && (
-                                  <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5">
+                                  <div className="text-sm flex flex-wrap gap-x-4 gap-y-0.5">
                                     <span className="text-amber-600 font-medium">Hire Charge</span>
                                     <span><span className="text-muted-foreground">Amount: </span><span className="font-medium text-amber-700">₹{((entry as any).hireAmount as number).toFixed(0)}</span></span>
                                   </div>
                                 )}
                                 {(entry as any).dieselSource === "direct_purchase" && (
-                                  <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5">
+                                  <div className="text-sm flex flex-wrap gap-x-4 gap-y-0.5">
                                     <span className="text-muted-foreground">Direct Purchase</span>
                                     {(entry as any).fuelStation && <span><span className="text-muted-foreground">Station: </span><span className="font-medium">{(entry as any).fuelStation}</span></span>}
                                     {(entry as any).billNumber && <span><span className="text-muted-foreground">Bill#: </span><span className="font-medium">{(entry as any).billNumber}</span></span>}
@@ -1915,7 +1915,7 @@ export default function PlantEquipmentUsage() {
                                   </div>
                                 )}
                                 {entry.remarks?.trim() && (
-                                  <div className="text-xs">
+                                  <div className="text-sm">
                                     <span className="text-muted-foreground">Remarks: </span>
                                     <span className="font-medium">{entry.remarks}</span>
                                   </div>

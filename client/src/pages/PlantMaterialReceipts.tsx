@@ -795,7 +795,7 @@ export default function PlantMaterialReceipts() {
               <DialogTitle className="flex items-center gap-2 flex-wrap">
                 {editingReceipt ? "Edit Receipt" : "Record Material Receipt"}
                 {!editingReceipt && nextReceiptNoData?.number && (
-                  <span className="text-xs font-mono font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-recv-preview-number">
+                  <span className="text-sm font-mono font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded" data-testid="text-recv-preview-number">
                     {nextReceiptNoData.number}
                   </span>
                 )}
@@ -859,7 +859,7 @@ export default function PlantMaterialReceipts() {
                       </SelectContent>
                     </Select>
                     {isFuel && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         Choose a tank to log this receipt in the LDO flow tracker, or select "Keep as Stock" if storing in barrels to issue later.
                       </p>
                     )}
@@ -907,14 +907,14 @@ export default function PlantMaterialReceipts() {
                   <Input value={supplier} onChange={(e) => setSupplier(e.target.value.toUpperCase())} placeholder="Who sold it" data-testid="input-supplier" />
                 </div>
                 <div>
-                  <Label>Transporter <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label>Transporter <span className="text-muted-foreground text-sm">(optional)</span></Label>
                   <Input value={transporter} onChange={(e) => setTransporter(e.target.value.toUpperCase())} placeholder="Who carried it" data-testid="input-transporter" />
                 </div>
               </div>
 
               {!editingReceipt && (
                 <div>
-                  <Label className="text-xs text-muted-foreground">System Receipt No. (auto-assigned)</Label>
+                  <Label className="text-sm text-muted-foreground">System Receipt No. (auto-assigned)</Label>
                   <div className="flex items-center h-9 px-3 border rounded-md bg-muted/50 text-sm font-mono text-muted-foreground" data-testid="text-system-recv-no">
                     {nextReceiptNoData?.number || (materialId ? "…" : "Select material first")}
                   </div>
@@ -934,11 +934,11 @@ export default function PlantMaterialReceipts() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Invoice No. <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label>Invoice No. <span className="text-muted-foreground text-sm">(optional)</span></Label>
                   <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value.toUpperCase())} placeholder="e.g. INV-2024-001" data-testid="input-invoice-no" />
                 </div>
                 <div>
-                  <Label>Invoice Date <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label>Invoice Date <span className="text-muted-foreground text-sm">(optional)</span></Label>
                   <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} data-testid="input-invoice-date" />
                 </div>
               </div>
@@ -954,20 +954,20 @@ export default function PlantMaterialReceipts() {
                 );
                 const getStatusBadge = (status: string) => {
                   switch (status) {
-                    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[10px] px-1.5 py-0">APPROVED</Badge>;
-                    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0">PENDING</Badge>;
-                    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[10px] px-1.5 py-0">COMPLETED</Badge>;
-                    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[10px] px-1.5 py-0">REJECTED</Badge>;
-                    default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
+                    case "approved": return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700 text-[12px] px-1.5 py-0">APPROVED</Badge>;
+                    case "pending": return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 text-[12px] px-1.5 py-0">PENDING</Badge>;
+                    case "completed": return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700 text-[12px] px-1.5 py-0">COMPLETED</Badge>;
+                    case "rejected": return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700 text-[12px] px-1.5 py-0">REJECTED</Badge>;
+                    default: return <Badge variant="outline" className="text-[12px] px-1.5 py-0">{status.toUpperCase()}</Badge>;
                   }
                 };
                 return (
                   <div className="space-y-1.5">
-                    <Label>Indent Ref. <span className="text-muted-foreground text-xs">(optional — link to purchase indent)</span></Label>
+                    <Label>Indent Ref. <span className="text-muted-foreground text-sm">(optional — link to purchase indent)</span></Label>
                     {noPiForMaterial && !indentRef ? (
                       <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2.5" data-testid="notice-pending-pi">
                         <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
                           No approved Purchase Indent for <strong>{selectedMaterialName}</strong> — save the receipt and regularise the indent later.
                         </p>
                       </div>
@@ -1003,7 +1003,7 @@ export default function PlantMaterialReceipts() {
                             </Button>
                           )}
                           {indentLockedFromPi && (
-                            <span className="text-xs text-muted-foreground whitespace-nowrap px-1">🔒 locked</span>
+                            <span className="text-sm text-muted-foreground whitespace-nowrap px-1">🔒 locked</span>
                           )}
                         </div>
                         {indentComboOpen && !indentRef && filteredPIs.length > 0 && (
@@ -1031,7 +1031,7 @@ export default function PlantMaterialReceipts() {
                       </div>
                     )}
                     {selectedPI && (
-                      <div className={`rounded-md border p-2.5 space-y-1 text-xs ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
+                      <div className={`rounded-md border p-2.5 space-y-1 text-sm ${isNotApproved ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20" : "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"}`}>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold">{selectedPI.indentNo}</span>
                           {getStatusBadge(selectedPI.status)}
@@ -1049,10 +1049,10 @@ export default function PlantMaterialReceipts() {
                       <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2">
                         <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 space-y-1">
-                          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                             This indent is <strong>{selectedPI.status.toUpperCase()}</strong> — not yet approved.
                           </p>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
                             <input
                               type="checkbox"
                               checked={indentOverride}
@@ -1101,7 +1101,7 @@ export default function PlantMaterialReceipts() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Label className="text-sm text-muted-foreground">DATE FROM</Label>
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -1110,7 +1110,7 @@ export default function PlantMaterialReceipts() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Label className="text-sm text-muted-foreground">DATE TO</Label>
               <Input
                 type="date"
                 value={filterDateTo}
@@ -1119,7 +1119,7 @@ export default function PlantMaterialReceipts() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">PARTY</Label>
+              <Label className="text-sm text-muted-foreground">PARTY</Label>
               <Select value={filterPartyId} onValueChange={setFilterPartyId}>
                 <SelectTrigger data-testid="select-filter-party">
                   <SelectValue placeholder="All Parties" />
@@ -1133,7 +1133,7 @@ export default function PlantMaterialReceipts() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">MATERIAL</Label>
+              <Label className="text-sm text-muted-foreground">MATERIAL</Label>
               <Select value={filterMaterialId} onValueChange={setFilterMaterialId}>
                 <SelectTrigger data-testid="select-filter-material">
                   <SelectValue placeholder="All Materials" />
@@ -1159,7 +1159,7 @@ export default function PlantMaterialReceipts() {
               Unapproved Indent Only
             </Button>
             {filterUnapprovedIndent && (
-              <span className="text-xs text-amber-600 dark:text-amber-400" data-testid="text-unapproved-filter-active">
+              <span className="text-sm text-amber-600 dark:text-amber-400" data-testid="text-unapproved-filter-active">
                 Showing receipts linked to pending or rejected indents
               </span>
             )}
@@ -1254,17 +1254,17 @@ export default function PlantMaterialReceipts() {
                               <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
                               <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
                                 {(receipt as any).receiptNo && (
-                                  <span className="text-[10px] font-mono font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 px-1.5 py-0.5 rounded" data-testid={`text-recv-no-${receipt.id}`}>
+                                  <span className="text-[12px] font-mono font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 px-1.5 py-0.5 rounded" data-testid={`text-recv-no-${receipt.id}`}>
                                     {(receipt as any).receiptNo}
                                   </span>
                                 )}
-                                {receipt.time && <span className="text-xs text-muted-foreground">{receipt.time}</span>}
+                                {receipt.time && <span className="text-sm text-muted-foreground">{receipt.time}</span>}
                                 <span className="font-semibold">{getMaterialName(receipt.materialId)}</span>
                                 <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
-                                {receipt.vehicleNumber && <span className="text-xs text-muted-foreground">{receipt.vehicleNumber}</span>}
-                                {receipt.supplier && <span className="text-xs text-muted-foreground">{receipt.supplier}</span>}
+                                {receipt.vehicleNumber && <span className="text-sm text-muted-foreground">{receipt.vehicleNumber}</span>}
+                                {receipt.supplier && <span className="text-sm text-muted-foreground">{receipt.supplier}</span>}
                                 {(!(receipt as any).indentRef || indentStatusMap[(receipt as any).indentRef] !== "approved") && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
+                                  <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
                                 )}
                               </div>
                               {canEdit && (
@@ -1282,66 +1282,66 @@ export default function PlantMaterialReceipts() {
                               <div className="px-4 pb-4 pt-3 border-t border-border/50">
                                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-sm">
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">RECV No.</span>
-                                    <span className="font-medium font-mono text-xs">{(receipt as any).receiptNo || "—"}</span>
+                                    <span className="text-muted-foreground text-sm block">RECV No.</span>
+                                    <span className="font-medium font-mono text-sm">{(receipt as any).receiptNo || "—"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Time</span>
+                                    <span className="text-muted-foreground text-sm block">Time</span>
                                     <span className="font-medium">{receipt.time || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Material</span>
+                                    <span className="text-muted-foreground text-sm block">Material</span>
                                     <span className="font-medium">{getMaterialName(receipt.materialId)}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Quantity</span>
+                                    <span className="text-muted-foreground text-sm block">Quantity</span>
                                     <span className="font-medium">{receipt.quantity} {receipt.uom}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Vehicle</span>
+                                    <span className="text-muted-foreground text-sm block">Vehicle</span>
                                     <span className="font-medium">{receipt.vehicleNumber || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Challan</span>
+                                    <span className="text-muted-foreground text-sm block">Challan</span>
                                     <span className="font-medium">{receipt.challanNumber || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Supplier</span>
+                                    <span className="text-muted-foreground text-sm block">Supplier</span>
                                     <span className="font-medium">{receipt.supplier || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Transporter</span>
+                                    <span className="text-muted-foreground text-sm block">Transporter</span>
                                     <span className="font-medium">{receipt.transporter || "-"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground text-xs block">Party/Job</span>
+                                    <span className="text-muted-foreground text-sm block">Party/Job</span>
                                     <span className="font-medium">{getPartyName(receipt.partyId)}</span>
                                   </div>
                                   {(receipt as any).invoiceNo && (
                                     <div>
-                                      <span className="text-muted-foreground text-xs block">Invoice No</span>
+                                      <span className="text-muted-foreground text-sm block">Invoice No</span>
                                       <span className="font-medium">{(receipt as any).invoiceNo}</span>
                                     </div>
                                   )}
                                   {(receipt as any).invoiceDate && (
                                     <div>
-                                      <span className="text-muted-foreground text-xs block">Invoice Date</span>
+                                      <span className="text-muted-foreground text-sm block">Invoice Date</span>
                                       <span className="font-medium">{(receipt as any).invoiceDate}</span>
                                     </div>
                                   )}
                                   {(receipt as any).indentRef && (
                                     <div>
-                                      <span className="text-muted-foreground text-xs block">Indent Ref</span>
+                                      <span className="text-muted-foreground text-sm block">Indent Ref</span>
                                       <div className="flex items-center gap-1.5 flex-wrap">
-                                        <Badge variant="outline" className="text-xs border-violet-400 text-violet-700 dark:text-violet-400" data-testid={`badge-indent-ref-${receipt.id}`}>{(receipt as any).indentRef}</Badge>
+                                        <Badge variant="outline" className="text-sm border-violet-400 text-violet-700 dark:text-violet-400" data-testid={`badge-indent-ref-${receipt.id}`}>{(receipt as any).indentRef}</Badge>
                                         {(() => {
                                           const status = indentStatusMap[(receipt as any).indentRef];
                                           if (!status) return null;
                                           switch (status) {
-                                            case "approved": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid={`badge-indent-status-${receipt.id}`}>APPROVED</Badge>;
-                                            case "pending": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid={`badge-indent-status-${receipt.id}`}>PENDING</Badge>;
-                                            case "rejected": return <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" data-testid={`badge-indent-status-${receipt.id}`}>REJECTED</Badge>;
-                                            default: return <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid={`badge-indent-status-${receipt.id}`}>{status.toUpperCase()}</Badge>;
+                                            case "approved": return <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" data-testid={`badge-indent-status-${receipt.id}`}>APPROVED</Badge>;
+                                            case "pending": return <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid={`badge-indent-status-${receipt.id}`}>PENDING</Badge>;
+                                            case "rejected": return <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-red-50 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" data-testid={`badge-indent-status-${receipt.id}`}>REJECTED</Badge>;
+                                            default: return <Badge variant="outline" className="text-[12px] px-1.5 py-0" data-testid={`badge-indent-status-${receipt.id}`}>{status.toUpperCase()}</Badge>;
                                           }
                                         })()}
                                       </div>
@@ -1349,7 +1349,7 @@ export default function PlantMaterialReceipts() {
                                   )}
                                   {receipt.tankNumber && (
                                     <div>
-                                      <span className="text-muted-foreground text-xs block">Tank</span>
+                                      <span className="text-muted-foreground text-sm block">Tank</span>
                                       <Badge variant="outline">T{receipt.tankNumber}</Badge>
                                     </div>
                                   )}
@@ -1362,10 +1362,10 @@ export default function PlantMaterialReceipts() {
                                   return (
                                     <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-3 py-2" data-testid={`notice-pi-pending-${receipt.id}`}>
                                       <svg className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" /></svg>
-                                      <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">No approved indent linked — edit this receipt to regularise</span>
+                                      <span className="text-sm text-amber-700 dark:text-amber-300 flex-1">No approved indent linked — edit this receipt to regularise</span>
                                       <button
                                         onClick={() => handleEditClick(receipt)}
-                                        className="text-xs font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100 shrink-0"
+                                        className="text-sm font-medium text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100 shrink-0"
                                         data-testid={`button-notice-edit-receipt-${receipt.id}`}
                                       >
                                         Edit receipt

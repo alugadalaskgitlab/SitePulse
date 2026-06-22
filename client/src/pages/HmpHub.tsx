@@ -34,11 +34,11 @@ function KpiCard({ label, value, sub, color = "orange" }: {
       : { border: "border-purple-200", bg: "bg-purple-50", val: "text-purple-700" };
   return (
     <div className={`bg-white rounded-xl border p-5 shadow-sm ${c.border}`}>
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
       <p className={`text-2xl font-bold tracking-tight ${c.val}`}>
         {value !== undefined ? value : <span className="text-slate-300">—</span>}
       </p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+      {sub && <p className="text-sm text-slate-400 mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -211,9 +211,9 @@ export default function HmpHub() {
                         <div key={plantKey} className={`rounded-lg border p-3 ${c.border} ${c.bg} opacity-40`}>
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                            <span className={`text-xs font-semibold ${c.label}`}>{plantKey}</span>
+                            <span className={`text-sm font-semibold ${c.label}`}>{plantKey}</span>
                           </div>
-                          <p className="text-xs text-slate-400">No entries</p>
+                          <p className="text-sm text-slate-400">No entries</p>
                         </div>
                       );
                     }
@@ -221,27 +221,27 @@ export default function HmpHub() {
                       <div key={plantKey} className={`rounded-lg border p-3 ${c.border} ${c.bg}`} data-testid={`equip-cost-${plantKey.toLowerCase().replace(/\s+/g, "-")}`}>
                         <div className="flex items-center gap-1.5 mb-2">
                           <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                          <span className={`text-xs font-semibold ${c.label}`}>{plantKey}</span>
+                          <span className={`text-sm font-semibold ${c.label}`}>{plantKey}</span>
                         </div>
                         <div className="space-y-1">
                           <div className="flex justify-between items-center">
-                            <span className="text-xs text-slate-500">Entries</span>
+                            <span className="text-sm text-slate-500">Entries</span>
                             <span className={`text-sm font-bold ${c.label}`}>{bucket.count}</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-xs text-slate-500">Hrs / KM</span>
-                            <span className="text-xs font-semibold text-slate-600">
+                            <span className="text-sm text-slate-500">Hrs / KM</span>
+                            <span className="text-sm font-semibold text-slate-600">
                               {bucket.hoursRun > 0 ? bucket.hoursRun.toFixed(1) : "—"}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-xs text-slate-500">Hire Cost</span>
-                            <span className="text-xs font-semibold text-slate-600">
+                            <span className="text-sm text-slate-500">Hire Cost</span>
+                            <span className="text-sm font-semibold text-slate-600">
                               {bucket.hireAmount > 0 ? `₹${bucket.hireAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—"}
                             </span>
                           </div>
                           {plantKey === "Other Sites" && bucket.sites.size > 0 && (
-                            <p className="text-[10px] text-slate-400 pt-0.5 truncate" title={[...bucket.sites].join(", ")}>
+                            <p className="text-[12px] text-slate-400 pt-0.5 truncate" title={[...bucket.sites].join(", ")}>
                               {[...bucket.sites].slice(0, 2).join(", ")}{bucket.sites.size > 2 ? ` +${bucket.sites.size - 2}` : ""}
                             </p>
                           )}
@@ -292,7 +292,7 @@ export default function HmpHub() {
                           if (!active || !payload?.length) return null;
                           const d = payload[0].payload;
                           return (
-                            <div className="bg-white border border-slate-200 rounded-md shadow-md px-3 py-2 text-xs">
+                            <div className="bg-white border border-slate-200 rounded-md shadow-md px-3 py-2 text-sm">
                               <p className="font-semibold text-slate-700">{d.date}</p>
                               <p className="text-orange-600">{d.tonnes.toFixed(1)} T</p>
                             </div>

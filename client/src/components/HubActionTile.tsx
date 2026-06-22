@@ -50,7 +50,7 @@ export function HubActionTile({
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className={`font-semibold text-slate-800 ${c.titleHover} transition-colors`}>{title}</h3>
             {badge && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${c.badge}`}>{badge}</span>
+              <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${c.badge}`}>{badge}</span>
             )}
           </div>
           <p className="text-sm text-slate-500 mt-0.5">{description}</p>

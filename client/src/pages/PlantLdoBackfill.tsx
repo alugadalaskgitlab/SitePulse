@@ -459,7 +459,7 @@ export default function PlantLdoBackfill() {
             <ChevronLeft className="w-4 h-4 mr-1" /> Back to Plant
           </Button>
         </Link>
-        <div className="text-xs text-muted-foreground flex items-center gap-2">
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
           <Badge variant="outline">Admin only</Badge>
           <span>Logged in as <span className="font-medium">{user?.fullName}</span></span>
         </div>
@@ -477,15 +477,15 @@ export default function PlantLdoBackfill() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
-              <Label className="text-xs">From</Label>
+              <Label className="text-sm">From</Label>
               <Input type="date" value={from} onChange={e => setFrom(e.target.value)} data-testid="input-backfill-from" />
             </div>
             <div>
-              <Label className="text-xs">To</Label>
+              <Label className="text-sm">To</Label>
               <Input type="date" value={to} onChange={e => setTo(e.target.value)} data-testid="input-backfill-to" />
             </div>
             <div>
-              <Label className="text-xs">Plant</Label>
+              <Label className="text-sm">Plant</Label>
               <Select value={plant} onValueChange={setPlant}>
                 <SelectTrigger data-testid="select-backfill-plant">
                   <SelectValue />
@@ -531,7 +531,7 @@ export default function PlantLdoBackfill() {
 
           {csvOpen && (
             <div className="border rounded-lg p-3 space-y-2 bg-muted/40">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Paste CSV with columns: <code>date,plant,tank,opening,closing,remarks</code> (one row per tank per day). A
                 header line is optional. Dates outside the current range are ignored.
               </p>
@@ -569,14 +569,14 @@ export default function PlantLdoBackfill() {
             <TooltipProvider>
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide">
+                <thead className="bg-muted/60 text-sm uppercase tracking-wide">
                   <tr>
                     <th className="text-left p-2 sticky left-0 bg-muted/60">Date</th>
-                    <th className="text-left p-2">T1 Opening<br /><span className="text-[10px] normal-case text-muted-foreground">{TANK_LABELS[1]}</span></th>
+                    <th className="text-left p-2">T1 Opening<br /><span className="text-[12px] normal-case text-muted-foreground">{TANK_LABELS[1]}</span></th>
                     <th className="text-left p-2">T1 Closing</th>
-                    <th className="text-left p-2">T2 Opening<br /><span className="text-[10px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
+                    <th className="text-left p-2">T2 Opening<br /><span className="text-[12px] normal-case text-muted-foreground">{TANK_LABELS[2]}</span></th>
                     <th className="text-left p-2">T2 Closing</th>
-                    <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[10px] normal-case text-muted-foreground">Dryer tank by default</span></th>
+                    <th className="text-left p-2 min-w-[130px]">Dryer fed from<br /><span className="text-[12px] normal-case text-muted-foreground">Dryer tank by default</span></th>
                     <th className="text-left p-2 min-w-[180px]">Remarks</th>
                     <th className="text-left p-2">Notes</th>
                     <th className="text-left p-2">Actions</th>
@@ -601,7 +601,7 @@ export default function PlantLdoBackfill() {
                       : "No readings on this date to delete";
                     return (
                       <tr key={row.date} className="border-t">
-                        <td className="p-2 font-mono text-xs sticky left-0 bg-background">{row.date}</td>
+                        <td className="p-2 font-mono text-sm sticky left-0 bg-background">{row.date}</td>
                         {cellEntries.map(({ tankKey, tankNum, kind, cell }) => {
                           const protectedCell = isProtected(cell);
                           const issue = rowIssues.find(i => i.tank === tankNum);
@@ -617,7 +617,7 @@ export default function PlantLdoBackfill() {
                                 data-testid={`input-${tankKey}-${kind}-${row.date}`}
                               />
                               {cell.source !== "empty" && (
-                                <Badge variant="secondary" className={`mt-1 text-[10px] py-0 ${SOURCE_BADGE[cell.source].className}`}>
+                                <Badge variant="secondary" className={`mt-1 text-[12px] py-0 ${SOURCE_BADGE[cell.source].className}`}>
                                   {SOURCE_BADGE[cell.source].label}
                                 </Badge>
                               )}
@@ -629,7 +629,7 @@ export default function PlantLdoBackfill() {
                             value={row.dryerFedFrom2}
                             onValueChange={v => updateDryerFedFrom2(idx, v as "TANK_1" | "TANK_2")}
                           >
-                            <SelectTrigger className="h-8 text-xs" data-testid={`select-dryer-source-${row.date}`}>
+                            <SelectTrigger className="h-8 text-sm" data-testid={`select-dryer-source-${row.date}`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -638,7 +638,7 @@ export default function PlantLdoBackfill() {
                             </SelectContent>
                           </Select>
                           {row.dryerFedFrom2 === "TANK_1" && (
-                            <p className="text-[10px] text-amber-600 mt-1">Debits Boiler tank</p>
+                            <p className="text-[12px] text-amber-600 mt-1">Debits Boiler tank</p>
                           )}
                         </td>
                         <td className="p-2">
@@ -650,7 +650,7 @@ export default function PlantLdoBackfill() {
                             data-testid={`input-remarks-${row.date}`}
                           />
                         </td>
-                        <td className="p-2 text-xs space-y-0.5">
+                        <td className="p-2 text-sm space-y-0.5">
                           {rowIssues.map((iss, k) => (
                             <div
                               key={k}
@@ -667,7 +667,7 @@ export default function PlantLdoBackfill() {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-sm"
                                 onClick={() => handleDeleteRow(idx)}
                                 disabled={saveMutation.isPending}
                                 data-testid={`button-confirm-delete-${row.date}`}
@@ -677,7 +677,7 @@ export default function PlantLdoBackfill() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-sm"
                                 onClick={() => setPendingDeletes(prev => { const s = new Set(prev); s.delete(row.date); return s; })}
                                 data-testid={`button-cancel-delete-${row.date}`}
                               >
@@ -709,7 +709,7 @@ export default function PlantLdoBackfill() {
                                   </Button>
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent side="left" className="max-w-[200px] text-xs">
+                              <TooltipContent side="left" className="max-w-[200px] text-sm">
                                 {tooltipMsg}
                               </TooltipContent>
                             </Tooltip>

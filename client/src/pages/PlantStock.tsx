@@ -1543,30 +1543,30 @@ export default function PlantStock() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : (isAdmin || canExport) ? 'grid-cols-4' : 'grid-cols-3'}`}>
-          <TabsTrigger value="summary" className="gap-2 text-xs sm:text-sm">
+          <TabsTrigger value="summary" className="gap-2 text-sm sm:text-sm">
             <Layers className="w-4 h-4" />
             <span className="hidden sm:inline">Stock Summary</span>
             <span className="sm:hidden">Summary</span>
           </TabsTrigger>
-          <TabsTrigger value="balances" className="gap-2 text-xs sm:text-sm">
+          <TabsTrigger value="balances" className="gap-2 text-sm sm:text-sm">
             <Package className="w-4 h-4" />
             <span className="hidden sm:inline">Current Balances</span>
             <span className="sm:hidden">Balances</span>
           </TabsTrigger>
-          <TabsTrigger value="ledger" className="gap-2 text-xs sm:text-sm">
+          <TabsTrigger value="ledger" className="gap-2 text-sm sm:text-sm">
             <Calendar className="w-4 h-4" />
             <span className="hidden sm:inline">Ledger Details</span>
             <span className="sm:hidden">Ledger</span>
           </TabsTrigger>
           {(isAdmin || canExport) && (
-            <TabsTrigger value="statement" className="gap-2 text-xs sm:text-sm" data-testid="tab-party-statement">
+            <TabsTrigger value="statement" className="gap-2 text-sm sm:text-sm" data-testid="tab-party-statement">
               <ClipboardList className="w-4 h-4" />
               <span className="hidden sm:inline">Party Statement</span>
               <span className="sm:hidden">Statement</span>
             </TabsTrigger>
           )}
           {isAdmin && (
-            <TabsTrigger value="hlc-recon" className="gap-2 text-xs sm:text-sm" data-testid="tab-hlc-recon">
+            <TabsTrigger value="hlc-recon" className="gap-2 text-sm sm:text-sm" data-testid="tab-hlc-recon">
               <GitCompare className="w-4 h-4" />
               <span className="hidden sm:inline">HLC Reconciliation</span>
               <span className="sm:hidden">Recon</span>
@@ -1627,7 +1627,7 @@ export default function PlantStock() {
                             <tr key={`g-${gIdx}`} className="border-b bg-muted/20 font-semibold">
                               <td className="py-3 px-2 font-semibold">{global.materialName}</td>
                               <td className="py-3 px-2">
-                                <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                <span className="px-2 py-0.5 text-sm rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                                   All Parties
                                 </span>
                               </td>
@@ -1645,24 +1645,24 @@ export default function PlantStock() {
                           global._rows.forEach((item, idx) => {
                             rows.push(
                               <tr key={`g-${gIdx}-p-${idx}`} className="border-b last:border-0 text-muted-foreground">
-                                <td className="py-2 pl-6 pr-2 text-xs">↳ {item.materialName}</td>
+                                <td className="py-2 pl-6 pr-2 text-sm">↳ {item.materialName}</td>
                                 <td className="py-2 px-2">
-                                  <span className={`px-2 py-0.5 text-xs rounded ${
+                                  <span className={`px-2 py-0.5 text-sm rounded ${
                                     item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
                                     'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                   }`}>
                                     {item.partyName}
                                   </span>
                                 </td>
-                                <td className="py-2 px-2 text-right text-xs">
+                                <td className="py-2 px-2 text-right text-sm">
                                   {dateFrom && balanceAsOfLoading ? (
                                     <div className="h-3 w-12 bg-amber-200 dark:bg-amber-800/50 rounded ml-auto animate-pulse" />
                                   ) : item.openingStock.toFixed(3)}
                                 </td>
-                                <td className="py-2 px-2 text-right text-xs text-green-600 dark:text-green-400">+{item.received.toFixed(3)}</td>
-                                <td className="py-2 px-2 text-right text-xs text-red-600 dark:text-red-400">-{item.consumed.toFixed(3)}</td>
-                                <td className="py-2 px-2 text-right text-xs font-medium">{item.closing.toFixed(3)}</td>
-                                <td className="py-2 px-2 text-xs">{item.uom}</td>
+                                <td className="py-2 px-2 text-right text-sm text-green-600 dark:text-green-400">+{item.received.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-right text-sm text-red-600 dark:text-red-400">-{item.consumed.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-right text-sm font-medium">{item.closing.toFixed(3)}</td>
+                                <td className="py-2 px-2 text-sm">{item.uom}</td>
                               </tr>
                             );
                           });
@@ -1674,7 +1674,7 @@ export default function PlantStock() {
                           <tr key={idx} className="border-b last:border-0">
                             <td className="py-3 px-2 font-medium">{item.materialName}</td>
                             <td className="py-3 px-2">
-                              <span className={`px-2 py-0.5 text-xs rounded ${
+                              <span className={`px-2 py-0.5 text-sm rounded ${
                                 item.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
                                 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                               }`}>
@@ -1764,12 +1764,12 @@ export default function PlantStock() {
                           >
                             <div className="flex items-start justify-between mb-2">
                               <h3 className="font-semibold text-foreground">{global.materialName}</h3>
-                              <span className="px-2 py-0.5 text-xs rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                              <span className="px-2 py-0.5 text-sm rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
                                 {isGlobalTank ? 'PHYSICAL TANK BALANCE' : 'BOOK / THEORETICAL BALANCE'}
                               </span>
                             </div>
                             {!isGlobalTank && global.balance < 0 && (
-                              <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                              <p className="text-sm text-amber-600 dark:text-amber-400 mb-2">
                                 Reconciliation Required — book balance based on theoretical dispatch consumption.
                               </p>
                             )}
@@ -1781,11 +1781,11 @@ export default function PlantStock() {
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
-                                <div className="text-xs text-muted-foreground">Total Receipts</div>
+                                <div className="text-sm text-muted-foreground">Total Receipts</div>
                                 <div className="font-semibold text-green-600 dark:text-green-400">+{global.totalReceipts.toFixed(3)}</div>
                               </div>
                               <div className="bg-red-50 dark:bg-red-900/20 rounded p-2">
-                                <div className="text-xs text-muted-foreground">Total Issues</div>
+                                <div className="text-sm text-muted-foreground">Total Issues</div>
                                 <div className="font-semibold text-red-600 dark:text-red-400">-{global.totalIssues.toFixed(3)}</div>
                               </div>
                             </div>
@@ -1804,26 +1804,26 @@ export default function PlantStock() {
                                 data-testid={`card-balance-${b.materialId}-${b.partyId}`}
                               >
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className={`px-2 py-0.5 text-xs rounded ${
+                                  <span className={`px-2 py-0.5 text-sm rounded ${
                                     b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
                                     'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                                   }`}>
                                     {b.partyName}
                                   </span>
                                   {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) && (
-                                    <span className="px-1.5 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
+                                    <span className="px-1.5 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
                                   )}
                                 </div>
                                 <div className={`text-lg font-bold mb-2 ${b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
                                   {Math.abs(b.balance) < 1e-9 ? '0.000' : b.balance.toFixed(3)} <span className="text-sm font-normal text-muted-foreground">{b.uom}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <div className="flex items-center justify-between text-sm text-muted-foreground">
                                   <span className="text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(3)}</span>
                                   <span className="text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(3)}</span>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 px-2 text-xs"
+                                    className="h-6 px-2 text-sm"
                                     onClick={(e) => { e.stopPropagation(); jumpToLedger(b.materialId, b.partyId); }}
                                     data-testid={`button-view-ledger-${b.materialId}-${b.partyId}`}
                                   >
@@ -1854,17 +1854,17 @@ export default function PlantStock() {
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-foreground">{b.materialName}</h3>
                         {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) ? (
-                          <span className="px-2 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">
+                          <span className="px-2 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">
                             RECON. REQUIRED
                           </span>
                         ) : b.balance < 10 ? (
-                          <span className="px-2 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
+                          <span className="px-2 py-0.5 text-sm rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-medium">
                             LOW
                           </span>
                         ) : null}
                       </div>
                       {b.balance < 0 && !/bitumen|ldo/i.test(b.materialName) && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                        <p className="text-sm text-amber-600 dark:text-amber-400 mb-2">
                           Reconciliation Required — book balance based on theoretical dispatch consumption. Enter opening stock in Material Masters to resolve.
                         </p>
                       )}
@@ -1883,17 +1883,17 @@ export default function PlantStock() {
                       
                       <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                         <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
-                          <div className="text-xs text-muted-foreground">Total Receipts</div>
+                          <div className="text-sm text-muted-foreground">Total Receipts</div>
                           <div className="font-semibold text-green-600 dark:text-green-400">+{b.totalReceipts.toFixed(3)}</div>
                         </div>
                         <div className="bg-red-50 dark:bg-red-900/20 rounded p-2">
-                          <div className="text-xs text-muted-foreground">Total Issues</div>
+                          <div className="text-sm text-muted-foreground">Total Issues</div>
                           <div className="font-semibold text-red-600 dark:text-red-400">-{b.totalIssues.toFixed(3)}</div>
                         </div>
                       </div>
                       
                       <div className="flex items-center justify-between">
-                        <span className={`px-2 py-0.5 text-xs rounded ${
+                        <span className={`px-2 py-0.5 text-sm rounded ${
                           b.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
                           'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                         }`}>
@@ -1902,7 +1902,7 @@ export default function PlantStock() {
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          className="text-xs"
+                          className="text-sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             jumpToLedger(b.materialId, b.partyId);
@@ -1989,7 +1989,7 @@ export default function PlantStock() {
                           <td className="p-3">{entry.date}</td>
                           <td className="p-3 font-medium">{getMaterialName(entry.materialId)}</td>
                           <td className="p-3">
-                            <span className={`px-2 py-0.5 text-xs rounded ${
+                            <span className={`px-2 py-0.5 text-sm rounded ${
                               isBF && selectedPartyId === "all"
                                 ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                                 : entry.partyId ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 
@@ -2037,7 +2037,7 @@ export default function PlantStock() {
                                 : entry.transactionType === 'direct_purchase' ? 'Direct Site Purchase'
                                 : entry.transactionType === 'ldo_dip_consumption' ? 'Actual Consumption'
                                 : entry.transactionType;
-                              return <span className={`px-2 py-0.5 text-xs rounded ${badgeClass}`}>{label}</span>;
+                              return <span className={`px-2 py-0.5 text-sm rounded ${badgeClass}`}>{label}</span>;
                             })()}
                           </td>
                           <td className="p-3 text-muted-foreground text-sm">
@@ -2066,7 +2066,7 @@ export default function PlantStock() {
                               </span>
                               {!isBF && (entry.transactionType === 'equipment_usage' || entry.transactionType === 'dpr_equipment_usage') && (
                                   <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
                                       <ClipboardList className="w-3.5 h-3.5" />
                                       <span>View</span>
                                     </span>
@@ -2099,7 +2099,7 @@ export default function PlantStock() {
                               )}
                               {!isBF && entry.transactionType === 'direct_purchase' && (
                                 <Link href={`/plant/equipment-usage?dateFrom=${entry.date}&dateTo=${entry.date}&returnTo=${buildLedgerReturnTo(entry.id)}`}>
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View equipment usage for this date">
                                     <ClipboardList className="w-3.5 h-3.5" />
                                     <span>View</span>
                                   </span>
@@ -2107,7 +2107,7 @@ export default function PlantStock() {
                               )}
                               {!isBF && entry.transactionType === 'ldo_dip_consumption' && (
                                 <Link href={`/plant/ldo-logs`}>
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View detailed LDO consumption logs">
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex-shrink-0 cursor-pointer" title="View detailed LDO consumption logs">
                                     <ExternalLink className="w-3.5 h-3.5" />
                                     <span>LDO Logs</span>
                                   </span>
@@ -2121,7 +2121,7 @@ export default function PlantStock() {
                           <td className="p-3 text-right text-red-600 dark:text-red-400 font-medium">
                             <div className="flex items-center justify-end gap-1.5">
                               {!isBF && isTankedMaterial && entry.tankNumber != null && displayOut > 0 && (
-                                <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-bold rounded border ${entry.tankNumber === 1 ? 'bg-white dark:bg-transparent border-current text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-transparent border-current text-purple-600 dark:text-purple-400'}`}>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-sm font-bold rounded border ${entry.tankNumber === 1 ? 'bg-white dark:bg-transparent border-current text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-transparent border-current text-purple-600 dark:text-purple-400'}`}>
                                   T{entry.tankNumber}
                                 </span>
                               )}
@@ -2133,13 +2133,13 @@ export default function PlantStock() {
                               {Math.abs(displayBalance) < 1e-9 ? '0.000' : displayBalance.toFixed(3)} {balanceUom}
                             </span>
                             {!isBF && isTankedMaterial && ((entry.t1BalanceAfter ?? 0) !== 0 || (entry.t2BalanceAfter ?? 0) !== 0) && (
-                              <div className="flex items-center justify-end gap-2 mt-0.5 text-xs font-normal">
+                              <div className="flex items-center justify-end gap-2 mt-0.5 text-sm font-normal">
                                 <span className="text-blue-600 dark:text-blue-400">T1: {(entry.t1BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
                                 <span className="text-purple-600 dark:text-purple-400">T2: {(entry.t2BalanceAfter ?? 0).toFixed(3)} {balanceUom}</span>
                               </div>
                             )}
                             {displayBalance < -1e-9 && !isBF && !isTankedMaterial && (
-                              <span className="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
+                              <span className="ml-1 px-1.5 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Recon.</span>
                             )}
                           </td>
                           {selectedPartyId === "all" && (() => {
@@ -2152,17 +2152,17 @@ export default function PlantStock() {
                             return (
                               <td className={`p-3 text-right text-sm ${isPartyNeg ? 'text-red-500 dark:text-red-400' : 'text-muted-foreground'}`}>
                                 {isBF ? (
-                                  <span className="text-xs italic">combined</span>
+                                  <span className="text-sm italic">combined</span>
                                 ) : (
                                   <>
                                     {rowPartyAbbr && (
-                                      <span className="mr-1 px-1 py-0.5 text-xs rounded bg-muted text-muted-foreground font-mono" title={rowPartyName}>{rowPartyAbbr}</span>
+                                      <span className="mr-1 px-1 py-0.5 text-sm rounded bg-muted text-muted-foreground font-mono" title={rowPartyName}>{rowPartyAbbr}</span>
                                     )}
                                     <span className={isPartyNeg ? 'font-semibold' : ''}>
                                       {Math.abs(pb) < 1e-9 ? '0.000' : pb.toFixed(3)}
                                     </span>
                                     {isPartyNeg && (
-                                      <span className="ml-1 px-1 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/40 font-medium">borrowed</span>
+                                      <span className="ml-1 px-1 py-0.5 text-sm rounded bg-red-100 dark:bg-red-900/40 font-medium">borrowed</span>
                                     )}
                                   </>
                                 )}
@@ -2399,21 +2399,21 @@ export default function PlantStock() {
                     {/* Summary cards */}
                     <div className="grid grid-cols-3 gap-3 mb-5">
                       <div className="rounded-lg border p-3 text-center border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-                        <p className="text-xs text-muted-foreground mb-1">Party Stmt Borrowed</p>
+                        <p className="text-sm text-muted-foreground mb-1">Party Stmt Borrowed</p>
                         <p className="text-lg font-bold text-red-700 dark:text-red-300">{totals.partyStatementBorrowed.toFixed(3)}</p>
-                        <p className="text-xs text-muted-foreground">{uom}</p>
+                        <p className="text-sm text-muted-foreground">{uom}</p>
                       </div>
                       <div className="rounded-lg border p-3 text-center border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20">
-                        <p className="text-xs text-muted-foreground mb-1">HLC Ledger Dispatched</p>
+                        <p className="text-sm text-muted-foreground mb-1">HLC Ledger Dispatched</p>
                         <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">{totals.hlcLedgerDispatched.toFixed(3)}</p>
-                        <p className="text-xs text-muted-foreground">{uom}</p>
+                        <p className="text-sm text-muted-foreground">{uom}</p>
                       </div>
                       <div className={`rounded-lg border p-3 text-center ${Math.abs(totals.delta) > 0.001 ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20' : 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20'}`}>
-                        <p className="text-xs text-muted-foreground mb-1">Net Delta</p>
+                        <p className="text-sm text-muted-foreground mb-1">Net Delta</p>
                         <p className={`text-lg font-bold ${Math.abs(totals.delta) > 0.001 ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'}`}>
                           {(totals.delta >= 0 ? '+' : '')}{totals.delta.toFixed(3)}
                         </p>
-                        <p className="text-xs text-muted-foreground">{uom}</p>
+                        <p className="text-sm text-muted-foreground">{uom}</p>
                       </div>
                     </div>
 
@@ -2455,20 +2455,20 @@ export default function PlantStock() {
                                   {r.partyStatementBorrowed.toFixed(3)}
                                 </td>
                                 <td className="p-3 text-right text-indigo-600 dark:text-indigo-400 font-medium">
-                                  {r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : <span className="text-muted-foreground italic text-xs">unlinked</span>}
+                                  {r.hlcLedgerDispatched != null ? r.hlcLedgerDispatched.toFixed(3) : <span className="text-muted-foreground italic text-sm">unlinked</span>}
                                 </td>
                                 <td className={`p-3 text-right font-medium ${r.isLegacy ? 'text-muted-foreground' : isMismatch ? (deltaPositive ? 'text-amber-700 dark:text-amber-300' : 'text-red-600 dark:text-red-400') : 'text-green-600 dark:text-green-400'}`}>
-                                  {r.isLegacy ? <span className="italic text-xs">N/A</span> : (isMismatch ? <strong>{deltaStr}</strong> : deltaStr)}
+                                  {r.isLegacy ? <span className="italic text-sm">N/A</span> : (isMismatch ? <strong>{deltaStr}</strong> : deltaStr)}
                                 </td>
                                 <td className="p-3">
                                   {r.isLegacy ? (
-                                    <span className="px-2 py-0.5 text-xs rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Legacy — verify manually</span>
+                                    <span className="px-2 py-0.5 text-sm rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Legacy — verify manually</span>
                                   ) : isMismatch ? (
-                                    <span className="px-2 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                    <span className="px-2 py-0.5 text-sm rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
                                       {deltaPositive ? 'Party owes more' : 'HLC over-charges'}
                                     </span>
                                   ) : (
-                                    <span className="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Match</span>
+                                    <span className="px-2 py-0.5 text-sm rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">Match</span>
                                   )}
                                 </td>
                               </tr>
@@ -2492,7 +2492,7 @@ export default function PlantStock() {
                       </table>
                     </div>
 
-                    <p className="text-xs text-muted-foreground mt-3">
+                    <p className="text-sm text-muted-foreground mt-3">
                       * Delta = Party Statement Borrowed − HLC Ledger Dispatched (reconcilable rows only). <strong>Positive</strong> = party owes more than HLC's ledger shows; <strong>Negative</strong> = HLC ledger over-charges the party. Totals exclude legacy/unlinked rows. Any non-zero delta should be investigated and corrected via a stock correction.
                     </p>
                   </div>
@@ -2754,9 +2754,9 @@ export default function PlantStock() {
                         { label: 'Still Outstanding', value: summary.outstanding, color: isSettled ? 'border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/30' : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20', textColor: isSettled ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300' },
                       ].map(card => (
                         <div key={card.label} className={`rounded-lg border p-3 text-center ${card.color}`}>
-                          <p className="text-xs text-muted-foreground mb-1">{card.label}</p>
+                          <p className="text-sm text-muted-foreground mb-1">{card.label}</p>
                           <p className={`text-lg font-bold ${card.textColor}`}>{card.value.toFixed(3)}</p>
-                          <p className="text-xs text-muted-foreground">{uom}</p>
+                          <p className="text-sm text-muted-foreground">{uom}</p>
                         </div>
                       ))}
                     </div>
@@ -2795,7 +2795,7 @@ export default function PlantStock() {
                             <tr key={e.id} className={`border-b hover:bg-muted/30 ${hasBorrow ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
                               <td className="p-3 whitespace-nowrap">{e.date}</td>
                               <td className="p-3">
-                                <span className={`px-2 py-0.5 text-xs rounded ${typeBadgeClass(e.displayType)}`}>
+                                <span className={`px-2 py-0.5 text-sm rounded ${typeBadgeClass(e.displayType)}`}>
                                   {typeLabel(e.displayType)}
                                 </span>
                               </td>
@@ -2839,11 +2839,11 @@ export default function PlantStock() {
                     </div>
 
                     {/* Footnote */}
-                    <p className="text-xs text-muted-foreground mt-3">
+                    <p className="text-sm text-muted-foreground mt-3">
                       * Template Qty = material consumption per dispatch as per mix template{hasAdjustments ? ", adjusted for moisture content and wastage factor" : ""}. From Own Stock = supplied from party's own inventory. Borrowed from HLC = balance covered by HLC. Outstanding = total borrowed − replenished to HLC.
                     </p>
                     {hasAdjustments && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
                         ⚠ Moisture content and/or wastage factor is set for this material in the mix template. Template Qty figures include the upward adjustment — the party must supply more wet material than the base mix design quantity to account for water and handling losses.
                       </p>
                     )}

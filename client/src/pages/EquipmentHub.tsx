@@ -15,11 +15,11 @@ function KpiCard({ label, value, sub, warn }: {
 }) {
   return (
     <div className={`bg-white rounded-xl border p-5 shadow-sm ${warn ? "border-amber-200" : "border-slate-200"}`}>
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
       <p className={`text-3xl font-bold tracking-tight ${warn ? "text-amber-700" : "text-slate-800"}`}>
         {value !== undefined ? value : <span className="text-slate-300">—</span>}
       </p>
-      {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+      {sub && <p className="text-sm text-slate-400 mt-1">{sub}</p>}
     </div>
   );
 }

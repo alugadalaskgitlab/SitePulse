@@ -157,7 +157,7 @@ export default function PlantProjectReport() {
         <CardContent className="p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             <div>
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
+              <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
                 From
               </Label>
               <Input
@@ -168,7 +168,7 @@ export default function PlantProjectReport() {
               />
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
+              <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
                 To
               </Label>
               <Input
@@ -180,12 +180,12 @@ export default function PlantProjectReport() {
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
+              <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
                 Plants {selectedPlants.length > 0 && `(${selectedPlants.length} selected)`}
               </Label>
               <div className="border rounded-md p-2 max-h-32 overflow-y-auto space-y-1 bg-white dark:bg-slate-900">
                 {availablePlants.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-1">All plants</p>
+                  <p className="text-sm text-muted-foreground py-1">All plants</p>
                 ) : (
                   availablePlants.map((name) => (
                     <label key={name} className="flex items-center gap-2 cursor-pointer text-sm py-0.5">
@@ -204,7 +204,7 @@ export default function PlantProjectReport() {
               {selectedPlants.length > 0 && (
                 <button
                   onClick={() => setSelectedPlants([])}
-                  className="text-xs text-blue-600 dark:text-blue-400 mt-1 hover:underline"
+                  className="text-sm text-blue-600 dark:text-blue-400 mt-1 hover:underline"
                 >
                   Clear
                 </button>
@@ -212,12 +212,12 @@ export default function PlantProjectReport() {
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
+              <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1.5 block">
                 Party / Project {selectedParties.length > 0 && `(${selectedParties.length} selected)`}
               </Label>
               <div className="border rounded-md p-2 max-h-32 overflow-y-auto space-y-1 bg-white dark:bg-slate-900">
                 {parties.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-1">All parties</p>
+                  <p className="text-sm text-muted-foreground py-1">All parties</p>
                 ) : (
                   parties.map((p) => (
                     <label key={p.id} className="flex items-center gap-2 cursor-pointer text-sm py-0.5">
@@ -236,7 +236,7 @@ export default function PlantProjectReport() {
               {selectedParties.length > 0 && (
                 <button
                   onClick={() => setSelectedParties([])}
-                  className="text-xs text-blue-600 dark:text-blue-400 mt-1 hover:underline"
+                  className="text-sm text-blue-600 dark:text-blue-400 mt-1 hover:underline"
                 >
                   Clear
                 </button>
@@ -301,16 +301,16 @@ export default function PlantProjectReport() {
                   <table className="w-full text-sm" data-testid={`table-plant-${plantName}`}>
                     <thead>
                       <tr className="bg-white dark:bg-slate-900/60">
-                        <th className="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                        <th className="text-left px-4 py-2 font-semibold text-slate-500 text-sm uppercase tracking-wide">
                           Party / Project
                         </th>
-                        <th className="text-right px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide w-24">
+                        <th className="text-right px-4 py-2 font-semibold text-slate-500 text-sm uppercase tracking-wide w-24">
                           Loads
                         </th>
-                        <th className="text-right px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide w-28">
+                        <th className="text-right px-4 py-2 font-semibold text-slate-500 text-sm uppercase tracking-wide w-28">
                           Total MT
                         </th>
-                        <th className="text-left px-4 py-2 font-semibold text-slate-500 text-xs uppercase tracking-wide hidden sm:table-cell">
+                        <th className="text-left px-4 py-2 font-semibold text-slate-500 text-sm uppercase tracking-wide hidden sm:table-cell">
                           Mix Types
                         </th>
                       </tr>
@@ -337,7 +337,7 @@ export default function PlantProjectReport() {
                           <td className="px-4 py-2.5 hidden sm:table-cell">
                             <div className="flex flex-wrap gap-1">
                               {(row.mixTypes ?? []).map((mt) => (
-                                <Badge key={mt} variant="secondary" className="text-xs py-0 px-1.5">
+                                <Badge key={mt} variant="secondary" className="text-sm py-0 px-1.5">
                                   {mt}
                                 </Badge>
                               ))}
@@ -346,7 +346,7 @@ export default function PlantProjectReport() {
                         </tr>
                       ))}
                       <tr className="border-t bg-slate-100/70 dark:bg-slate-800/50">
-                        <td className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        <td className="px-4 py-2 text-sm font-semibold text-slate-500 uppercase tracking-wide">
                           Subtotal
                         </td>
                         <td className="px-4 py-2 text-right text-sm font-semibold text-slate-700 dark:text-slate-300 tabular-nums">

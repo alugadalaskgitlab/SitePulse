@@ -46,18 +46,18 @@ const ACTION_LABEL: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "pending_stores")
-    return <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-xs">Pending Stores Check</Badge>;
+    return <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-sm">Pending Stores Check</Badge>;
   if (status === "stores_verified")
-    return <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs">Awaiting Approval</Badge>;
+    return <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-sm">Awaiting Approval</Badge>;
   if (status === "approved")
-    return <Badge className="bg-green-50 text-green-700 border border-green-200 text-xs gap-1"><ShieldCheck className="h-3 w-3" />Approved</Badge>;
+    return <Badge className="bg-green-50 text-green-700 border border-green-200 text-sm gap-1"><ShieldCheck className="h-3 w-3" />Approved</Badge>;
   if (status === "issued")
-    return <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs gap-1"><PackageCheck className="h-3 w-3" />Issued</Badge>;
+    return <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-sm gap-1"><PackageCheck className="h-3 w-3" />Issued</Badge>;
   if (status === "partially_issued")
-    return <Badge className="bg-orange-50 text-orange-700 border border-orange-300 text-xs gap-1"><PackageCheck className="h-3 w-3" />Partial Issue</Badge>;
+    return <Badge className="bg-orange-50 text-orange-700 border border-orange-300 text-sm gap-1"><PackageCheck className="h-3 w-3" />Partial Issue</Badge>;
   if (status === "rejected")
-    return <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs gap-1"><XCircle className="h-3 w-3" />Rejected</Badge>;
-  return <Badge className="bg-gray-100 text-gray-600 border border-gray-200 text-xs">Closed</Badge>;
+    return <Badge className="bg-red-50 text-red-700 border border-red-200 text-sm gap-1"><XCircle className="h-3 w-3" />Rejected</Badge>;
+  return <Badge className="bg-gray-100 text-gray-600 border border-gray-200 text-sm">Closed</Badge>;
 }
 
 function initVerifications(items: InternalRequisitionItem[]): ItemVerification[] {
@@ -570,7 +570,7 @@ export default function IrnDetailPage() {
       {!deleteConfirm && (
         <button
           onClick={() => navigate(`/irn/raise?editId=${id}&returnTo=/irn/${id}`)}
-          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white"
+          className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white"
           data-testid="button-edit-irn"
         >
           <Pencil className="h-3 w-3" /> Edit
@@ -579,13 +579,13 @@ export default function IrnDetailPage() {
       {!deleteConfirm ? (
         <button
           onClick={() => setDeleteConfirm(true)}
-          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1 bg-white"
+          className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1 bg-white"
           data-testid="button-delete-irn"
         >
           <Trash2 className="h-3 w-3" /> Delete
         </button>
       ) : (
-        <div className="flex items-center gap-2 text-xs bg-red-50 border border-red-200 rounded px-3 py-1.5">
+        <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 rounded px-3 py-1.5">
           <span className="text-red-700 font-medium">Delete this IRN?</span>
           <button
             onClick={() => deleteMutation.mutate()}
@@ -624,13 +624,13 @@ export default function IrnDetailPage() {
           {/* Meta */}
           <div className="bg-white border rounded-lg p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
-              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-gray-400" /><div><p className="text-sm text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div></div>
+              <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-gray-400" /><div><p className="text-sm text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div></div>
+              <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" /><div><p className="text-sm text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div></div>
               {getSiteName(irn.siteId) && (
                 <div className="flex items-center gap-2 col-span-3 pt-1 border-t mt-1">
                   <MapPin className="h-4 w-4 text-gray-400" />
-                  <div><p className="text-xs text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
+                  <div><p className="text-sm text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
                 </div>
               )}
             </div>
@@ -655,7 +655,7 @@ export default function IrnDetailPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-400">#{idx + 1}</span>
                         <span className="font-semibold text-gray-800">{item.material}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
+                        <span className={`text-sm px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
                       </div>
                       <div className="flex items-center gap-3 text-sm">
                         {item.issueQty && item.issueQty > 0 ? (
@@ -673,11 +673,11 @@ export default function IrnDetailPage() {
                     </div>
                     {stock && (
                       <div className="mt-1 ml-6 space-y-0.5">
-                        <span className={`text-xs px-2 py-0.5 rounded border ${stock.balance >= item.qty ? "bg-teal-50 text-teal-700 border-teal-200" : stock.balance > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                        <span className={`text-sm px-2 py-0.5 rounded border ${stock.balance >= item.qty ? "bg-teal-50 text-teal-700 border-teal-200" : stock.balance > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200"}`}>
                           Available: {stock.balance.toFixed(3)} {stock.uom}{stock.approx ? " (approx)" : ""}
                         </span>
                         {stock.sourceParts.length > 0 && (
-                          <p className="text-[10px] text-gray-400 ml-1">
+                          <p className="text-[12px] text-gray-400 ml-1">
                             Source: {stock.sourceParts.join(" + ")}
                           </p>
                         )}
@@ -688,19 +688,19 @@ export default function IrnDetailPage() {
               })}
             </div>
             {displayIssue > 0 && (
-              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded p-2 text-xs text-green-700 mt-3">
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded p-2 text-sm text-green-700 mt-3">
                 <PackageCheck className="h-3.5 w-3.5 shrink-0" />
                 <span><strong>{displayIssue} item{displayIssue !== 1 ? "s" : ""}</strong> to issue from store</span>
               </div>
             )}
             {displayProcure > 0 && (
-              <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded p-2 text-xs text-purple-700 mt-2">
+              <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded p-2 text-sm text-purple-700 mt-2">
                 <ListTodo className="h-3.5 w-3.5 shrink-0" />
                 <span><strong>{displayProcure} item{displayProcure !== 1 ? "s" : ""}</strong> to add to Procurement Queue</span>
               </div>
             )}
             {irn.storesRemarks && (
-              <p className="text-xs text-gray-500 italic mt-2">Stores note: "{irn.storesRemarks}"</p>
+              <p className="text-sm text-gray-500 italic mt-2">Stores note: "{irn.storesRemarks}"</p>
             )}
           </div>
 
@@ -711,11 +711,11 @@ export default function IrnDetailPage() {
                 <ShieldCheck className="h-4 w-4 text-blue-600" />
                 <h3 className="text-sm font-semibold text-blue-800">Manager Approval</h3>
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-500">
                 Review the stores decision above and approve or reject this requisition.
               </p>
               <div className="space-y-1">
-                <Label className="text-xs font-medium text-gray-700">Remarks (optional)</Label>
+                <Label className="text-sm font-medium text-gray-700">Remarks (optional)</Label>
                 <Textarea
                   value={approvalRemarks}
                   onChange={(e) => setApprovalRemarks(e.target.value)}
@@ -747,7 +747,7 @@ export default function IrnDetailPage() {
 
           {/* Non-approver waiting banner */}
           {!canApprove && irn.status === "stores_verified" && (
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-700">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>Stores verification is complete. Awaiting manager approval before items can be issued.</span>
             </div>
@@ -760,7 +760,7 @@ export default function IrnDetailPage() {
                 <Archive className="h-4 w-4 text-gray-500" />
                 <h3 className="text-sm font-semibold text-gray-700">Mark as Fulfilled</h3>
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-500">
                 If all items have been issued or actioned and no further steps are needed, you can close this requisition.
               </p>
               <div className="flex justify-end">
@@ -821,24 +821,24 @@ export default function IrnDetailPage() {
               <div className="flex items-start gap-2">
                 <User className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs text-gray-500">Raised by</p>
+                  <p className="text-sm text-gray-500">Raised by</p>
                   <p className="font-semibold text-gray-800">{irn.raisedBy}</p>
                   {irn.createdAt && (
-                    <p className="text-xs text-gray-400">{format(new Date(irn.createdAt), "dd MMM yyyy, h:mm a")}</p>
+                    <p className="text-sm text-gray-400">{format(new Date(irn.createdAt), "dd MMM yyyy, h:mm a")}</p>
                   )}
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <FileText className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs text-gray-500">Section</p>
+                  <p className="text-sm text-gray-500">Section</p>
                   <p className="font-semibold text-gray-800">{irn.raisedFrom}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <Calendar className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs text-gray-500">Date</p>
+                  <p className="text-sm text-gray-500">Date</p>
                   <p className="font-semibold text-gray-800">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p>
                 </div>
               </div>
@@ -846,14 +846,14 @@ export default function IrnDetailPage() {
                 <div className="flex items-start gap-2 col-span-3 pt-2 mt-1 border-t">
                   <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-xs text-gray-500">Site / Location</p>
+                    <p className="text-sm text-gray-500">Site / Location</p>
                     <p className="font-semibold text-gray-800">{getSiteName(irn.siteId)}</p>
                   </div>
                 </div>
               )}
             </div>
             {irn.remarks && (
-              <p className="text-xs text-gray-500 italic mt-3 pt-3 border-t">Remarks: "{irn.remarks}"</p>
+              <p className="text-sm text-gray-500 italic mt-3 pt-3 border-t">Remarks: "{irn.remarks}"</p>
             )}
           </div>
 
@@ -868,17 +868,17 @@ export default function IrnDetailPage() {
                   {/* Item header row */}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-400 font-mono">#{idx + 1}</span>
+                      <span className="text-sm text-gray-400 font-mono">#{idx + 1}</span>
                       <span className="font-semibold text-gray-900">{item.material}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
+                      <span className={`text-sm px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>{item.urgency}</span>
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="text-xs text-gray-500">Requested</span>
-                      <p className="font-bold text-gray-800 text-sm">{item.qty} <span className="font-normal text-gray-500 text-xs">{item.uom}</span></p>
+                      <span className="text-sm text-gray-500">Requested</span>
+                      <p className="font-bold text-gray-800 text-sm">{item.qty} <span className="font-normal text-gray-500 text-sm">{item.uom}</span></p>
                     </div>
                   </div>
                   {/* Purpose + need by */}
-                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
                     {item.purpose && (
                       <div><span className="text-gray-400">Purpose: </span>{item.purpose}</div>
                     )}
@@ -896,18 +896,18 @@ export default function IrnDetailPage() {
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <Warehouse className="h-3 w-3 text-gray-400 shrink-0" />
-                              <span className="text-xs text-gray-500">Stores verified available:</span>
-                              <span className={`text-xs font-semibold ${live.balance >= item.qty ? "text-green-700" : live.balance > 0 ? "text-amber-700" : "text-red-600"}`}>
+                              <span className="text-sm text-gray-500">Stores verified available:</span>
+                              <span className={`text-sm font-semibold ${live.balance >= item.qty ? "text-green-700" : live.balance > 0 ? "text-amber-700" : "text-red-600"}`}>
                                 {live.balance > 0 ? live.balance.toFixed(3) : "0"} {live.uom}
                               </span>
                               {live.hasConversionError && (
-                                <span className="text-[10px] text-orange-600 flex items-center gap-0.5">
+                                <span className="text-[12px] text-orange-600 flex items-center gap-0.5">
                                   <AlertCircle className="h-2.5 w-2.5" /> partial conversion
                                 </span>
                               )}
                             </div>
                             {live.sourceParts.length > 0 && (
-                              <p className="text-[10px] text-gray-400 ml-4.5">
+                              <p className="text-[12px] text-gray-400 ml-4.5">
                                 Source: {live.sourceParts.join(" + ")}
                               </p>
                             )}
@@ -916,18 +916,18 @@ export default function IrnDetailPage() {
                         {/* Issue / Procure decision badges */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {(item.issueQty ?? 0) > 0 && (
-                            <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
+                            <span className="text-sm px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
                               Issue {item.issueQty} {item.uom}
                             </span>
                           )}
                           {(item.procureQty ?? 0) > 0 && (
-                            <span className="text-xs px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
+                            <span className="text-sm px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
                               Procure {item.procureQty} {item.uom}
                             </span>
                           )}
-                          <span className="text-xs text-gray-500 italic">{ACTION_LABEL[item.storesAction] ?? item.storesAction}</span>
+                          <span className="text-sm text-gray-500 italic">{ACTION_LABEL[item.storesAction] ?? item.storesAction}</span>
                           {item.storesNotes && (
-                            <span className="text-xs text-blue-600">Note: {item.storesNotes}</span>
+                            <span className="text-sm text-blue-600">Note: {item.storesNotes}</span>
                           )}
                         </div>
                       </div>
@@ -935,7 +935,7 @@ export default function IrnDetailPage() {
                   })()}
                   {/* Final status */}
                   <div className="mt-2 text-right">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                    <span className={`text-sm font-medium px-2 py-0.5 rounded-full border ${
                       item.itemStatus === "issued" ? "bg-green-50 text-green-700 border-green-200" :
                       item.itemStatus === "queued_procurement" ? "bg-purple-50 text-purple-700 border-purple-200" :
                       item.itemStatus === "partially_issued" ? "bg-amber-50 text-amber-700 border-amber-200" :
@@ -955,13 +955,13 @@ export default function IrnDetailPage() {
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                 <h3 className="text-sm font-semibold text-gray-700">Stores Verification</h3>
-                <span className="ml-auto text-xs text-gray-500">
+                <span className="ml-auto text-sm text-gray-500">
                   {irn.storesVerifiedBy}
                   {irn.storesVerifiedAt ? ` · ${format(new Date(irn.storesVerifiedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
               </div>
               {irn.storesRemarks && (
-                <p className="text-xs text-gray-500 italic ml-6">"{irn.storesRemarks}"</p>
+                <p className="text-sm text-gray-500 italic ml-6">"{irn.storesRemarks}"</p>
               )}
             </div>
           )}
@@ -972,13 +972,13 @@ export default function IrnDetailPage() {
               <div className="flex items-center gap-2 mb-1">
                 <ShieldCheck className="h-4 w-4 text-green-600 shrink-0" />
                 <h3 className="text-sm font-semibold text-green-800">Approved</h3>
-                <span className="ml-auto text-xs text-gray-500">
+                <span className="ml-auto text-sm text-gray-500">
                   {irn.approvedBy}
                   {irn.approvedAt ? ` · ${format(new Date(irn.approvedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
               </div>
               {irn.approvalRemarks && (
-                <p className="text-xs text-gray-500 italic ml-6">"{irn.approvalRemarks}"</p>
+                <p className="text-sm text-gray-500 italic ml-6">"{irn.approvalRemarks}"</p>
               )}
             </div>
           ) : isRejected ? (
@@ -986,13 +986,13 @@ export default function IrnDetailPage() {
               <div className="flex items-center gap-2 mb-1">
                 <XCircle className="h-4 w-4 text-red-600 shrink-0" />
                 <h3 className="text-sm font-semibold text-red-800">Rejected</h3>
-                <span className="ml-auto text-xs text-gray-500">
+                <span className="ml-auto text-sm text-gray-500">
                   {irn.rejectedBy}
                   {irn.rejectedAt ? ` · ${format(new Date(irn.rejectedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
               </div>
               {irn.rejectionReason && (
-                <p className="text-xs text-red-600 italic ml-6">"{irn.rejectionReason}"</p>
+                <p className="text-sm text-red-600 italic ml-6">"{irn.rejectionReason}"</p>
               )}
             </div>
           ) : null}
@@ -1013,7 +1013,7 @@ export default function IrnDetailPage() {
                 ))}
               </div>
               {linkedPi ? (
-                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded p-2.5 text-xs text-indigo-700">
+                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded p-2.5 text-sm text-indigo-700">
                   <ShoppingCart className="h-3.5 w-3.5 shrink-0" />
                   <span>
                     PI <strong>{linkedPi.indentNo}</strong> raised by {linkedPi.raisedBy}
@@ -1061,14 +1061,14 @@ export default function IrnDetailPage() {
                     <PackageCheck className="h-4 w-4 text-green-600" />
                     <span className="text-sm font-semibold text-gray-800">Issue Voucher Status</span>
                     {voucherCount > 0 && (
-                      <span className="ml-auto text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-medium">
+                      <span className="ml-auto text-sm bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-medium">
                         {voucherCount} voucher{voucherCount > 1 ? "s" : ""} raised
                       </span>
                     )}
                   </div>
                   <div className="space-y-1.5">
                     {itemSummary.map(({ item, totalIssued, approvedQty, balance }) => (
-                      <div key={item.id} className="flex justify-between items-center text-xs border-t pt-1.5 text-gray-700">
+                      <div key={item.id} className="flex justify-between items-center text-sm border-t pt-1.5 text-gray-700">
                         <span className="font-medium text-gray-800">{item.material}</span>
                         <span className="flex gap-4">
                           <span className="text-gray-500">Approved: <strong className="text-gray-700">{approvedQty} {item.uom}</strong></span>
@@ -1102,21 +1102,21 @@ export default function IrnDetailPage() {
                           <div key={v.id} className="p-4 space-y-2" data-testid={`card-voucher-${v.id}`}>
                             <div className="flex items-center justify-between flex-wrap gap-2">
                               <div className="flex items-center gap-2">
-                                <span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200" data-testid={`text-voucher-no-${v.id}`}>
+                                <span className="font-mono text-sm font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200" data-testid={`text-voucher-no-${v.id}`}>
                                   {v.issueNumber}
                                 </span>
-                                <span className="text-xs text-gray-500">{v.date}</span>
+                                <span className="text-sm text-gray-500">{v.date}</span>
                               </div>
                               <Button
                                 variant="outline" size="sm"
                                 onClick={() => window.open(`/api/irn/${irn.id}/issue-voucher?voucherId=${v.id}`, "_blank")}
-                                className="gap-1.5 text-xs h-7 border-gray-300"
+                                className="gap-1.5 text-sm h-7 border-gray-300"
                                 data-testid={`button-print-voucher-${v.id}`}
                               >
                                 <Printer className="h-3 w-3" /> Print
                               </Button>
                             </div>
-                            <div className="text-xs text-gray-600 flex flex-wrap gap-3">
+                            <div className="text-sm text-gray-600 flex flex-wrap gap-3">
                               {v.issuedBy && <span>Issued by: <strong className="text-gray-800">{v.issuedBy}</strong></span>}
                               {v.receivedBy && <span>Received by: <strong className="text-gray-800">{v.receivedBy}</strong></span>}
                               {v.receiverDesignation && <span>Desig: <strong className="text-gray-800">{v.receiverDesignation}</strong></span>}
@@ -1125,7 +1125,7 @@ export default function IrnDetailPage() {
                             </div>
                             <div className="space-y-0.5">
                               {v.items.map(vi => (
-                                <div key={vi.id} className="flex justify-between text-xs text-gray-700">
+                                <div key={vi.id} className="flex justify-between text-sm text-gray-700">
                                   <span>{vi.materialText ?? vi.itemName ?? "—"}</span>
                                   <span className="font-semibold">{vi.qty} {vi.uom}</span>
                                 </div>
@@ -1176,7 +1176,7 @@ export default function IrnDetailPage() {
                           <PackageCheck className="h-4 w-4" /> {voucherCount === 0 ? "Record Issue" : "Record Next Issue"}
                         </Button>
                       ) : (
-                        <Button variant="ghost" size="sm" onClick={() => setShowIssueForm(false)} className="text-xs text-gray-500">
+                        <Button variant="ghost" size="sm" onClick={() => setShowIssueForm(false)} className="text-sm text-gray-500">
                           Cancel
                         </Button>
                       )}
@@ -1187,22 +1187,22 @@ export default function IrnDetailPage() {
                         {/* Header fields */}
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label className="text-xs text-gray-600">Issue Date *</Label>
+                            <Label className="text-sm text-gray-600">Issue Date *</Label>
                             <Input type="date" value={ivDate} onChange={e => setIvDate(e.target.value)}
                               className="h-8 text-sm mt-1" data-testid="input-iv-date" />
                           </div>
                           <div>
-                            <Label className="text-xs text-gray-600">Issued By *</Label>
+                            <Label className="text-sm text-gray-600">Issued By *</Label>
                             <Input value={ivIssuedBy} onChange={e => setIvIssuedBy(e.target.value)}
                               placeholder="Name of person issuing" className="h-8 text-sm mt-1" data-testid="input-iv-issued-by" />
                           </div>
                           <div>
-                            <Label className="text-xs text-gray-600">Received By *</Label>
+                            <Label className="text-sm text-gray-600">Received By *</Label>
                             <Input value={ivReceivedBy} onChange={e => setIvReceivedBy(e.target.value)}
                               placeholder="Name of recipient" className="h-8 text-sm mt-1" data-testid="input-iv-received-by" />
                           </div>
                           <div>
-                            <Label className="text-xs text-gray-600">Receiver Designation</Label>
+                            <Label className="text-sm text-gray-600">Receiver Designation</Label>
                             <Input value={ivReceiverDesig} onChange={e => setIvReceiverDesig(e.target.value)}
                               placeholder="e.g. Site Engineer" className="h-8 text-sm mt-1" data-testid="input-iv-receiver-desig" />
                           </div>
@@ -1210,13 +1210,13 @@ export default function IrnDetailPage() {
 
                         {/* Delivery mode */}
                         <div>
-                          <Label className="text-xs text-gray-600 mb-1 block">Delivery Mode *</Label>
+                          <Label className="text-sm text-gray-600 mb-1 block">Delivery Mode *</Label>
                           <div className="flex gap-2">
                             <Button
                               variant={ivDeliveryMode === "vehicle" ? "default" : "outline"}
                               size="sm"
                               onClick={() => setIvDeliveryMode("vehicle")}
-                              className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "vehicle" ? "bg-amber-700 hover:bg-amber-800" : ""}`}
+                              className={`gap-1.5 text-sm h-8 ${ivDeliveryMode === "vehicle" ? "bg-amber-700 hover:bg-amber-800" : ""}`}
                               data-testid="button-iv-mode-vehicle"
                             >
                               <Truck className="h-3.5 w-3.5" /> Vehicle
@@ -1225,7 +1225,7 @@ export default function IrnDetailPage() {
                               variant={ivDeliveryMode === "hand_carried" ? "default" : "outline"}
                               size="sm"
                               onClick={() => setIvDeliveryMode("hand_carried")}
-                              className={`gap-1.5 text-xs h-8 ${ivDeliveryMode === "hand_carried" ? "bg-blue-700 hover:bg-blue-800" : ""}`}
+                              className={`gap-1.5 text-sm h-8 ${ivDeliveryMode === "hand_carried" ? "bg-blue-700 hover:bg-blue-800" : ""}`}
                               data-testid="button-iv-mode-hand"
                             >
                               Hand-carried
@@ -1236,7 +1236,7 @@ export default function IrnDetailPage() {
                         {ivDeliveryMode === "vehicle" && (
                           <div className="grid grid-cols-3 gap-3 bg-amber-50 border border-amber-200 rounded p-3">
                             <div>
-                              <Label className="text-xs text-gray-600">Vehicle Type *</Label>
+                              <Label className="text-sm text-gray-600">Vehicle Type *</Label>
                               <Select value={ivVehicleType} onValueChange={setIvVehicleType}>
                                 <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-iv-vehicle-type">
                                   <SelectValue placeholder="Select type" />
@@ -1249,12 +1249,12 @@ export default function IrnDetailPage() {
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-xs text-gray-600">Vehicle No. *</Label>
+                              <Label className="text-sm text-gray-600">Vehicle No. *</Label>
                               <Input value={ivVehicleNo} onChange={e => setIvVehicleNo(e.target.value)}
                                 placeholder="e.g. TN 01 AA 1234" className="h-8 text-sm mt-1" data-testid="input-iv-vehicle-no" />
                             </div>
                             <div>
-                              <Label className="text-xs text-gray-600">Driver Name *</Label>
+                              <Label className="text-sm text-gray-600">Driver Name *</Label>
                               <Input value={ivDriverName} onChange={e => setIvDriverName(e.target.value)}
                                 placeholder="Driver name" className="h-8 text-sm mt-1" data-testid="input-iv-driver-name" />
                             </div>
@@ -1262,7 +1262,7 @@ export default function IrnDetailPage() {
                         )}
 
                         <div>
-                          <Label className="text-xs text-gray-600">Movement Remarks</Label>
+                          <Label className="text-sm text-gray-600">Movement Remarks</Label>
                           <Textarea value={ivRemarks} onChange={e => setIvRemarks(e.target.value)}
                             placeholder="Any remarks about the movement" rows={2}
                             className="text-sm mt-1 resize-none" data-testid="textarea-iv-remarks" />
@@ -1270,9 +1270,9 @@ export default function IrnDetailPage() {
 
                         {/* Items table — shows remaining qty as the cap */}
                         <div>
-                          <Label className="text-xs text-gray-700 font-semibold mb-2 block">Items to Issue (this voucher)</Label>
+                          <Label className="text-sm text-gray-700 font-semibold mb-2 block">Items to Issue (this voucher)</Label>
                           <div className="border rounded overflow-hidden bg-white">
-                            <table className="w-full text-xs">
+                            <table className="w-full text-sm">
                               <thead className="bg-gray-100 border-b">
                                 <tr>
                                   <th className="text-left p-2 font-semibold text-gray-600">Material</th>
@@ -1294,7 +1294,7 @@ export default function IrnDetailPage() {
                                       <td className="p-2 font-medium text-gray-800">
                                         {item.material}
                                         {isBulk && (
-                                          <span className="ml-1 text-[9px] bg-green-100 text-green-700 border border-green-200 px-1 py-0.5 rounded font-semibold">PLANT</span>
+                                          <span className="ml-1 text-xs bg-green-100 text-green-700 border border-green-200 px-1 py-0.5 rounded font-semibold">PLANT</span>
                                         )}
                                       </td>
                                       <td className="p-2 text-center text-gray-600">{maxQty.toFixed(2)} {item.uom}</td>
@@ -1311,13 +1311,13 @@ export default function IrnDetailPage() {
                                               const v = e.target.value;
                                               setIvItemQtys(prev => ({ ...prev, [item.id]: v }));
                                             }}
-                                            className={`h-7 w-24 text-center text-xs ${currentQty > maxQty + 0.001 ? "border-red-400 bg-red-50" : ""}`}
+                                            className={`h-7 w-24 text-center text-sm ${currentQty > maxQty + 0.001 ? "border-red-400 bg-red-50" : ""}`}
                                             data-testid={`input-iv-qty-${item.id}`}
                                           />
                                           <span className="text-gray-500">{item.uom}</span>
                                         </div>
                                         {currentQty > maxQty + 0.001 && (
-                                          <p className="text-red-600 text-[10px] text-center">Exceeds balance {maxQty.toFixed(2)}</p>
+                                          <p className="text-red-600 text-[12px] text-center">Exceeds balance {maxQty.toFixed(2)}</p>
                                         )}
                                       </td>
                                       <td className="p-2">
@@ -1328,7 +1328,7 @@ export default function IrnDetailPage() {
                                               onValueChange={v => setIvItemPartyIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
                                               disabled={maxQty < 0.001}
                                             >
-                                              <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-party-${item.id}`}>
+                                              <SelectTrigger className="h-7 text-sm" data-testid={`select-iv-party-${item.id}`}>
                                                 <SelectValue placeholder="Select party" />
                                               </SelectTrigger>
                                               <SelectContent>
@@ -1339,7 +1339,7 @@ export default function IrnDetailPage() {
                                               </SelectContent>
                                             </Select>
                                             {partyMatch == null && maxQty > 0.001 && (
-                                              <p className="text-amber-600 font-semibold text-[10px] mt-0.5">⚠ Select party for plant stock</p>
+                                              <p className="text-amber-600 font-semibold text-[12px] mt-0.5">⚠ Select party for plant stock</p>
                                             )}
                                           </>
                                         ) : (
@@ -1349,7 +1349,7 @@ export default function IrnDetailPage() {
                                               onValueChange={v => setIvItemStoreIds(prev => ({ ...prev, [item.id]: v === "__none__" ? null : parseInt(v) }))}
                                               disabled={maxQty < 0.001}
                                             >
-                                              <SelectTrigger className="h-7 text-xs" data-testid={`select-iv-store-item-${item.id}`}>
+                                              <SelectTrigger className="h-7 text-sm" data-testid={`select-iv-store-item-${item.id}`}>
                                                 <SelectValue placeholder="None (text only)" />
                                               </SelectTrigger>
                                               <SelectContent>
@@ -1360,7 +1360,7 @@ export default function IrnDetailPage() {
                                               </SelectContent>
                                             </Select>
                                             {storeMatch == null && maxQty > 0.001 && (
-                                              <p className="text-red-600 font-semibold text-[10px] mt-0.5">⚠ No stock deduction</p>
+                                              <p className="text-red-600 font-semibold text-[12px] mt-0.5">⚠ No stock deduction</p>
                                             )}
                                           </>
                                         )}
@@ -1375,7 +1375,7 @@ export default function IrnDetailPage() {
 
                         {/* Submit */}
                         {unlinkedActiveCount > 0 && (
-                          <div className="bg-amber-50 border border-amber-300 rounded p-3 text-xs text-amber-800 flex items-start gap-2">
+                          <div className="bg-amber-50 border border-amber-300 rounded p-3 text-sm text-amber-800 flex items-start gap-2">
                             <span className="text-amber-600 mt-0.5 shrink-0">⚠</span>
                             <span>
                               <strong>{unlinkedActiveCount} item{unlinkedActiveCount > 1 ? "s" : ""}</strong> {unlinkedActiveCount > 1 ? "have" : "has"} no stock link — select the party (PLANT items) or store item (spare/consumable items) above to enable stock deduction.
@@ -1410,7 +1410,7 @@ export default function IrnDetailPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Archive className="h-4 w-4 text-gray-500 shrink-0" />
                 <h3 className="text-sm font-semibold text-gray-700">Requisition Closed</h3>
-                <span className="ml-auto text-xs text-gray-500">
+                <span className="ml-auto text-sm text-gray-500">
                   {irn.closedBy}
                   {irn.closedAt ? ` · ${format(new Date(irn.closedAt), "dd MMM yyyy, h:mm a")}` : ""}
                 </span>
@@ -1452,12 +1452,12 @@ export default function IrnDetailPage() {
                     <li key={log.id} className="ml-4 pb-1" data-testid={`audit-log-entry-${log.id}`}>
                       <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-gray-300" />
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
-                        <span className="text-xs text-gray-500 font-medium">{log.actorName}</span>
-                        <span className="text-xs text-gray-400">&middot; {format(new Date(log.timestamp), "dd MMM yyyy, h:mm a")}</span>
+                        <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
+                        <span className="text-sm text-gray-500 font-medium">{log.actorName}</span>
+                        <span className="text-sm text-gray-400">&middot; {format(new Date(log.timestamp), "dd MMM yyyy, h:mm a")}</span>
                       </div>
                       {log.notes && (
-                        <p className="text-xs text-gray-500 mt-0.5 italic">"{log.notes}"</p>
+                        <p className="text-sm text-gray-500 mt-0.5 italic">"{log.notes}"</p>
                       )}
                     </li>
                   );
@@ -1520,27 +1520,27 @@ export default function IrnDetailPage() {
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="flex items-center gap-2 text-gray-600">
               <User className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div>
+              <div><p className="text-sm text-gray-500">Raised by</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedBy}</p></div>
             </div>
             <div className="flex items-center gap-2 text-gray-600">
               <FileText className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div>
+              <div><p className="text-sm text-gray-500">Section</p><p className="font-semibold text-gray-800 text-sm">{irn.raisedFrom}</p></div>
             </div>
             <div className="flex items-center gap-2 text-gray-600">
               <Calendar className="h-4 w-4 text-gray-400 shrink-0" />
-              <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div>
+              <div><p className="text-sm text-gray-500">Date</p><p className="font-semibold text-gray-800 text-sm">{irn.date ? format(new Date(irn.date), "dd MMM yyyy") : "—"}</p></div>
             </div>
             {getSiteName(irn.siteId) && (
               <div className="flex items-center gap-2 text-gray-600 col-span-3 pt-2 mt-1 border-t">
                 <MapPin className="h-4 w-4 text-gray-400 shrink-0" />
-                <div><p className="text-xs text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
+                <div><p className="text-sm text-gray-500">Site / Location</p><p className="font-semibold text-gray-800 text-sm">{getSiteName(irn.siteId)}</p></div>
               </div>
             )}
           </div>
           {irn.remarks && (
             <>
               <Separator className="my-3" />
-              <p className="text-xs text-gray-500"><span className="font-medium text-gray-700">Remarks:</span> {irn.remarks}</p>
+              <p className="text-sm text-gray-500"><span className="font-medium text-gray-700">Remarks:</span> {irn.remarks}</p>
             </>
           )}
         </div>
@@ -1548,7 +1548,7 @@ export default function IrnDetailPage() {
         {canVerify && irn.status === "pending_stores" && (
           <>
             {/* Instruction */}
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-700">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>
                 For each item: check physical stock, then choose an action.{" "}
@@ -1568,19 +1568,19 @@ export default function IrnDetailPage() {
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 font-medium">#{idx + 1}</span>
+                          <span className="text-sm text-gray-400 font-medium">#{idx + 1}</span>
                           <span className="font-semibold text-gray-800 text-sm">{item.material}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${URGENCY_COLOR[item.urgency]}`}>
+                          <span className={`text-sm px-1.5 py-0.5 rounded-full border font-medium ${URGENCY_COLOR[item.urgency]}`}>
                             {item.urgency === "urgent" ? "🔴 Urgent" : item.urgency === "high" ? "🟠 High" : "Normal"}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5 ml-7">{item.purpose}</p>
+                        <p className="text-sm text-gray-500 mt-0.5 ml-7">{item.purpose}</p>
                         {item.needByDate && (
-                          <p className="text-xs text-amber-600 mt-0.5 ml-7 font-medium">Need by: {format(new Date(item.needByDate), "dd MMM yyyy")}</p>
+                          <p className="text-sm text-amber-600 mt-0.5 ml-7 font-medium">Need by: {format(new Date(item.needByDate), "dd MMM yyyy")}</p>
                         )}
                       </div>
                       <div className="text-right shrink-0 ml-4">
-                        <p className="text-xs text-gray-400">Requested</p>
+                        <p className="text-sm text-gray-400">Requested</p>
                         <p className="font-bold text-gray-800">{item.qty} <span className="font-normal text-gray-500">{item.uom}</span></p>
                       </div>
                     </div>
@@ -1599,7 +1599,7 @@ export default function IrnDetailPage() {
                       return (
                         <div className="grid grid-cols-12 gap-3 items-end">
                           <div className="col-span-3 space-y-1">
-                            <Label className="text-xs text-gray-500">
+                            <Label className="text-sm text-gray-500">
                               Stock in Hand ({item.uom})
                             </Label>
                             <Input
@@ -1611,40 +1611,40 @@ export default function IrnDetailPage() {
                             {live ? (
                               <div className="space-y-0.5">
                                 {live.hasConversionError && (
-                                  <p className="text-[10px] flex items-center gap-0.5 text-orange-600">
+                                  <p className="text-[12px] flex items-center gap-0.5 text-orange-600">
                                     <AlertCircle className="h-2.5 w-2.5 shrink-0" />
                                     Mixed UOMs — partial conversion
                                   </p>
                                 )}
-                                <p className={`text-[10px] flex items-center gap-0.5 ${live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500"}`}>
+                                <p className={`text-[12px] flex items-center gap-0.5 ${live.balance >= item.qty ? "text-green-600" : live.balance > 0 ? "text-amber-600" : "text-red-500"}`}>
                                   <Warehouse className="h-2.5 w-2.5 shrink-0" />
                                   {live.approx ? "~" : ""}Available: {live.balance > 0 ? live.balance.toFixed(3) : "0"} {live.uom}
                                 </p>
                                 {live.sourceParts.length > 0 && (
-                                  <p className="text-[10px] text-gray-400 ml-3">
+                                  <p className="text-[12px] text-gray-400 ml-3">
                                     Source: {live.sourceParts.join(" + ")}
                                   </p>
                                 )}
                               </div>
                             ) : (
-                              <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                              <p className="text-[12px] text-gray-400 flex items-center gap-0.5">
                                 <Warehouse className="h-2.5 w-2.5" /> No match in stock ledger
                               </p>
                             )}
                           </div>
                           <div className="col-span-3 space-y-1">
-                            <Label className="text-xs text-gray-500">Action</Label>
+                            <Label className="text-sm text-gray-500">Action</Label>
                             <Select value={v.storesAction} onValueChange={(val) => updateVerification(item.id, "storesAction", val as StoresAction)}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="issue" className="text-xs text-green-700">✅ Issue from Store</SelectItem>
-                                <SelectItem value="procure" className="text-xs text-purple-700">📋 Add to Procurement Queue</SelectItem>
-                                <SelectItem value="split" className="text-xs text-blue-700">⚖️ Split — issue now + queue balance</SelectItem>
+                                <SelectItem value="issue" className="text-sm text-green-700">✅ Issue from Store</SelectItem>
+                                <SelectItem value="procure" className="text-sm text-purple-700">📋 Add to Procurement Queue</SelectItem>
+                                <SelectItem value="split" className="text-sm text-blue-700">⚖️ Split — issue now + queue balance</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className={`text-xs ${issueOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                            <Label className={`text-sm ${issueOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
                               Issue ({item.uom}){issueOver ? ` ⚠ max ${issueMax.toFixed(3)}` : ""}
                             </Label>
                             <Input
@@ -1658,7 +1658,7 @@ export default function IrnDetailPage() {
                             />
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className={`text-xs ${procureOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                            <Label className={`text-sm ${procureOver ? "text-red-600 font-semibold" : "text-gray-500"}`}>
                               Queue ({item.uom}){procureOver ? ` ⚠ max ${Math.max(0, reqQty - v.issueQty)}` : ""}
                             </Label>
                             <Input
@@ -1672,12 +1672,12 @@ export default function IrnDetailPage() {
                             />
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs text-gray-500">Notes</Label>
+                            <Label className="text-sm text-gray-500">Notes</Label>
                             <Input
                               value={v.storesNotes}
                               onChange={(e) => updateVerification(item.id, "storesNotes", e.target.value)}
                               placeholder="optional"
-                              className="h-8 text-xs"
+                              className="h-8 text-sm"
                             />
                           </div>
                         </div>
@@ -1686,12 +1686,12 @@ export default function IrnDetailPage() {
 
                     <div className="flex gap-2 flex-wrap">
                       {v.issueQty > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-green-50 border border-green-200 text-green-700 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-sm bg-green-50 border border-green-200 text-green-700 px-2 py-0.5 rounded-full">
                           <PackageCheck className="h-3 w-3" /> Issue {v.issueQty} {item.uom} from stock
                         </span>
                       )}
                       {v.procureQty > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-purple-50 border border-purple-200 text-purple-700 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-sm bg-purple-50 border border-purple-200 text-purple-700 px-2 py-0.5 rounded-full">
                           <ListTodo className="h-3 w-3" /> {v.procureQty} {item.uom} → Procurement Queue
                         </span>
                       )}
@@ -1703,7 +1703,7 @@ export default function IrnDetailPage() {
 
             {/* Stores remarks */}
             <div className="bg-white border rounded-lg p-4 space-y-2">
-              <Label className="text-xs font-medium text-gray-700">Storekeeper Remarks</Label>
+              <Label className="text-sm font-medium text-gray-700">Storekeeper Remarks</Label>
               <Textarea
                 value={storesRemarks}
                 onChange={(e) => setStoresRemarks(e.target.value)}
@@ -1750,17 +1750,17 @@ export default function IrnDetailPage() {
               <div key={item.id} className="flex items-center justify-between py-2 border-b last:border-0">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">#{idx + 1}</span>
+                    <span className="text-sm text-gray-400">#{idx + 1}</span>
                     <span className="font-medium text-gray-800 text-sm">{item.material}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>
+                    <span className={`text-sm px-1.5 py-0.5 rounded-full border ${URGENCY_COLOR[item.urgency]}`}>
                       {item.urgency}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 ml-5">{item.purpose}</p>
-                  {item.needByDate && <p className="text-xs text-amber-600 ml-5 font-medium">Need by: {format(new Date(item.needByDate), "dd MMM yyyy")}</p>}
+                  <p className="text-sm text-gray-500 ml-5">{item.purpose}</p>
+                  {item.needByDate && <p className="text-sm text-amber-600 ml-5 font-medium">Need by: {format(new Date(item.needByDate), "dd MMM yyyy")}</p>}
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-800">{item.qty} <span className="font-normal text-gray-500 text-xs">{item.uom}</span></p>
+                  <p className="font-semibold text-gray-800">{item.qty} <span className="font-normal text-gray-500 text-sm">{item.uom}</span></p>
                 </div>
               </div>
             ))}
@@ -1768,7 +1768,7 @@ export default function IrnDetailPage() {
         )}
 
         {irn.status === "pending_stores" && !canVerify && (
-          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-700">
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-700">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>This IRN is awaiting stores verification. The storekeeper will check stock and respond shortly.</span>
           </div>

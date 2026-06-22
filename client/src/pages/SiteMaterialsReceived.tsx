@@ -149,15 +149,15 @@ export default function SiteMaterialsReceived() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="space-y-2">
-                <Label className="text-xs">From Date</Label>
+                <Label className="text-sm">From Date</Label>
                 <Input type="date" value={filters.dateFrom} onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))} data-testid="input-date-from" />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">To Date</Label>
+                <Label className="text-sm">To Date</Label>
                 <Input type="date" value={filters.dateTo} onChange={(e) => setFilters(f => ({ ...f, dateTo: e.target.value }))} data-testid="input-date-to" />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Site</Label>
+                <Label className="text-sm">Site</Label>
                 <Select value={filters.site || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, site: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-site-filter"><SelectValue placeholder="All Sites" /></SelectTrigger>
                   <SelectContent>
@@ -167,7 +167,7 @@ export default function SiteMaterialsReceived() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Material</Label>
+                <Label className="text-sm">Material</Label>
                 <Select value={filters.material || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, material: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-material-filter"><SelectValue placeholder="All Materials" /></SelectTrigger>
                   <SelectContent>
@@ -177,7 +177,7 @@ export default function SiteMaterialsReceived() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Supplier / Party</Label>
+                <Label className="text-sm">Supplier / Party</Label>
                 <Select value={filters.supplier || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, supplier: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-supplier-filter"><SelectValue placeholder="All Suppliers" /></SelectTrigger>
                   <SelectContent>
@@ -187,7 +187,7 @@ export default function SiteMaterialsReceived() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Work Type</Label>
+                <Label className="text-sm">Work Type</Label>
                 <Select value={filters.workType || "__all__"} onValueChange={(v) => setFilters(f => ({ ...f, workType: v === "__all__" ? "" : v }))}>
                   <SelectTrigger data-testid="select-worktype-filter"><SelectValue placeholder="All Types" /></SelectTrigger>
                   <SelectContent>
@@ -208,9 +208,9 @@ export default function SiteMaterialsReceived() {
               <Card key={material} data-testid={`card-material-${material}`}>
                 <CardContent className="p-4 text-center">
                   <div className="text-2xl font-bold">{data.totalQty.toFixed(2)}</div>
-                  <div className="text-xs text-muted-foreground">{data.uom}</div>
+                  <div className="text-sm text-muted-foreground">{data.uom}</div>
                   <div className="font-medium mt-1">{material}</div>
-                  <div className="text-xs text-muted-foreground">{data.count} trip{data.count !== 1 ? "s" : ""}</div>
+                  <div className="text-sm text-muted-foreground">{data.count} trip{data.count !== 1 ? "s" : ""}</div>
                 </CardContent>
               </Card>
             ))}
@@ -236,45 +236,45 @@ export default function SiteMaterialsReceived() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-muted/50">
-                      <th className="text-left p-2 border text-xs">Date / Time</th>
-                      <th className="text-left p-2 border text-xs">Site</th>
-                      <th className="text-left p-2 border text-xs">Vehicle</th>
-                      <th className="text-left p-2 border text-xs">Material</th>
-                      <th className="text-right p-2 border text-xs">Qty / UOM</th>
-                      <th className="text-left p-2 border text-xs">Supplier</th>
-                      <th className="text-left p-2 border text-xs">Receipt No.</th>
-                      <th className="text-center p-2 border text-xs">Work Type</th>
-                      <th className="text-center p-2 border text-xs">Source</th>
-                      <th className="text-center p-2 border text-xs w-10"></th>
+                      <th className="text-left p-2 border text-sm">Date / Time</th>
+                      <th className="text-left p-2 border text-sm">Site</th>
+                      <th className="text-left p-2 border text-sm">Vehicle</th>
+                      <th className="text-left p-2 border text-sm">Material</th>
+                      <th className="text-right p-2 border text-sm">Qty / UOM</th>
+                      <th className="text-left p-2 border text-sm">Supplier</th>
+                      <th className="text-left p-2 border text-sm">Receipt No.</th>
+                      <th className="text-center p-2 border text-sm">Work Type</th>
+                      <th className="text-center p-2 border text-sm">Source</th>
+                      <th className="text-center p-2 border text-sm w-10"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {trips.map((trip: any) => (
                       <tr key={`${trip.source}-${trip.id}`} className="border-b hover:bg-muted/30" data-testid={`row-material-${trip.source}-${trip.id}`}>
-                        <td className="p-2 border text-xs">
+                        <td className="p-2 border text-sm">
                           <div>{trip.date ? format(new Date(trip.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase() : "-"}</div>
                           {trip.time && <div className="text-muted-foreground">{trip.time}</div>}
                         </td>
-                        <td className="p-2 border text-xs">{trip.site || "-"}</td>
-                        <td className="p-2 border text-xs">{trip.vehicleNumber || "-"}</td>
-                        <td className="p-2 border text-xs font-medium">{trip.material || "-"}</td>
-                        <td className="p-2 border text-xs text-right">{trip.quantity} {trip.uom}</td>
-                        <td className="p-2 border text-xs">{trip.supplier || "-"}</td>
-                        <td className="p-2 border text-xs">{trip.receiptNumber || "-"}</td>
+                        <td className="p-2 border text-sm">{trip.site || "-"}</td>
+                        <td className="p-2 border text-sm">{trip.vehicleNumber || "-"}</td>
+                        <td className="p-2 border text-sm font-medium">{trip.material || "-"}</td>
+                        <td className="p-2 border text-sm text-right">{trip.quantity} {trip.uom}</td>
+                        <td className="p-2 border text-sm">{trip.supplier || "-"}</td>
+                        <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
                         <td className="p-2 border text-center">
                           {trip.workType ? (
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                            <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${trip.workType === "structure" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
                               {trip.workType === "structure" ? "STRUCTURE" : "ROAD"}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground">-</span>
+                            <span className="text-[12px] text-muted-foreground">-</span>
                           )}
                         </td>
                         <td className="p-2 border text-center">
                           {trip.source === "dpr" ? (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">DPR</span>
+                            <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">DPR</span>
                           ) : (
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${trip.source === "trip" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                            <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${trip.source === "trip" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
                               {trip.source === "trip" ? "TRIP" : "EQUIP"}
                             </span>
                           )}

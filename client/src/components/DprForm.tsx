@@ -344,7 +344,7 @@ function ProgressSection({ control }: { control: Control<CreateDprRequest> }) {
                     />
                   )}
                   <div className="flex flex-col justify-end">
-                    <FormLabel className="text-xs text-muted-foreground">Calculated Qty</FormLabel>
+                    <FormLabel className="text-sm text-muted-foreground">Calculated Qty</FormLabel>
                     <div className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
                       {calculatedQty !== null ? calculatedQty.toFixed(2) : '-'}
                     </div>
@@ -485,7 +485,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
           />
         </div>
 
-        <p className="text-xs text-muted-foreground italic">Enter time OR hour meter readings (or both). Hour meter takes priority for calculations.</p>
+        <p className="text-sm text-muted-foreground italic">Enter time OR hour meter readings (or both). Hour meter takes priority for calculations.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FormField
@@ -521,7 +521,7 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
             )}
           />
           <div className="flex flex-col justify-end">
-            <FormLabel className="text-xs text-muted-foreground">Working Hours</FormLabel>
+            <FormLabel className="text-sm text-muted-foreground">Working Hours</FormLabel>
             <div data-testid={`display-working-hours-${index}`} className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary">
               {workingHours !== null ? `${workingHours.toFixed(2)} hrs` : '-'}
             </div>
@@ -610,13 +610,13 @@ function EquipmentRow({ control, index, remove }: { control: Control<CreateDprRe
             )}
           />
           <div className="flex flex-col justify-end">
-            <FormLabel className="text-xs text-muted-foreground">Expected Diesel</FormLabel>
+            <FormLabel className="text-sm text-muted-foreground">Expected Diesel</FormLabel>
             <div data-testid={`display-expected-diesel-${index}`} className="bg-muted px-3 py-2 rounded border font-semibold">
               {expectedDiesel !== null ? `${expectedDiesel.toFixed(1)} L` : '-'}
             </div>
           </div>
           <div className="flex flex-col justify-end">
-            <FormLabel className="text-xs text-muted-foreground">Efficiency</FormLabel>
+            <FormLabel className="text-sm text-muted-foreground">Efficiency</FormLabel>
             <div data-testid={`display-efficiency-${index}`} className={`px-3 py-2 rounded border font-semibold ${
               efficiency !== null 
                 ? efficiency >= 100 

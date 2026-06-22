@@ -285,7 +285,7 @@ export default function Account() {
             </p>
           )}
           <span
-            className="inline-block mt-1 text-xs font-medium bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5"
+            className="inline-block mt-1 text-sm font-medium bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5"
             data-testid="account-role"
           >
             {roleLabel}
@@ -296,7 +296,7 @@ export default function Account() {
       {/* Account details */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
             Account Details
           </p>
         </div>
@@ -306,7 +306,7 @@ export default function Account() {
           <div className="flex items-center gap-3 px-4 py-3.5">
             <Shield className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-slate-500">Role</p>
+              <p className="text-sm text-slate-500">Role</p>
               <p className="text-sm font-medium text-slate-800" data-testid="account-role-detail">
                 {roleLabel}
               </p>
@@ -317,7 +317,7 @@ export default function Account() {
           <div className="flex items-center gap-3 px-4 py-3.5">
             <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-slate-500">Session policy</p>
+              <p className="text-sm text-slate-500">Session policy</p>
               <p
                 className="text-sm font-medium text-slate-800"
                 data-testid="account-session-policy"
@@ -331,7 +331,7 @@ export default function Account() {
           <div className="flex items-center gap-3 px-4 py-3.5">
             <User className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-slate-500">User ID</p>
+              <p className="text-sm text-slate-500">User ID</p>
               <p
                 className="text-sm font-medium text-slate-800"
                 data-testid="account-user-id"
@@ -346,7 +346,7 @@ export default function Account() {
       {/* Push notifications card */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
             Push Notifications
           </p>
         </div>
@@ -355,7 +355,7 @@ export default function Account() {
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
           <Bell className="w-4 h-4 text-slate-400 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-500">Status on this device</p>
+            <p className="text-sm text-slate-500">Status on this device</p>
             <div className="flex items-center gap-1.5 mt-0.5" data-testid="push-status">
               {pushStatus === "checking" && (
                 <>
@@ -399,10 +399,10 @@ export default function Account() {
                 <Smartphone className="w-4 h-4 flex-shrink-0" />
                 Add to Home Screen Required
               </p>
-              <p className="text-xs text-amber-700">
+              <p className="text-sm text-amber-700">
                 On iPhone/iPad, push notifications only work when the app is installed to your Home Screen:
               </p>
-              <ol className="text-xs text-amber-700 space-y-1 list-decimal list-inside">
+              <ol className="text-sm text-amber-700 space-y-1 list-decimal list-inside">
                 <li className="flex items-center gap-1">
                   Tap the <Share className="w-3 h-3 inline flex-shrink-0" /> Share button in Safari
                 </li>
@@ -461,7 +461,7 @@ export default function Account() {
             <Bell className="w-4 h-4 text-orange-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-800">Notification preferences</p>
-              <p className="text-xs text-slate-500">Manage which sections send you push alerts</p>
+              <p className="text-sm text-slate-500">Manage which sections send you push alerts</p>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
           </a>

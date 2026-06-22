@@ -164,7 +164,7 @@ export default function PlantVarianceReport() {
           {/* Date range row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">DATE FROM</Label>
+              <Label className="text-sm text-muted-foreground">DATE FROM</Label>
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -173,7 +173,7 @@ export default function PlantVarianceReport() {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">DATE TO</Label>
+              <Label className="text-sm text-muted-foreground">DATE TO</Label>
               <Input
                 type="date"
                 value={filterDateTo}
@@ -192,7 +192,7 @@ export default function PlantVarianceReport() {
           {/* Extra filter row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">DISPATCHED TO</Label>
+              <Label className="text-sm text-muted-foreground">DISPATCHED TO</Label>
               <Select value={filterDeliveredTo} onValueChange={setFilterDeliveredTo}>
                 <SelectTrigger data-testid="select-filter-delivered-to">
                   <SelectValue placeholder="All Sites" />
@@ -206,7 +206,7 @@ export default function PlantVarianceReport() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">MIX TYPE</Label>
+              <Label className="text-sm text-muted-foreground">MIX TYPE</Label>
               <Select value={filterTemplateId} onValueChange={setFilterTemplateId}>
                 <SelectTrigger data-testid="select-filter-template">
                   <SelectValue placeholder="All Mix Types" />
@@ -220,7 +220,7 @@ export default function PlantVarianceReport() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">STOCK OWNER</Label>
+              <Label className="text-sm text-muted-foreground">STOCK OWNER</Label>
               <Select value={filterPartyId} onValueChange={setFilterPartyId}>
                 <SelectTrigger data-testid="select-filter-party">
                   <SelectValue placeholder="All Owners" />
@@ -246,7 +246,7 @@ export default function PlantVarianceReport() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold" data-testid="text-total-entries">{summaryStats.totalEntries}</p>
-                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                <div className="text-sm text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                   <span className="text-red-600 dark:text-red-400">{summaryStats.bitumenOveruse} loads over template</span>
                   <span>/</span>
                   <span className="text-green-600 dark:text-green-400">{summaryStats.bitumenUnderuse} loads under template</span>
@@ -266,7 +266,7 @@ export default function PlantVarianceReport() {
                     <TrendingDown className="w-4 h-4 text-green-500" />
                   )}
                   <p className="text-2xl font-bold" data-testid="text-avg-bitumen-variance">{formatVariance(summaryStats.avgBitumenVariance)}</p>
-                  <span className="text-xs text-muted-foreground">avg</span>
+                  <span className="text-sm text-muted-foreground">avg</span>
                 </div>
                 <p className={`text-sm font-mono mt-1 ${totalBitumenDiffKg > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} data-testid="text-total-bitumen-diff">
                   {formatDiff(totalBitumenDiffKg, "Kg")} total {totalBitumenDiffKg > 0 ? "(excess)" : totalBitumenDiffKg < 0 ? "(saved)" : ""}
@@ -274,7 +274,7 @@ export default function PlantVarianceReport() {
               </CardContent>
             </Card>
           </div>
-          <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
+          <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
             <strong>Reading the numbers:</strong> Negative % (green) = Savings (less bitumen used than template). Positive % (red) = Excess (more bitumen used than template).
             The Kg difference shows the total quantity difference between actual and theoretical bitumen across all shown dispatches.
           </div>
@@ -285,7 +285,7 @@ export default function PlantVarianceReport() {
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Variance Details</CardTitle>
           {hasActiveFilter && displayDispatches.length !== dispatches?.length && (
-            <span className="text-xs text-muted-foreground">Showing {displayDispatches.length} of {dispatches?.length} dispatches</span>
+            <span className="text-sm text-muted-foreground">Showing {displayDispatches.length} of {dispatches?.length} dispatches</span>
           )}
         </CardHeader>
         <CardContent>
@@ -319,22 +319,22 @@ export default function PlantVarianceReport() {
                     return (
                       <tr key={dispatch.id} className="border-b hover:bg-muted/50" data-testid={`row-variance-${dispatch.id}`}>
                         <td className="p-2 whitespace-nowrap">{format(new Date(dispatch.date), "dd MMM")}</td>
-                        <td className="p-2 font-mono text-xs">{dispatch.truckNumber}</td>
-                        <td className="p-2 text-xs">{getTemplateName(dispatch.mixTemplateId)}</td>
-                        <td className="p-2 text-xs text-muted-foreground">{dispatch.deliveryLocation || "-"}</td>
-                        <td className="p-2 text-xs">{getPartyName(dispatch.partyId ?? null)}</td>
+                        <td className="p-2 font-mono text-sm">{dispatch.truckNumber}</td>
+                        <td className="p-2 text-sm">{getTemplateName(dispatch.mixTemplateId)}</td>
+                        <td className="p-2 text-sm text-muted-foreground">{dispatch.deliveryLocation || "-"}</td>
+                        <td className="p-2 text-sm">{getPartyName(dispatch.partyId ?? null)}</td>
                         <td className="p-2 text-right font-mono">{dispatch.loadWeight}</td>
-                        <td className="p-2 text-right font-mono text-xs">{dispatch.theoreticalBitumenPercent != null ? `${Number(dispatch.theoreticalBitumenPercent).toFixed(2)}%` : "-"}</td>
-                        <td className={`p-2 text-right font-mono text-xs font-semibold ${dispatch.actualBitumenPercent != null && dispatch.theoreticalBitumenPercent != null ? (Number(dispatch.actualBitumenPercent) > Number(dispatch.theoreticalBitumenPercent) ? "text-red-600 dark:text-red-400" : Number(dispatch.actualBitumenPercent) < Number(dispatch.theoreticalBitumenPercent) ? "text-green-600 dark:text-green-400" : "") : ""}`}>
+                        <td className="p-2 text-right font-mono text-sm">{dispatch.theoreticalBitumenPercent != null ? `${Number(dispatch.theoreticalBitumenPercent).toFixed(2)}%` : "-"}</td>
+                        <td className={`p-2 text-right font-mono text-sm font-semibold ${dispatch.actualBitumenPercent != null && dispatch.theoreticalBitumenPercent != null ? (Number(dispatch.actualBitumenPercent) > Number(dispatch.theoreticalBitumenPercent) ? "text-red-600 dark:text-red-400" : Number(dispatch.actualBitumenPercent) < Number(dispatch.theoreticalBitumenPercent) ? "text-green-600 dark:text-green-400" : "") : ""}`}>
                           {dispatch.actualBitumenPercent != null ? `${Number(dispatch.actualBitumenPercent).toFixed(2)}%` : "-"}
                         </td>
                         <td className="p-2 text-right">{getVarianceBadge(dispatch.bitumenVariancePercent)}</td>
-                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(bitumenDiff)}`}>
+                        <td className={`p-2 text-right font-mono text-sm ${getVarianceColor(bitumenDiff)}`}>
                           {formatDiff(bitumenDiff, "Kg")}
                         </td>
-                        <td className="p-2 text-xs">
+                        <td className="p-2 text-sm">
                           {dispatch.adjustedBy ? (
-                            <Badge variant="outline" className="text-xs">{dispatch.adjustedBy}</Badge>
+                            <Badge variant="outline" className="text-sm">{dispatch.adjustedBy}</Badge>
                           ) : "-"}
                         </td>
                       </tr>
@@ -350,12 +350,12 @@ export default function PlantVarianceReport() {
                       <tr className="border-t-2 font-bold bg-muted/30">
                         <td className="p-2" colSpan={5}>Total / Weighted Avg</td>
                         <td className="p-2 text-right font-mono">{totLoad.toFixed(1)}</td>
-                        <td className="p-2 text-right font-mono text-xs">{avgTemplatePercent.toFixed(2)}%</td>
-                        <td className={`p-2 text-right font-mono text-xs ${avgActualPercent > avgTemplatePercent ? "text-red-600 dark:text-red-400" : avgActualPercent < avgTemplatePercent ? "text-green-600 dark:text-green-400" : ""}`}>
+                        <td className="p-2 text-right font-mono text-sm">{avgTemplatePercent.toFixed(2)}%</td>
+                        <td className={`p-2 text-right font-mono text-sm ${avgActualPercent > avgTemplatePercent ? "text-red-600 dark:text-red-400" : avgActualPercent < avgTemplatePercent ? "text-green-600 dark:text-green-400" : ""}`}>
                           {avgActualPercent.toFixed(2)}%
                         </td>
                         <td className="p-2 text-right">{getVarianceBadge(avgTemplatePercent > 0 ? ((avgActualPercent - avgTemplatePercent) / avgTemplatePercent) * 100 : null)}</td>
-                        <td className={`p-2 text-right font-mono text-xs ${getVarianceColor(totalBitumenDiffKg)}`}>
+                        <td className={`p-2 text-right font-mono text-sm ${getVarianceColor(totalBitumenDiffKg)}`}>
                           {formatDiff(totalBitumenDiffKg, "Kg")}
                         </td>
                         <td className="p-2"></td>

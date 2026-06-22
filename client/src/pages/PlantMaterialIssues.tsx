@@ -621,7 +621,7 @@ export default function PlantMaterialIssues() {
                         <SelectItem value="2">Tank 2 — Dryer</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Select a tank to auto-record this issue as a receipt in the LDO flow tracker.
                     </p>
                   </div>
@@ -696,15 +696,15 @@ export default function PlantMaterialIssues() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <Label className="text-xs">From Date</Label>
+              <Label className="text-sm">From Date</Label>
               <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
             </div>
             <div>
-              <Label className="text-xs">To Date</Label>
+              <Label className="text-sm">To Date</Label>
               <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
             </div>
             <div>
-              <Label className="text-xs">Stock Owner</Label>
+              <Label className="text-sm">Stock Owner</Label>
               <Select value={filterPartyId} onValueChange={setFilterPartyId}>
                 <SelectTrigger data-testid="filter-party">
                   <SelectValue placeholder="All" />
@@ -718,7 +718,7 @@ export default function PlantMaterialIssues() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Material</Label>
+              <Label className="text-sm">Material</Label>
               <Select value={filterMaterialId} onValueChange={setFilterMaterialId}>
                 <SelectTrigger data-testid="filter-material">
                   <SelectValue placeholder="All" />
@@ -784,7 +784,7 @@ export default function PlantMaterialIssues() {
                         <span className="font-semibold">{getMaterialName(issue.materialId)}</span>
                         <Badge variant="secondary">{issue.quantity} {issue.uom}</Badge>
                         {getLdoTankLabel(issue.ldoTankNumber) && (
-                          <Badge variant="outline" className="text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-600 text-xs">
+                          <Badge variant="outline" className="text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-600 text-sm">
                             {getLdoTankLabel(issue.ldoTankNumber)}
                           </Badge>
                         )}
@@ -803,7 +803,7 @@ export default function PlantMaterialIssues() {
                           <span className="font-medium">{issue.receivedBy}</span>
                         </div>
                       )}
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         From: {getPartyName(issue.partyId)}
                       </div>
                     </div>

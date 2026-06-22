@@ -28,25 +28,25 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-3">
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">DC Number</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">DC Number</p>
               <p className="font-bold text-lg">{record.dcNumber || "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Date</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">Date</p>
               <p className="font-semibold">{record.date}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Vehicle Number</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">Vehicle Number</p>
               <p className="font-semibold">{record.truckNumber || "—"}</p>
             </div>
           </div>
           <div className="space-y-3">
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Customer / Client</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">Customer / Client</p>
               <p className="font-semibold">{record.customerName || "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Delivery Site</p>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">Delivery Site</p>
               <p className="font-semibold">{record.deliverySite || "—"}</p>
             </div>
           </div>
@@ -76,19 +76,19 @@ function DCPrintView({ record, onClose }: { record: RmcBatchRecordWithDesign; on
         </table>
         {record.remarks && (
           <div className="mt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Remarks</p>
+            <p className="text-sm text-muted-foreground uppercase tracking-wide">Remarks</p>
             <p className="mt-1">{record.remarks}</p>
           </div>
         )}
         <div className="grid grid-cols-3 gap-6 pt-12 border-t mt-8">
           <div className="text-center">
-            <div className="border-t border-gray-400 pt-2 text-xs text-muted-foreground">Prepared By</div>
+            <div className="border-t border-gray-400 pt-2 text-sm text-muted-foreground">Prepared By</div>
           </div>
           <div className="text-center">
-            <div className="border-t border-gray-400 pt-2 text-xs text-muted-foreground">Plant In-Charge</div>
+            <div className="border-t border-gray-400 pt-2 text-sm text-muted-foreground">Plant In-Charge</div>
           </div>
           <div className="text-center">
-            <div className="border-t border-gray-400 pt-2 text-xs text-muted-foreground">Customer Signature & Stamp</div>
+            <div className="border-t border-gray-400 pt-2 text-sm text-muted-foreground">Customer Signature & Stamp</div>
           </div>
         </div>
       </div>
@@ -175,7 +175,7 @@ export default function RmcDeliveryChallans() {
                     <span className="font-bold text-blue-700 dark:text-blue-300">DC: {r.dcNumber}</span>
                     <Badge>{r.grade}</Badge>
                     <span className="font-semibold">{r.totalVolumeM3.toFixed(2)} m³</span>
-                    {r.batchesCount && <span className="text-xs text-muted-foreground">{r.batchesCount} batches</span>}
+                    {r.batchesCount && <span className="text-sm text-muted-foreground">{r.batchesCount} batches</span>}
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-3">
                     <span>{r.date}</span>

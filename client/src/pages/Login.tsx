@@ -174,7 +174,7 @@ export default function Login() {
               <span className="text-2xl font-black tracking-tight text-foreground">Site</span>
               <span className="text-2xl font-black tracking-tight text-orange-500">Pulse</span>
             </div>
-            <p className="text-[10px] font-medium tracking-widest text-muted-foreground uppercase">Live Ops. Not Just Logs.</p>
+            <p className="text-[12px] font-medium tracking-widest text-muted-foreground uppercase">Live Ops. Not Just Logs.</p>
             <div className="w-px h-4 bg-border" />
             <CardTitle className="text-sm font-semibold text-foreground leading-tight">{companyName}</CardTitle>
           </div>
@@ -189,7 +189,7 @@ export default function Login() {
                 approved yet. An administrator must approve it before you can
                 sign in.
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 We'll keep checking and let you in automatically once it's
                 approved.
               </p>
@@ -258,7 +258,7 @@ export default function Login() {
                   "Sign in"
                 )}
               </Button>
-              <p className="text-center text-xs text-muted-foreground pt-2">
+              <p className="text-center text-sm text-muted-foreground pt-2">
                 Forgot your password? Ask an administrator to reset it.
               </p>
             </form>

@@ -28,7 +28,7 @@ export function ReportHeader({ date, site, engineer, submittedAt, showLogo = tru
               <h2 className="text-lg font-bold text-foreground print:text-black">Daily Progress Report</h2>
               {workType && (
                 <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border print:border ${
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold border print:border ${
                     workType === "structure"
                       ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700 print:bg-blue-50 print:text-blue-800 print:border-blue-300"
                       : "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 print:bg-amber-50 print:text-amber-800 print:border-amber-300"

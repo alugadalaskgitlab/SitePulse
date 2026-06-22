@@ -41,7 +41,7 @@ function MultiSelect<T extends { value: string; label: string }>({
   };
   return (
     <div>
-      <label className="text-xs text-muted-foreground block mb-1">{label}</label>
+      <label className="text-sm text-muted-foreground block mb-1">{label}</label>
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="outline" className="h-10 min-w-[12rem] justify-between font-normal" data-testid={`${testId}-trigger`}>
@@ -51,16 +51,16 @@ function MultiSelect<T extends { value: string; label: string }>({
         </PopoverTrigger>
         <PopoverContent className="w-64 p-2" align="start">
           <div className="flex items-center justify-between px-1 pb-1">
-            <span className="text-xs text-muted-foreground">{selected.length} selected</span>
+            <span className="text-sm text-muted-foreground">{selected.length} selected</span>
             {selected.length > 0 && (
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onChange([])} data-testid={`${testId}-clear`}>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-sm" onClick={() => onChange([])} data-testid={`${testId}-clear`}>
                 <X className="w-3 h-3 mr-1" /> Clear
               </Button>
             )}
           </div>
           <div className="max-h-64 overflow-auto">
             {options.length === 0 && (
-              <div className="text-xs text-muted-foreground px-2 py-3">No options</div>
+              <div className="text-sm text-muted-foreground px-2 py-3">No options</div>
             )}
             {options.map((o) => {
               const checked = selected.includes(o.value);
@@ -497,15 +497,15 @@ export default function PlantDailyReports() {
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">From</label>
+            <label className="text-sm text-muted-foreground block mb-1">From</label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" data-testid="input-from" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">To</label>
+            <label className="text-sm text-muted-foreground block mb-1">To</label>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" data-testid="input-to" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Plant</label>
+            <label className="text-sm text-muted-foreground block mb-1">Plant</label>
             <select
               value={plant}
               onChange={(e) => setPlant(e.target.value)}
@@ -553,7 +553,7 @@ export default function PlantDailyReports() {
             </Button>
           )}
           {bulkProgress && (
-            <span className="text-xs text-muted-foreground" data-testid="text-bulk-progress">{bulkProgress}</span>
+            <span className="text-sm text-muted-foreground" data-testid="text-bulk-progress">{bulkProgress}</span>
           )}
         </CardContent>
       </Card>
@@ -606,7 +606,7 @@ export default function PlantDailyReports() {
                       </TableCell>
                       <TableCell className="font-medium">{format(parseISO(s.date), "dd MMM yyyy")}</TableCell>
                       <TableCell>{s.plant}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground">
                         {s.ok ? `${s.bytes ? Math.round(s.bytes / 1024) : "?"} KB` : (s.error || "Unknown error")}
                       </TableCell>
                     </TableRow>
@@ -614,7 +614,7 @@ export default function PlantDailyReports() {
                 </TableBody>
               </Table>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
               The ZIP also includes <code>manifest.json</code> with this same status list.
             </p>
           </CardContent>
@@ -654,7 +654,7 @@ export default function PlantDailyReports() {
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow className="text-xs">
+                <TableRow className="text-sm">
                   <TableHead className="pl-4 w-36">Date</TableHead>
                   <TableHead className="w-28 text-right">Production</TableHead>
                   <TableHead>Party / Mix</TableHead>
@@ -741,23 +741,23 @@ export default function PlantDailyReports() {
                     <TableRow key={rowKey} data-testid={`row-report-${rowKey}`} className="align-top">
                       <TableCell className="pl-4 py-3">
                         <div className="font-medium text-sm">{format(parseISO(r.date), "EEE, dd MMM")}</div>
-                        <div className="text-xs text-muted-foreground">{r.plantName}</div>
+                        <div className="text-sm text-muted-foreground">{r.plantName}</div>
                       </TableCell>
 
                       <TableCell className="text-right py-3">
                         {r.hasDispatches ? (
                           <>
                             <div className="font-semibold text-sm">{r.totalLoads} loads</div>
-                            <div className="text-xs text-muted-foreground">{r.totalProductionMt.toFixed(1)} MT</div>
+                            <div className="text-sm text-muted-foreground">{r.totalProductionMt.toFixed(1)} MT</div>
                           </>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </TableCell>
 
                       <TableCell className="py-3 max-w-xs">
                         {r.breakdown && r.breakdown.length > 0 ? (
-                          <ul className="space-y-0.5 text-xs" data-testid={`breakdown-${rowKey}`}>
+                          <ul className="space-y-0.5 text-sm" data-testid={`breakdown-${rowKey}`}>
                             {r.breakdown.map((b, i) => (
                               <li key={`${b.partyName}-${b.mixType}-${i}`} className="leading-snug" data-testid={`breakdown-item-${rowKey}-${i}`}>
                                 <span className="font-medium">{b.partyName}</span>
@@ -766,12 +766,12 @@ export default function PlantDailyReports() {
                             ))}
                           </ul>
                         ) : (
-                          <span className="text-xs text-muted-foreground">No dispatches</span>
+                          <span className="text-sm text-muted-foreground">No dispatches</span>
                         )}
                       </TableCell>
 
                       <TableCell className="py-3">
-                        <div className="space-y-1 text-xs min-w-[18rem]">
+                        <div className="space-y-1 text-sm min-w-[18rem]">
                           {mismatch && (
                             <div className="flex items-center gap-1.5" data-testid={`dryer-mismatch-warning-${rowKey}`}>
                               <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
@@ -780,7 +780,7 @@ export default function PlantDailyReports() {
                           )}
                           {mismatch && mismatch.conflictingSessions.length > 0 && mismatch.shiftLogId == null && (
                             <>
-                              <p className="text-orange-700 dark:text-orange-400 text-[11px]" data-testid={`text-intra-conflict-no-shiftlog-${rowKey}`}>
+                              <p className="text-orange-700 dark:text-orange-400 text-xs" data-testid={`text-intra-conflict-no-shiftlog-${rowKey}`}>
                                 No shift log exists for this date yet.{" "}
                                 <Link
                                   href={appendPlantContext(`/plant/shift-log/${mismatch.date}?plant=${encodeURIComponent(mismatch.plantName)}&focus=dryerFedFrom`, { defaultTab: "reports" })}
@@ -793,7 +793,7 @@ export default function PlantDailyReports() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                  className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
                                   disabled={alignMutation.isPending}
                                   onClick={() => alignMutation.mutate({ sessionIds: mismatch.conflictingSessions.map(s => s.id), targetValue: "TANK_1" })}
                                   data-testid={`button-align-intra-tank1-${rowKey}`}
@@ -804,7 +804,7 @@ export default function PlantDailyReports() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                                  className="h-7 text-sm border-orange-500 text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
                                   disabled={alignMutation.isPending}
                                   onClick={() => alignMutation.mutate({ sessionIds: mismatch.conflictingSessions.map(s => s.id), targetValue: "TANK_2" })}
                                   data-testid={`button-align-intra-tank2-${rowKey}`}

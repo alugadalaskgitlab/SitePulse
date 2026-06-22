@@ -45,7 +45,7 @@ function fmtMT(n: number | null): string {
 }
 
 function VarianceBadge({ pct, l }: { pct: number | null; l: number | null }) {
-  if (pct == null || l == null) return <span className="text-muted-foreground text-xs">N/A</span>;
+  if (pct == null || l == null) return <span className="text-muted-foreground text-sm">N/A</span>;
   const abs = Math.abs(pct);
   if (abs < 0.1) return (
     <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50 dark:bg-green-950 dark:text-green-300 gap-1">
@@ -188,7 +188,7 @@ export default function PlantLdoReconciliation() {
           <CardContent className="pt-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
               <div className="space-y-1">
-                <Label htmlFor="recon-plant" className="text-xs">Plant</Label>
+                <Label htmlFor="recon-plant" className="text-sm">Plant</Label>
                 <Select value={plant} onValueChange={handlePlantChange}>
                   <SelectTrigger id="recon-plant" data-testid="select-plant" className="h-9">
                     <SelectValue />
@@ -201,7 +201,7 @@ export default function PlantLdoReconciliation() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="recon-from" className="text-xs">From</Label>
+                <Label htmlFor="recon-from" className="text-sm">From</Label>
                 <Input
                   id="recon-from"
                   data-testid="input-date-from"
@@ -212,7 +212,7 @@ export default function PlantLdoReconciliation() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="recon-to" className="text-xs">To</Label>
+                <Label htmlFor="recon-to" className="text-sm">To</Label>
                 <Input
                   id="recon-to"
                   data-testid="input-date-to"
@@ -223,7 +223,7 @@ export default function PlantLdoReconciliation() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="recon-threshold" className="text-xs">Highlight Threshold (%)</Label>
+                <Label htmlFor="recon-threshold" className="text-sm">Highlight Threshold (%)</Label>
                 <Input
                   id="recon-threshold"
                   data-testid="input-threshold"
@@ -275,29 +275,29 @@ export default function PlantLdoReconciliation() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card>
               <CardContent className="pt-3 pb-3">
-                <p className="text-xs text-muted-foreground">Total Consumption</p>
+                <p className="text-sm text-muted-foreground">Total Consumption</p>
                 <p className="text-lg font-semibold" data-testid="stat-total-consumption">{fmt(summaryStats.totalConsumption)} L</p>
-                <p className="text-xs text-muted-foreground">{fmtMT(summaryStats.totalConsumption * LDO_DENSITY_KG_PER_LITER / 1000)} MT</p>
+                <p className="text-sm text-muted-foreground">{fmtMT(summaryStats.totalConsumption * LDO_DENSITY_KG_PER_LITER / 1000)} MT</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-3 pb-3">
-                <p className="text-xs text-muted-foreground">Total Receipts</p>
+                <p className="text-sm text-muted-foreground">Total Receipts</p>
                 <p className="text-lg font-semibold" data-testid="stat-total-receipts">{fmt(summaryStats.totalReceipts)} L</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-3 pb-3">
-                <p className="text-xs text-muted-foreground">Net Variance</p>
+                <p className="text-sm text-muted-foreground">Net Variance</p>
                 <p className={`text-lg font-semibold ${summaryStats.netVariance < 0 ? "text-red-600 dark:text-red-400" : summaryStats.netVariance > 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`} data-testid="stat-net-variance">
                   {summaryStats.netVariance >= 0 ? "+" : ""}{fmt(summaryStats.netVariance)} L
                 </p>
-                <p className="text-xs text-muted-foreground">across {summaryStats.withVarianceCount} days with full data</p>
+                <p className="text-sm text-muted-foreground">across {summaryStats.withVarianceCount} days with full data</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-3 pb-3">
-                <p className="text-xs text-muted-foreground">Days Flagged ({'>'}±{thresholdNum}%)</p>
+                <p className="text-sm text-muted-foreground">Days Flagged ({'>'}±{thresholdNum}%)</p>
                 <p className={`text-lg font-semibold ${summaryStats.flaggedCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`} data-testid="stat-flagged-days">
                   {summaryStats.flaggedCount}
                 </p>
@@ -308,7 +308,7 @@ export default function PlantLdoReconciliation() {
 
         {/* Legend */}
         {submitted && rows && rows.length > 0 && (
-          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground items-center">
+          <div className="flex flex-wrap gap-3 text-sm text-muted-foreground items-center">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-700 inline-block" /> Variance &gt; ±{thresholdNum}%</span>
             <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3 text-amber-500" /> Missing dip reading</span>
             <span className="flex items-center gap-1"><Info className="h-3 w-3 text-blue-400" /> No meter data (rest day / holiday)</span>
@@ -341,11 +341,11 @@ export default function PlantLdoReconciliation() {
                     <thead>
                       <tr className="border-b bg-muted/40">
                         <th className="text-left px-4 py-2 font-medium whitespace-nowrap">Date</th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Opening Dip<br /><span className="text-xs font-normal text-muted-foreground">L / MT</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Meter Use<br /><span className="text-xs font-normal text-muted-foreground">L</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Receipts<br /><span className="text-xs font-normal text-muted-foreground">L</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Exp. Closing<br /><span className="text-xs font-normal text-muted-foreground">L / MT</span></th>
-                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Act. Closing Dip<br /><span className="text-xs font-normal text-muted-foreground">L / MT</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Opening Dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Meter Use<br /><span className="text-sm font-normal text-muted-foreground">L</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Receipts<br /><span className="text-sm font-normal text-muted-foreground">L</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Exp. Closing<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
+                        <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Act. Closing Dip<br /><span className="text-sm font-normal text-muted-foreground">L / MT</span></th>
                         <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Variance</th>
                         <th className="px-3 py-2 font-medium whitespace-nowrap">Status</th>
                       </tr>
@@ -372,16 +372,16 @@ export default function PlantLdoReconciliation() {
                                 <>
                                   <span data-testid={`opening-l-${row.date}`}>{fmt(row.openingDipL)}</span>
                                   <br />
-                                  <span className="text-xs text-muted-foreground">{fmtMT(row.openingDipMT)}</span>
+                                  <span className="text-sm text-muted-foreground">{fmtMT(row.openingDipMT)}</span>
                                 </>
                               ) : (
                                 <span className="text-amber-500 flex items-center justify-end gap-1">
                                   <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                                  <span className="text-xs">No dip</span>
+                                  <span className="text-sm">No dip</span>
                                 </span>
                               )}
                               {row.missingOpeningTanks.length > 0 && row.hasOpeningDip && (
-                                <span className="text-xs text-amber-500 block">T{row.missingOpeningTanks.join(",")} missing</span>
+                                <span className="text-sm text-amber-500 block">T{row.missingOpeningTanks.join(",")} missing</span>
                               )}
                             </td>
 
@@ -392,7 +392,7 @@ export default function PlantLdoReconciliation() {
                               ) : (
                                 <span className="text-muted-foreground/60 flex items-center justify-end gap-1">
                                   <Info className="h-3 w-3" />
-                                  <span className="text-xs">0</span>
+                                  <span className="text-sm">0</span>
                                 </span>
                               )}
                             </td>
@@ -412,10 +412,10 @@ export default function PlantLdoReconciliation() {
                                 <>
                                   <span data-testid={`expected-${row.date}`}>{fmt(row.expectedClosingL)}</span>
                                   <br />
-                                  <span className="text-xs text-muted-foreground">{fmtMT(row.expectedClosingMT)}</span>
+                                  <span className="text-sm text-muted-foreground">{fmtMT(row.expectedClosingMT)}</span>
                                 </>
                               ) : (
-                                <span className="text-muted-foreground text-xs">No opening dip</span>
+                                <span className="text-muted-foreground text-sm">No opening dip</span>
                               )}
                             </td>
 
@@ -425,16 +425,16 @@ export default function PlantLdoReconciliation() {
                                 <>
                                   <span data-testid={`actual-${row.date}`}>{fmt(row.actualClosingDipL)}</span>
                                   <br />
-                                  <span className="text-xs text-muted-foreground">{fmtMT(row.actualClosingDipMT)}</span>
+                                  <span className="text-sm text-muted-foreground">{fmtMT(row.actualClosingDipMT)}</span>
                                 </>
                               ) : (
                                 <span className="text-amber-500 flex items-center justify-end gap-1">
                                   <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                                  <span className="text-xs">No closing dip</span>
+                                  <span className="text-sm">No closing dip</span>
                                 </span>
                               )}
                               {row.missingClosingTanks.length > 0 && row.hasClosingDip && (
-                                <span className="text-xs text-amber-500 block">T{row.missingClosingTanks.join(",")} missing</span>
+                                <span className="text-sm text-amber-500 block">T{row.missingClosingTanks.join(",")} missing</span>
                               )}
                             </td>
 
@@ -442,24 +442,24 @@ export default function PlantLdoReconciliation() {
                             <td className="px-3 py-2 text-right whitespace-nowrap">
                               <VarianceBadge pct={row.variancePct} l={row.varianceL} />
                               {row.varianceMT != null && (
-                                <p className="text-xs text-muted-foreground mt-0.5">{fmtMT(row.varianceMT)} MT</p>
+                                <p className="text-sm text-muted-foreground mt-0.5">{fmtMT(row.varianceMT)} MT</p>
                               )}
                             </td>
 
                             {/* Status pill */}
                             <td className="px-3 py-2 whitespace-nowrap">
                               {!row.hasOpeningDip && !row.hasClosingDip ? (
-                                <Badge variant="outline" className="text-xs text-muted-foreground">No Dip Data</Badge>
+                                <Badge variant="outline" className="text-sm text-muted-foreground">No Dip Data</Badge>
                               ) : !row.hasClosingDip ? (
-                                <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Missing Closing</Badge>
+                                <Badge variant="outline" className="text-sm text-amber-600 border-amber-300">Missing Closing</Badge>
                               ) : !row.hasOpeningDip ? (
-                                <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Missing Opening</Badge>
+                                <Badge variant="outline" className="text-sm text-amber-600 border-amber-300">Missing Opening</Badge>
                               ) : isFlagged && isLoss ? (
-                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-xs text-red-700 border-red-300 bg-red-50 dark:bg-red-950">Loss</Badge>
+                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-sm text-red-700 border-red-300 bg-red-50 dark:bg-red-950">Loss</Badge>
                               ) : isFlagged && isGain ? (
-                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-xs text-orange-700 border-orange-300 bg-orange-50 dark:bg-orange-950">Gain</Badge>
+                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-sm text-orange-700 border-orange-300 bg-orange-50 dark:bg-orange-950">Gain</Badge>
                               ) : (
-                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-xs text-green-700 border-green-300 bg-green-50 dark:bg-green-950">OK</Badge>
+                                <Badge variant="outline" data-testid={`status-${row.date}`} className="text-sm text-green-700 border-green-300 bg-green-50 dark:bg-green-950">OK</Badge>
                               )}
                             </td>
                           </tr>

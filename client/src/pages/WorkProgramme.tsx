@@ -63,22 +63,22 @@ function getCatColor(idx: number) { return CAT_COLORS[idx % CAT_COLORS.length]; 
 
 function CoverageBadge({ planned, boqQty, unit }: { planned: number; boqQty: number; unit: string }) {
   if (planned === 0) return (
-    <span className="inline-flex text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex text-[12px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
       Not programmed
     </span>
   );
   if (Math.abs(planned - boqQty) < 0.01) return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
       <CheckCircle2 className="w-3 h-3" /> Fully covered
     </span>
   );
   if (planned < boqQty) return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
       <AlertTriangle className="w-3 h-3" /> Under by {fmtQty(boqQty - planned)} {unit}
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
       <AlertTriangle className="w-3 h-3" /> Over by {fmtQty(planned - boqQty)} {unit}
     </span>
   );
@@ -329,27 +329,27 @@ function StretchRow({
           style={{ backgroundColor: isFirst ? "transparent" : color, opacity: 0.5 }}
         />
         {!isFirst && (
-          <span className="text-[10px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
+          <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
         )}
 
         {/* Chainage inputs */}
-        <span className="text-[11px] text-slate-400 flex-shrink-0">Ch</span>
+        <span className="text-xs text-slate-400 flex-shrink-0">Ch</span>
         <input
           type="number" step="0.001"
           value={cf}
           onChange={e => { dirty.current = true; setCf(e.target.value); }}
           onBlur={save}
-          className="w-[52px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+          className="w-[52px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-cf-${bar.id}`}
         />
-        <span className="text-[11px] text-slate-400 flex-shrink-0">to</span>
+        <span className="text-xs text-slate-400 flex-shrink-0">to</span>
         <input
           type="number" step="0.001"
           value={ct}
           onChange={e => { dirty.current = true; setCt(e.target.value); }}
           onBlur={save}
-          className="w-[52px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+          className="w-[52px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
           placeholder="0.000"
           data-testid={`input-ct-${bar.id}`}
         />
@@ -357,7 +357,7 @@ function StretchRow({
         {/* Chainage overlap warning */}
         {hasChainageOverlap && (
           <span
-            className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
+            className="inline-flex items-center gap-0.5 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 flex-shrink-0"
             title="Chainage overlaps with another stretch on this item. Adjust from/to values."
           >
             <AlertTriangle className="w-2.5 h-2.5" />overlap
@@ -365,13 +365,13 @@ function StretchRow({
         )}
 
         {/* @ multiplier — editable, defaults to boqQty/roadLen */}
-        <span className="text-[11px] text-slate-400 flex-shrink-0">@</span>
+        <span className="text-xs text-slate-400 flex-shrink-0">@</span>
         <input
           type="number" step="0.0001" min="0.0001"
           value={mult}
           onChange={e => { dirty.current = true; setMult(e.target.value); }}
           onBlur={save}
-          className={`w-[42px] text-[11px] font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
+          className={`w-[42px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
             defaultRate != null && !isNaN(multNum) && Math.abs(multNum - defaultRate) > 0.0001
               ? "border-orange-400 text-orange-600 dark:text-orange-400"
               : "border-slate-300 dark:border-slate-600"
@@ -382,7 +382,7 @@ function StretchRow({
 
         {/* Live qty display — orange = auto from chainage×mult */}
         <span
-          className={`text-[11px] font-bold w-[54px] text-right flex-shrink-0 font-mono ${
+          className={`text-xs font-bold w-[54px] text-right flex-shrink-0 font-mono ${
             autoQty != null ? "text-orange-600 dark:text-orange-400" : "text-slate-600 dark:text-slate-300"
           }`}
           title={autoQty != null ? "Auto-calculated: chainage × multiplier" : "Saved quantity"}
@@ -412,19 +412,19 @@ function StretchRow({
               }
             }}
             onBlur={save}
-            className="w-[108px] text-[11px] border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
+            className="w-[108px] text-xs border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200 ml-1"
             title="Stretch start date"
             data-testid={`input-date-${bar.id}`}
           />
         ) : (
           <>
-            <span className="text-[11px] text-slate-400 flex-shrink-0 ml-1">M</span>
+            <span className="text-xs text-slate-400 flex-shrink-0 ml-1">M</span>
             <input
               type="number" min="0.1" max="120" step="0.1"
               value={startM}
               onChange={e => { dirty.current = true; setStartM(e.target.value); }}
               onBlur={save}
-              className="w-[36px] text-[11px] font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
+              className="w-[36px] text-xs font-mono border-b border-slate-300 bg-transparent text-center focus:outline-none focus:border-teal-500 dark:border-slate-600 dark:text-slate-200"
               title="Start month (decimal OK, e.g. 1.5)"
               data-testid={`input-sm-${bar.id}`}
             />
@@ -466,7 +466,7 @@ function StretchRow({
                 });
               }
             }}
-            className={`ml-1 px-1 rounded text-[9px] font-semibold flex-shrink-0 border ${
+            className={`ml-1 px-1 rounded text-xs font-semibold flex-shrink-0 border ${
               durationModeState === "fixed"
                 ? "bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300"
                 : "bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
@@ -481,7 +481,7 @@ function StretchRow({
         {/* End date (fixed mode only) */}
         {durationModeState === "fixed" && project.startDate && (
           <>
-            <span className="text-[11px] text-slate-400 flex-shrink-0 ml-0.5">→</span>
+            <span className="text-xs text-slate-400 flex-shrink-0 ml-0.5">→</span>
             <input
               type="date"
               value={
@@ -499,7 +499,7 @@ function StretchRow({
                 }
               }}
               onBlur={save}
-              className="w-[108px] text-[11px] border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
+              className="w-[108px] text-xs border-b border-violet-400 bg-transparent text-center focus:outline-none focus:border-violet-600 dark:text-slate-200 ml-0.5"
               title="Stretch end date (fixed duration)"
               data-testid={`input-end-date-${bar.id}`}
             />
@@ -509,7 +509,7 @@ function StretchRow({
         {/* Required output intensity badge — always shown in fixed mode; red when exceeds capacity */}
         {requiredOutput && (
           <span
-            className={`inline-flex items-center gap-0.5 text-[9px] font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border ${
+            className={`inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border ${
               requiredOutput.exceedsCapacity
                 ? "text-red-700 bg-red-50 border-red-300 dark:bg-red-950/30 dark:text-red-400"
                 : "text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400"
@@ -600,7 +600,7 @@ function StretchRow({
         {/* Road Estimator–style label: "qty unit | X.XXd" below the bar */}
         {barWidth > 8 && (
           <div
-            className="absolute pointer-events-none select-none whitespace-nowrap text-[10px] font-semibold leading-tight"
+            className="absolute pointer-events-none select-none whitespace-nowrap text-[12px] font-semibold leading-tight"
             style={{
               left: barLeft,
               top: 34,
@@ -834,10 +834,10 @@ function InlineGanttTable({
             style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 20, background: "#0F5F64" }}
             className="flex items-center px-3 border-r border-teal-700"
           >
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white">
+            <span className="text-xs font-bold uppercase tracking-wider text-white">
               BOQ Item / Stretch
             </span>
-            <span className="ml-auto text-[9px] text-white/50 font-normal normal-case tracking-normal">
+            <span className="ml-auto text-xs text-white/50 font-normal normal-case tracking-normal">
               Drag month edge to resize
             </span>
           </div>
@@ -849,7 +849,7 @@ function InlineGanttTable({
               <div
                 key={m.num}
                 style={{ width: colW, minWidth: colW }}
-                className="relative flex items-center justify-center text-[10px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none"
+                className="relative flex items-center justify-center text-[12px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none"
               >
                 {m.label}
                 {/* Drag-to-resize handle — right edge of every month header */}
@@ -883,10 +883,10 @@ function InlineGanttTable({
                   onClick={() => setCollapsedCats(prev => ({ ...prev, [cat]: !prev[cat] }))}
                 >
                   <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider flex-1 truncate" style={{ color }}>
+                  <span className="text-[12px] font-bold uppercase tracking-wider flex-1 truncate" style={{ color }}>
                     {catLabel}
                   </span>
-                  <span className="text-[10px] text-slate-500 flex-shrink-0">{catItems.length}</span>
+                  <span className="text-[12px] text-slate-500 flex-shrink-0">{catItems.length}</span>
                   {collapsed
                     ? <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                     : <ChevronUp className="w-3 h-3 text-slate-400 flex-shrink-0" />}
@@ -916,20 +916,20 @@ function InlineGanttTable({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {item.itemCode && (
-                              <span className="text-[9px] font-mono text-muted-foreground">{item.itemCode}</span>
+                              <span className="text-xs font-mono text-muted-foreground">{item.itemCode}</span>
                             )}
                             <span
-                              className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate"
+                              className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
                               title={item.description}
                             >
                               {(item as any).itemName || item.description.slice(0, 40)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] text-muted-foreground">{fmt(item.currentQty)} {item.unit}</span>
+                            <span className="text-[12px] text-muted-foreground">{fmt(item.currentQty)} {item.unit}</span>
                             <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} />
                             {!hasEquipment && (
-                              <span className="text-[9px] text-amber-500 flex items-center gap-0.5">
+                              <span className="text-xs text-amber-500 flex items-center gap-0.5">
                                 <Info className="w-2.5 h-2.5" /> no equipment
                               </span>
                             )}
@@ -938,7 +938,7 @@ function InlineGanttTable({
                         <button
                           onClick={() => addStretch(item.id)}
                           disabled={createMutation.isPending}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[10px] text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-700 transition-colors flex-shrink-0 font-medium"
+                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-700 transition-colors flex-shrink-0 font-medium"
                           data-testid={`button-add-stretch-${item.id}`}
                         >
                           <Plus className="w-3 h-3" />
@@ -994,7 +994,7 @@ function InlineGanttTable({
                           style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
                           className="flex items-center gap-2 px-3 bg-slate-50 dark:bg-slate-900/30 border-r border-slate-200 dark:border-slate-700"
                         >
-                          <span className="text-[10px] text-slate-500 font-semibold">
+                          <span className="text-[12px] text-slate-500 font-semibold">
                             Total: {fmtQty(totalPlanned, 1)} {item.unit}
                           </span>
                           <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} />
@@ -1101,7 +1101,7 @@ function MonthlyPlanView({
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="text-xs border-collapse" style={{ minWidth: 200 + maxMonth * 64 + 80 }}>
+      <table className="text-sm border-collapse" style={{ minWidth: 200 + maxMonth * 64 + 80 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>
@@ -1128,7 +1128,7 @@ function MonthlyPlanView({
               <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12` }}>
                 <td
                   colSpan={2 + maxMonth + 1}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider sticky left-0 z-10"
+                  className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider sticky left-0 z-10"
                   style={{ backgroundColor: `${color}18`, color }}
                 >
                   {catLabel}
@@ -1195,12 +1195,12 @@ function MonthlyPlanView({
                 {months.map(m => {
                   const val = grandMonthly[m] ?? 0;
                   return (
-                    <td key={m} className={`px-2 py-2 text-right font-mono text-[11px] ${val > 0 ? "text-teal-800 dark:text-teal-300" : "text-slate-300 dark:text-slate-600"}`}>
+                    <td key={m} className={`px-2 py-2 text-right font-mono text-xs ${val > 0 ? "text-teal-800 dark:text-teal-300" : "text-slate-300 dark:text-slate-600"}`}>
                       {val > 0 ? fmtQty(val, 1) : "—"}
                     </td>
                   );
                 })}
-                <td className="px-3 py-2 text-right text-teal-800 dark:text-teal-300 font-mono text-[11px]">{fmtQty(grand, 1)}</td>
+                <td className="px-3 py-2 text-right text-teal-800 dark:text-teal-300 font-mono text-xs">{fmtQty(grand, 1)}</td>
               </tr>
             );
           })()}
@@ -1227,7 +1227,7 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full text-xs border-collapse">
+      <table className="w-full text-sm border-collapse">
         <thead>
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>BOQ Item</th>
@@ -1295,8 +1295,8 @@ function StartDateBanner({ projectId }: { projectId: number }) {
     <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 flex-wrap">
       <CalendarDays className="w-4 h-4 text-blue-600 flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Set a project start date to use real calendar dates</p>
-        <p className="text-[11px] text-blue-600 dark:text-blue-400">
+        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Set a project start date to use real calendar dates</p>
+        <p className="text-xs text-blue-600 dark:text-blue-400">
           Gantt inputs will switch to date pickers and month headers will show real month names (e.g. "Jun '25").
         </p>
       </div>
@@ -1305,7 +1305,7 @@ function StartDateBanner({ projectId }: { projectId: number }) {
           type="date"
           value={dateVal}
           onChange={e => setDateVal(e.target.value)}
-          className="h-8 rounded border border-blue-300 text-xs px-2 bg-white dark:bg-gray-900 dark:border-blue-700 dark:text-slate-200"
+          className="h-8 rounded border border-blue-300 text-sm px-2 bg-white dark:bg-gray-900 dark:border-blue-700 dark:text-slate-200"
           data-testid="input-project-start-date-banner"
         />
         <Button
@@ -1448,7 +1448,7 @@ export default function WorkProgramme() {
   return (
     <div className="space-y-4">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground" aria-label="breadcrumb">
         <Link href="/work-program">
           <a className="hover:text-slate-700 transition-colors flex items-center gap-1">
             <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -1472,7 +1472,7 @@ export default function WorkProgramme() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work Programme</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {effectiveProject?.name}
             {effectiveProject?.contractNo ? ` · ${effectiveProject.contractNo}` : ""}
             {effectiveProject?.roadLengthKm ? ` · ${effectiveProject.roadLengthKm} km road` : ""}
@@ -1485,7 +1485,7 @@ export default function WorkProgramme() {
               </span>
             )}
           </p>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 mt-0.5">
             Click cell to add · Ch inputs auto-calculate qty
             {effectiveProject?.startDate ? " · Date pickers active — AUTO stretches the bar to fit output; FIX locks the window" : " · M# = start month (set a start date in Settings for date pickers)"}
           </p>
@@ -1522,13 +1522,13 @@ export default function WorkProgramme() {
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 space-y-0.5">
             {warnings.missing > 0 && (
-              <p className="text-xs text-amber-700"><strong>{warnings.missing}</strong> item{warnings.missing > 1 ? "s" : ""} not yet programmed</p>
+              <p className="text-sm text-amber-700"><strong>{warnings.missing}</strong> item{warnings.missing > 1 ? "s" : ""} not yet programmed</p>
             )}
             {warnings.under > 0 && (
-              <p className="text-xs text-amber-700"><strong>{warnings.under}</strong> item{warnings.under > 1 ? "s" : ""} under-planned vs BOQ</p>
+              <p className="text-sm text-amber-700"><strong>{warnings.under}</strong> item{warnings.under > 1 ? "s" : ""} under-planned vs BOQ</p>
             )}
             {warnings.over > 0 && (
-              <p className="text-xs text-red-700"><strong>{warnings.over}</strong> item{warnings.over > 1 ? "s" : ""} planned qty exceeds BOQ</p>
+              <p className="text-sm text-red-700"><strong>{warnings.over}</strong> item{warnings.over > 1 ? "s" : ""} planned qty exceeds BOQ</p>
             )}
           </div>
         </div>
@@ -1546,7 +1546,7 @@ export default function WorkProgramme() {
           <CardContent className="p-10 text-center text-muted-foreground space-y-2">
             <FileSpreadsheet className="w-10 h-10 text-slate-200 mx-auto" />
             <p className="text-sm">No BOQ items in this project yet.</p>
-            <p className="text-xs">Import a BOQ first, then programme the work here.</p>
+            <p className="text-sm">Import a BOQ first, then programme the work here.</p>
           </CardContent>
         </Card>
       )}
@@ -1579,7 +1579,7 @@ export default function WorkProgramme() {
                 } : null}
               />
             ) : (
-              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2">
+              <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                 Set the total duration (months) on the project to enable the Gantt view.
               </div>

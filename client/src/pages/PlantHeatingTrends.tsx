@@ -190,29 +190,29 @@ export default function PlantHeatingTrends() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground">Sessions</div>
+              <div className="text-sm text-muted-foreground">Sessions</div>
               <div className="text-2xl font-bold" data-testid="kpi-sessions">{data.summary.sessionCount}</div>
-              <div className="text-xs text-muted-foreground">{data.summary.days} days</div>
+              <div className="text-sm text-muted-foreground">{data.summary.days} days</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground">Heating Hours</div>
+              <div className="text-sm text-muted-foreground">Heating Hours</div>
               <div className="text-2xl font-bold" data-testid="kpi-hours">{fmt(data.summary.totalHours, 1)}</div>
-              <div className="text-xs text-muted-foreground">L/Hour: {fmt(data.summary.lPerHour)}</div>
+              <div className="text-sm text-muted-foreground">L/Hour: {fmt(data.summary.lPerHour)}</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground">LDO Boiler Meter</div>
+              <div className="text-sm text-muted-foreground">LDO Boiler Meter</div>
               <div className="text-2xl font-bold" data-testid="kpi-ldo">{fmt(data.summary.totalLdoT1L, 1)} L</div>
-              <div className="text-xs text-muted-foreground">DG Diesel: {fmt(data.summary.dgDieselL, 1)} L</div>
+              <div className="text-sm text-muted-foreground">DG Diesel: {fmt(data.summary.dgDieselL, 1)} L</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground">L / MT (vs target {target})</div>
+              <div className="text-sm text-muted-foreground">L / MT (vs target {target})</div>
               <div className={`text-2xl font-bold ${data.summary.lPerMT != null && data.summary.lPerMT > target ? "text-red-600" : "text-green-700"}`} data-testid="kpi-lpermt">
                 {fmt(data.summary.lPerMT, 3)}
               </div>
-              <div className="text-xs text-muted-foreground">Production: {fmt(data.summary.totalProductionMT, 1)} MT</div>
+              <div className="text-sm text-muted-foreground">Production: {fmt(data.summary.totalProductionMT, 1)} MT</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
                 <Thermometer className="w-3 h-3" />Hot-oil End (avg)
               </div>
               <div
@@ -221,20 +221,20 @@ export default function PlantHeatingTrends() {
               >
                 {fmt(data.summary.hotOilEndAvgC, 1)} {data.summary.hotOilEndAvgC != null && "°C"}
               </div>
-              <div className="text-xs text-muted-foreground" data-testid="kpi-hotoil-flagged">
+              <div className="text-sm text-muted-foreground" data-testid="kpi-hotoil-flagged">
                 {data.summary.hotOilFlaggedDays > 0
                   ? <span className="text-red-600 font-medium">{data.summary.hotOilFlaggedDays} day{data.summary.hotOilFlaggedDays === 1 ? "" : "s"} &lt; {hotOilThreshold}°C</span>
                   : <span>Min/Max: {fmt(data.summary.hotOilEndMinC, 0)} / {fmt(data.summary.hotOilEndMaxC, 0)}°C</span>}
               </div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
                 <GitCompare className="w-3 h-3" />Shift-meter L
               </div>
               <div className="text-2xl font-bold" data-testid="kpi-shift-meter">
                 {fmt(data.summary.totalShiftMeterT1L, 1)} L
               </div>
-              <div className="text-xs text-muted-foreground" data-testid="kpi-mismatch-days">
+              <div className="text-sm text-muted-foreground" data-testid="kpi-mismatch-days">
                 {data.summary.mismatchDays > 0
                   ? <span className="text-red-600 font-medium">{data.summary.mismatchDays} mismatch day{data.summary.mismatchDays === 1 ? "" : "s"} (&gt;±{mismatchThreshold} L)</span>
                   : <span>{data.summary.daysWithShiftMeter} day{data.summary.daysWithShiftMeter === 1 ? "" : "s"} logged</span>}
@@ -282,7 +282,7 @@ export default function PlantHeatingTrends() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 Sessions L/MT comes from heating-session LDO Tank-1 totals. Shift-meter L/MT uses the daily shift-log Tank-1 closing − opening reading. Days with a mismatch &gt; ±{mismatchThreshold} L are flagged in the table below.
               </p>
             </CardContent>
@@ -314,7 +314,7 @@ export default function PlantHeatingTrends() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 Days where the daily average hot-oil end temperature drops below {hotOilThreshold}°C are flagged in the table below. Adjust the floor in Admin → Plant Alert Thresholds.
               </p>
             </CardContent>
@@ -330,19 +330,19 @@ export default function PlantHeatingTrends() {
             <CardContent>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm mb-3">
                 <div data-testid="kpi-hotoil-supply">
-                  <div className="text-xs text-muted-foreground">Supply Avg</div>
+                  <div className="text-sm text-muted-foreground">Supply Avg</div>
                   <div className="text-lg font-semibold">
                     {fmt(data.summary.hotOilSupplyAvgC, 1)}{data.summary.hotOilSupplyAvgC != null && " °C"}
                   </div>
                 </div>
                 <div data-testid="kpi-hotoil-return">
-                  <div className="text-xs text-muted-foreground">Return Avg</div>
+                  <div className="text-sm text-muted-foreground">Return Avg</div>
                   <div className="text-lg font-semibold">
                     {fmt(data.summary.hotOilReturnAvgC, 1)}{data.summary.hotOilReturnAvgC != null && " °C"}
                   </div>
                 </div>
                 <div data-testid="kpi-hotoil-delta">
-                  <div className="text-xs text-muted-foreground">Δ Avg (Supply − Return)</div>
+                  <div className="text-sm text-muted-foreground">Δ Avg (Supply − Return)</div>
                   <div
                     className={`text-lg font-semibold ${
                       data.summary.hotOilDeltaAvgC != null && data.summary.hotOilDeltaAvgC < hotOilDeltaFloor
@@ -352,7 +352,7 @@ export default function PlantHeatingTrends() {
                   >
                     {fmt(data.summary.hotOilDeltaAvgC, 1)}{data.summary.hotOilDeltaAvgC != null && " °C"}
                   </div>
-                  <div className="text-xs text-muted-foreground" data-testid="kpi-hotoil-delta-flagged">
+                  <div className="text-sm text-muted-foreground" data-testid="kpi-hotoil-delta-flagged">
                     {data.summary.hotOilDeltaFlaggedDays > 0
                       ? <span className="text-red-600 font-medium">{data.summary.hotOilDeltaFlaggedDays} day{data.summary.hotOilDeltaFlaggedDays === 1 ? "" : "s"} &lt; {hotOilDeltaFloor}°C floor</span>
                       : <span>Lowest day avg: {fmt(data.summary.hotOilDeltaMinObservedC, 1)} °C</span>}
@@ -384,7 +384,7 @@ export default function PlantHeatingTrends() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 Δ is the daily average of supply minus return temperature on each heating session. A shrinking Δ over time is an early sign of heat-exchanger fouling. Days whose average Δ drops below {hotOilDeltaFloor}°C are flagged. Adjust the floor in Admin → Plant Alert Thresholds.
               </p>
             </CardContent>
@@ -473,7 +473,7 @@ export default function PlantHeatingTrends() {
                               >
                                 <Badge
                                   variant="outline"
-                                  className="gap-1 cursor-pointer hover-elevate text-xs"
+                                  className="gap-1 cursor-pointer hover-elevate text-sm"
                                   title={`Review LDO ledger for ${r.date}`}
                                   data-testid={`badge-ldo-ledger-${r.date}`}
                                 >
@@ -508,7 +508,7 @@ export default function PlantHeatingTrends() {
                             <span>{fmt(r.hotOilEndAvgC, 1)}</span>
                           )}
                         </td>
-                        <td className="py-2 pr-3 text-right text-xs text-muted-foreground" data-testid={`cell-hotoil-range-${r.date}`}>
+                        <td className="py-2 pr-3 text-right text-sm text-muted-foreground" data-testid={`cell-hotoil-range-${r.date}`}>
                           {r.hotOilEndMinC == null
                             ? "—"
                             : `${fmt(r.hotOilEndMinC, 0)} / ${fmt(r.hotOilEndMaxC, 0)}`}

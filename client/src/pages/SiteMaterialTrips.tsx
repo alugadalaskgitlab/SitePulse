@@ -150,7 +150,7 @@ export default function SiteMaterialTrips() {
             <img src={`/${logoFile}`} alt={companyName} className="h-10 w-10 rounded-lg object-cover" />
             <div>
               <h1 className="text-lg font-bold">{companyName}</h1>
-              <p className="text-xs text-muted-foreground">Quick Materials Entry</p>
+              <p className="text-sm text-muted-foreground">Quick Materials Entry</p>
             </div>
           </div>
         </div>
@@ -176,7 +176,7 @@ export default function SiteMaterialTrips() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-xs">Date</Label>
+                  <Label className="text-sm">Date</Label>
                   <Input
                     type="date"
                     value={newTrip.date}
@@ -185,7 +185,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Time</Label>
+                  <Label className="text-sm">Time</Label>
                   <Input
                     type="time"
                     value={newTrip.time}
@@ -194,7 +194,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Site *</Label>
+                  <Label className="text-sm">Site *</Label>
                   <Select
                     value={newTrip.site}
                     onValueChange={(val) => setNewTrip({ ...newTrip, site: val })}
@@ -210,7 +210,7 @@ export default function SiteMaterialTrips() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Material *</Label>
+                  <Label className="text-sm">Material *</Label>
                   <Select
                     value={newTrip.material}
                     onValueChange={(val) => setNewTrip({ ...newTrip, material: val })}
@@ -229,7 +229,7 @@ export default function SiteMaterialTrips() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-xs">Supplier</Label>
+                  <Label className="text-sm">Supplier</Label>
                   <Input
                     placeholder="e.g. Sanganna"
                     value={newTrip.supplier}
@@ -239,7 +239,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Vehicle Number</Label>
+                  <Label className="text-sm">Vehicle Number</Label>
                   <Input
                     placeholder="e.g. TS15U1234"
                     value={newTrip.vehicleNumber}
@@ -249,7 +249,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Quantity *</Label>
+                  <Label className="text-sm">Quantity *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -260,7 +260,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">UOM</Label>
+                  <Label className="text-sm">UOM</Label>
                   <Select
                     value={newTrip.uom}
                     onValueChange={(val) => setNewTrip({ ...newTrip, uom: val })}
@@ -279,7 +279,7 @@ export default function SiteMaterialTrips() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <Label className="text-xs">Location/Chainage</Label>
+                  <Label className="text-sm">Location/Chainage</Label>
                   <Input
                     placeholder="e.g. 5.200"
                     value={newTrip.location}
@@ -288,7 +288,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Receipt/Challan No.</Label>
+                  <Label className="text-sm">Receipt/Challan No.</Label>
                   <Input
                     placeholder="e.g. 12345"
                     value={newTrip.receiptNumber}
@@ -297,7 +297,7 @@ export default function SiteMaterialTrips() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Entered By</Label>
+                  <Label className="text-sm">Entered By</Label>
                   <Input
                     placeholder="Your name"
                     value={newTrip.enteredBy}

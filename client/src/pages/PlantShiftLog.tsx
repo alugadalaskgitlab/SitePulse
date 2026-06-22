@@ -1095,15 +1095,15 @@ export default function PlantShiftLog() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1">
-              <Label className="text-xs whitespace-nowrap">From</Label>
+              <Label className="text-sm whitespace-nowrap">From</Label>
               <Input type="date" value={listDateFrom} onChange={e => setListDateFrom(e.target.value)} className="w-40" data-testid="input-list-from" />
             </div>
             <div className="flex items-center gap-1">
-              <Label className="text-xs whitespace-nowrap">To</Label>
+              <Label className="text-sm whitespace-nowrap">To</Label>
               <Input type="date" value={listDateTo} onChange={e => setListDateTo(e.target.value)} className="w-40" data-testid="input-list-to" />
             </div>
             <Select value={listDryerFilter} onValueChange={v => setListDryerFilter(v as "all" | "TANK_1" | "TANK_2")}>
-              <SelectTrigger className="w-36 h-9 text-xs" data-testid="select-dryer-filter">
+              <SelectTrigger className="w-36 h-9 text-sm" data-testid="select-dryer-filter">
                 <SelectValue placeholder="Dryer fed from" />
               </SelectTrigger>
               <SelectContent>
@@ -1146,7 +1146,7 @@ export default function PlantShiftLog() {
                         style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
                       />
                       <h3 className="font-semibold text-lg">{format(parseISO(d), "EEEE, dd MMM yyyy")}</h3>
-                      <span className="text-xs text-muted-foreground ml-1">({grouped[d].length} log{grouped[d].length !== 1 ? "s" : ""})</span>
+                      <span className="text-sm text-muted-foreground ml-1">({grouped[d].length} log{grouped[d].length !== 1 ? "s" : ""})</span>
                     </button>
                     {isOpen && <div className="space-y-2">
                       {grouped[d].map(r => {
@@ -1170,13 +1170,13 @@ export default function PlantShiftLog() {
                             <div className="flex-1 min-w-0">
                               {/* Line 1 — timing + status */}
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{r.shiftCode}</span>
+                                <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{r.shiftCode}</span>
                                 <span className="font-medium text-sm">{r.plantStartTime || "—"} → {r.plantStopTime || "—"}</span>
-                                {dur != null && <span className="text-xs text-muted-foreground">({dur} h)</span>}
-                                {r.plantName !== "Main Plant" && <span className="text-xs text-muted-foreground">· {r.plantName}</span>}
+                                {dur != null && <span className="text-sm text-muted-foreground">({dur} h)</span>}
+                                {r.plantName !== "Main Plant" && <span className="text-sm text-muted-foreground">· {r.plantName}</span>}
                                 {r.isFinalized
-                                  ? <Badge variant="default" className="bg-green-600 text-xs px-1.5 py-0">✓ Done</Badge>
-                                  : <Badge variant="secondary" className="text-xs px-1.5 py-0">Draft</Badge>
+                                  ? <Badge variant="default" className="bg-green-600 text-sm px-1.5 py-0">✓ Done</Badge>
+                                  : <Badge variant="secondary" className="text-sm px-1.5 py-0">Draft</Badge>
                                 }
                                 {mismatch && mismatch.shiftLogValue && (mismatch.shiftLogId === null || mismatch.shiftLogId === r.id) && (() => {
                                   const slValue = mismatch.shiftLogValue;
@@ -1194,7 +1194,7 @@ export default function PlantShiftLog() {
                                           suggestedValue: oppValue,
                                         },
                                       })}
-                                      className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-xs font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
+                                      className="inline-flex items-center gap-1 rounded px-1.5 py-0 text-sm font-medium bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/50 cursor-pointer"
                                       data-testid={`badge-dryer-mismatch-${r.id}`}
                                     >
                                       ⚠ Dryer source conflict
@@ -1203,7 +1203,7 @@ export default function PlantShiftLog() {
                                 })()}
                               </div>
                               {/* Line 2 — consumption metrics */}
-                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs mt-1.5">
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm mt-1.5">
                                 <span>
                                   <span className="text-muted-foreground">Boiler LDO: </span>
                                   <span className="font-medium">{ldo1 != null ? `${ldo1.toFixed(0)} L` : "—"}</span>
@@ -1298,7 +1298,7 @@ export default function PlantShiftLog() {
                 onCheckedChange={setNoMainPlantOps}
                 data-testid="switch-no-main-plant-ops"
               />
-              <Label htmlFor="no-main-plant-ops" className="text-xs cursor-pointer">
+              <Label htmlFor="no-main-plant-ops" className="text-sm cursor-pointer">
                 No Main Plant Operations
               </Label>
             </div>
@@ -1348,20 +1348,20 @@ export default function PlantShiftLog() {
           <div>
             <Label>Bitumen tank 1 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1OpeningDip} onChange={e => { setBitumenTank1OpeningDip(e.target.value); setAutoFillBitumenT1Source(""); autoFilledBitumenT1Ref.current = null; }} data-testid="input-bitumen-t1-open" />
-            {autoFillBitumenT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t1-open">Auto-filled from {autoFillBitumenT1Source}</p>}
+            {autoFillBitumenT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t1-open">Auto-filled from {autoFillBitumenT1Source}</p>}
             {dipHint(bitumenTank1OpeningDip) ? (
-              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
+              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t1-open-mt">{dipHint(bitumenTank1OpeningDip)}</p>
             ) : (
-              !autoFillBitumenT1Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
+              !autoFillBitumenT1Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
             <Label>Bitumen tank 1 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank1ClosingDip} onChange={e => setBitumenTank1ClosingDip(e.target.value)} data-testid="input-bitumen-t1-close" />
             {dipHint(bitumenTank1ClosingDip) ? (
-              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
+              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t1-close-mt">{dipHint(bitumenTank1ClosingDip)}</p>
             ) : (
-              <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
+              <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
           <div />
@@ -1369,20 +1369,20 @@ export default function PlantShiftLog() {
           <div>
             <Label>Bitumen tank 2 — opening dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2OpeningDip} onChange={e => { setBitumenTank2OpeningDip(e.target.value); setAutoFillBitumenT2Source(""); autoFilledBitumenT2Ref.current = null; }} data-testid="input-bitumen-t2-open" />
-            {autoFillBitumenT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t2-open">Auto-filled from {autoFillBitumenT2Source}</p>}
+            {autoFillBitumenT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-bitumen-t2-open">Auto-filled from {autoFillBitumenT2Source}</p>}
             {dipHint(bitumenTank2OpeningDip) ? (
-              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
+              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t2-open-mt">{dipHint(bitumenTank2OpeningDip)}</p>
             ) : (
-              !autoFillBitumenT2Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
+              !autoFillBitumenT2Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at start of shift, in cm</p>
             )}
           </div>
           <div>
             <Label>Bitumen tank 2 — closing dip (cm)</Label>
             <Input type="number" step="0.1" value={bitumenTank2ClosingDip} onChange={e => setBitumenTank2ClosingDip(e.target.value)} data-testid="input-bitumen-t2-close" />
             {dipHint(bitumenTank2ClosingDip) ? (
-              <p className="text-xs font-medium text-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
+              <p className="text-sm font-medium text-foreground mt-1" data-testid="text-bitumen-t2-close-mt">{dipHint(bitumenTank2ClosingDip)}</p>
             ) : (
-              <p className="text-xs text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
+              <p className="text-sm text-foreground/60 mt-1">Dip-stick reading at end of shift, in cm</p>
             )}
           </div>
         </CardContent>
@@ -1393,7 +1393,7 @@ export default function PlantShiftLog() {
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <CardTitle>LDO Flow Meters</CardTitle>
-              <p className="text-xs text-muted-foreground">Both meters draw from the main LDO tank.</p>
+              <p className="text-sm text-muted-foreground">Both meters draw from the main LDO tank.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {/* Routes the dryer-meter consumption to the selected tank. */}
@@ -1405,7 +1405,7 @@ export default function PlantShiftLog() {
                     : "border-blue-300 bg-blue-50/40 dark:bg-blue-950/20"
                 }`}
               >
-                <Label htmlFor="dryer-fed-from" className="text-xs">Which tank feeds the dryer?</Label>
+                <Label htmlFor="dryer-fed-from" className="text-sm">Which tank feeds the dryer?</Label>
                 <Select value={dryerFedFrom ?? ""} onValueChange={(v) => setDryerFedFrom(v as "TANK_1" | "TANK_2")}>
                   <SelectTrigger id="dryer-fed-from" className={`h-8 w-36 ${dryerFedFrom === null ? "border-amber-400 text-amber-600 dark:text-amber-400" : ""}`} data-testid="select-dryer-fed-from">
                     <SelectValue placeholder="Select tank…" />
@@ -1439,7 +1439,7 @@ export default function PlantShiftLog() {
                   }}
                   data-testid="switch-boiler-runs-during-production"
                 />
-                <Label htmlFor="boiler-runs-during-production" className="text-xs cursor-pointer">
+                <Label htmlFor="boiler-runs-during-production" className="text-sm cursor-pointer">
                   Boiler runs during production
                 </Label>
               </div>
@@ -1454,20 +1454,20 @@ export default function PlantShiftLog() {
                 <Input type="number" step="0.01" value={ldoTank1OpeningMeter}
                   onChange={e => { setLdoTank1OpeningMeter(e.target.value); setAutoFillT1Source(""); }}
                   data-testid="input-ldo-t1-open" />
-                {autoFillT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
+                {autoFillT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1">Auto-filled from {autoFillT1Source}</p>}
               </div>
               <div>
                 <Label>Boiler fuel meter — closing</Label>
                 <Input type="number" step="0.01" value={ldoTank1ClosingMeter}
                   onChange={e => { setLdoTank1ClosingMeter(e.target.value); setAutoFillT1ClosingSource(""); }}
                   data-testid="input-ldo-t1-close" />
-                {autoFillT1ClosingSource && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
+                {autoFillT1ClosingSource && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t1-close">Auto-filled from {autoFillT1ClosingSource}</p>}
               </div>
               <div><Label>Boiler fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t1-consumed">{ldoTotal.t1?.toFixed(2) ?? "—"}</div></div>
               <div />
             </>
           ) : (
-            <div className="md:col-span-4 text-xs text-muted-foreground italic" data-testid="text-boiler-meter-hidden">
+            <div className="md:col-span-4 text-sm text-muted-foreground italic" data-testid="text-boiler-meter-hidden">
               Boiler Meter inputs are hidden — turn on "Boiler runs during production" to record the meter opening/closing for this shift. Heating session LDO is still counted in the Daily Plant Report.
             </div>
           )}
@@ -1476,7 +1476,7 @@ export default function PlantShiftLog() {
             <Input type="number" step="0.01" value={ldoTank2OpeningMeter}
               onChange={e => { setLdoTank2OpeningMeter(e.target.value); setAutoFillT2Source(""); }}
               data-testid="input-ldo-t2-open" />
-            {autoFillT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
+            {autoFillT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-t2">Auto-filled from {autoFillT2Source}</p>}
           </div>
           <div><Label>Dryer fuel meter — closing</Label><Input type="number" step="0.01" value={ldoTank2ClosingMeter} onChange={e => setLdoTank2ClosingMeter(e.target.value)} data-testid="input-ldo-t2-close" /></div>
           <div><Label>Dryer fuel consumed (L)</Label><div className="px-3 py-2 rounded bg-muted text-sm" data-testid="text-ldo-t2-consumed">{ldoTotal.t2?.toFixed(2) ?? "—"}</div></div>
@@ -1484,44 +1484,44 @@ export default function PlantShiftLog() {
 
           {/* Task #344 — LDO dip-stick readings */}
           <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
-            <p className="text-xs font-medium text-muted-foreground mb-2">LDO Tank Dip-Stick Readings</p>
+            <p className="text-sm font-medium text-muted-foreground mb-2">LDO Tank Dip-Stick Readings</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <Label>Tank 1 — opening dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank1OpeningDip} onChange={e => { setLdoTank1OpeningDip(e.target.value); setAutoFillLdoDipT1Source(""); autoFilledLdoDipT1Ref.current = null; }} data-testid="input-ldo-dip-t1-open" />
-                {autoFillLdoDipT1Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1-open">Auto-filled from {autoFillLdoDipT1Source}</p>}
+                {autoFillLdoDipT1Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t1-open">Auto-filled from {autoFillLdoDipT1Source}</p>}
                 {ldoDipHint(1, ldoTank1OpeningDip) ? (
-                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-open-hint">{ldoDipHint(1, ldoTank1OpeningDip)}</p>
                 ) : (
-                  !autoFillLdoDipT1Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
+                  !autoFillLdoDipT1Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 1 — closing dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank1ClosingDip} onChange={e => setLdoTank1ClosingDip(e.target.value)} data-testid="input-ldo-dip-t1-close" />
                 {ldoDipHint(1, ldoTank1ClosingDip) ? (
-                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t1-close-hint">{ldoDipHint(1, ldoTank1ClosingDip)}</p>
                 ) : (
-                  <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
+                  <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 2 — opening dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank2OpeningDip} onChange={e => { setLdoTank2OpeningDip(e.target.value); setAutoFillLdoDipT2Source(""); autoFilledLdoDipT2Ref.current = null; }} data-testid="input-ldo-dip-t2-open" />
-                {autoFillLdoDipT2Source && <p className="text-xs text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2-open">Auto-filled from {autoFillLdoDipT2Source}</p>}
+                {autoFillLdoDipT2Source && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1" data-testid="text-autofill-ldo-dip-t2-open">Auto-filled from {autoFillLdoDipT2Source}</p>}
                 {ldoDipHint(2, ldoTank2OpeningDip) ? (
-                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-open-hint">{ldoDipHint(2, ldoTank2OpeningDip)}</p>
                 ) : (
-                  !autoFillLdoDipT2Source && <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
+                  !autoFillLdoDipT2Source && <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift start, in cm</p>
                 )}
               </div>
               <div>
                 <Label>Tank 2 — closing dip (cm)</Label>
                 <Input type="number" step="0.1" value={ldoTank2ClosingDip} onChange={e => setLdoTank2ClosingDip(e.target.value)} data-testid="input-ldo-dip-t2-close" />
                 {ldoDipHint(2, ldoTank2ClosingDip) ? (
-                  <p className="text-xs font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
+                  <p className="text-sm font-medium text-foreground mt-1" data-testid="text-ldo-dip-t2-close-hint">{ldoDipHint(2, ldoTank2ClosingDip)}</p>
                 ) : (
-                  <p className="text-xs text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
+                  <p className="text-sm text-foreground/60 mt-1">Dip-stick at shift end, in cm</p>
                 )}
               </div>
               {(() => {
@@ -1543,7 +1543,7 @@ export default function PlantShiftLog() {
                 return (
                   <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4 pt-1" data-testid="text-ldo-dip-consumed-summary">
                     {results.map(r => r && (
-                      <span key={r.label} className={`text-xs font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                      <span key={r.label} className={`text-sm font-semibold ${r.isReceipt ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
                         {r.label} — {r.isReceipt ? "Net receipt" : "Consumed"}: {r.litres.toLocaleString()} L ({r.mt} MT)
                       </span>
                     ))}
@@ -1557,7 +1557,7 @@ export default function PlantShiftLog() {
               operator types closing readings, changes plant start/stop times,
               or when dispatch totals load in the background. */}
           <div className="col-span-2 md:col-span-4 border-t pt-3 mt-1">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Live LDO Stats</p>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Live LDO Stats</p>
             <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
               {([
                 { label: "Boiler L/Hr", value: liveStats.boilerLHr, testId: "text-ldo-stat-boiler-lphr" },
@@ -1568,7 +1568,7 @@ export default function PlantShiftLog() {
                 { label: "Combined L/MT", value: liveStats.combinedLMt, testId: "text-ldo-stat-combined-lpmt" },
               ] as const).map(({ label, value, testId }) => (
                 <div key={label} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">{label}</span>
+                  <span className="text-sm text-muted-foreground">{label}</span>
                   <span
                     className={`text-sm font-semibold ${value == null ? "text-muted-foreground" : "text-foreground"}`}
                     data-testid={testId}
@@ -1579,7 +1579,7 @@ export default function PlantShiftLog() {
               ))}
             </div>
             {liveStats.noDispatches && (
-              <p className="text-xs text-muted-foreground mt-2" data-testid="text-ldo-stat-no-dispatches">
+              <p className="text-sm text-muted-foreground mt-2" data-testid="text-ldo-stat-no-dispatches">
                 No dispatches logged for {date} — L/MT metrics will appear once production is recorded.
               </p>
             )}
@@ -1610,7 +1610,7 @@ export default function PlantShiftLog() {
             })()}
           </div>
           {/* Task #254 — make the attribution rule visible to operators. */}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {plantStartTime && plantStopTime
               ? `Showing sessions within shift window (${plantStartTime}–${plantStopTime}); prior-date pre-heating always included.`
               : "Includes every heating session run since the previous production day — overnight pre-heating is rolled into this day's totals."}
@@ -1628,7 +1628,7 @@ export default function PlantShiftLog() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-muted-foreground border-b">
+                  <tr className="text-left text-sm text-muted-foreground border-b">
                     <th className="py-2 pr-2">Date</th>
                     <th className="py-2 pr-2">Type</th>
                     <th className="py-2 pr-2">Time</th>
@@ -1647,14 +1647,14 @@ export default function PlantShiftLog() {
                     )
                     .map(s => (
                       <tr key={s.id} className="border-b last:border-b-0" data-testid={`row-shift-heating-${s.id}`}>
-                        <td className="py-2 pr-2 whitespace-nowrap text-xs text-muted-foreground" data-testid={`text-shift-heating-date-${s.id}`}>
+                        <td className="py-2 pr-2 whitespace-nowrap text-sm text-muted-foreground" data-testid={`text-shift-heating-date-${s.id}`}>
                           {s.date}
                           {s.date !== date && (
-                            <Badge variant="outline" className="ml-1 text-[10px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
+                            <Badge variant="outline" className="ml-1 text-[12px] border-amber-400 text-amber-700 dark:text-amber-400">prior</Badge>
                           )}
                         </td>
                         <td className="py-2 pr-2">
-                          <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"} className="text-xs">
+                          <Badge variant={s.sessionType === "NIGHT_PREHEAT" ? "secondary" : "outline"} className="text-sm">
                             {heatingSessionTypeLabel(s.sessionType)}
                           </Badge>
                         </td>
@@ -1663,11 +1663,11 @@ export default function PlantShiftLog() {
                         <td className="py-2 pr-2 text-right">{s.ldoTank1Consumed?.toFixed(1) ?? "—"}</td>
                         <td className="py-2 pr-2 text-right">
                           {s.generatorLogId != null ? (
-                            <Badge variant="outline" className="text-xs border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-shift-dg-${s.id}`}>
+                            <Badge variant="outline" className="text-sm border-emerald-400 text-emerald-700 dark:text-emerald-400" data-testid={`badge-shift-dg-${s.id}`}>
                               #{s.generatorLogId}
                             </Badge>
                           ) : s.dgMode === "none" ? "—" : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="py-2 pr-2">{s.hotOilTempEnd ?? "—"}</td>
@@ -1675,7 +1675,7 @@ export default function PlantShiftLog() {
                     ))}
                 </tbody>
               </table>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 Bitumen tank temperatures and DG runs recorded inside a session are the source of truth for the Daily Plant Report. When the "Boiler runs during production" toggle above is on, the shift's Boiler Meter delta is added on top of these session totals.
               </p>
             </div>
@@ -1696,7 +1696,7 @@ export default function PlantShiftLog() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-muted-foreground border-b">
+                  <tr className="text-left text-sm text-muted-foreground border-b">
                     <th className="py-2 pr-2">Name</th>
                     <th className="py-2 pr-2">Contractor</th>
                     <th className="py-2 pr-2">Category</th>
@@ -1708,11 +1708,11 @@ export default function PlantShiftLog() {
                 <tbody>
                   {manpower.map((m, i) => (
                     <tr key={i} className="border-b last:border-b-0" data-testid={`row-manpower-${i}`}>
-                      <td className="py-2 pr-2 font-medium">{m.name}{m.role ? <span className="text-xs text-muted-foreground"> ({m.role})</span> : null}</td>
+                      <td className="py-2 pr-2 font-medium">{m.name}{m.role ? <span className="text-sm text-muted-foreground"> ({m.role})</span> : null}</td>
                       <td className="py-2 pr-2">{m.contractorName || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
                       <td className="py-2 pr-2">{m.category || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
                       <td className="py-2 pr-2">{m.gender || <span className="text-amber-600 dark:text-amber-400">—</span>}</td>
-                      <td className="py-2 pr-2"><Badge variant="outline" className="font-mono text-xs">{rateCardKeyForRow(m) || "—"}</Badge></td>
+                      <td className="py-2 pr-2"><Badge variant="outline" className="font-mono text-sm">{rateCardKeyForRow(m) || "—"}</Badge></td>
                       <td className="py-2 pr-2 text-right">
                         <Button variant="ghost" size="icon" onClick={() => openEditManpower(i)} data-testid={`button-edit-manpower-${i}`}><Pencil className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => removeManpower(i)} data-testid={`button-remove-manpower-${i}`}><Trash2 className="w-4 h-4 text-destructive" /></Button>
@@ -1739,7 +1739,7 @@ export default function PlantShiftLog() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-muted-foreground border-b">
+                  <tr className="text-left text-sm text-muted-foreground border-b">
                     <th className="py-2 pr-2">Start</th>
                     <th className="py-2 pr-2">End</th>
                     <th className="py-2 pr-2">Duration</th>
@@ -1756,7 +1756,7 @@ export default function PlantShiftLog() {
                         <td className="py-2 pr-2">{ev.startTime}</td>
                         <td className="py-2 pr-2">{ev.endTime || <span className="text-muted-foreground italic">ongoing</span>}</td>
                         <td className="py-2 pr-2">{mins != null ? `${mins} min` : "—"}</td>
-                        <td className="py-2 pr-2"><Badge variant="outline" className="text-xs">{ev.reason}</Badge></td>
+                        <td className="py-2 pr-2"><Badge variant="outline" className="text-sm">{ev.reason}</Badge></td>
                         <td className="py-2 pr-2 text-muted-foreground">{ev.remarks || "—"}</td>
                         <td className="py-2 pr-2 text-right">
                           <Button variant="ghost" size="icon" onClick={() => openEditIdle(i)} data-testid={`button-edit-idle-${i}`}><Pencil className="w-4 h-4" /></Button>
@@ -1799,9 +1799,9 @@ export default function PlantShiftLog() {
               </Select>
             </div>
             <div className="col-span-2">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Vendor Bills (Labour) will pull this row using rate-card key:{" "}
-                <Badge variant="outline" className="font-mono text-xs ml-1" data-testid="text-mp-rate-card-key">{rateCardKeyForRow(mpDraft) || "—"}</Badge>
+                <Badge variant="outline" className="font-mono text-sm ml-1" data-testid="text-mp-rate-card-key">{rateCardKeyForRow(mpDraft) || "—"}</Badge>
               </p>
             </div>
           </div>

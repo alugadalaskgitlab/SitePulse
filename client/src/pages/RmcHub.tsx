@@ -58,13 +58,13 @@ function KpiCard({ label, value, sub, icon: Icon, highlight = "teal" }: {
         <Icon className={`w-5 h-5 ${highlight === "red" ? "text-red-500" : "text-teal-600"}`} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-0.5">{label}</p>
+        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-0.5">{label}</p>
         <p className={`text-2xl font-bold tracking-tight ${
           highlight === "red" ? "text-red-700" : "text-teal-700"
         }`}>
           {value !== undefined ? value : <span className="text-slate-300">—</span>}
         </p>
-        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+        {sub && <p className="text-sm text-slate-400 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -197,7 +197,7 @@ export default function RmcHub() {
         {/* Grade breakdown pills */}
         {canProduction && !summaryLoading && (rmcSummary?.byGrade?.length ?? 0) > 0 && (
           <div className="flex flex-wrap gap-2" data-testid="section-rmc-grade-breakdown">
-            <span className="text-xs text-slate-500 self-center font-medium">Grade breakdown:</span>
+            <span className="text-sm text-slate-500 self-center font-medium">Grade breakdown:</span>
             {rmcSummary!.byGrade.map((g) => (
               <Badge
                 key={g.grade}
@@ -255,7 +255,7 @@ export default function RmcHub() {
                           if (!active || !payload?.length) return null;
                           const d = payload[0].payload;
                           return (
-                            <div className="bg-white border border-slate-200 rounded-md shadow-md px-3 py-2 text-xs space-y-0.5">
+                            <div className="bg-white border border-slate-200 rounded-md shadow-md px-3 py-2 text-sm space-y-0.5">
                               <p className="font-semibold text-slate-700">{d.date}</p>
                               <p className="text-teal-600">{d.volume.toFixed(2)} m³</p>
                               <p className="text-slate-400">{d.batches} batch{d.batches !== 1 ? "es" : ""}</p>

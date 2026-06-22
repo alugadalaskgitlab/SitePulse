@@ -148,7 +148,7 @@ function MaterialCombobox({
         <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto text-sm">
           {recentItems.length > 0 && (
             <>
-              <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
+              <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
                 Recently Used
               </div>
               {recentItems.map(m => (
@@ -163,11 +163,11 @@ function MaterialCombobox({
                   data-testid={`option-recent-indent-item-${m.id}`}
                 >
                   <span>{m.name.toUpperCase()}</span>
-                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
+                  <span className="text-[12px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
                 </div>
               ))}
               {remainingItems.length > 0 && (
-                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
+                <div className="px-3 py-1 text-[12px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b border-t">
                   All Items
                 </div>
               )}
@@ -184,7 +184,7 @@ function MaterialCombobox({
               }}
             >
               <span>{m.name.toUpperCase()}</span>
-              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
+              <span className="text-[12px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.category} · {m.uom.toUpperCase()}</span>
             </div>
           ))}
           {showAddNew && (
@@ -331,7 +331,7 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
   });
 
   if (isLoading) return <div className="py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>;
-  if (!history || history.length === 0) return <p className="text-xs text-muted-foreground py-2">NO HISTORY ENTRIES</p>;
+  if (!history || history.length === 0) return <p className="text-sm text-muted-foreground py-2">NO HISTORY ENTRIES</p>;
 
   const getActionColor = (action: string) => {
     switch (action.toUpperCase()) {
@@ -345,16 +345,16 @@ function ItemHistoryTimeline({ itemId }: { itemId: number }) {
 
   return (
     <div className="space-y-2 py-2" data-testid={`history-timeline-${itemId}`}>
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
         <Clock className="w-3 h-3" /> HISTORY
       </p>
       <div className="relative pl-4 border-l-2 border-muted space-y-3">
         {history.map((entry) => (
           <div key={entry.id} className="relative" data-testid={`history-entry-${entry.id}`}>
             <div className="absolute -left-[1.3rem] w-2.5 h-2.5 rounded-full bg-muted-foreground border-2 border-background" />
-            <div className="text-xs space-y-0.5">
+            <div className="text-sm space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getActionColor(entry.action)}`}>
+                <Badge variant="outline" className={`text-[12px] px-1.5 py-0 ${getActionColor(entry.action)}`}>
                   {entry.action.toUpperCase().replace("_", " ")}
                 </Badge>
                 <span className="text-muted-foreground">
@@ -408,7 +408,7 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
           return (
             <div key={step.key} className="flex items-center gap-1">
               {i > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground" />}
-              <span className={`text-xs font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
+              <span className={`text-sm font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
                 state === "done" ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" :
                 state === "active" ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" :
                 state === "bypassed" ? "border-slate-300 bg-slate-50 text-slate-400 dark:bg-slate-800/30 dark:text-slate-500 dark:border-slate-700 line-through" :
@@ -458,7 +458,7 @@ function StatusSteps({ status, storesStatus, piType }: { status: string; storesS
         return (
           <div key={step.key} className="flex items-center gap-1">
             {i > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground" />}
-            <span className={`text-xs font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
+            <span className={`text-sm font-semibold px-2 py-1 rounded-full border uppercase tracking-wide ${
               state === "done" ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700" :
               state === "active" ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" :
               state === "rejected" ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700" :
@@ -599,7 +599,7 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
         <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
           <ClipboardList className="w-4 h-4" />
           <span className="text-sm font-semibold uppercase tracking-wide">Audit Trail</span>
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 text-[10px] font-bold">{events.length}</span>
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 text-[12px] font-bold">{events.length}</span>
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
       </button>
@@ -620,15 +620,15 @@ function IndentAuditTrail({ indent }: { indent: PurchaseIndentWithItems }) {
                 <div className={`pb-4 ${i === events.length - 1 ? "pb-0" : ""} min-w-0`}>
                   <p className="text-sm font-semibold uppercase tracking-wide text-gray-800 dark:text-gray-200">{ev.label}</p>
                   {ev.actor && (
-                    <p className="text-xs text-muted-foreground mt-0.5 uppercase">{ev.actor}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5 uppercase">{ev.actor}</p>
                   )}
                   {ev.timestamp && (
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                    <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
                       <Clock className="w-3 h-3 inline shrink-0" /> {ev.timestamp}
                     </p>
                   )}
                   {ev.note && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">{ev.note}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 italic">{ev.note}</p>
                   )}
                 </div>
               </div>
@@ -2069,7 +2069,7 @@ export default function PurchaseIndents() {
             </div>
             <p className="text-sm text-muted-foreground">THIS ACTION CANNOT BE UNDONE. THE ITEM WILL BE MARKED AS CANCELLED.</p>
             <div>
-              <Label className="text-xs uppercase">REASON FOR CANCELLATION</Label>
+              <Label className="text-sm uppercase">REASON FOR CANCELLATION</Label>
               <Textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
@@ -2107,7 +2107,7 @@ export default function PurchaseIndents() {
             </div>
             <p className="text-sm text-muted-foreground">ALL REMAINING UNFULFILLED ITEMS WILL BE CANCELLED AND THE INDENT WILL BE MARKED AS COMPLETED.</p>
             <div>
-              <Label className="text-xs uppercase">REASON FOR FORCE CLOSING</Label>
+              <Label className="text-sm uppercase">REASON FOR FORCE CLOSING</Label>
               <Textarea
                 value={forceCloseReason}
                 onChange={(e) => setForceCloseReason(e.target.value)}
@@ -2192,14 +2192,14 @@ export default function PurchaseIndents() {
                     <Warehouse className="w-4 h-4 mr-2 shrink-0 text-blue-600" />
                     <div>
                       <p className="font-semibold text-sm">Store / Spares / Consumables</p>
-                      <p className="text-xs text-muted-foreground">Routed through Stores verification</p>
+                      <p className="text-sm text-muted-foreground">Routed through Stores verification</p>
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => openIndentForm("material")} data-testid="menu-item-bulk-indent">
                     <Package className="w-4 h-4 mr-2 shrink-0 text-teal-600" />
                     <div>
                       <p className="font-semibold text-sm">Bulk Material Indent</p>
-                      <p className="text-xs text-muted-foreground">Direct approval → Plant Material Receipt</p>
+                      <p className="text-sm text-muted-foreground">Direct approval → Plant Material Receipt</p>
                     </div>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -2219,31 +2219,31 @@ export default function PurchaseIndents() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <Card data-testid="card-summary-total">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">TOTAL</p>
                 <p className="text-2xl font-bold mt-1" data-testid="text-total-count">{summary?.total || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-pending">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PENDING STORES</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">PENDING STORES</p>
                 <p className="text-2xl font-bold mt-1 text-amber-600" data-testid="text-pending-count">{summary?.pending || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-stores-check">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">AWAITING APPROVAL</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">AWAITING APPROVAL</p>
                 <p className="text-2xl font-bold mt-1 text-cyan-600" data-testid="text-stores-check-count">{summary?.storesCheck || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-approved">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">APPROVED</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">APPROVED</p>
                 <p className="text-2xl font-bold mt-1 text-emerald-600" data-testid="text-approved-count">{summary?.approved || 0}</p>
               </CardContent>
             </Card>
             <Card data-testid="card-summary-completed">
               <CardContent className="p-4 text-center">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">COMPLETED</p>
+                <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">COMPLETED</p>
                 <p className="text-2xl font-bold mt-1 text-blue-600" data-testid="text-completed-count">{summary?.completed || 0}</p>
               </CardContent>
             </Card>
@@ -2253,15 +2253,15 @@ export default function PurchaseIndents() {
             <CardContent className="p-4">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
-                  <Label className="text-xs uppercase">DATE FROM</Label>
+                  <Label className="text-sm uppercase">DATE FROM</Label>
                   <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} data-testid="filter-date-from" />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">DATE TO</Label>
+                  <Label className="text-sm uppercase">DATE TO</Label>
                   <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} data-testid="filter-date-to" />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">STATUS</Label>
+                  <Label className="text-sm uppercase">STATUS</Label>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger data-testid="filter-status">
                       <SelectValue />
@@ -2277,7 +2277,7 @@ export default function PurchaseIndents() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">PRIORITY</Label>
+                  <Label className="text-sm uppercase">PRIORITY</Label>
                   <Select value={filterPriority} onValueChange={setFilterPriority}>
                     <SelectTrigger data-testid="filter-priority">
                       <SelectValue />
@@ -2291,7 +2291,7 @@ export default function PurchaseIndents() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">LOCATION</Label>
+                  <Label className="text-sm uppercase">LOCATION</Label>
                   <Select value={filterLocation} onValueChange={setFilterLocation}>
                     <SelectTrigger data-testid="filter-location">
                       <SelectValue />
@@ -2342,7 +2342,7 @@ export default function PurchaseIndents() {
                       <div className="flex justify-between items-start gap-4 flex-wrap">
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-base uppercase" data-testid={`text-indent-no-${indent.id}`}>{indent.indentNo}</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                             {format(new Date(indent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                             {" \u2022 "}PROPOSED BY {indent.proposedBy}
                             {" \u2022 "}RAISED BY {indent.raisedBy}
@@ -2353,7 +2353,7 @@ export default function PurchaseIndents() {
                             {(() => {
                               const loc = locationLabel({ siteId: (indent as any).siteId ?? null, raisedFrom: (indent as any).raisedFrom ?? null }, sitesList);
                               return (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${indent.id}`}>
+                                <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-300 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700" data-testid={`badge-site-${indent.id}`}>
                                   {loc}
                                 </Badge>
                               );
@@ -2361,7 +2361,7 @@ export default function PurchaseIndents() {
                             {priorities.map(p => (
                               <span key={p}>{getPriorityBadge(p)}</span>
                             ))}
-                            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium pt-1">{purposes.join(" / ")}</span>
+                            <span className="text-sm text-gray-700 dark:text-gray-300 font-medium pt-1">{purposes.join(" / ")}</span>
                             {(() => {
                               const reqDates = indent.items
                                 .map(i => (i as any).requiredBy)
@@ -2370,14 +2370,14 @@ export default function PurchaseIndents() {
                               const earliest = reqDates[0];
                               if (!earliest) return null;
                               return (
-                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium pt-1" data-testid={`text-req-by-${indent.id}`}>
+                                <span className="text-sm text-blue-600 dark:text-blue-400 font-medium pt-1" data-testid={`text-req-by-${indent.id}`}>
                                   REQ. BY: {format(new Date(earliest + "T00:00:00"), "dd-MMM").toUpperCase()}
                                 </span>
                               );
                             })()}
                           </div>
                           {indent.status === "rejected" && indent.rejectionReason && (
-                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
                               REASON: {indent.rejectionReason}
                             </p>
                           )}
@@ -2386,12 +2386,12 @@ export default function PurchaseIndents() {
                           {indent.items.length > 0 && (
                             <div className="mt-2.5 flex flex-wrap gap-1.5">
                               {indent.items.slice(0, 5).map(item => (
-                                <span key={item.id} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-slate-600">
+                                <span key={item.id} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-slate-600">
                                   {item.description}{(item as any).spec ? ` · ${(item as any).spec}` : ""} — {item.qty} {item.uom}
                                 </span>
                               ))}
                               {indent.items.length > 5 && (
-                                <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-900 text-gray-600 border border-gray-200 dark:border-slate-700">
+                                <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-900 text-gray-600 border border-gray-200 dark:border-slate-700">
                                   +{indent.items.length - 5} more
                                 </span>
                               )}
@@ -2411,7 +2411,7 @@ export default function PurchaseIndents() {
                             const expectedStr = earliestExpected ? format(new Date(earliestExpected + "T00:00:00"), "dd-MMM-yy") : null;
                             if (!raised && !verified && !approved && !ordered && !expectedStr) return null;
                             return (
-                              <div className="mt-2 flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
+                              <div className="mt-2 flex items-center gap-3 flex-wrap text-[12px] text-muted-foreground">
                                 {raised && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Raised {raised}</span>}
                                 {verified && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Verified {verified}</span></>}
                                 {approved && <><span className="text-muted-foreground/40">→</span><span className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full inline-block ${indent.status === "rejected" ? "bg-red-400" : "bg-emerald-400"}`} />{indent.status === "rejected" ? "Rejected" : "Approved"} {approved}</span></>}
@@ -2428,7 +2428,7 @@ export default function PurchaseIndents() {
                             if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores)) return null;
                             return (
                               <button
-                                className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
+                                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); openDetail(indent); }}
                                 data-testid={`button-verify-stock-${indent.id}`}
                               >
@@ -2439,13 +2439,13 @@ export default function PurchaseIndents() {
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
                           <div className="text-right">
-                            <p className="text-xs font-semibold" data-testid={`text-items-count-${indent.id}`}>
+                            <p className="text-sm font-semibold" data-testid={`text-items-count-${indent.id}`}>
                               {indent.status === "approved" || indent.status === "completed"
                                 ? `${purchased}/${total} PURCHASED`
                                 : `${total} ITEMS`}
                             </p>
                             {indent.status === "approved" && purchased === 0 && (
-                              <p className="text-xs text-emerald-600 mt-0.5">READY TO PURCHASE</p>
+                              <p className="text-sm text-emerald-600 mt-0.5">READY TO PURCHASE</p>
                             )}
                             {canViewStores && indentGrnCounts && indentGrnCounts[indent.indentNo] ? (
                               (() => {
@@ -2454,7 +2454,7 @@ export default function PurchaseIndents() {
                                 return (
                                   <Link href={`/stores/grns?indentRef=${encodeURIComponent(indent.indentNo)}`}>
                                     <span
-                                      className={`mt-1 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border cursor-pointer transition-colors ${
+                                      className={`mt-1 inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded-full border cursor-pointer transition-colors ${
                                         fullyReceived
                                           ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
                                           : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/50"
@@ -2477,7 +2477,7 @@ export default function PurchaseIndents() {
                             ) : canViewStores && indentGrnCounts && (indent.status === "approved" || indent.status === "completed") ? (
                               <Link href={`/stores/grns/new?indentRef=${encodeURIComponent(indent.indentNo)}`}>
                                 <span
-                                  className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
+                                  className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded-full border bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
                                   data-testid={`badge-no-grn-${indent.id}`}
                                 >
                                   <Package className="w-2.5 h-2.5" />
@@ -2487,9 +2487,9 @@ export default function PurchaseIndents() {
                             ) : null}
                           </div>
                           {(indent as any).piType === "material" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700" data-testid={`badge-pi-type-${indent.id}`}>MAT. INDENT</Badge>
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-700" data-testid={`badge-pi-type-${indent.id}`}>MAT. INDENT</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700" data-testid={`badge-pi-type-${indent.id}`}>STORE</Badge>
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700" data-testid={`badge-pi-type-${indent.id}`}>STORE</Badge>
                           )}
                           {getStatusBadge(indent.status, (indent as any).storesStatus)}
                         </div>
@@ -2510,7 +2510,7 @@ export default function PurchaseIndents() {
               <ShoppingCart className="h-4 w-4 mt-0.5 shrink-0 text-indigo-600" />
               <div>
                 <p className="font-semibold">Pre-filled from IRN <span className="font-mono">{sourceIrn.irnNo}</span></p>
-                <p className="text-xs text-indigo-600 mt-0.5">
+                <p className="text-sm text-indigo-600 mt-0.5">
                   Items with procurement quantity have been populated below. Review and fill in Proposed By before submitting.
                 </p>
               </div>
@@ -2528,16 +2528,16 @@ export default function PurchaseIndents() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
-                  <Label className="text-xs uppercase">DATE</Label>
+                  <Label className="text-sm uppercase">DATE</Label>
                   <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} data-testid="input-date" />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">INDENT NO.</Label>
+                  <Label className="text-sm uppercase">INDENT NO.</Label>
                   <Input value="AUTO-GENERATED" disabled className="bg-muted" data-testid="input-indent-no" />
-                  <p className="text-xs text-muted-foreground mt-0.5">AUTO-GENERATED ON SAVE</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">AUTO-GENERATED ON SAVE</p>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">RAISED FROM <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm uppercase">RAISED FROM <span className="text-red-500">*</span></Label>
                   <LocationPicker
                     value={{ siteId: formSiteId, raisedFrom: formRaisedFrom }}
                     onChange={(val) => { setFormSiteId(val.siteId); setFormRaisedFrom(val.raisedFrom); }}
@@ -2547,28 +2547,28 @@ export default function PurchaseIndents() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">PROPOSED BY</Label>
+                  <Label className="text-sm uppercase">PROPOSED BY</Label>
                   <PersonnelCombobox
                     value={formProposedBy}
                     onChange={setFormProposedBy}
                     placeholder="Search personnel…"
                     data-testid="input-proposed-by"
                   />
-                  <p className="text-xs text-muted-foreground mt-0.5">PERSON WHO IDENTIFIED THE NEED</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">PERSON WHO IDENTIFIED THE NEED</p>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">RAISED BY</Label>
+                  <Label className="text-sm uppercase">RAISED BY</Label>
                   <PersonnelCombobox
                     value={formRaisedBy}
                     onChange={setFormRaisedBy}
                     placeholder="Search personnel…"
                     data-testid="input-raised-by"
                   />
-                  <p className="text-xs text-muted-foreground mt-0.5">PERSON CREATING THIS INDENT</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">PERSON CREATING THIS INDENT</p>
                 </div>
               </div>
               <div>
-                <Label className="text-xs uppercase">INDENT TYPE</Label>
+                <Label className="text-sm uppercase">INDENT TYPE</Label>
                 <div className="flex items-center gap-2 mt-1" data-testid="toggle-pi-type">
                   {formPiType === "material" ? (
                     <Badge className="bg-teal-50 text-teal-700 border border-teal-300 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700 font-semibold px-3 py-1" data-testid="badge-pi-type">
@@ -2582,7 +2582,7 @@ export default function PurchaseIndents() {
                   {isAdmin && (
                     <button
                       type="button"
-                      className="text-xs text-muted-foreground underline hover:text-foreground"
+                      className="text-sm text-muted-foreground underline hover:text-foreground"
                       onClick={() => {
                         const next = formPiType === "material" ? "stores" : "material";
                         setFormPiType(next);
@@ -2596,11 +2596,11 @@ export default function PurchaseIndents() {
                   )}
                 </div>
                 {formPiType === "material" && (
-                  <p className="text-xs text-teal-700 dark:text-teal-400 mt-1">Material Indent goes directly for approval — no stores verification needed. Material receipt is recorded directly in the Plant module.</p>
+                  <p className="text-sm text-teal-700 dark:text-teal-400 mt-1">Material Indent goes directly for approval — no stores verification needed. Material receipt is recorded directly in the Plant module.</p>
                 )}
               </div>
               <div>
-                <Label className="text-xs uppercase">GENERAL REMARKS (OPTIONAL)</Label>
+                <Label className="text-sm uppercase">GENERAL REMARKS (OPTIONAL)</Label>
                 <Textarea
                   value={formRemarks}
                   onChange={(e) => setFormRemarks(e.target.value)}
@@ -2624,10 +2624,10 @@ export default function PurchaseIndents() {
               {formItems.map((item, index) => (
                 <Card key={index} className="p-3" data-testid={`card-item-row-${index}`}>
                   <div className="flex items-start gap-2">
-                    <span className="text-xs text-muted-foreground font-medium mt-2 w-5 flex-shrink-0">{index + 1}.</span>
+                    <span className="text-sm text-muted-foreground font-medium mt-2 w-5 flex-shrink-0">{index + 1}.</span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <Label className="text-xs">ITEM</Label>
+                        <Label className="text-sm">ITEM</Label>
                         <MaterialCombobox
                           description={item.description}
                           storeItems={storeItemsList}
@@ -2656,7 +2656,7 @@ export default function PurchaseIndents() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-xs">SPEC / DIMENSIONS <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                          <Label className="text-sm">SPEC / DIMENSIONS <span className="font-normal text-muted-foreground">(optional)</span></Label>
                           <Input
                             value={item.spec}
                             onChange={(e) => updateItem(index, "spec", e.target.value)}
@@ -2666,7 +2666,7 @@ export default function PurchaseIndents() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">PART NO / CAT. NO <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                          <Label className="text-sm">PART NO / CAT. NO <span className="font-normal text-muted-foreground">(optional)</span></Label>
                           <Input
                             value={item.partNo}
                             onChange={(e) => updateItem(index, "partNo", e.target.value)}
@@ -2678,7 +2678,7 @@ export default function PurchaseIndents() {
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div>
-                          <Label className="text-xs">QTY</Label>
+                          <Label className="text-sm">QTY</Label>
                           <Input
                             type="number"
                             min="1"
@@ -2688,7 +2688,7 @@ export default function PurchaseIndents() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">UOM</Label>
+                          <Label className="text-sm">UOM</Label>
                           <div className="relative">
                             <Input
                               list="pi-uom-options"
@@ -2704,7 +2704,7 @@ export default function PurchaseIndents() {
                           </div>
                         </div>
                         <div>
-                          <Label className="text-xs">PURPOSE</Label>
+                          <Label className="text-sm">PURPOSE</Label>
                           <FreeTextCombobox
                             value={item.purpose}
                             onChange={(v) => updateItem(index, "purpose", v)}
@@ -2714,7 +2714,7 @@ export default function PurchaseIndents() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs">PRIORITY</Label>
+                          <Label className="text-sm">PRIORITY</Label>
                           <Select value={item.priority} onValueChange={(v) => {
                             const updated = [...formItems];
                             updated[index] = { ...updated[index], priority: v, requiredBy: v === "urgent" ? null : updated[index].requiredBy };
@@ -2732,7 +2732,7 @@ export default function PurchaseIndents() {
                         </div>
                         {item.priority !== "urgent" && (
                           <div>
-                            <Label className="text-xs">REQUIRED BY</Label>
+                            <Label className="text-sm">REQUIRED BY</Label>
                             <Input
                               type="date"
                               value={item.requiredBy ?? ""}
@@ -2746,7 +2746,7 @@ export default function PurchaseIndents() {
                           </div>
                         )}
                         <div>
-                          <Label className="text-xs">ROUTE</Label>
+                          <Label className="text-sm">ROUTE</Label>
                           <Select
                             value={item.procurementRoute ?? ""}
                             onValueChange={(v) => {
@@ -2755,7 +2755,7 @@ export default function PurchaseIndents() {
                               setFormItems(updated);
                             }}
                           >
-                            <SelectTrigger className="w-36 text-xs" data-testid={`select-item-route-${index}`}>
+                            <SelectTrigger className="w-36 text-sm" data-testid={`select-item-route-${index}`}>
                               <SelectValue placeholder="Route…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -2767,7 +2767,7 @@ export default function PurchaseIndents() {
                       </div>
                       <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/10 rounded-md px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs whitespace-nowrap text-muted-foreground">EST. RATE (₹)</Label>
+                          <Label className="text-sm whitespace-nowrap text-muted-foreground">EST. RATE (₹)</Label>
                           <Input
                             type="number"
                             min="0"
@@ -2787,9 +2787,9 @@ export default function PurchaseIndents() {
                             data-testid={`input-item-est-rate-${index}`}
                           />
                         </div>
-                        <span className="text-xs text-muted-foreground">OR</span>
+                        <span className="text-sm text-muted-foreground">OR</span>
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs whitespace-nowrap text-muted-foreground font-semibold text-amber-700">EST. AMOUNT (₹)</Label>
+                          <Label className="text-sm whitespace-nowrap text-muted-foreground font-semibold text-amber-700">EST. AMOUNT (₹)</Label>
                           <Input
                             type="number"
                             min="0"
@@ -2801,7 +2801,7 @@ export default function PurchaseIndents() {
                           />
                         </div>
                         {!item.estRate && !item.estAmount && (
-                          <p className="text-[11px] text-muted-foreground italic">Optional — enter rate or total amount to help admin evaluate</p>
+                          <p className="text-xs text-muted-foreground italic">Optional — enter rate or total amount to help admin evaluate</p>
                         )}
                       </div>
                     </div>
@@ -2856,23 +2856,23 @@ export default function PurchaseIndents() {
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-2">
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Date</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">Date</p>
                       <p className="font-semibold uppercase">{format(new Date(selectedIndent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Raised By</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">Raised By</p>
                       <p className="font-semibold uppercase">{selectedIndent.raisedBy}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Purpose</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">Purpose</p>
                       <p className="font-semibold uppercase">{selectedIndent.purpose}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">Location</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">Location</p>
                       <p className="font-semibold uppercase">{selectedIndent.location}</p>
                     </div>
                   </div>
-                  <div className="rounded-md border border-cyan-200 bg-cyan-50 dark:bg-cyan-950/30 dark:border-cyan-800 px-3 py-2 text-xs text-cyan-800 dark:text-cyan-300">
+                  <div className="rounded-md border border-cyan-200 bg-cyan-50 dark:bg-cyan-950/30 dark:border-cyan-800 px-3 py-2 text-sm text-cyan-800 dark:text-cyan-300">
                     <strong>Stores Team:</strong> Check each item against current stock. Set status and available quantity where applicable, then submit for manager approval.
                   </div>
                 </CardContent>
@@ -2894,13 +2894,13 @@ export default function PurchaseIndents() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-muted-foreground">#{idx + 1}</span>
+                              <span className="text-sm font-bold text-muted-foreground">#{idx + 1}</span>
                               <span className="font-semibold uppercase text-sm">{item.description}</span>
                               {(item as any).spec && <span className="text-sm text-slate-800 dark:text-slate-100 italic font-normal">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</span>}
                               {getPriorityBadge(item.priority)}
-                              {!isVerified && <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
+                              {!isVerified && <Badge variant="outline" className="text-sm bg-slate-50 text-slate-600 border-slate-300">PENDING</Badge>}
                               {isVerified && (
-                                <Badge variant="outline" className={`text-xs ${isInStock ? "bg-emerald-50 text-emerald-700 border-emerald-300" : isShort ? "bg-amber-50 text-amber-700 border-amber-300" : "bg-red-50 text-red-700 border-red-300"}`}>
+                                <Badge variant="outline" className={`text-sm ${isInStock ? "bg-emerald-50 text-emerald-700 border-emerald-300" : isShort ? "bg-amber-50 text-amber-700 border-amber-300" : "bg-red-50 text-red-700 border-red-300"}`}>
                                   {isInStock ? "IN STOCK" : isShort ? "SHORT" : "OUT OF STOCK"}
                                 </Badge>
                               )}
@@ -2913,7 +2913,7 @@ export default function PurchaseIndents() {
                                 if (balance == null) return null;
                                 const colour = balance >= item.qty ? "text-emerald-600 dark:text-emerald-400" : balance > 0 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
                                 return (
-                                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${colour}`}>
+                                  <span className={`inline-flex items-center gap-1 text-sm font-medium ${colour}`}>
                                     <PackageCheck className="w-3.5 h-3.5" />
                                     Stock: {balance.toFixed(3)} {item.uom}
                                   </span>
@@ -2930,13 +2930,13 @@ export default function PurchaseIndents() {
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-muted-foreground uppercase">Stock Status:</span>
+                          <span className="text-sm font-semibold text-muted-foreground uppercase">Stock Status:</span>
                           {(["in_stock", "short", "out_of_stock"] as const).map((s) => (
                             <Button
                               key={s}
                               size="sm"
                               variant={v.stockStatus === s ? "default" : "outline"}
-                              className={`text-xs h-7 px-2 ${v.stockStatus === s && s === "in_stock" ? "bg-emerald-600 hover:bg-emerald-700" : v.stockStatus === s && s === "short" ? "bg-amber-500 hover:bg-amber-600" : v.stockStatus === s && s === "out_of_stock" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                              className={`text-sm h-7 px-2 ${v.stockStatus === s && s === "in_stock" ? "bg-emerald-600 hover:bg-emerald-700" : v.stockStatus === s && s === "short" ? "bg-amber-500 hover:bg-amber-600" : v.stockStatus === s && s === "out_of_stock" ? "bg-red-600 hover:bg-red-700" : ""}`}
                               onClick={() => updateStoreVerification(item.id, "stockStatus", s)}
                               data-testid={`button-stock-${item.id}-${s}`}
                             >
@@ -2947,7 +2947,7 @@ export default function PurchaseIndents() {
 
                         {(isShort || isOut) && (
                           <div className="flex items-center gap-3">
-                            <label className="text-xs font-semibold text-muted-foreground uppercase whitespace-nowrap">Qty Available:</label>
+                            <label className="text-sm font-semibold text-muted-foreground uppercase whitespace-nowrap">Qty Available:</label>
                             <Input
                               type="number"
                               min="0"
@@ -2958,18 +2958,18 @@ export default function PurchaseIndents() {
                               placeholder="0"
                               data-testid={`input-stock-qty-${item.id}`}
                             />
-                            <span className="text-xs text-muted-foreground">of {item.qty} {item.uom} requested</span>
+                            <span className="text-sm text-muted-foreground">of {item.qty} {item.uom} requested</span>
                           </div>
                         )}
 
                         <div>
                           {!v.showNote ? (
-                            <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => updateStoreVerification(item.id, "showNote", true)} data-testid={`button-add-note-${item.id}`}>
+                            <Button variant="ghost" size="sm" className="text-sm h-7 text-muted-foreground" onClick={() => updateStoreVerification(item.id, "showNote", true)} data-testid={`button-add-note-${item.id}`}>
                               + Add stores note
                             </Button>
                           ) : (
                             <div className="space-y-1">
-                              <label className="text-xs font-semibold text-muted-foreground uppercase">Stores Note:</label>
+                              <label className="text-sm font-semibold text-muted-foreground uppercase">Stores Note:</label>
                               <Input
                                 value={v.storesItemNote}
                                 onChange={(e) => updateStoreVerification(item.id, "storesItemNote", e.target.value)}
@@ -2989,7 +2989,7 @@ export default function PurchaseIndents() {
                     return (
                       <div className="pt-2 border-t space-y-3">
                         {!allVerified && (
-                          <p className="text-xs text-muted-foreground italic">Set stock status for all items to enable submission.</p>
+                          <p className="text-sm text-muted-foreground italic">Set stock status for all items to enable submission.</p>
                         )}
                         <div className="flex items-center gap-3 flex-wrap">
                           <Button
@@ -3065,33 +3065,33 @@ export default function PurchaseIndents() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">DATE</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">DATE</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-date">
                         {format(new Date(selectedIndent.date + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">PROPOSED BY</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">PROPOSED BY</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-proposed-by">{selectedIndent.proposedBy}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">RAISED BY</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">RAISED BY</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-raised-by">{selectedIndent.raisedBy}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">RAISED FROM</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">RAISED FROM</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-location">
                         {locationLabel({ siteId: (selectedIndent as any).siteId ?? null, raisedFrom: (selectedIndent as any).raisedFrom ?? null }, sitesList)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">TOTAL ITEMS</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">TOTAL ITEMS</p>
                       <p className="font-semibold uppercase" data-testid="text-detail-items-count">{selectedIndent.items.length} ITEMS</p>
                     </div>
                   </div>
                   {selectedIndent.remarks && (
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase">REMARKS</p>
+                      <p className="text-sm font-semibold text-muted-foreground uppercase">REMARKS</p>
                       <p className="text-sm uppercase">{selectedIndent.remarks}</p>
                     </div>
                   )}
@@ -3107,7 +3107,7 @@ export default function PurchaseIndents() {
                       : _storesStatus === "bypassed" ? "Stores bypassed" : null;
                     if (!raisedLabel && !storesLabel) return null;
                     return (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         {raisedLabel && <span>Raised: {raisedLabel}</span>}
                         {raisedLabel && storesLabel && <span className="mx-1.5">·</span>}
                         {storesLabel && <span>{storesLabel}</span>}
@@ -3115,7 +3115,7 @@ export default function PurchaseIndents() {
                     );
                   })()}
                   <div>
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
+                    <p className="text-sm font-semibold text-amber-600 uppercase tracking-wider mb-2">WORKFLOW STATUS</p>
                     <StatusSteps status={selectedIndent.status} storesStatus={(selectedIndent as any).storesStatus} piType={(selectedIndent as any).piType} />
                   </div>
                 </CardContent>
@@ -3135,9 +3135,9 @@ export default function PurchaseIndents() {
                           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Stores verification required</p>
-                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Complete stock verification before items can be approved.</p>
+                            <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">Complete stock verification before items can be approved.</p>
                           </div>
-                          <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 shrink-0 text-xs" onClick={() => openDetail(selectedIndent)} data-testid="button-stores-verify-now">
+                          <Button size="sm" variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-300 hover:bg-amber-100 shrink-0 text-sm" onClick={() => openDetail(selectedIndent)} data-testid="button-stores-verify-now">
                             Verify Now
                           </Button>
                         </CardContent>
@@ -3171,24 +3171,24 @@ export default function PurchaseIndents() {
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex gap-5 items-center">
                               <div>
-                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Actioned</p>
+                                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Actioned</p>
                                 <p className="font-bold text-gray-900 dark:text-gray-100">{actionedCount} / {allItems.length}</p>
                               </div>
                               {totalEst > 0 && (<>
                                 <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
                                 <div>
-                                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Est. Total</p>
+                                  <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Est. Total</p>
                                   <p className="font-bold text-gray-900 dark:text-gray-100">₹{Math.round(totalEst).toLocaleString("en-IN")}</p>
                                 </div>
                               </>)}
                             </div>
                             <div className="flex gap-2">
                               {hasAvail && (
-                                <Button size="sm" variant="outline" className="text-xs text-[#0F5F64] border-[#0F5F64]/30 bg-[#0F5F64]/5 hover:bg-[#0F5F64]/15 dark:text-teal-300" onClick={approveAll} data-testid="button-approve-all-available">
+                                <Button size="sm" variant="outline" className="text-sm text-[#0F5F64] border-[#0F5F64]/30 bg-[#0F5F64]/5 hover:bg-[#0F5F64]/15 dark:text-teal-300" onClick={approveAll} data-testid="button-approve-all-available">
                                   Approve All Available
                                 </Button>
                               )}
-                              <Button variant="outline" size="sm" className="text-blue-600 border-blue-300 hover:bg-blue-50 text-xs" onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)} disabled={notifyMutation.isPending} data-testid="button-notify-stakeholders">
+                              <Button variant="outline" size="sm" className="text-blue-600 border-blue-300 hover:bg-blue-50 text-sm" onClick={() => selectedIndentId && notifyMutation.mutate(selectedIndentId)} disabled={notifyMutation.isPending} data-testid="button-notify-stakeholders">
                                 {notifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔔</span>}
                               </Button>
                             </div>
@@ -3213,7 +3213,7 @@ export default function PurchaseIndents() {
                       setItemApprovalStates(prev => ({ ...prev, [item.id]: { ...st, ...updates } }));
                     const estAmt = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
                     const stockBadge = effStockStatus ? (
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${isLive ? 'opacity-75' : ''} ${
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${isLive ? 'opacity-75' : ''} ${
                         effStockStatus === 'in_stock' ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/40' :
                         effStockStatus === 'short' ? 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40' :
                         'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-800'
@@ -3239,11 +3239,11 @@ export default function PurchaseIndents() {
                             </div>
                             <div className="shrink-0 text-right">
                               <span className={`font-bold text-sm ${st.action==='rejected'?'text-red-700':st.action==='approved'?'text-emerald-700':'text-amber-700'}`}>{st.action==='modified'?st.approvedQty:item.qty} {item.uom}</span>
-                              {st.action==='modified' && <p className="text-[10px] text-amber-600/80 line-through">req: {item.qty}</p>}
+                              {st.action==='modified' && <p className="text-[12px] text-amber-600/80 line-through">req: {item.qty}</p>}
                             </div>
                           </div>
                           {stockBadge}
-                          <div className={`flex items-start gap-2 text-xs py-1.5 px-2 rounded-md ${st.action==='approved'?'text-emerald-700 bg-emerald-100/50':st.action==='rejected'?'text-red-700 bg-red-100/50':'text-amber-800 bg-amber-100/50'}`}>
+                          <div className={`flex items-start gap-2 text-sm py-1.5 px-2 rounded-md ${st.action==='approved'?'text-emerald-700 bg-emerald-100/50':st.action==='rejected'?'text-red-700 bg-red-100/50':'text-amber-800 bg-amber-100/50'}`}>
                             {st.action==='approved' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
                             {st.action==='rejected' && <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />}
                             {st.action==='modified' && <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />}
@@ -3251,7 +3251,7 @@ export default function PurchaseIndents() {
                               <span className="font-medium">{st.action==='approved'?'Approved as requested':st.action==='rejected'?'Rejected':`Partial: ${st.approvedQty} of ${item.qty}`}</span>
                               {st.action==='rejected' && st.rejectReason && <p className="opacity-80 truncate">"{st.rejectReason}"</p>}
                             </div>
-                            <button className="text-[10px] underline opacity-60 hover:opacity-100 shrink-0" onClick={() => updateState({ action: 'pending' })}>Undo</button>
+                            <button className="text-[12px] underline opacity-60 hover:opacity-100 shrink-0" onClick={() => updateState({ action: 'pending' })}>Undo</button>
                           </div>
                         </div>
                       );
@@ -3268,12 +3268,12 @@ export default function PurchaseIndents() {
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-bold bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-sm">{item.qty} {item.uom}</span>
-                              {estAmt && <p className="text-xs text-muted-foreground mt-0.5">Est ₹{estAmt.toLocaleString("en-IN")}</p>}
+                              {estAmt && <p className="text-sm text-muted-foreground mt-0.5">Est ₹{estAmt.toLocaleString("en-IN")}</p>}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 items-center">
                             {getPriorityBadge(item.priority)}
-                            {(item as any).requiredBy && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">REQ. BY: {format(new Date((item as any).requiredBy+"T00:00:00"),"dd-MMM-yyyy").toUpperCase()}</span>}
+                            {(item as any).requiredBy && <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">REQ. BY: {format(new Date((item as any).requiredBy+"T00:00:00"),"dd-MMM-yyyy").toUpperCase()}</span>}
                             {stockBadge}
                           </div>
                           {st.action === 'pending' && (() => {
@@ -3283,33 +3283,33 @@ export default function PurchaseIndents() {
                             return (
                               <div className="grid grid-cols-3 gap-2 mt-1">
                                 <button onClick={() => updateState({ action:'approved', approvedQty:item.qty })} className="flex flex-col items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 py-2.5 rounded-lg transition-colors" data-testid={`button-approve-item-${item.id}`}>
-                                  <Check className="w-5 h-5" /><span className="text-xs font-semibold">Approve</span>
+                                  <Check className="w-5 h-5" /><span className="text-sm font-semibold">Approve</span>
                                 </button>
                                 <button onClick={() => updateState({ action:'modifying', modQty:item.qty.toString() })} className="flex flex-col items-center gap-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 py-2.5 rounded-lg transition-colors" data-testid={`button-modify-item-${item.id}`}>
-                                  <Edit2 className="w-4 h-4" /><span className="text-xs font-semibold">Modify Qty</span>
+                                  <Edit2 className="w-4 h-4" /><span className="text-sm font-semibold">Modify Qty</span>
                                 </button>
                                 <button onClick={() => updateState({ action:'rejecting', rejectReason:'' })} className="flex flex-col items-center gap-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 py-2.5 rounded-lg transition-colors" data-testid={`button-reject-item-${item.id}`}>
-                                  <X className="w-5 h-5" /><span className="text-xs font-semibold">Reject</span>
+                                  <X className="w-5 h-5" /><span className="text-sm font-semibold">Reject</span>
                                 </button>
                               </div>
                             );
                           })()}
                           {st.action === 'modifying' && (
                             <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
-                              <label className="block text-xs font-medium text-amber-900 dark:text-amber-300 mb-1.5">Approved Qty ({item.uom})</label>
+                              <label className="block text-sm font-medium text-amber-900 dark:text-amber-300 mb-1.5">Approved Qty ({item.uom})</label>
                               <div className="flex gap-2">
                                 <Input type="number" min={0} max={item.qty} value={st.modQty} onChange={(e) => updateState({ modQty:e.target.value })} className="flex-1 border-amber-300" data-testid={`input-modify-qty-${item.id}`} />
                                 <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" onClick={() => { const q=parseFloat(st.modQty); if(!isNaN(q)&&q>=0) updateState({action:'modified',approvedQty:q}); }} data-testid={`button-save-modify-${item.id}`}>Save</Button>
                               </div>
-                              <div className="flex justify-end mt-1.5"><button className="text-xs text-amber-700 dark:text-amber-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button></div>
+                              <div className="flex justify-end mt-1.5"><button className="text-sm text-amber-700 dark:text-amber-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button></div>
                             </div>
                           )}
                           {st.action === 'rejecting' && (
                             <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                              <label className="block text-xs font-medium text-red-900 dark:text-red-300 mb-1.5">Reason for Rejection</label>
+                              <label className="block text-sm font-medium text-red-900 dark:text-red-300 mb-1.5">Reason for Rejection</label>
                               <Textarea value={st.rejectReason} onChange={(e) => updateState({rejectReason:e.target.value})} placeholder="e.g. Budget exceeded, not required now..." className="bg-white dark:bg-card border-red-300 dark:border-red-800 resize-none min-h-[60px] text-sm" rows={2} data-testid={`input-reject-reason-${item.id}`} />
                               <div className="flex justify-between items-center mt-2">
-                                <button className="text-xs text-red-700 dark:text-red-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button>
+                                <button className="text-sm text-red-700 dark:text-red-400 underline" onClick={() => updateState({action:'pending'})}>Cancel</button>
                                 <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" disabled={!st.rejectReason.trim()} onClick={() => updateState({action:'rejected'})} data-testid={`button-confirm-reject-${item.id}`}>Confirm Reject</Button>
                               </div>
                             </div>
@@ -3339,7 +3339,7 @@ export default function PurchaseIndents() {
                           {approveMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : allActioned ? <CheckCircle2 className="w-5 h-5" /> : null}
                           Finalise Approval
                         </Button>
-                        {!allActioned && <p className="text-center text-xs text-muted-foreground mt-2">Action all {selectedIndent.items.length} items to enable</p>}
+                        {!allActioned && <p className="text-center text-sm text-muted-foreground mt-2">Action all {selectedIndent.items.length} items to enable</p>}
                       </div>
                     );
                   })()}
@@ -3355,12 +3355,12 @@ export default function PurchaseIndents() {
                         <div className="flex justify-between items-start gap-2 flex-wrap">
                           <div>
                             <p className="font-bold uppercase">{index + 1}. {item.description}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
+                            <p className="text-sm text-muted-foreground mt-0.5">FOR: {item.purpose}</p>
                           </div>
                           <div className="flex gap-1 flex-wrap items-center justify-end">
                             {getPriorityBadge(item.priority)}
                             {(item as any).requiredBy && (
-                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-detail-req-by-${item.id}`}>
+                              <span className="text-sm text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-detail-req-by-${item.id}`}>
                                 REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                               </span>
                             )}
@@ -3374,14 +3374,14 @@ export default function PurchaseIndents() {
                               <span><span className="text-muted-foreground">APPROVED:</span>{" "}
                               <strong className="text-emerald-600">{item.approvedQty} {item.uom}</strong>
                               {item.approvedQty < item.qty && (
-                                <span className="text-xs text-amber-600 ml-1">(REDUCED)</span>
+                                <span className="text-sm text-amber-600 ml-1">(REDUCED)</span>
                               )}</span>
                             </>
                           )}
                           {(() => {
                             const ea = (item as any).estAmount ?? (item.estRate && item.qty ? Math.round(item.estRate * item.qty) : null);
                             return ea ? (
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
+                              <span className="text-sm font-semibold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
                                 ≈ ₹{ea.toLocaleString("en-IN")}
                                 {item.estRate ? ` @ ₹${item.estRate}/unit` : ""}
                               </span>
@@ -3391,13 +3391,13 @@ export default function PurchaseIndents() {
                         {((item as any).expectedDelivery || (item as any).paymentMode) && (
                           <div className="mt-2 flex flex-wrap gap-2 items-center">
                             {(item as any).expectedDelivery && (
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400" data-testid={`text-detail-exp-delivery-${item.id}`}>
+                              <span className="inline-flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400" data-testid={`text-detail-exp-delivery-${item.id}`}>
                                 <Calendar className="w-3 h-3" />
                                 EXP: {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                               </span>
                             )}
                             {(item as any).paymentMode && (
-                              <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                              <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
                                 (item as any).paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
                                 (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
                                 (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
@@ -3413,7 +3413,7 @@ export default function PurchaseIndents() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-xs text-muted-foreground"
+                            className="text-sm text-muted-foreground"
                             onClick={() => toggleHistoryItem(item.id)}
                             data-testid={`button-detail-toggle-history-${item.id}`}
                           >
@@ -3473,7 +3473,7 @@ export default function PurchaseIndents() {
               {/* Teal procurement header */}
               <div className="rounded-xl overflow-hidden border border-[#0F5F64]/20 shadow-sm">
                 <div className="bg-[#0F5F64] text-white p-5">
-                  <div className="flex items-center gap-2 mb-1 text-[11px] uppercase tracking-wider opacity-70">
+                  <div className="flex items-center gap-2 mb-1 text-xs uppercase tracking-wider opacity-70">
                     <ChevronLeft className="w-3.5 h-3.5" /> Purchase Indent · Procurement
                   </div>
                   <div className="flex justify-between items-start gap-3 mb-3">
@@ -3487,7 +3487,7 @@ export default function PurchaseIndents() {
                       <div className="flex items-center gap-2 flex-wrap justify-end">
                         {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
                         {canViewStores && indentGrnCounts?.[selectedIndent.indentNo] ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-600/80 text-white border border-emerald-400/40 rounded-full px-2 py-0.5" data-testid="badge-grn-count">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-600/80 text-white border border-emerald-400/40 rounded-full px-2 py-0.5" data-testid="badge-grn-count">
                             <Package className="w-3 h-3" />
                             {indentGrnCounts[selectedIndent.indentNo]} GRN{indentGrnCounts[selectedIndent.indentNo] > 1 ? "s" : ""}
                           </span>
@@ -3497,24 +3497,24 @@ export default function PurchaseIndents() {
                         {canCreateStores && selectedIndent.items.some(i => ["purchased","partial"].includes((i.purchaseStatus || "").toLowerCase())) && (
                           isIndentFullyReceived ? (
                             <span
-                              className="inline-flex items-center gap-1 text-[11px] text-emerald-300/60 font-semibold cursor-not-allowed select-none"
+                              className="inline-flex items-center gap-1 text-xs text-emerald-300/60 font-semibold cursor-not-allowed select-none"
                               title="All approved quantities have already been received"
                               data-testid="badge-fully-received"
                             >
                               <CheckCircle2 className="w-3 h-3" /> Fully received
                             </span>
                           ) : (
-                            <button onClick={openGrnDialog} className="text-[11px] text-emerald-300 underline hover:text-white font-semibold" data-testid="button-create-grn">
+                            <button onClick={openGrnDialog} className="text-xs text-emerald-300 underline hover:text-white font-semibold" data-testid="button-create-grn">
                               + Create GRN
                             </button>
                           )
                         )}
-                        <button onClick={() => handlePrintIndent(selectedIndent)} className="text-[11px] text-teal-200 underline hover:text-white flex items-center gap-0.5" data-testid="button-print-indent-purchase"><Printer className="w-3 h-3" /> Print</button>
+                        <button onClick={() => handlePrintIndent(selectedIndent)} className="text-xs text-teal-200 underline hover:text-white flex items-center gap-0.5" data-testid="button-print-indent-purchase"><Printer className="w-3 h-3" /> Print</button>
                         {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
-                          <button onClick={handleEditIndent} className="text-[11px] text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
+                          <button onClick={handleEditIndent} className="text-xs text-teal-200 underline hover:text-white" data-testid="button-edit-indent-purchase">Edit</button>
                         )}
                         {canDelete && (
-                          <button onClick={() => setShowDeleteConfirm(true)} className="text-[11px] text-red-300 underline hover:text-red-200" data-testid="button-delete-indent-purchase">Delete</button>
+                          <button onClick={() => setShowDeleteConfirm(true)} className="text-xs text-red-300 underline hover:text-red-200" data-testid="button-delete-indent-purchase">Delete</button>
                         )}
                       </div>
                     </div>
@@ -3575,14 +3575,14 @@ export default function PurchaseIndents() {
                       <ClipboardList className="w-4 h-4" />
                       PURCHASER ACTION
                       {selectedIndent.status === "purchaser_actioned" && (
-                        <Badge variant="outline" className="ml-2 text-xs bg-green-50 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700">SUBMITTED</Badge>
+                        <Badge variant="outline" className="ml-2 text-sm bg-green-50 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700">SUBMITTED</Badge>
                       )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
                     {selectedIndent.status === "approved" ? (
                       <>
-                        <p className="text-xs text-muted-foreground mb-3">Fill in procurement details for each item below, then submit all at once.</p>
+                        <p className="text-sm text-muted-foreground mb-3">Fill in procurement details for each item below, then submit all at once.</p>
                         <div className="space-y-3">
                           {selectedIndent.items
                             .filter(i => !["cancelled", "closed"].includes((i as any).status || "") && (i.approvedQty ?? i.qty) > 0)
@@ -3628,29 +3628,29 @@ export default function PurchaseIndents() {
                                           {route === "bulk_plant" ? "BULK MATERIAL" : "STORES"}
                                         </Badge>
                                       </div>
-                                      <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                                      <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
                                         <span>PI Qty: <strong>{item.qty} {item.uom}</strong></span>
                                         <span>Approved: <strong className="text-green-700 dark:text-green-400">{approvedQty} {item.uom}</strong></span>
                                       </div>
                                     </div>
-                                    <Badge variant="outline" className={`text-xs ${shortfallBadge}`}>{shortfallLabel}</Badge>
+                                    <Badge variant="outline" className={`text-sm ${shortfallBadge}`}>{shortfallLabel}</Badge>
                                   </div>
                                   {/* Form fields */}
                                   <div className="p-3 space-y-3">
                                     {/* Row 1: Qty + shortfall reason + expected date */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                       <div>
-                                        <Label className="text-xs">QTY PURCHASING <span className="text-red-500">*</span></Label>
+                                        <Label className="text-sm">QTY PURCHASING <span className="text-red-500">*</span></Label>
                                         <Input type="number" min={0} max={approvedQty} value={pd.qty}
                                           onChange={e => updField("qty", e.target.value)}
                                           data-testid={`input-pa-qty-${item.id}`} />
                                         {isShort && purchaseQtyNum > 0 && (
-                                          <p className="text-[11px] text-amber-600 mt-0.5">Shortfall: {approvedQty - purchaseQtyNum} {item.uom}</p>
+                                          <p className="text-xs text-amber-600 mt-0.5">Shortfall: {approvedQty - purchaseQtyNum} {item.uom}</p>
                                         )}
                                       </div>
                                       {isShort && (
                                         <div>
-                                          <Label className="text-xs">SHORTFALL REASON <span className="text-red-500">*</span></Label>
+                                          <Label className="text-sm">SHORTFALL REASON <span className="text-red-500">*</span></Label>
                                           <Select value={pd.shortfallReason} onValueChange={v => updField("shortfallReason", v)}>
                                             <SelectTrigger data-testid={`select-pa-reason-${item.id}`}><SelectValue /></SelectTrigger>
                                             <SelectContent>
@@ -3663,7 +3663,7 @@ export default function PurchaseIndents() {
                                       )}
                                       {pd.shortfallReason === "ordered" && (
                                         <div>
-                                          <Label className="text-xs">EXPECTED DELIVERY <span className="text-red-500">*</span></Label>
+                                          <Label className="text-sm">EXPECTED DELIVERY <span className="text-red-500">*</span></Label>
                                           <Input type="date" value={pd.expectedDeliveryDate}
                                             onChange={e => updField("expectedDeliveryDate", e.target.value)}
                                             data-testid={`input-pa-delivery-${item.id}`} />
@@ -3674,22 +3674,22 @@ export default function PurchaseIndents() {
                                     {pd.shortfallReason !== "not_available" && (
                                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         <div>
-                                          <Label className="text-xs">VENDOR / SUPPLIER</Label>
+                                          <Label className="text-sm">VENDOR / SUPPLIER</Label>
                                           <Input value={pd.vendor} onChange={e => updField("vendor", e.target.value)}
                                             placeholder="Supplier name" data-testid={`input-pa-vendor-${item.id}`} />
                                         </div>
                                         <div>
-                                          <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                                          <Label className="text-sm">RATE (₹/{item.uom})</Label>
                                           <Input type="number" value={pd.rate} onChange={e => updField("rate", e.target.value)}
                                             data-testid={`input-pa-rate-${item.id}`} />
                                           {pd.rate && purchaseQtyNum > 0 && (
-                                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                            <p className="text-xs text-muted-foreground mt-0.5">
                                               Total: ₹{(parseFloat(pd.rate) * purchaseQtyNum).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                             </p>
                                           )}
                                         </div>
                                         <div>
-                                          <Label className="text-xs">PAYMENT MODE</Label>
+                                          <Label className="text-sm">PAYMENT MODE</Label>
                                           <Select value={pd.paymentMode} onValueChange={v => updField("paymentMode", v)}>
                                             <SelectTrigger data-testid={`select-pa-payment-${item.id}`}><SelectValue /></SelectTrigger>
                                             <SelectContent>
@@ -3704,12 +3704,12 @@ export default function PurchaseIndents() {
                                       </div>
                                     )}
                                     {pd.shortfallReason === "not_available" && (
-                                      <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">
+                                      <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded p-2">
                                         Item not available in market — no purchase details required. This item will be marked as not procured.
                                       </p>
                                     )}
                                     <div>
-                                      <Label className="text-xs">REMARKS</Label>
+                                      <Label className="text-sm">REMARKS</Label>
                                       <Input value={pd.remarks} onChange={e => updField("remarks", e.target.value)}
                                         placeholder="Optional notes" data-testid={`input-pa-remarks-${item.id}`} />
                                     </div>
@@ -3749,7 +3749,7 @@ export default function PurchaseIndents() {
                       </>
                     ) : (
                       <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground mb-2">Purchaser actions recorded for dual-route items.</p>
+                        <p className="text-sm text-muted-foreground mb-2">Purchaser actions recorded for dual-route items.</p>
                         {piTxns.filter((t: any) => t.transactionType === "purchaser_action").map((tx: any, idx: number) => {
                           const relItem = selectedIndent.items.find(i => i.id === tx.indentItemId);
                           if (!relItem) return null;
@@ -3780,11 +3780,11 @@ export default function PurchaseIndents() {
                       <ClipboardList className="w-4 h-4" />
                       ORDER / PROCUREMENT ACTION
                     </CardTitle>
-                    <p className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">Fill in order details below and click Mark Ordered. Receipt must be recorded via Plant Material Receipts — this action does not update stock.</p>
+                    <p className="text-sm text-teal-600 dark:text-teal-400 mt-0.5">Fill in order details below and click Mark Ordered. Receipt must be recorded via Plant Material Receipts — this action does not update stock.</p>
                   </CardHeader>
                   <CardContent className="py-3 px-4 space-y-4">
                     {/* Prefilled PI metadata header */}
-                    <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-xs">
+                    <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
                       <div>
                         <span className="text-muted-foreground uppercase font-semibold">PI No.</span>
                         <p className="font-mono font-bold text-foreground">{selectedIndent.indentNo}</p>
@@ -3833,9 +3833,9 @@ export default function PurchaseIndents() {
                           <div className="flex items-start justify-between gap-2 px-4 py-2.5 bg-muted/30 border-b">
                             <div>
                               <p className="text-sm font-semibold">{item.description}</p>
-                              {item.spec && <p className="text-xs text-muted-foreground">{item.spec}</p>}
+                              {item.spec && <p className="text-sm text-muted-foreground">{item.spec}</p>}
                             </div>
-                            <div className="text-right text-xs shrink-0">
+                            <div className="text-right text-sm shrink-0">
                               <p className="text-muted-foreground">APPROVED QTY</p>
                               <p className="font-bold text-teal-700 dark:text-teal-400">{item.approvedQty ?? item.qty} {item.uom}</p>
                               {item.purpose && <p className="text-muted-foreground mt-0.5">For: {item.purpose}</p>}
@@ -3846,52 +3846,52 @@ export default function PurchaseIndents() {
                           <div className="p-3 space-y-2">
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                               <div>
-                                <Label className="text-xs">SUPPLIER / VENDOR</Label>
+                                <Label className="text-sm">SUPPLIER / VENDOR</Label>
                                 <Input
                                   value={pom.vendor}
                                   onChange={e => setPom({ vendor: e.target.value })}
                                   onBlur={e => setPom({ vendor: e.target.value.toUpperCase() })}
                                   placeholder="SUPPLIER NAME"
-                                  className="uppercase text-xs h-8"
+                                  className="uppercase text-sm h-8"
                                   data-testid={`input-po-vendor-${item.id}`}
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">ORDER QTY ({item.uom})</Label>
+                                <Label className="text-sm">ORDER QTY ({item.uom})</Label>
                                 <Input
                                   type="number"
                                   value={pom.orderedQty}
                                   onChange={e => setPom({ orderedQty: e.target.value })}
                                   min={0}
-                                  className="text-xs h-8"
+                                  className="text-sm h-8"
                                   data-testid={`input-po-qty-${item.id}`}
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">RATE (₹ / {item.uom})</Label>
+                                <Label className="text-sm">RATE (₹ / {item.uom})</Label>
                                 <Input
                                   type="number"
                                   value={pom.rate}
                                   onChange={e => setPom({ rate: e.target.value })}
                                   placeholder="0.00"
-                                  className="text-xs h-8"
+                                  className="text-sm h-8"
                                   data-testid={`input-po-rate-${item.id}`}
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">EXPECTED DELIVERY</Label>
+                                <Label className="text-sm">EXPECTED DELIVERY</Label>
                                 <Input
                                   type="date"
                                   value={pom.expectedDelivery}
                                   onChange={e => setPom({ expectedDelivery: e.target.value })}
-                                  className="text-xs h-8"
+                                  className="text-sm h-8"
                                   data-testid={`input-po-delivery-${item.id}`}
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">PAYMENT MODE</Label>
+                                <Label className="text-sm">PAYMENT MODE</Label>
                                 <Select value={pom.paymentMode || "credit"} onValueChange={v => setPom({ paymentMode: v })}>
-                                  <SelectTrigger className="text-xs h-8" data-testid={`select-po-payment-${item.id}`}>
+                                  <SelectTrigger className="text-sm h-8" data-testid={`select-po-payment-${item.id}`}>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -3903,19 +3903,19 @@ export default function PurchaseIndents() {
                                 </Select>
                               </div>
                               <div>
-                                <Label className="text-xs">TRANSPORT / REMARKS</Label>
+                                <Label className="text-sm">TRANSPORT / REMARKS</Label>
                                 <Input
                                   value={pom.remarks}
                                   onChange={e => setPom({ remarks: e.target.value })}
                                   onBlur={e => setPom({ remarks: e.target.value.toUpperCase() })}
                                   placeholder="e.g. SUPPLIER TRANSPORT, FOB..."
-                                  className="uppercase text-xs h-8"
+                                  className="uppercase text-sm h-8"
                                   data-testid={`input-po-remarks-${item.id}`}
                                 />
                               </div>
                             </div>
                             {pom.rate && pom.orderedQty ? (
-                              <p className="text-xs text-teal-700 dark:text-teal-400 font-semibold text-right">
+                              <p className="text-sm text-teal-700 dark:text-teal-400 font-semibold text-right">
                                 Est. Order Value: ₹ {(parseFloat(pom.rate) * parseFloat(pom.orderedQty)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                               </p>
                             ) : null}
@@ -3925,7 +3925,7 @@ export default function PurchaseIndents() {
                     })}
 
                     <div className="flex items-center justify-between pt-1 border-t">
-                      <p className="text-xs text-muted-foreground italic">Marking ordered will NOT create a GRN or update stock. Record actual receipt via Plant Material Receipts.</p>
+                      <p className="text-sm text-muted-foreground italic">Marking ordered will NOT create a GRN or update stock. Record actual receipt via Plant Material Receipts.</p>
                       <Button
                         size="sm"
                         className="bg-teal-600 hover:bg-teal-700 text-white ml-4 shrink-0"
@@ -3966,7 +3966,7 @@ export default function PurchaseIndents() {
                       <Package className="w-4 h-4" />
                       RECORD MATERIAL RECEIPT
                     </CardTitle>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Record material received at plant via the Plant Material Receipts form. The PI indent reference will be pre-filled and stock updated automatically.</p>
+                    <p className="text-sm text-amber-600 dark:text-amber-400 mt-0.5">Record material received at plant via the Plant Material Receipts form. The PI indent reference will be pre-filled and stock updated automatically.</p>
                   </CardHeader>
                   <CardContent className="py-3 px-4 space-y-2">
                     {selectedIndent.items
@@ -3977,8 +3977,8 @@ export default function PurchaseIndents() {
                           <div key={item.id} className="flex items-center justify-between gap-3 border rounded-lg p-3 bg-amber-50/40 dark:bg-amber-900/10" data-testid={`card-mat-receipt-${item.id}`}>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold truncate">{item.description}</p>
-                              <p className="text-xs text-muted-foreground">Remaining: <strong className="text-amber-700 dark:text-amber-400">{remaining} {item.uom}</strong></p>
-                              {!item.materialId && <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">⚠ No linked plant material — link first to enable receipt</p>}
+                              <p className="text-sm text-muted-foreground">Remaining: <strong className="text-amber-700 dark:text-amber-400">{remaining} {item.uom}</strong></p>
+                              {!item.materialId && <p className="text-sm text-amber-600 dark:text-amber-400 mt-0.5">⚠ No linked plant material — link first to enable receipt</p>}
                             </div>
                             <Button
                               size="sm"
@@ -3995,7 +3995,7 @@ export default function PurchaseIndents() {
                         );
                       })}
                     {selectedIndent.items.filter(i => (i.approvedQty ?? 0) > 0 && (i.totalAcceptedQty ?? 0) < (i.approvedQty ?? 0)).length === 0 && (
-                      <p className="text-xs text-emerald-700 dark:text-emerald-400 text-center py-2">✓ All approved quantities have been received</p>
+                      <p className="text-sm text-emerald-700 dark:text-emerald-400 text-center py-2">✓ All approved quantities have been received</p>
                     )}
                   </CardContent>
                 </Card>
@@ -4012,7 +4012,7 @@ export default function PurchaseIndents() {
                     <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
                       <Package className="w-4 h-4" />
                       <span className="text-sm font-semibold">GRNs Raised Against This Indent</span>
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">{linkedGrns.length}</span>
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[12px] font-bold">{linkedGrns.length}</span>
                     </div>
                     {grnPanelOpen ? <ChevronUp className="w-4 h-4 text-emerald-600" /> : <ChevronDown className="w-4 h-4 text-emerald-600" />}
                   </button>
@@ -4030,8 +4030,8 @@ export default function PurchaseIndents() {
                               <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{grn.supplier}</span>
                             </div>
                             <div className="flex items-center gap-3 shrink-0 ml-2">
-                              <span className="text-xs text-gray-500 dark:text-gray-400">{grn.itemCount} item{grn.itemCount !== 1 ? "s" : ""}</span>
-                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                              <span className="text-sm text-gray-500 dark:text-gray-400">{grn.itemCount} item{grn.itemCount !== 1 ? "s" : ""}</span>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                                 grn.acceptanceStatus === "accepted" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
                                 grn.acceptanceStatus === "partial" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
                                 "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
@@ -4081,7 +4081,7 @@ export default function PurchaseIndents() {
                       const effStockStatusP = stockStatus ?? (convertedLiveP != null ? (convertedLiveP >= approvedQty ? 'in_stock' : convertedLiveP > 0 ? 'short' : 'out_of_stock') : null);
                       const isLiveP = !stockStatus && convertedLiveP != null;
                       const stockBadge = effStockStatusP ? (
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${isLiveP ? 'opacity-75' : ''} ${
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${isLiveP ? 'opacity-75' : ''} ${
                           effStockStatusP === "in_stock" ? "text-[#0F5F64] bg-[#0F5F64]/10 border border-[#0F5F64]/20" :
                           effStockStatusP === "short" ? "text-amber-700 bg-amber-100 border border-amber-200 dark:text-amber-300 dark:bg-amber-900/30" :
                           "text-gray-500 bg-gray-100 border border-gray-200 dark:text-gray-400 dark:bg-gray-800"
@@ -4099,11 +4099,11 @@ export default function PurchaseIndents() {
                               <div>
                                 <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
                                 {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                                <p className="text-xs text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
+                                <p className="text-sm text-gray-400 mt-0.5">{item.qty} {item.uom} · FOR: {item.purpose}</p>
                               </div>
                             </div>
                             {stockBadge && <div className="mt-2">{stockBadge}</div>}
-                            <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
+                            <div className="mt-3 flex items-center gap-2 text-sm text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
                               <Ban className="w-4 h-4 text-gray-400 shrink-0" />
                               <span>Manager Rejected — No procurement needed</span>
                             </div>
@@ -4116,7 +4116,7 @@ export default function PurchaseIndents() {
                           <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/30 p-4 opacity-70" data-testid={`card-procure-item-${item.id}`}>
                             <h3 className="font-semibold text-gray-500 dark:text-gray-400 line-through">{realIndex + 1}. {item.description}</h3>
                             {(item as any).spec && <p className="text-sm text-slate-600 dark:text-slate-300 italic line-through">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                            <p className="text-xs text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
+                            <p className="text-sm text-gray-400 mt-1">Cancelled{item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
                               {item.purchaseRemarks ? ` · ${item.purchaseRemarks}` : ""}</p>
                           </div>
                         );
@@ -4129,7 +4129,7 @@ export default function PurchaseIndents() {
                               <div>
                                 <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{realIndex + 1}. {item.description}</h3>
                                 {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
+                                <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">{approvedQty} {item.uom} approved</p>
                               </div>
                             </div>
                             {stockBadge && <div className="mb-2">{stockBadge}</div>}
@@ -4139,20 +4139,20 @@ export default function PurchaseIndents() {
                                 <p className="font-semibold text-emerald-800 dark:text-emerald-300 text-sm">
                                   Received{(item as any).linkedReceiptNo ? ` · ${(item as any).linkedReceiptNo}` : item.billNo ? ` · Bill: ${item.billNo}` : ""}
                                 </p>
-                                <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                <p className="text-sm text-emerald-600 dark:text-emerald-400">
                                   {item.vendor ? item.vendor : ""}{item.rate != null ? ` · ₹${item.rate}/${item.uom}` : ""}{item.amount != null ? ` · ₹${item.amount.toLocaleString("en-IN")} total` : ""}
                                   {(item as any).purchasedBy ? ` · Purchased by ${(item as any).purchasedBy}` : ""}
                                 </p>
                                 {((item as any).expectedDelivery || (item as any).paymentMode) && (
                                   <div className="flex flex-wrap gap-2 items-center mt-1">
                                     {(item as any).expectedDelivery && (
-                                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400" data-testid={`text-purchased-exp-delivery-${item.id}`}>
+                                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400" data-testid={`text-purchased-exp-delivery-${item.id}`}>
                                         <Calendar className="w-3 h-3" />
                                         EXP: {format(new Date((item as any).expectedDelivery + "T00:00:00"), "dd-MMM-yy").toUpperCase()}
                                       </span>
                                     )}
                                     {(item as any).paymentMode && (
-                                      <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                      <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
                                         (item as any).paymentMode === "cash" ? "bg-green-200 text-green-800 dark:bg-green-900/60 dark:text-green-300" :
                                         (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
                                         (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
@@ -4167,12 +4167,12 @@ export default function PurchaseIndents() {
                               </div>
                             </div>
                             {(item as any).reviewerNote && (
-                              <div className="mt-2 flex items-start gap-1.5 text-xs text-blue-700 dark:text-blue-300 italic">
+                              <div className="mt-2 flex items-start gap-1.5 text-sm text-blue-700 dark:text-blue-300 italic">
                                 <span>🔔</span><span>{(item as any).reviewerNote}</span>
                               </div>
                             )}
                             <div className="mt-2">
-                              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                              <Button variant="ghost" size="sm" className="text-sm text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
                                 <Clock className="w-3 h-3 mr-1" />
                                 {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
                                 HISTORY
@@ -4190,7 +4190,7 @@ export default function PurchaseIndents() {
                               <div>
                                 <h3 className="font-semibold text-blue-900 dark:text-blue-300">{realIndex + 1}. {item.description}</h3>
                                 {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
+                                <p className="text-sm text-blue-600 dark:text-blue-400 mt-0.5">{approvedQty} {item.uom}{approvedQty < item.qty ? ` (req: ${item.qty})` : ""}</p>
                               </div>
                             </div>
                             {stockBadge && <div className="mb-2">{stockBadge}</div>}
@@ -4224,7 +4224,7 @@ export default function PurchaseIndents() {
                                 {(item as any).paymentMode && (
                                   <div className="flex justify-between items-center">
                                     <span className="text-gray-500">Payment</span>
-                                    <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                    <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
                                       (item as any).paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
                                       (item as any).paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
                                       (item as any).paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
@@ -4248,7 +4248,7 @@ export default function PurchaseIndents() {
                               </div>
                             </div>
                             <div className="mt-2">
-                              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                              <Button variant="ghost" size="sm" className="text-sm text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
                                 <Clock className="w-3 h-3 mr-1" />
                                 {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
                                 HISTORY
@@ -4268,33 +4268,33 @@ export default function PurchaseIndents() {
                               {(item as any).spec && <p className="text-sm text-slate-800 dark:text-slate-100 italic">{(item as any).spec}{(item as any).partNo ? ` · ${(item as any).partNo}` : ""}</p>}
                               <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{approvedQty} {item.uom} approved · FOR: {item.purpose}</p>
                             </div>
-                            <span className="shrink-0 inline-flex items-center text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">
+                            <span className="shrink-0 inline-flex items-center text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1 ml-2">
                               Pending Order
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-1.5 mb-3">
                             {getPriorityBadge(item.priority)}
                             {(item as any).requiredBy && (
-                              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                              <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
                                 REQ. BY: {format(new Date((item as any).requiredBy + "T00:00:00"), "dd-MMM-yyyy").toUpperCase()}
                               </span>
                             )}
                             {stockBadge}
                           </div>
                           {(item as any).reviewerNote && (
-                            <div className="flex items-start gap-1.5 text-xs text-blue-700 dark:text-blue-300 italic mb-3">
+                            <div className="flex items-start gap-1.5 text-sm text-blue-700 dark:text-blue-300 italic mb-3">
                               <span>🔔</span><span>{(item as any).reviewerNote}</span>
                             </div>
                           )}
                           {selectedIndent.status === "approved" ? (
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2.5">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg px-3 py-2.5">
                               <ClipboardList className="w-3.5 h-3.5 text-violet-500 shrink-0" />
                               Fill in procurement details in the <span className="font-semibold text-violet-700 dark:text-violet-300">PURCHASER ACTION</span> form above.
                             </div>
                           ) : (
                           <div className="space-y-3">
                             <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Purchased By</label>
+                              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Purchased By</label>
                               <PersonnelCombobox
                                 value={procData.purchasedBy || ""}
                                 onChange={v => setProcData({ purchasedBy: v })}
@@ -4303,7 +4303,7 @@ export default function PurchaseIndents() {
                               />
                             </div>
                             <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Vendor / Supplier</label>
+                              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Vendor / Supplier</label>
                               <Input
                                 value={procData.vendor || ""}
                                 onChange={e => setProcData({ vendor: e.target.value })}
@@ -4315,11 +4315,11 @@ export default function PurchaseIndents() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Rate (₹/{item.uom})</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Rate (₹/{item.uom})</label>
                                 <Input type="number" value={procData.rate || ""} onChange={e => setProcData({ rate: e.target.value })} placeholder="0.00" data-testid={`input-procure-rate-${item.id}`} />
                               </div>
                               <div>
-                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Total Amount</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Total Amount</label>
                                 <div className="border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 h-10 flex items-center">
                                   {computedAmount ? `₹${computedAmount.toLocaleString("en-IN")}` : "—"}
                                 </div>
@@ -4327,11 +4327,11 @@ export default function PurchaseIndents() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Expected Delivery</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Expected Delivery</label>
                                 <Input type="date" value={procData.expectedDelivery || ""} onChange={e => setProcData({ expectedDelivery: e.target.value })} data-testid={`input-procure-delivery-${item.id}`} />
                               </div>
                               <div>
-                                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Payment Mode</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1.5">Payment Mode</label>
                                 <Select value={procData.paymentMode || "credit"} onValueChange={v => setProcData({ paymentMode: v })}>
                                   <SelectTrigger data-testid={`select-procure-payment-${item.id}`}><SelectValue /></SelectTrigger>
                                   <SelectContent>
@@ -4399,7 +4399,7 @@ export default function PurchaseIndents() {
                             )}
                             {canCancel && (
                               <div className="flex justify-end pt-1">
-                                <Button variant="outline" size="sm" className="text-red-600 border-red-300 text-xs" onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }} data-testid={`button-cancel-item-${item.id}`}>
+                                <Button variant="outline" size="sm" className="text-red-600 border-red-300 text-sm" onClick={(e) => { e.stopPropagation(); setCancelItemId(item.id); setShowCancelConfirm(true); }} data-testid={`button-cancel-item-${item.id}`}>
                                   <Ban className="w-3 h-3 mr-1" /> Cancel Item
                                 </Button>
                               </div>
@@ -4407,7 +4407,7 @@ export default function PurchaseIndents() {
                           </div>
                           )}
                           <div className="mt-3">
-                            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
+                            <Button variant="ghost" size="sm" className="text-sm text-muted-foreground" onClick={() => toggleHistoryItem(item.id)} data-testid={`button-toggle-history-${item.id}`}>
                               <Clock className="w-3 h-3 mr-1" />
                               {expandedHistoryItems.has(item.id) ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
                               HISTORY
@@ -4444,41 +4444,41 @@ export default function PurchaseIndents() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{handoverItem.description}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">Approved: {handoverItem.approvedQty ?? handoverItem.qty} {handoverItem.uom}</span>
+                  <span className="text-sm text-muted-foreground ml-auto">Approved: {handoverItem.approvedQty ?? handoverItem.qty} {handoverItem.uom}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">QTY SENT TO STORES</Label>
+                    <Label className="text-sm">QTY SENT TO STORES</Label>
                     <Input type="number" value={handoverData.handoverQty} onChange={e => setHandoverData(prev => ({ ...prev, handoverQty: e.target.value }))} data-testid="input-handover-qty" />
                   </div>
                   <div>
-                    <Label className="text-xs">QTY ACCEPTED BY STORES</Label>
+                    <Label className="text-sm">QTY ACCEPTED BY STORES</Label>
                     <Input type="number" value={handoverData.acceptedQty} onChange={e => setHandoverData(prev => ({ ...prev, acceptedQty: e.target.value }))} data-testid="input-accepted-qty" />
                   </div>
                   <div>
-                    <Label className="text-xs">QTY REJECTED</Label>
+                    <Label className="text-sm">QTY REJECTED</Label>
                     <Input type="number" value={handoverData.rejectedQty} onChange={e => setHandoverData(prev => ({ ...prev, rejectedQty: e.target.value }))} data-testid="input-rejected-qty" />
                   </div>
                   <div>
-                    <Label className="text-xs">HANDOVER DATE</Label>
+                    <Label className="text-sm">HANDOVER DATE</Label>
                     <Input type="date" value={handoverData.handoverDate} onChange={e => setHandoverData(prev => ({ ...prev, handoverDate: e.target.value }))} data-testid="input-handover-date" />
                   </div>
                   <div className="col-span-2">
-                    <Label className="text-xs">RECEIVED BY (STORES)</Label>
+                    <Label className="text-sm">RECEIVED BY (STORES)</Label>
                     <Input value={handoverData.receivedBy} onChange={e => setHandoverData(prev => ({ ...prev, receivedBy: e.target.value }))} placeholder="Name of stores person accepting" data-testid="input-received-by" />
                   </div>
                   {parseFloat(handoverData.rejectedQty) > 0 && (
                     <div className="col-span-2">
-                      <Label className="text-xs">REJECTION REASON <span className="text-red-500">*</span></Label>
+                      <Label className="text-sm">REJECTION REASON <span className="text-red-500">*</span></Label>
                       <Input value={handoverData.storesRemarks} onChange={e => setHandoverData(prev => ({ ...prev, storesRemarks: e.target.value }))} placeholder="e.g. Damaged packaging, wrong spec" data-testid="input-rejection-reason" />
                     </div>
                   )}
                   <div className="col-span-2">
-                    <Label className="text-xs">REMARKS</Label>
+                    <Label className="text-sm">REMARKS</Label>
                     <Input value={handoverData.remarks} onChange={e => setHandoverData(prev => ({ ...prev, remarks: e.target.value }))} data-testid="input-handover-remarks" />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">After recording the handover, you can create a GRN using the accepted qty to add items to stores stock.</p>
+                <p className="text-sm text-muted-foreground">After recording the handover, you can create a GRN using the accepted qty to add items to stores stock.</p>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setHandoverDialogItemId(null)} data-testid="button-cancel-handover">Cancel</Button>
                   <Button
@@ -4526,34 +4526,34 @@ export default function PurchaseIndents() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold">{item.description}</span>
                         <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">BULK MATERIAL</Badge>
-                        <span className="text-xs text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
+                        <span className="text-sm text-muted-foreground ml-auto">Approved: {item.approvedQty ?? item.qty} {item.uom}</span>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         <div>
-                          <Label className="text-xs">QTY RECEIVED</Label>
+                          <Label className="text-sm">QTY RECEIVED</Label>
                           <Input type="number" value={rd.qty} onChange={e => upd("qty", e.target.value)} data-testid={`input-br-qty-${item.id}`} />
                         </div>
                         <div>
-                          <Label className="text-xs">VENDOR</Label>
+                          <Label className="text-sm">VENDOR</Label>
                           <Input value={rd.vendor} onChange={e => upd("vendor", e.target.value)} data-testid={`input-br-vendor-${item.id}`} />
                         </div>
                         <div>
-                          <Label className="text-xs">RATE (₹/{item.uom})</Label>
+                          <Label className="text-sm">RATE (₹/{item.uom})</Label>
                           <Input type="number" value={rd.rate} onChange={e => upd("rate", e.target.value)} data-testid={`input-br-rate-${item.id}`} />
                         </div>
                         <div>
-                          <Label className="text-xs">RECEIPT DATE</Label>
+                          <Label className="text-sm">RECEIPT DATE</Label>
                           <Input type="date" value={rd.receiptDate} onChange={e => upd("receiptDate", e.target.value)} data-testid={`input-br-date-${item.id}`} />
                         </div>
                         <div className="col-span-2">
-                          <Label className="text-xs">REMARKS</Label>
+                          <Label className="text-sm">REMARKS</Label>
                           <Input value={rd.remarks} onChange={e => upd("remarks", e.target.value)} data-testid={`input-br-remarks-${item.id}`} />
                         </div>
                       </div>
                     </div>
                   );
                 })}
-                <p className="text-xs text-muted-foreground">Plant material receipts are posted directly to plant stock under the material's assigned party.</p>
+                <p className="text-sm text-muted-foreground">Plant material receipts are posted directly to plant stock under the material's assigned party.</p>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setBulkReceiptOpen(false)} data-testid="button-cancel-bulk-receipt">Cancel</Button>
                   <Button
@@ -4590,18 +4590,18 @@ export default function PurchaseIndents() {
         <>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">FILTERS</p>
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">FILTERS</p>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
-                  <Label className="text-xs uppercase">DATE FROM</Label>
+                  <Label className="text-sm uppercase">DATE FROM</Label>
                   <Input type="date" value={reportFilterDateFrom} onChange={(e) => setReportFilterDateFrom(e.target.value)} data-testid="report-filter-date-from" />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">DATE TO</Label>
+                  <Label className="text-sm uppercase">DATE TO</Label>
                   <Input type="date" value={reportFilterDateTo} onChange={(e) => setReportFilterDateTo(e.target.value)} data-testid="report-filter-date-to" />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">PURCHASE STATUS</Label>
+                  <Label className="text-sm uppercase">PURCHASE STATUS</Label>
                   <Select value={reportFilterStatus} onValueChange={setReportFilterStatus}>
                     <SelectTrigger data-testid="report-filter-status">
                       <SelectValue />
@@ -4617,7 +4617,7 @@ export default function PurchaseIndents() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">PURPOSE</Label>
+                  <Label className="text-sm uppercase">PURPOSE</Label>
                   <Select value={reportFilterPurpose} onValueChange={setReportFilterPurpose}>
                     <SelectTrigger data-testid="report-filter-purpose">
                       <SelectValue />
@@ -4631,7 +4631,7 @@ export default function PurchaseIndents() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">VENDOR</Label>
+                  <Label className="text-sm uppercase">VENDOR</Label>
                   <Input
                     value={reportFilterVendor}
                     onChange={(e) => setReportFilterVendor(e.target.value)}
@@ -4642,7 +4642,7 @@ export default function PurchaseIndents() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase">PAYMENT MODE</Label>
+                  <Label className="text-sm uppercase">PAYMENT MODE</Label>
                   <Select value={reportFilterPaymentMode} onValueChange={setReportFilterPaymentMode}>
                     <SelectTrigger data-testid="report-filter-payment-mode">
                       <SelectValue />
@@ -4670,25 +4670,25 @@ export default function PurchaseIndents() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card data-testid="report-card-total">
                   <CardContent className="p-4 text-center">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL ITEMS</p>
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">TOTAL ITEMS</p>
                     <p className="text-2xl font-bold mt-1" data-testid="report-text-total">{reportData.summary.totalItems}</p>
                   </CardContent>
                 </Card>
                 <Card data-testid="report-card-fulfilled">
                   <CardContent className="p-4 text-center">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FULFILLED %</p>
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">FULFILLED %</p>
                     <p className="text-2xl font-bold mt-1 text-emerald-600" data-testid="report-text-fulfilled">{reportData.summary.fulfillmentRate.toFixed(1)}%</p>
                   </CardContent>
                 </Card>
                 <Card data-testid="report-card-spend">
                   <CardContent className="p-4 text-center">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">TOTAL SPEND</p>
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">TOTAL SPEND</p>
                     <p className="text-2xl font-bold mt-1" data-testid="report-text-spend">{"\u20B9"} {reportData.summary.totalSpend.toLocaleString("en-IN")}</p>
                   </CardContent>
                 </Card>
                 <Card data-testid="report-card-pending">
                   <CardContent className="p-4 text-center">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PENDING ITEMS</p>
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">PENDING ITEMS</p>
                     <p className="text-2xl font-bold mt-1 text-amber-600" data-testid="report-text-pending">{reportData.summary.pending}</p>
                   </CardContent>
                 </Card>
@@ -4706,7 +4706,7 @@ export default function PurchaseIndents() {
                 <Card>
                   <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs" data-testid="report-table">
+                      <table className="w-full text-sm" data-testid="report-table">
                         <thead>
                           <tr className="border-b bg-muted/50">
                             <th className="text-left p-3 font-semibold uppercase">INDENT NO</th>
@@ -4752,7 +4752,7 @@ export default function PurchaseIndents() {
                               </td>
                               <td className="p-3" data-testid={`report-payment-${item.itemId}`}>
                                 {item.paymentMode ? (
-                                  <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                  <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
                                     item.paymentMode === "cash" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
                                     item.paymentMode === "credit" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
                                     item.paymentMode === "upi" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
@@ -4801,11 +4801,11 @@ export default function PurchaseIndents() {
             {/* Header fields */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-semibold uppercase text-muted-foreground">Date *</Label>
+                <Label className="text-sm font-semibold uppercase text-muted-foreground">Date *</Label>
                 <Input type="date" value={grnDialogDate} onChange={e => setGrnDialogDate(e.target.value)} data-testid="input-grn-date" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-semibold uppercase text-muted-foreground">Supplier / Vendor</Label>
+                <Label className="text-sm font-semibold uppercase text-muted-foreground">Supplier / Vendor</Label>
                 <Input
                   value={grnDialogSupplier}
                   onChange={e => setGrnDialogSupplier(e.target.value)}
@@ -4822,7 +4822,7 @@ export default function PurchaseIndents() {
                 )}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-semibold uppercase text-muted-foreground">Invoice No.</Label>
+                <Label className="text-sm font-semibold uppercase text-muted-foreground">Invoice No.</Label>
                 <Input
                   value={grnDialogInvoiceNo}
                   onChange={e => setGrnDialogInvoiceNo(e.target.value)}
@@ -4831,7 +4831,7 @@ export default function PurchaseIndents() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-semibold uppercase text-muted-foreground">Remarks</Label>
+                <Label className="text-sm font-semibold uppercase text-muted-foreground">Remarks</Label>
                 <Input
                   value={grnDialogRemarks}
                   onChange={e => setGrnDialogRemarks(e.target.value)}
@@ -4843,7 +4843,7 @@ export default function PurchaseIndents() {
 
             {/* Line items */}
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 Items to Receive ({grnLines.length})
               </p>
               {grnLines.length === 0 ? (
@@ -4866,19 +4866,19 @@ export default function PurchaseIndents() {
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{idx + 1}. {line.description}</p>
                           {selectedItem && line.autoLinked && (
-                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800 rounded-full px-2 py-0.5" data-testid={`badge-auto-linked-${idx}`}>
+                            <span className="shrink-0 inline-flex items-center text-xs font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800 rounded-full px-2 py-0.5" data-testid={`badge-auto-linked-${idx}`}>
                               <Check className="w-3 h-3 mr-1" /> Auto-linked ✓
                             </span>
                           )}
                           {selectedItem && !line.autoLinked && (
-                            <span className="shrink-0 inline-flex items-center text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5" data-testid={`badge-linked-${idx}`}>
+                            <span className="shrink-0 inline-flex items-center text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5" data-testid={`badge-linked-${idx}`}>
                               <Check className="w-3 h-3 mr-1" /> Linked
                             </span>
                           )}
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           <div className="space-y-1">
-                            <Label className="text-[10px] font-bold uppercase text-muted-foreground">Store Catalogue Item *</Label>
+                            <Label className="text-[12px] font-bold uppercase text-muted-foreground">Store Catalogue Item *</Label>
                             <div className="relative">
                               <Input
                                 value={grnOpenDropdownIdx === idx ? line.itemSearch : (selectedItem?.name || line.itemSearch)}
@@ -4897,10 +4897,10 @@ export default function PurchaseIndents() {
                                 <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-44 overflow-y-auto text-sm">
                                   {filteredItems.length === 0 ? (
                                     <div className="px-3 py-2 space-y-1.5">
-                                      <p className="text-muted-foreground text-xs">No items found in catalogue.</p>
+                                      <p className="text-muted-foreground text-sm">No items found in catalogue.</p>
                                       <button
                                         type="button"
-                                        className="text-xs text-[#0F5F64] font-semibold hover:underline flex items-center gap-1"
+                                        className="text-sm text-[#0F5F64] font-semibold hover:underline flex items-center gap-1"
                                         onMouseDown={e => {
                                           e.preventDefault();
                                           setGrnOpenDropdownIdx(null);
@@ -4934,9 +4934,9 @@ export default function PurchaseIndents() {
                                       data-testid={`grn-item-option-${si.id}-${idx}`}
                                     >
                                       <span className="font-medium">{si.name}</span>
-                                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2">
+                                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground ml-2">
                                         {si.isPlantMaterial && (
-                                          <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0">Bulk</span>
+                                          <span className="inline-flex items-center text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0">Bulk</span>
                                         )}
                                         {si.category} · {si.uom}
                                       </span>
@@ -4948,7 +4948,7 @@ export default function PurchaseIndents() {
                           </div>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="space-y-1">
-                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">Qty</Label>
+                              <Label className="text-[12px] font-bold uppercase text-muted-foreground">Qty</Label>
                               <Input
                                 type="number"
                                 value={line.qty}
@@ -4960,7 +4960,7 @@ export default function PurchaseIndents() {
                               />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">Rate (₹)</Label>
+                              <Label className="text-[12px] font-bold uppercase text-muted-foreground">Rate (₹)</Label>
                               <Input
                                 type="number"
                                 value={line.rate}
@@ -4973,7 +4973,7 @@ export default function PurchaseIndents() {
                               />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-[10px] font-bold uppercase text-muted-foreground">UOM</Label>
+                              <Label className="text-[12px] font-bold uppercase text-muted-foreground">UOM</Label>
                               <Input
                                 value={line.uom}
                                 onChange={e => setGrnLines(prev => prev.map((l, i) => i === idx ? { ...l, uom: e.target.value } : l))}
@@ -4989,7 +4989,7 @@ export default function PurchaseIndents() {
                             const entered = parseFloat(line.qty);
                             if (!isNaN(entered) && entered > remaining) {
                               return (
-                                <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300" data-testid={`warning-over-receipt-${idx}`}>
+                                <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300" data-testid={`warning-over-receipt-${idx}`}>
                                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                                   <span>
                                     Over-receipt: {entered} {line.uom} entered but only <strong>{remaining} {line.uom}</strong> remain
@@ -5001,7 +5001,7 @@ export default function PurchaseIndents() {
                             }
                             if (alreadyRcvd > 0) {
                               return (
-                                <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid={`info-already-received-${idx}`}>
+                                <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`info-already-received-${idx}`}>
                                   {alreadyRcvd} {line.uom} already received · {remaining > 0 ? `${remaining} remaining` : "fully received"}
                                 </p>
                               );
@@ -5016,7 +5016,7 @@ export default function PurchaseIndents() {
               )}
             </div>
 
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Only items marked as <strong>purchased / partial</strong> appear here. Link each to a store catalogue entry to update stock balance.
             </p>
 
@@ -5046,7 +5046,7 @@ export default function PurchaseIndents() {
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">MATERIAL NAME *</Label>
+              <Label className="text-sm">MATERIAL NAME *</Label>
               <Input
                 value={addStoreItemForm.name}
                 onChange={e => setAddStoreItemForm(f => ({ ...f, name: e.target.value }))}
@@ -5058,9 +5058,9 @@ export default function PurchaseIndents() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">CATEGORY *</Label>
+                <Label className="text-sm">CATEGORY *</Label>
                 <Select value={addStoreItemForm.category} onValueChange={v => setAddStoreItemForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger className="text-xs" data-testid="select-new-store-item-category"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {["Aggregate", "Bitumen", "Utility", "LDO", "Spares", "Consumables", "Electricals", "Others"].map(c => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -5069,9 +5069,9 @@ export default function PurchaseIndents() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">DEFAULT UOM *</Label>
+                <Label className="text-sm">DEFAULT UOM *</Label>
                 <Select value={addStoreItemForm.uom} onValueChange={v => setAddStoreItemForm(f => ({ ...f, uom: v }))}>
-                  <SelectTrigger className="text-xs" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="text-sm" data-testid="select-new-store-item-uom"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {["NOS", "KG", "TON", "MT", "LITERS", "CUM", "CFT", "SQM", "RMT", "METERS", "SET", "PAIR", "BOX", "ROLL", "PACK"].map(u => (
                       <SelectItem key={u} value={u}>{u}</SelectItem>
@@ -5080,7 +5080,7 @@ export default function PurchaseIndents() {
                 </Select>
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">Material will be added to the plant materials catalogue and linked to this indent item.</p>
+            <p className="text-[12px] text-muted-foreground">Material will be added to the plant materials catalogue and linked to this indent item.</p>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" size="sm" onClick={() => setAddStoreItemOpen(false)}>Cancel</Button>
               <Button

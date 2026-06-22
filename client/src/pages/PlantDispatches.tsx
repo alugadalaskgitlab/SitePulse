@@ -1029,7 +1029,7 @@ export default function PlantDispatches() {
                                 <Check className={cn("mr-2 h-4 w-4", transportEquipmentId === eq.id ? "opacity-100" : "opacity-0")} />
                                 <div className="flex flex-col">
                                   <span className="font-medium">{eq.name} {eq.registrationNumber ? `(${eq.registrationNumber})` : ""}</span>
-                                  {eq.vendorName && <span className="text-xs text-muted-foreground">{eq.vendorName}</span>}
+                                  {eq.vendorName && <span className="text-sm text-muted-foreground">{eq.vendorName}</span>}
                                 </div>
                               </CommandItem>
                             ))}
@@ -1039,7 +1039,7 @@ export default function PlantDispatches() {
                   </PopoverContent>
                 </Popover>
                 {transportEquipmentId && (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Linked to Equipment Master #{transportEquipmentId}
                   </p>
                 )}
@@ -1070,7 +1070,7 @@ export default function PlantDispatches() {
                   <div className="flex items-center justify-between mb-1">
                     <Label>Bitumen Tank</Label>
                     {bitumenTankBalances && (
-                      <div className="flex items-center gap-1.5 text-xs">
+                      <div className="flex items-center gap-1.5 text-sm">
                         <span className={`px-1.5 py-0.5 rounded font-semibold ${bitumenTankNumber === "1" ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400' : 'bg-muted text-muted-foreground'}`}>
                           T1: {bitumenTankBalances.tank1.toFixed(2)}T
                         </span>
@@ -1103,7 +1103,7 @@ export default function PlantDispatches() {
                       if (needed <= 0) return null;
                       if (totalAvailable < needed) {
                         return (
-                          <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-xs text-amber-800 dark:text-amber-300">
+                          <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
                             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                             <span>
                               Total bitumen stock is only <strong>{totalAvailable.toFixed(3)} MT</strong> — need {needed.toFixed(3)} MT.
@@ -1130,7 +1130,7 @@ export default function PlantDispatches() {
                     </SelectContent>
                   </Select>
                   {theoreticalValues && (
-                    <p className="text-xs text-muted-foreground mt-1" data-testid="text-ldo-theoretical-qty">
+                    <p className="text-sm text-muted-foreground mt-1" data-testid="text-ldo-theoretical-qty">
                       Deduction: <span className="font-mono font-semibold text-foreground">{theoreticalValues.ldoQty.toFixed(1)} L</span>
                       {" "}({theoreticalValues.ldoNorm} L/MT × {loadWeight} MT)
                     </p>
@@ -1165,10 +1165,10 @@ export default function PlantDispatches() {
                 <div className="flex items-center justify-between mb-1">
                   <Label>
                     Actual LDO (Liters){" "}
-                    <span className="font-normal text-muted-foreground text-xs">(optional)</span>
+                    <span className="font-normal text-muted-foreground text-sm">(optional)</span>
                   </Label>
                   {validationStatus.ldo !== "ok" && (
-                    <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-xs">
+                    <Badge variant={validationStatus.ldo === "error" ? "destructive" : "secondary"} className="text-sm">
                       {validationStatus.ldo === "error" ? "Exceeds ±10%" : "Variance"}
                     </Badge>
                   )}
@@ -1183,14 +1183,14 @@ export default function PlantDispatches() {
                   data-testid="input-actual-ldo"
                 />
                 {actualLdoLiters && parseFloat(loadWeight) > 0 ? (
-                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-actual-ldo-total">
+                  <p className="text-sm text-muted-foreground mt-1" data-testid="text-actual-ldo-total">
                     Rate: <span className="font-mono">{(parseFloat(actualLdoLiters) / parseFloat(loadWeight)).toFixed(2)} L/MT</span>
                     {theoreticalValues && (
                       <span className="ml-2">(norm {theoreticalValues.ldoNorm} L/MT)</span>
                     )}
                   </p>
                 ) : theoreticalValues ? (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Leave blank to use theoretical: <span className="font-mono">{theoreticalValues.ldoQty.toFixed(1)} L</span>
                   </p>
                 ) : null}
@@ -1209,7 +1209,7 @@ export default function PlantDispatches() {
                     />
                     <span className="text-sm font-medium text-orange-800 dark:text-orange-200">
                       Admin Override — record this out-of-tolerance LDO value
-                      <span className="block text-xs font-normal text-orange-600 dark:text-orange-400 mt-0.5">
+                      <span className="block text-sm font-normal text-orange-600 dark:text-orange-400 mt-0.5">
                         The deviation will be flagged in the audit log for traceability.
                       </span>
                     </span>
@@ -1229,7 +1229,7 @@ export default function PlantDispatches() {
                       <div className="flex items-center justify-between">
                         <Label>Actual Bitumen %</Label>
                         {validationStatus.bitumen !== "ok" && (
-                          <Badge variant={validationStatus.bitumen === "error" ? "destructive" : "secondary"} className="text-xs">
+                          <Badge variant={validationStatus.bitumen === "error" ? "destructive" : "secondary"} className="text-sm">
                             {validationStatus.bitumen === "error" ? "Exceeds ±10%" : "Variance"}
                           </Badge>
                         )}
@@ -1262,7 +1262,7 @@ export default function PlantDispatches() {
                         />
                         <span className="text-sm font-medium text-orange-800 dark:text-orange-200">
                           Admin Override — record this out-of-tolerance value
-                          <span className="block text-xs font-normal text-orange-600 dark:text-orange-400 mt-0.5">
+                          <span className="block text-sm font-normal text-orange-600 dark:text-orange-400 mt-0.5">
                             The deviation will be flagged in the audit log for traceability.
                           </span>
                         </span>
@@ -1519,10 +1519,10 @@ export default function PlantDispatches() {
                               <div className="flex-1 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm min-w-0">
                                 <span className="font-semibold">{dispatch.truckNumber}</span>
                                 <span className="font-medium">{dispatch.loadWeight} MT</span>
-                                <Badge variant="outline" className="text-xs">{template?.mixType || "-"}</Badge>
-                                <span className="text-xs text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
-                                {dispatch.ownerName && <span className="text-xs text-muted-foreground">{dispatch.ownerName}</span>}
-                                {dispatch.time && <span className="text-xs text-muted-foreground">{dispatch.time}</span>}
+                                <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
+                                <span className="text-sm text-muted-foreground">{getPartyName(dispatch.partyId)}</span>
+                                {dispatch.ownerName && <span className="text-sm text-muted-foreground">{dispatch.ownerName}</span>}
+                                {dispatch.time && <span className="text-sm text-muted-foreground">{dispatch.time}</span>}
                                 {((dispatch.bitumenVariancePercent != null && Number(dispatch.bitumenVariancePercent) !== 0) ||
                                   (dispatch.ldoVariancePercent != null && Number(dispatch.ldoVariancePercent) !== 0)) && (
                                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
@@ -1554,7 +1554,7 @@ export default function PlantDispatches() {
                                   if (!eq) return null;
                                   const ownerInfo = eq.ownershipStatus === "hired" && eq.vendorName ? `HIRED: ${eq.vendorName}` : "HLC OWN";
                                   return (
-                                    <span className="text-xs text-muted-foreground block">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} — {ownerInfo}</span>
+                                    <span className="text-sm text-muted-foreground block">{eq.name}{eq.registrationNumber ? ` (${eq.registrationNumber})` : ""} — {ownerInfo}</span>
                                   );
                                 })()}
                               </div>
@@ -1564,7 +1564,7 @@ export default function PlantDispatches() {
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Mix</span>
-                                <Badge variant="outline" className="text-xs">{template?.mixType || "-"}</Badge>
+                                <Badge variant="outline" className="text-sm">{template?.mixType || "-"}</Badge>
                               </div>
                               <div>
                                 <span className="text-muted-foreground text-sm block">Party</span>
@@ -1635,7 +1635,7 @@ export default function PlantDispatches() {
                 <span className="font-semibold">{shortageInfo.fallbackPartyName || "HLC"}</span>.
               </p>
               <div className="rounded-md border bg-muted/40">
-                <table className="w-full text-xs">
+                <table className="w-full text-sm">
                   <thead className="border-b bg-muted/60">
                     <tr>
                       <th className="text-left p-2">Material</th>
@@ -1658,7 +1658,7 @@ export default function PlantDispatches() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Borrowed quantities will be tagged "(Borrowed from HLC)" in the stock ledger so they remain
                 visible for later reconciliation. If this is wrong, cancel and check whether a recent
                 receipt is missing for {shortageInfo.ownerPartyName}.
