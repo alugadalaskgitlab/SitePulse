@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
@@ -185,6 +185,7 @@ export default function SiteEntry() {
     date: format(new Date(), "yyyy-MM-dd"),
     site: "",
     engineer: "",
+    boqProjectId: null as number | null,
   });
 
   // Resolve numeric siteId from selected site name (must be after `header`)
@@ -194,7 +195,7 @@ export default function SiteEntry() {
   }, [header.site, sitesList]);
 
   // Find the BOQ project(s) linked to this site (if any)
-  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; itemCount?: number }>>({
+  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; status?: string; barCount?: number; itemCount?: number }>>({
     queryKey: ["/api/boq/projects", selectedSiteId],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
@@ -203,14 +204,26 @@ export default function SiteEntry() {
     enabled: !!selectedSiteId,
   });
 
-  // Prefer the project that has BOQ items set up (has a work programme), falling
-  // back to the first project returned. This prevents auto-selecting an empty
-  // project when a site has multiple BOQ projects.
-  const siteBoqProjectId = useMemo(() => {
+  // Priority: 1. active + has bars  2. any active  3. first (newest) in list
+  const resolvedBoqProjectId = useMemo(() => {
     if (siteBoqProjects.length === 0) return null;
-    const withItems = siteBoqProjects.find((p) => (p.itemCount ?? 0) > 0);
-    return (withItems ?? siteBoqProjects[0]).id;
+    const activeWithBars = siteBoqProjects.find(
+      (p) => p.status === "active" && (p.barCount ?? 0) > 0
+    );
+    if (activeWithBars) return activeWithBars.id;
+    const active = siteBoqProjects.find((p) => p.status === "active");
+    if (active) return active.id;
+    return siteBoqProjects[0].id;
   }, [siteBoqProjects]);
+
+  // Sync resolved project explicitly into header state so the DPR carries the
+  // right project ID as a first-class field, not an implicit computation at
+  // submit time.
+  useEffect(() => {
+    setHeader((h) => ({ ...h, boqProjectId: resolvedBoqProjectId }));
+  }, [resolvedBoqProjectId]);
+
+  const siteBoqProjectId = header.boqProjectId;
 
   const siteBoqProjectName = useMemo(() => {
     if (!siteBoqProjectId) return null;
@@ -427,7 +440,7 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
-        boqProjectId: siteBoqProjectId ?? undefined,
+        boqProjectId: header.boqProjectId ?? undefined,
         progress: workType === "structure" ? [] : progressWithCalc,
         structureItems: workType === "structure" ? structureItems.filter(s => s.structureType && s.itemOfWork) : [],
         equipment: normalizedEquipment,

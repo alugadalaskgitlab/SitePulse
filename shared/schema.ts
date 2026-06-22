@@ -2560,7 +2560,7 @@ export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSc
 // Composite types for API responses
 export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
-export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null };
+export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null; barCount: number };
 export type WorkProgramBarWithItem = WorkProgramBar & {
   itemCode: string | null;
   description: string;

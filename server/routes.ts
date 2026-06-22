@@ -10634,6 +10634,19 @@ async function ensureDprBoqProjectColumn() {
     // 1. Add column if not already present (idempotent)
     await db.execute(sql.raw(`ALTER TABLE dprs ADD COLUMN IF NOT EXISTS boq_project_id integer`));
 
+    // 1b. Add FK constraint (nullable, ON DELETE SET NULL so deleting a BOQ project
+    //     sets the column to null rather than blocking or orphaning DPRs).
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'dprs_boq_project_id_fkey'
+        ) THEN
+          ALTER TABLE dprs ADD CONSTRAINT dprs_boq_project_id_fkey
+            FOREIGN KEY (boq_project_id) REFERENCES boq_projects(id) ON DELETE SET NULL;
+        END IF;
+      END $$
+    `));
+
     // 2. Re-link orphaned progress entries whose boq_item_id no longer exists.
     //    boq_item_id=25 was from a now-deleted BOQ project. Item 13 is the
     //    matching "Clearing and grubbing" item in the surviving project 2.

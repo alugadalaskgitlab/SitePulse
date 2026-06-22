@@ -19629,11 +19629,16 @@ export class DatabaseStorage implements IStorage {
           .from(boqRevisions)
           .where(and(eq(boqRevisions.boqProjectId, row.id), eq(boqRevisions.status, "active")))
           .limit(1);
+        const [barCountRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(workProgramBars)
+          .where(eq(workProgramBars.boqProjectId, row.id));
         return {
           ...row,
           siteName: row.siteName ?? null,
           itemCount: countRow?.count ?? 0,
           activeRevision: activeRev[0]?.label ?? null,
+          barCount: barCountRow?.count ?? 0,
         };
       })
     );
