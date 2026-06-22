@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Loader2, Wrench, Users, Package, Info, Zap,
   ChevronDown, ChevronUp, CheckSquare, Square, List, Sparkles,
   Layers, AlertTriangle, CheckCircle2, Settings2, BookOpen, Search,
-  CheckCircle, X,
+  CheckCircle, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,7 +192,6 @@ function LayerConfigTab({
   const [granularSource, setGranularSource] = useState<"quarry" | "plant">(existingLc?.granularSource ?? "quarry");
   const [coverageRate, setCoverageRate] = useState<string>(existingLc?.coverageRateKgPerSqm ? String(existingLc.coverageRateKgPerSqm) : "");
   const [coverageMaterial, setCoverageMaterial] = useState<string>(existingLc?.coverageMaterialName ?? "Bitumen Emulsion SS-1");
-  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
 
   const { data: mixTemplates = [] } = useQuery<PlanningMixTemplate[]>({
     queryKey: ["/api/planning/mix-templates"],
@@ -288,39 +287,33 @@ function LayerConfigTab({
     return deriveMaterialsFromLayerConfig(layerConfig, item.unit, tmpl);
   }, [layerConfig, templateDetail, item.unit]);
 
-  const saveLcMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/boq/items/${item.id}`, { layerConfig: layerConfig ?? null });
-    },
-    onSuccess: () => {
-      onLayerConfigChange(layerConfig);
-      toast({ title: "Layer config saved" });
-    },
-    onError: () => toast({ title: "Failed to save layer config", variant: "destructive" }),
-  });
-
-  const applyMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("PATCH", `/api/boq/items/${item.id}`, { layerConfig: layerConfig ?? null });
-      const payload: InsertBoqItemMaterials[] = derivedRows.map((r, i) => ({
-        boqItemId: item.id,
-        materialName: r.materialName,
-        uom: r.uom,
-        qtyPerBoqUnit: r.qtyPerBoqUnit,
-        wastagePct: 0,
-        isAuto: true,
-        applicationNote: r.applicationNote ?? null,
-        sortOrder: i,
-      }));
-      await apiRequest("PUT", `/api/boq/items/${item.id}/materials`, { rows: payload });
+      if (derivedRows.length > 0) {
+        const payload: InsertBoqItemMaterials[] = derivedRows.map((r, i) => ({
+          boqItemId: item.id,
+          materialName: r.materialName,
+          uom: r.uom,
+          qtyPerBoqUnit: r.qtyPerBoqUnit,
+          wastagePct: 0,
+          isAuto: true,
+          applicationNote: r.applicationNote ?? null,
+          sortOrder: i,
+        }));
+        await apiRequest("PUT", `/api/boq/items/${item.id}/materials`, { rows: payload });
+      }
     },
     onSuccess: async () => {
       onLayerConfigChange(layerConfig);
-      await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
-      toast({ title: "Layer config saved and materials applied" });
-      setShowApplyConfirm(false);
+      if (derivedRows.length > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
+        toast({ title: `Layer config saved — ${derivedRows.length} material rows applied` });
+      } else {
+        toast({ title: "Layer config saved" });
+      }
     },
-    onError: () => toast({ title: "Failed to apply", variant: "destructive" }),
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
   });
 
   return (
@@ -456,24 +449,18 @@ function LayerConfigTab({
       )}
 
       <div className="flex items-center gap-2 pt-2 border-t">
-        <Button size="sm" variant="outline" onClick={() => saveLcMutation.mutate()} disabled={saveLcMutation.isPending} className="text-sm h-7" data-testid="button-save-layer-config">
-          {saveLcMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-          Save Config
+        <Button
+          size="sm"
+          className="text-sm h-7 bg-teal-700 hover:bg-teal-800 text-white"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          data-testid="button-save-layer-config"
+        >
+          {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+          {derivedRows.length > 0 ? `Save & Apply (${derivedRows.length} rows)` : "Save Config"}
         </Button>
         {derivedRows.length > 0 && (
-          showApplyConfirm ? (
-            <div className="flex items-center gap-1.5 text-xs text-amber-700">
-              <span>This will replace all current materials. Sure?</span>
-              <Button size="sm" className="h-6 text-[12px] bg-amber-600 hover:bg-amber-700 text-white" onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} data-testid="button-apply-confirm">
-                {applyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Yes, apply"}
-              </Button>
-              <Button size="sm" variant="outline" className="h-6 text-[12px]" onClick={() => setShowApplyConfirm(false)}>Cancel</Button>
-            </div>
-          ) : (
-            <Button size="sm" className="text-sm h-7 bg-teal-700 hover:bg-teal-800 text-white" onClick={() => setShowApplyConfirm(true)} data-testid="button-apply-materials">
-              <Layers className="w-3.5 h-3.5 mr-1" />Apply to Materials ({derivedRows.length} rows)
-            </Button>
-          )
+          <p className="text-[12px] text-muted-foreground">Saves config and applies {derivedRows.length} material row{derivedRows.length !== 1 ? "s" : ""}</p>
         )}
       </div>
     </div>
@@ -1279,10 +1266,34 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
 
 // ─── Main Dialog ────────────────────────────────────────────────────────────────
 
-export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCategory; onClose: () => void }) {
+export function BoqItemRecipeDialog({
+  item,
+  allItems,
+  onClose,
+}: {
+  item: BoqItemWithCategory;
+  allItems?: BoqItemWithCategory[];
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState("layer-config");
-  const [localLayerConfig, setLocalLayerConfig] = useState<LayerConfig | null>((item.layerConfig as LayerConfig | null) ?? null);
   const [showMapToNorm, setShowMapToNorm] = useState(false);
+
+  // Navigation state — currentItem drives all tab queries via key
+  const [currentItem, setCurrentItem] = useState<BoqItemWithCategory>(item);
+  const [localLayerConfig, setLocalLayerConfig] = useState<LayerConfig | null>(
+    (currentItem.layerConfig as LayerConfig | null) ?? null
+  );
+
+  // When navigating to a new item, reset localLayerConfig from the incoming item's data
+  function goToItem(next: BoqItemWithCategory) {
+    setCurrentItem(next);
+    setLocalLayerConfig((next.layerConfig as LayerConfig | null) ?? null);
+  }
+
+  const navList = allItems && allItems.length > 1 ? allItems : null;
+  const currentIndex = navList ? navList.findIndex((i) => i.id === currentItem.id) : -1;
+  const hasPrev = navList && currentIndex > 0;
+  const hasNext = navList && currentIndex < navList.length - 1;
 
   const { data: masterList = [] } = useQuery<PlanningEquipTypeMinimal[]>({
     queryKey: ["/api/planning/equipment-types"],
@@ -1294,31 +1305,65 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
   });
 
   const { data: existingMapping } = useQuery<{ snlItemId: number; projectCategory: string } | null>({
-    queryKey: ["/api/snl/mappings", item.id],
+    queryKey: ["/api/snl/mappings", currentItem.id],
     queryFn: async () => {
-      const res = await fetch(`/api/snl/mappings/${item.id}`, { credentials: "include" });
+      const res = await fetch(`/api/snl/mappings/${currentItem.id}`, { credentials: "include" });
       return res.ok ? res.json() : null;
     },
   });
 
+  const itemLabel = (currentItem as any).itemName || currentItem.description.slice(0, 50);
+
   return (
     <>
-      {showMapToNorm && <MapToNormModal item={item} onClose={() => setShowMapToNorm(false)} />}
+      {showMapToNorm && <MapToNormModal item={currentItem} onClose={() => setShowMapToNorm(false)} />}
       <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-base flex items-center gap-2">
-              <Package className="w-4 h-4 text-teal-600" />
-              Item Recipes — {item.description}
-              <span className="text-sm font-normal text-muted-foreground">({item.unit})</span>
-              {existingMapping && (
-                <Badge variant="outline" className="text-xs h-4 px-1.5 border-teal-300 text-teal-700 ml-1">
-                  <BookOpen className="w-2.5 h-2.5 mr-0.5" />SNL
-                </Badge>
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Navigation arrows */}
+              {navList && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => hasPrev && goToItem(navList[currentIndex - 1])}
+                    disabled={!hasPrev}
+                    className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Previous item"
+                    data-testid="button-recipe-prev"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-[12px] text-muted-foreground tabular-nums whitespace-nowrap">
+                    {currentIndex + 1} / {navList.length}
+                  </span>
+                  <button
+                    onClick={() => hasNext && goToItem(navList[currentIndex + 1])}
+                    disabled={!hasNext}
+                    className="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Next item"
+                    data-testid="button-recipe-next"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               )}
-            </DialogTitle>
+              <DialogTitle className="text-base flex items-center gap-2 min-w-0">
+                <Package className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                <span className="truncate" title={currentItem.description}>{itemLabel}</span>
+                <span className="text-sm font-normal text-muted-foreground flex-shrink-0">({currentItem.unit})</span>
+                {existingMapping && (
+                  <Badge variant="outline" className="text-xs h-4 px-1.5 border-teal-300 text-teal-700 flex-shrink-0">
+                    <BookOpen className="w-2.5 h-2.5 mr-0.5" />SNL
+                  </Badge>
+                )}
+              </DialogTitle>
+            </div>
+            {currentItem.itemCode && (
+              <p className="text-[12px] font-mono text-muted-foreground mt-0.5 ml-1">{currentItem.itemCode}</p>
+            )}
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
+          {/* Key on currentItem.id so all tab state resets when navigating */}
+          <div className="flex-1 overflow-y-auto" key={currentItem.id}>
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="mb-3">
                 <TabsTrigger value="layer-config" className="flex items-center gap-1.5 text-sm"><Layers className="w-3.5 h-3.5" />Layer Config</TabsTrigger>
@@ -1326,10 +1371,10 @@ export function BoqItemRecipeDialog({ item, onClose }: { item: BoqItemWithCatego
                 <TabsTrigger value="labour" className="flex items-center gap-1.5 text-sm"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
-              <TabsContent value="layer-config"><LayerConfigTab item={item} projectId={item.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
-              <TabsContent value="equipment"><EquipmentTab boqItemId={item.id} boqUnit={item.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={item.boqProjectId} /></TabsContent>
-              <TabsContent value="labour"><LabourTab boqItemId={item.id} boqUnit={item.unit} labourTypeList={labourTypeList} /></TabsContent>
-              <TabsContent value="materials"><MaterialsTab boqItemId={item.id} boqUnit={item.unit} projectId={item.boqProjectId} /></TabsContent>
+              <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
+              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} /></TabsContent>
+              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={currentItem.unit} labourTypeList={labourTypeList} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={currentItem.unit} projectId={currentItem.boqProjectId} /></TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="pt-2 border-t flex items-center justify-between">

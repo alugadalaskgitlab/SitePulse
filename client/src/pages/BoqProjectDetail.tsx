@@ -189,15 +189,16 @@ function CategorySection({
   items,
   projectId,
   defaultCollapsed = false,
+  onOpenRecipe,
 }: {
   name: string;
   items: BoqItemWithCategory[];
   projectId: number;
   defaultCollapsed?: boolean;
+  onOpenRecipe: (item: BoqItemWithCategory) => void;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
-  const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
 
   const subtotal = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const boqSubtotal = items.reduce((s, i) => s + (i.clientRate ?? 0) * i.boqQty, 0);
@@ -287,7 +288,7 @@ function CategorySection({
                           );
                         })()}
                         <button
-                          onClick={() => setRecipeItem(item)}
+                          onClick={() => onOpenRecipe(item)}
                           className="p-1 rounded hover:bg-teal-50 text-slate-400 hover:text-teal-600 transition-colors"
                           title="Edit recipes (equipment / labour / materials)"
                           data-testid={`button-recipe-item-${item.id}`}
@@ -326,9 +327,6 @@ function CategorySection({
 
       {editItem && (
         <ItemEditDialog item={editItem} projectId={projectId} onClose={() => setEditItem(null)} />
-      )}
-      {recipeItem && (
-        <BoqItemRecipeDialog item={recipeItem} onClose={() => setRecipeItem(null)} />
       )}
     </Card>
   );
@@ -1156,6 +1154,7 @@ export default function BoqProjectDetail() {
   const { toast } = useToast();
   const projectId = parseInt(params.id);
   const [showImport, setShowImport] = useState(false);
+  const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -1388,6 +1387,7 @@ export default function BoqProjectDetail() {
                 items={sec.items}
                 projectId={projectId}
                 defaultCollapsed={false}
+                onOpenRecipe={setRecipeItem}
               />
             ))}
             {hasUncategorised && (
@@ -1396,6 +1396,7 @@ export default function BoqProjectDetail() {
                 items={groupedByWorkCat["__uncategorised__"]}
                 projectId={projectId}
                 defaultCollapsed={false}
+                onOpenRecipe={setRecipeItem}
               />
             )}
 
@@ -1435,6 +1436,15 @@ export default function BoqProjectDetail() {
           existingItemCount={items.length}
           onClose={() => setShowImport(false)}
           onSuccess={handleImportSuccess}
+        />
+      )}
+
+      {/* Item Recipe Dialog — lifted here so it has access to all items for navigation */}
+      {recipeItem && (
+        <BoqItemRecipeDialog
+          item={recipeItem}
+          allItems={items}
+          onClose={() => setRecipeItem(null)}
         />
       )}
 
