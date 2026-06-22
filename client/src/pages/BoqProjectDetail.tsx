@@ -713,7 +713,6 @@ function SnlMappingPanel({
             </div>
           )}
         </div>
-      </div>
 
       {/* Search modal */}
       {searchItem && (
