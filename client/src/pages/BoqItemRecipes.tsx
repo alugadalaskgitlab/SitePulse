@@ -561,6 +561,8 @@ function EquipmentTab({
   const [avgSpeed, setAvgSpeed] = useState("30");
   const [loadTime, setLoadTime] = useState("5");
   const [unloadTime, setUnloadTime] = useState("5");
+  // Manual plant output override — empty means "use auto from standardOutputs"
+  const [plantOutputOverride, setPlantOutputOverride] = useState("");
 
   useEffect(() => {
     if (progSettings && !tipperDefaultsApplied) {
@@ -684,17 +686,24 @@ function EquipmentTab({
     return vals.length ? Math.max(...vals) : null;
   }, [convertedOutputs]);
 
+  // Effective plant output for tipper fleet:
+  // Use manual override if entered; otherwise fall back to auto from standardOutputs (paverOutput * density).
+  const autoPlantOutputMT = paverOutput != null ? (ctx.densityTPerCum ?? 2.35) * paverOutput : null;
+  const effectivePlantOutputMT = plantOutputOverride.trim() !== ""
+    ? (parseFloat(plantOutputOverride) || 0)
+    : (autoPlantOutputMT ?? 0);
+
   const tipperResult = useMemo(() => {
-    if (!paverOutput) return null;
+    if (effectivePlantOutputMT <= 0) return null;
     return calculateTipperFleet({
-      plantOutputMTperHr: (ctx.densityTPerCum ?? 2.35) * paverOutput,
+      plantOutputMTperHr: effectivePlantOutputMT,
       tipperCapacityMT: parseFloat(tipperCapacity) || 8,
       haulDistanceKm: parseFloat(haulDistance) || 5,
       avgSpeedKmHr: parseFloat(avgSpeed) || 30,
       loadingTimeMins: parseFloat(loadTime) || 5,
       unloadingTimeMins: parseFloat(unloadTime) || 5,
     });
-  }, [paverOutput, ctx.densityTPerCum, tipperCapacity, haulDistance, avgSpeed, loadTime, unloadTime]);
+  }, [effectivePlantOutputMT, tipperCapacity, haulDistance, avgSpeed, loadTime, unloadTime]);
 
   if (isLoading) return <div className="py-8 text-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Loading…</div>;
 
@@ -801,15 +810,42 @@ function EquipmentTab({
                     <Input type="number" step="0.1" className="h-7 text-sm" value={f.val} onChange={(e) => f.set(e.target.value)} data-testid={`tipper-${f.id}`} />
                   </div>
                 ))}
+                {/* Plant output — auto-filled from standard outputs; can be overridden manually */}
+                <div>
+                  <Label className="text-xs flex items-center gap-1">
+                    PLANT OUTPUT (MT/HR)
+                    {autoPlantOutputMT != null && plantOutputOverride.trim() === "" && (
+                      <span className="text-teal-600 font-normal normal-case">(auto)</span>
+                    )}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    className={`h-7 text-sm ${autoPlantOutputMT != null && plantOutputOverride.trim() === "" ? "border-teal-400 text-teal-700" : ""}`}
+                    placeholder={autoPlantOutputMT != null ? fmtQty(autoPlantOutputMT, 2) : "Enter MT/hr"}
+                    value={plantOutputOverride}
+                    onChange={(e) => setPlantOutputOverride(e.target.value)}
+                    data-testid="tipper-plant-output"
+                  />
+                </div>
               </div>
-              {tipperResult && (
+              {tipperResult ? (
                 <div className={`rounded p-2 text-xs flex flex-wrap gap-4 ${tipperResult.isAdequate ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
                   <span>{tipperResult.isAdequate ? <CheckCircle2 className="w-3.5 h-3.5 inline mr-1 text-emerald-600" /> : <AlertTriangle className="w-3.5 h-3.5 inline mr-1 text-red-500" />}
                     {tipperResult.isAdequate ? "Adequate" : "Tipper-limited"}
                   </span>
+                  <span>Plant: <strong>{fmtQty(effectivePlantOutputMT, 1)} MT/hr</strong></span>
                   <span>Cycle: <strong>{fmtQty(tipperResult.cycleTimeMins, 1)} min</strong></span>
                   <span>Tippers needed: <strong>{tipperResult.tippersNeeded}</strong></span>
                   <span>Delivery rate: <strong>{fmtQty(tipperResult.deliveryRateMTperHr, 1)} MT/hr</strong></span>
+                </div>
+              ) : (
+                <div className="rounded p-2 text-xs bg-slate-50 border border-slate-200 text-slate-500 flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>
+                    Enter a plant output (MT/hr) above to size the tipper fleet, or configure Standard Outputs on your equipment types in the Equipment Master.
+                  </span>
                 </div>
               )}
             </div>
