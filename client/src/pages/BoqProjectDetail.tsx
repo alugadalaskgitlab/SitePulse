@@ -72,6 +72,7 @@ function ItemEditDialog({
     itemCode: item.itemCode ?? "",
     clientRate: item.clientRate != null ? String(item.clientRate) : "",
     workCategory: item.workCategory ?? "__none__",
+    dprConversionFactor: (item as any).dprConversionFactor != null ? String((item as any).dprConversionFactor) : "",
   });
 
   const patchMutation = useMutation({
@@ -92,6 +93,7 @@ function ItemEditDialog({
     }
     const rate = form.clientRate !== "" ? parseFloat(form.clientRate) : null;
     const clientAmount = rate != null ? Math.round(rate * item.currentQty * 100) / 100 : null;
+    const convFactor = form.dprConversionFactor !== "" ? parseFloat(form.dprConversionFactor) : null;
     patchMutation.mutate({
       description: form.description.trim(),
       itemName: form.itemName.trim() || null,
@@ -100,6 +102,7 @@ function ItemEditDialog({
       clientRate: rate,
       clientAmount,
       workCategory: form.workCategory === "__none__" ? null : form.workCategory,
+      dprConversionFactor: convFactor,
     });
   }
 
@@ -167,6 +170,21 @@ function ItemEditDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div>
+            <Label className="text-sm">DPR → BOQ CONVERSION FACTOR</Label>
+            <Input
+              type="number"
+              step="any"
+              value={form.dprConversionFactor}
+              onChange={e => setForm(p => ({ ...p, dprConversionFactor: e.target.value }))}
+              placeholder="Leave blank for 1 (no conversion)"
+              data-testid="input-edit-conv-factor"
+            />
+            <p className="text-xs text-slate-400 mt-0.5">
+              Multiplies DPR progress quantities before adding to actuals.
+              Common: SQM→Ha = 0.0001 · m→km = 0.001 · same unit = 1 (or blank)
+            </p>
           </div>
         </div>
         <DialogFooter>

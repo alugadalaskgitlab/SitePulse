@@ -20283,7 +20283,9 @@ export class DatabaseStorage implements IStorage {
       currentMonth = Math.max(1, Math.ceil(diffMonths));
     }
 
-    // Get actuals from progress_entries linked to items in this project
+    // Get actuals from progress_entries linked to items in this project.
+    // Multiply each entry's quantity by the item's dpr_conversion_factor so that
+    // DPR field-units (e.g. SQM) are converted to the BOQ unit (e.g. Hectares).
     const itemIds = items.map((i) => i.id);
     type ActualRow = { boqItemId: number; totalQty: number; lastDate: string };
     let actuals: ActualRow[] = [];
@@ -20291,10 +20293,11 @@ export class DatabaseStorage implements IStorage {
       const dateFilter = asOfDate ? sql`AND dprs.date <= ${asOfDate}` : sql``;
       const rawActuals = await db.execute(sql`
         SELECT pe.boq_item_id as "boqItemId",
-               COALESCE(SUM(pe.quantity), 0) as "totalQty",
+               COALESCE(SUM(pe.quantity * COALESCE(bi.dpr_conversion_factor, 1.0)), 0) as "totalQty",
                MAX(dprs.date) as "lastDate"
         FROM progress_entries pe
         JOIN dprs ON dprs.id = pe.dpr_id
+        JOIN boq_items bi ON bi.id = pe.boq_item_id
         WHERE pe.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
           AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
           ${dateFilter}

@@ -10300,6 +10300,7 @@ export async function registerRoutes(
   (async () => {
     await ensureDprBoqProjectColumn();
     await ensureBoqItemNameColumn();
+    await ensureBoqDprConversionFactor();
     seedDatabase();
     seedPlantMasterData();
     seedPlanningMasters();
@@ -10676,6 +10677,15 @@ async function ensureDprBoqProjectColumn() {
     console.log("dprs: boq_project_id column ensured, orphaned entries re-linked, backfill complete");
   } catch (err) {
     console.error("ensureDprBoqProjectColumn failed:", err);
+  }
+}
+
+async function ensureBoqDprConversionFactor() {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_conversion_factor real`));
+    console.log("boq_items: dpr_conversion_factor column ensured");
+  } catch (err) {
+    console.error("ensureBoqDprConversionFactor failed:", err);
   }
 }
 
