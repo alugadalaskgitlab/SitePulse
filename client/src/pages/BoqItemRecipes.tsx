@@ -176,10 +176,12 @@ function LayerConfigTab({
   item,
   projectId,
   onLayerConfigChange,
+  onPendingSave,
 }: {
   item: BoqItemWithCategory;
   projectId: number;
   onLayerConfigChange: (lc: LayerConfig | null) => void;
+  onPendingSave?: (fn: (() => Promise<void>) | null) => void;
 }) {
   const { toast } = useToast();
 
@@ -287,6 +289,13 @@ function LayerConfigTab({
     return deriveMaterialsFromLayerConfig(layerConfig, item.unit, tmpl);
   }, [layerConfig, templateDetail, item.unit]);
 
+  // Dirty tracking — compare serialised current config against the last-saved value
+  const lastSavedLcRef = useRef(JSON.stringify(existingLc));
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    setDirty(JSON.stringify(layerConfig) !== lastSavedLcRef.current);
+  }, [layerConfig]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/boq/items/${item.id}`, { layerConfig: layerConfig ?? null });
@@ -309,6 +318,8 @@ function LayerConfigTab({
       }
     },
     onSuccess: async () => {
+      lastSavedLcRef.current = JSON.stringify(layerConfig);
+      setDirty(false);
       onLayerConfigChange(layerConfig);
       if (layerType !== "none") {
         await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
@@ -323,6 +334,11 @@ function LayerConfigTab({
     },
     onError: () => toast({ title: "Failed to save", variant: "destructive" }),
   });
+
+  // Register/deregister pending-save function so navigation can auto-save
+  useEffect(() => {
+    onPendingSave?.(dirty ? () => saveMutation.mutateAsync() : null);
+  }, [dirty]);
 
   return (
     <div className="space-y-4">
@@ -1313,14 +1329,16 @@ export function BoqItemRecipeDialog({
     pendingSaveRef.current = fn;
   }, []);
 
-  // Navigate to another item — auto-saves unsaved changes in the active tab first
+  // Navigate to another item — auto-saves unsaved changes in the active tab first.
+  // If the save fails, navigation is aborted so the user does not lose edits.
   async function goToItem(next: BoqItemWithCategory) {
     if (pendingSaveRef.current) {
       try {
         await pendingSaveRef.current();
         toast({ title: "Changes saved" });
       } catch {
-        toast({ title: "Auto-save failed — some changes may not have been saved", variant: "destructive" });
+        toast({ title: "Could not save — please try again before navigating", variant: "destructive" });
+        return; // abort navigation on save failure
       }
       pendingSaveRef.current = null;
     }
@@ -1409,7 +1427,7 @@ export function BoqItemRecipeDialog({
                 <TabsTrigger value="labour" className="flex items-center gap-1.5 text-sm"><Users className="w-3.5 h-3.5" />Labour</TabsTrigger>
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
-              <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
+              <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} onPendingSave={handlePendingSave} /></TabsContent>
               <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
               <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} /></TabsContent>
               <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
