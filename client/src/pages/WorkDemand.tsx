@@ -98,6 +98,16 @@ function MaterialsTable({
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
                       <span className="font-medium text-slate-700">{row.materialName}</span>
+                      {row.supplyType === "direct" && (
+                        <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 flex-shrink-0" title="Supplied directly from quarry/crusher to site">
+                          Direct Supply
+                        </span>
+                      )}
+                      {row.supplyType === "plant" && (
+                        <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 flex-shrink-0" title="Produced at HMP / RMC plant">
+                          Plant Mix
+                        </span>
+                      )}
                       {row.hasAutoSource ? (
                         <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0">
                           <Zap className="w-2.5 h-2.5" />Auto
@@ -143,7 +153,7 @@ function MaterialsTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-teal-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate" title={b.itemDescription}>{b.itemDescription.slice(0, 50)}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.qtyPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
@@ -264,7 +274,7 @@ function EquipmentTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate">{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.hrsPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-blue-700">{fmtQty(b.lineHours, 1)} hr</td>
@@ -374,7 +384,7 @@ function LabourTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-purple-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate">{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.daysPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-purple-700">{fmtQty(b.lineDays, 1)} day</td>

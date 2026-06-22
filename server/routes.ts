@@ -9891,6 +9891,14 @@ export async function registerRoutes(
           }
           const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
           const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
+          // Determine supply type for derived materials:
+          // granular-quarry = direct supply; granular-plant / bituminous = plant-processed
+          const derivedSupplyType: "direct" | "plant" | undefined =
+            lc.layerType === "granular" && lc.granularSource !== "plant" ? "direct"
+            : lc.layerType === "granular" && lc.granularSource === "plant" ? "plant"
+            : lc.layerType === "bituminous" ? "plant"
+            : lc.layerType === "spray_coat" ? "direct"
+            : undefined;
           if (derived.length > 0) {
             return {
               ...item,
@@ -9905,6 +9913,7 @@ export async function registerRoutes(
                 isAuto: true as const,
                 sortOrder: 0,
                 createdAt: null,
+                supplyType: derivedSupplyType,
               })),
               isProgrammed: barItemIds.has(item.id),
             };

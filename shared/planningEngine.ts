@@ -372,7 +372,9 @@ export interface BomMaterialRow {
   totalQty: number;
   monthlyQty: Record<number, number>;
   hasAutoSource: boolean;
-  breakdown: Array<{ itemDescription: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+  /** "direct" = quarry/site supply; "plant" = processed at HMP or RMC; undefined = manual/unknown */
+  supplyType?: "direct" | "plant";
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
 }
 
 export interface BomEquipmentRow {
@@ -380,14 +382,14 @@ export interface BomEquipmentRow {
   count: number;
   totalHours: number;
   monthlyHours: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
 }
 
 export interface BomLabourRow {
   designation: string;
   totalDays: number;
   monthlyDays: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; daysPerUnit: number; workQty: number; lineDays: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; daysPerUnit: number; workQty: number; lineDays: number }>;
 }
 
 export interface BomDemand {
@@ -409,6 +411,7 @@ export interface BomInputItem {
     wastagePct: number;
     isClientSupplied: boolean;
     isAuto?: boolean | null;
+    supplyType?: "direct" | "plant";
   }>;
   equipment: Array<{
     equipmentName: string;
@@ -491,7 +494,11 @@ export function calculateBomDemand(
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
-      row.breakdown.push({ itemDescription: item.itemName || item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
+      if (m.supplyType) {
+        // keep the "most restrictive" supplyType: if any breakdown entry is plant, mark as plant
+        if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
+      }
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }
@@ -509,7 +516,7 @@ export function calculateBomDemand(
       const row = eqMap.get(key)!;
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
-      row.breakdown.push({ itemDescription: item.itemName || item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
       }
@@ -525,17 +532,18 @@ export function calculateBomDemand(
       }
       const row = labMap.get(key)!;
       row.totalDays += lineDays;
-      row.breakdown.push({ itemDescription: item.itemName || item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
     }
   }
 
-  // Sort by total (largest first)
-  const materials = [...matMap.values()].sort((a, b) => b.totalQty - a.totalQty);
-  const equipment = [...eqMap.values()].sort((a, b) => b.totalHours - a.totalHours);
-  const labour = [...labMap.values()].sort((a, b) => b.totalDays - a.totalDays);
+  // Sort by total (largest first); filter out zero-demand rows that can appear from
+  // items with recipes but no scheduled work qty (e.g. equipment on unprogrammed items)
+  const materials = [...matMap.values()].filter(r => r.totalQty > 0).sort((a, b) => b.totalQty - a.totalQty);
+  const equipment = [...eqMap.values()].filter(r => r.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
+  const labour = [...labMap.values()].filter(r => r.totalDays > 0).sort((a, b) => b.totalDays - a.totalDays);
 
   return { materials, equipment, labour };
 }
@@ -759,7 +767,8 @@ export function deriveMaterialsFromLayerConfig(
         }
       }
     } else {
-      rows.push({ materialName: "Bituminous Mix", uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+      const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
+      rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
     }
     return rows;
   }
