@@ -54,7 +54,7 @@ function MaterialsTable({
   project: BoqProject;
 }) {
   const mats = demand.materials;
-  const [expandedMat, setExpandedMat] = useState<string | null>(null);
+  const [expandedMat, setExpandedMat] = useState<Set<string>>(() => new Set());
 
   if (!mats.length) return <EmptyState label="No material demand calculated. Configure material recipes on BOQ items first." />;
 
@@ -83,12 +83,16 @@ function MaterialsTable({
         </thead>
         <tbody>
           {mats.map((row) => {
-            const isExpanded = expandedMat === row.materialName;
+            const isExpanded = expandedMat.has(row.materialName);
             return (
               <Fragment key={row.materialName}>
                 <tr
                   className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-teal-50/60" : "hover:bg-slate-50"}`}
-                  onClick={() => setExpandedMat(isExpanded ? null : row.materialName)}
+                  onClick={() => setExpandedMat(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.materialName)) next.delete(row.materialName); else next.add(row.materialName);
+                    return next;
+                  })}
                   data-testid={`mat-row-${row.materialName}`}
                 >
                   <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-teal-50" : "bg-white"}`}>
@@ -195,7 +199,7 @@ function EquipmentTable({
   project: BoqProject;
 }) {
   const equip = demand.equipment;
-  const [expandedEq, setExpandedEq] = useState<string | null>(null);
+  const [expandedEq, setExpandedEq] = useState<Set<string>>(() => new Set());
 
   if (!equip.length) return <EmptyState label="No equipment demand. Configure equipment recipes on BOQ items first." />;
 
@@ -224,12 +228,16 @@ function EquipmentTable({
         </thead>
         <tbody>
           {equip.map((row) => {
-            const isExpanded = expandedEq === row.equipmentName;
+            const isExpanded = expandedEq.has(row.equipmentName);
             return (
               <Fragment key={row.equipmentName}>
                 <tr
                   className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
-                  onClick={() => setExpandedEq(isExpanded ? null : row.equipmentName)}
+                  onClick={() => setExpandedEq(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.equipmentName)) next.delete(row.equipmentName); else next.add(row.equipmentName);
+                    return next;
+                  })}
                   data-testid={`eq-row-${row.equipmentName}`}
                 >
                   <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-blue-50" : "bg-white"}`}>
@@ -305,7 +313,7 @@ function LabourTable({
   project: BoqProject;
 }) {
   const lab = demand.labour;
-  const [expandedLab, setExpandedLab] = useState<string | null>(null);
+  const [expandedLab, setExpandedLab] = useState<Set<string>>(() => new Set());
 
   if (!lab.length) return <EmptyState label="No labour demand. Configure labour recipes on BOQ items first." />;
 
@@ -334,12 +342,16 @@ function LabourTable({
         </thead>
         <tbody>
           {lab.map((row) => {
-            const isExpanded = expandedLab === row.designation;
+            const isExpanded = expandedLab.has(row.designation);
             return (
               <Fragment key={row.designation}>
                 <tr
                   className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-purple-50/60" : "hover:bg-slate-50"}`}
-                  onClick={() => setExpandedLab(isExpanded ? null : row.designation)}
+                  onClick={() => setExpandedLab(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.designation)) next.delete(row.designation); else next.add(row.designation);
+                    return next;
+                  })}
                   data-testid={`lab-row-${row.designation}`}
                 >
                   <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-purple-50" : "bg-white"}`}>

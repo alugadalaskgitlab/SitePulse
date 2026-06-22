@@ -443,6 +443,18 @@ export interface BomInputBar {
  * If no bars, falls back to currentQty with no monthly distribution.
  * Mirrors Road Estimator buildBomMaps() — strips all rate/cost output.
  */
+// Canonical grouping key — merges resources that differ only by letter-case or spacing
+// (e.g. "Motor Grader (3.70m blade)" vs "MOTOR GRADER (3.70M BLADE)").
+function canonResourceKey(name: string): string {
+  return name.trim().toUpperCase().replace(/\s+/g, " ");
+}
+// Prefer a readable (not ALL-CAPS) display name when merging case-variants.
+function preferDisplayName(existing: string, candidate: string): string {
+  const allCaps = (s: string) => /[A-Z]/.test(s) && s === s.toUpperCase();
+  if (allCaps(existing) && !allCaps(candidate)) return candidate;
+  return existing;
+}
+
 export function calculateBomDemand(
   items: BomInputItem[],
   bars: BomInputBar[],
@@ -486,11 +498,12 @@ export function calculateBomDemand(
       if (m.isClientSupplied) continue;
       const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
       const lineQty = effQtyPerUnit * workQty;
-      const key = m.materialName;
+      const key = canonResourceKey(m.materialName);
       if (!matMap.has(key)) {
-        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
+        matMap.set(key, { materialName: m.materialName, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
       }
       const row = matMap.get(key)!;
+      row.materialName = preferDisplayName(row.materialName, m.materialName);
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
@@ -509,11 +522,12 @@ export function calculateBomDemand(
       if (e.isClientSupplied) continue;
       const cnt = e.count ?? 1;
       const lineHours = e.qtyPerBoqUnit * workQty * cnt;
-      const key = e.equipmentName;
+      const key = canonResourceKey(e.equipmentName);
       if (!eqMap.has(key)) {
-        eqMap.set(key, { equipmentName: key, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+        eqMap.set(key, { equipmentName: e.equipmentName, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
       }
       const row = eqMap.get(key)!;
+      row.equipmentName = preferDisplayName(row.equipmentName, e.equipmentName);
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
@@ -526,11 +540,12 @@ export function calculateBomDemand(
     for (const l of item.labour) {
       if (l.isClientSupplied) continue;
       const lineDays = l.qtyPerBoqUnit * workQty;
-      const key = l.designation;
+      const key = canonResourceKey(l.designation);
       if (!labMap.has(key)) {
-        labMap.set(key, { designation: key, totalDays: 0, monthlyDays: {}, breakdown: [] });
+        labMap.set(key, { designation: l.designation, totalDays: 0, monthlyDays: {}, breakdown: [] });
       }
       const row = labMap.get(key)!;
+      row.designation = preferDisplayName(row.designation, l.designation);
       row.totalDays += lineDays;
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       for (const [month, mwq] of monthlyWork) {

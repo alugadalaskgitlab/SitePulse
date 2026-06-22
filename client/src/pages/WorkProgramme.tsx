@@ -37,7 +37,7 @@ import type {
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const LEFT_W = 420;       // px left sticky panel
+const LEFT_W = 560;       // px left sticky panel
 const MONTH_W_DEFAULT = 110; // px per month column (default, user-resizable)
 const ROW_H = 52;         // px stretch row height (extra space for duration label below bar)
 const ITEM_H = 42;        // px item header row height
@@ -330,7 +330,7 @@ function StretchRow({
     >
       {/* ── Left sticky panel ── */}
       <div
-        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
         className={`flex items-center gap-1 px-1.5 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
           patch.isPending ? "opacity-70" : ""
         }`}
@@ -493,7 +493,7 @@ function StretchRow({
         {/* Auto-mode computed end date — read-only badge */}
         {durationModeState === "auto" && project.startDate && !isNaN(liveEnd) && (
           <span
-            className="text-xs text-slate-400 flex-shrink-0 ml-0.5 font-mono"
+            className="text-xs text-slate-400 ml-0.5 font-mono truncate min-w-0"
             title="Computed end date (auto-duration from equipment output)"
           >
             → {formatDateForInput(monthIndexToDate(liveEnd, project.startDate))}
@@ -531,7 +531,7 @@ function StretchRow({
         {/* Required output intensity badge — tooltip carries the full detail; badge is compact */}
         {requiredOutput && (
           <span
-            className={`inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border max-w-[110px] overflow-hidden ${
+            className={`inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 min-w-0 ml-0.5 border max-w-[110px] overflow-hidden ${
               requiredOutput.exceedsCapacity
                 ? "text-red-700 bg-red-50 border-red-300 dark:bg-red-950/30 dark:text-red-400"
                 : "text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400"

@@ -1,0 +1,234 @@
+# SitePulse — UI Clean-up Brief: Gantt overlap + BOM grouping/dedup + keep-expanded
+
+> **How to use:** Paste this whole file into the Replit AI agent with the instruction:
+> "Apply FIX A, B and C exactly as written. These are additive UI fixes — do not change
+> any other logic, route or module." No DB migration is needed. Restart after applying.
+
+There are three independent fixes:
+- **FIX A** — Work Programme Gantt: left-panel controls (AUTO pill, "→ date", scissors,
+  trash) bleed over the chart bars. Clip the left panel and let optional badges shrink.
+- **FIX B** — BOM tabs show the *same* equipment more than once because names differ only
+  by letter-case/spacing (e.g. "Motor Grader (3.70m blade)" vs "MOTOR GRADER (3.70M
+  BLADE)"). Group by a case-insensitive key in the shared engine.
+- **FIX C** — BOM Materials/Equipment/Labour drill-downs collapse when you open another
+  row. Allow multiple rows to stay expanded (like Road Estimator).
+
+---
+
+## FIX A — Gantt bar / left-panel overlap  (`client/src/pages/WorkProgramme.tsx`)
+
+### A1 — widen the left panel
+Find:
+```ts
+const LEFT_W = 420;       // px left sticky panel
+```
+Replace with:
+```ts
+const LEFT_W = 560;       // px left sticky panel
+```
+
+### A2 — clip the left sticky panel so controls never paint over the chart
+Find this block (the stretch-row left panel, around line 332):
+```tsx
+      <div
+        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+        className={`flex items-center gap-1 px-1.5 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
+          patch.isPending ? "opacity-70" : ""
+        }`}
+      >
+```
+Replace with (adds `maxWidth` + `overflow: "hidden"`):
+```tsx
+      <div
+        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
+        className={`flex items-center gap-1 px-1.5 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
+          patch.isPending ? "opacity-70" : ""
+        }`}
+      >
+```
+
+### A3 — let the AUTO-mode "→ end date" badge shrink instead of pushing the row wider
+Find:
+```tsx
+          <span
+            className="text-xs text-slate-400 flex-shrink-0 ml-0.5 font-mono"
+            title="Computed end date (auto-duration from equipment output)"
+          >
+            → {formatDateForInput(monthIndexToDate(liveEnd, project.startDate))}
+          </span>
+```
+Replace with (remove `flex-shrink-0`, add `truncate min-w-0`):
+```tsx
+          <span
+            className="text-xs text-slate-400 ml-0.5 font-mono truncate min-w-0"
+            title="Computed end date (auto-duration from equipment output)"
+          >
+            → {formatDateForInput(monthIndexToDate(liveEnd, project.startDate))}
+          </span>
+```
+
+### A4 — let the "required output" badge shrink too (fixed-duration mode)
+Find the opening of that badge's `<span` (around line 533). It currently contains
+`flex-shrink-0 ml-0.5 border max-w-[110px] overflow-hidden`. Change **only** the
+`flex-shrink-0` token to `min-w-0` so the class list reads:
+```
+inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 min-w-0 ml-0.5 border max-w-[110px] overflow-hidden
+```
+(Keep the conditional red/violet colour classes after it unchanged.)
+
+> Result: the left panel is a fixed 560 px, clipped, and the two optional badges shrink,
+> so the essential inputs + AUTO/FIX + scissors + trash always fit and the teal bars in
+> the chart never sit under stray text. Bars themselves were already clipped correctly.
+
+---
+
+## FIX B — Group duplicate resources by case-insensitive name  (`shared/planningEngine.ts`)
+
+### B1 — add two helpers just ABOVE `export function calculateBomDemand(`
+```ts
+// Canonical grouping key — merges resources that differ only by letter-case or spacing
+// (e.g. "Motor Grader (3.70m blade)" vs "MOTOR GRADER (3.70M BLADE)").
+function canonResourceKey(name: string): string {
+  return name.trim().toUpperCase().replace(/\s+/g, " ");
+}
+// Prefer a readable (not ALL-CAPS) display name when merging case-variants.
+function preferDisplayName(existing: string, candidate: string): string {
+  const allCaps = (s: string) => /[A-Z]/.test(s) && s === s.toUpperCase();
+  if (allCaps(existing) && !allCaps(candidate)) return candidate;
+  return existing;
+}
+```
+
+### B2 — Materials grouping
+Find:
+```ts
+      const key = m.materialName;
+      if (!matMap.has(key)) {
+        matMap.set(key, { materialName: key, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
+      }
+      const row = matMap.get(key)!;
+```
+Replace with:
+```ts
+      const key = canonResourceKey(m.materialName);
+      if (!matMap.has(key)) {
+        matMap.set(key, { materialName: m.materialName, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
+      }
+      const row = matMap.get(key)!;
+      row.materialName = preferDisplayName(row.materialName, m.materialName);
+```
+
+### B3 — Equipment grouping
+Find:
+```ts
+      const key = e.equipmentName;
+      if (!eqMap.has(key)) {
+        eqMap.set(key, { equipmentName: key, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+      }
+      const row = eqMap.get(key)!;
+```
+Replace with:
+```ts
+      const key = canonResourceKey(e.equipmentName);
+      if (!eqMap.has(key)) {
+        eqMap.set(key, { equipmentName: e.equipmentName, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+      }
+      const row = eqMap.get(key)!;
+      row.equipmentName = preferDisplayName(row.equipmentName, e.equipmentName);
+```
+
+### B4 — Labour grouping
+Find:
+```ts
+      const key = l.designation;
+      if (!labMap.has(key)) {
+        labMap.set(key, { designation: key, totalDays: 0, monthlyDays: {}, breakdown: [] });
+      }
+      const row = labMap.get(key)!;
+```
+Replace with:
+```ts
+      const key = canonResourceKey(l.designation);
+      if (!labMap.has(key)) {
+        labMap.set(key, { designation: l.designation, totalDays: 0, monthlyDays: {}, breakdown: [] });
+      }
+      const row = labMap.get(key)!;
+      row.designation = preferDisplayName(row.designation, l.designation);
+```
+
+> This merges case/spacing duplicates and keeps the readable name. Genuinely different
+> machine SIZES (e.g. "Vibratory Roller (10T)" vs "(11T)") stay separate by design,
+> because they carry different output norms. If you later want size-agnostic grouping,
+> that's a separate change — tell me and I'll provide it.
+
+---
+
+## FIX C — Keep multiple BOM groups expanded  (`client/src/pages/WorkDemand.tsx`)
+
+Apply the same 3-edit pattern to each of the three tables. The pattern: switch the
+single-string expand state to a `Set<string>`, test with `.has(...)`, toggle on click.
+
+### C1 — MaterialsTable
+Find: `const [expandedMat, setExpandedMat] = useState<string | null>(null);`
+Replace: `const [expandedMat, setExpandedMat] = useState<Set<string>>(() => new Set());`
+
+Find: `const isExpanded = expandedMat === row.materialName;`
+Replace: `const isExpanded = expandedMat.has(row.materialName);`
+
+Find: `onClick={() => setExpandedMat(isExpanded ? null : row.materialName)}`
+Replace:
+```tsx
+                  onClick={() => setExpandedMat(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.materialName)) next.delete(row.materialName); else next.add(row.materialName);
+                    return next;
+                  })}
+```
+
+### C2 — EquipmentTable
+Find: `const [expandedEq, setExpandedEq] = useState<string | null>(null);`
+Replace: `const [expandedEq, setExpandedEq] = useState<Set<string>>(() => new Set());`
+
+Find: `const isExpanded = expandedEq === row.equipmentName;`
+Replace: `const isExpanded = expandedEq.has(row.equipmentName);`
+
+Find: `onClick={() => setExpandedEq(isExpanded ? null : row.equipmentName)}`
+Replace:
+```tsx
+                  onClick={() => setExpandedEq(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.equipmentName)) next.delete(row.equipmentName); else next.add(row.equipmentName);
+                    return next;
+                  })}
+```
+
+### C3 — LabourTable
+Find: `const [expandedLab, setExpandedLab] = useState<string | null>(null);`
+Replace: `const [expandedLab, setExpandedLab] = useState<Set<string>>(() => new Set());`
+
+Find: `const isExpanded = expandedLab === row.designation;`
+Replace: `const isExpanded = expandedLab.has(row.designation);`
+
+Find: `onClick={() => setExpandedLab(isExpanded ? null : row.designation)}`
+Replace:
+```tsx
+                  onClick={() => setExpandedLab(prev => {
+                    const next = new Set(prev);
+                    if (next.has(row.designation)) next.delete(row.designation); else next.add(row.designation);
+                    return next;
+                  })}
+```
+
+> The "By Item" tab already uses a `Set` and stays expanded — no change needed there.
+
+---
+
+## TEST PLAN (no DB migration; just restart)
+1. **Work Programme → Gantt:** rows are clean — AUTO pill, "→ date", scissors and trash
+   stay inside the left panel; teal bars no longer have text/pills overlapping them.
+2. **BOM & Demand → Equipment tab:** each machine appears **once** (e.g. a single "Motor
+   Grader (3.70m blade)", single "Tipper (14 CUM (L/U))"); totals are the combined hours.
+   Different sizes remain as separate rows.
+3. **BOM → Materials / Equipment / Labour:** expand several rows — they all **stay open**;
+   opening one no longer closes the others.
+4. Confirm nothing else changed (numbers, procurement, by-item all behave as before).
