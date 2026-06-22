@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Plus, Trash2, Loader2, Wrench, Users, Package, Info, Zap,
@@ -290,7 +290,11 @@ function LayerConfigTab({
   const saveMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/boq/items/${item.id}`, { layerConfig: layerConfig ?? null });
-      if (derivedRows.length > 0) {
+      // Always PUT materials when a layer type is selected so that:
+      //  - derived rows are applied, AND
+      //  - stale auto-rows are cleared when config produces no rows
+      // (Only skip PUT when layerType is "none", i.e. user wants manual materials)
+      if (layerType !== "none") {
         const payload: InsertBoqItemMaterials[] = derivedRows.map((r, i) => ({
           boqItemId: item.id,
           materialName: r.materialName,
@@ -306,9 +310,13 @@ function LayerConfigTab({
     },
     onSuccess: async () => {
       onLayerConfigChange(layerConfig);
-      if (derivedRows.length > 0) {
+      if (layerType !== "none") {
         await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
-        toast({ title: `Layer config saved — ${derivedRows.length} material rows applied` });
+        toast({
+          title: derivedRows.length > 0
+            ? `Layer config saved — ${derivedRows.length} material rows applied`
+            : "Layer config saved — auto materials cleared",
+        });
       } else {
         toast({ title: "Layer config saved" });
       }
@@ -503,13 +511,14 @@ interface ProgramSettingsMinimal {
 }
 
 function EquipmentTab({
-  boqItemId, boqUnit, masterList, layerConfig, projectId,
+  boqItemId, boqUnit, masterList, layerConfig, projectId, onPendingSave,
 }: {
   boqItemId: number;
   boqUnit: string;
   masterList: PlanningEquipTypeMinimal[];
   layerConfig: LayerConfig | null;
   projectId?: number;
+  onPendingSave?: (fn: (() => Promise<void>) | null) => void;
 }) {
   const { toast } = useToast();
   const [showPanel, setShowPanel] = useState(false);
@@ -598,6 +607,11 @@ function EquipmentTab({
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
+
+  // Register/deregister pending save with parent dialog so navigation can auto-save
+  useEffect(() => {
+    onPendingSave?.(dirty ? () => saveMutation.mutateAsync() : null);
+  }, [dirty]);
 
   function updateRow(key: string, field: keyof EquipRow, value: string) {
     setRows((prev) => prev.map((r) => {
@@ -809,7 +823,7 @@ function makeLabRow(r?: BoqItemLabourRow): LabRow {
   return { key: Math.random().toString(36).slice(2), planningLabourTypeId: "__manual__", designation: r?.designation ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "" };
 }
 
-function LabourTab({ boqItemId, boqUnit, labourTypeList }: { boqItemId: number; boqUnit: string; labourTypeList: PlanningLabourTypeMinimal[] }) {
+function LabourTab({ boqItemId, boqUnit, labourTypeList, onPendingSave }: { boqItemId: number; boqUnit: string; labourTypeList: PlanningLabourTypeMinimal[]; onPendingSave?: (fn: (() => Promise<void>) | null) => void }) {
   const { toast } = useToast();
   const [showPanel, setShowPanel] = useState(false);
   const { data: existing = [], isLoading } = useQuery<BoqItemLabourRow[]>({
@@ -830,6 +844,10 @@ function LabourTab({ boqItemId, boqUnit, labourTypeList }: { boqItemId: number; 
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", boqItemId, "labour"] }); toast({ title: "Labour recipe saved" }); setDirty(false); },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
+
+  useEffect(() => {
+    onPendingSave?.(dirty ? () => saveMutation.mutateAsync() : null);
+  }, [dirty]);
 
   function updateLabRow(key: string, field: keyof LabRow, value: string) {
     setRows((prev) => prev.map((r) => {
@@ -906,7 +924,7 @@ function makeMatRow(r?: BoqItemMaterialsRow): MatRow {
   return { key: Math.random().toString(36).slice(2), materialName: r?.materialName ?? "", uom: r?.uom ?? "", qtyPerBoqUnit: r?.qtyPerBoqUnit != null ? String(r.qtyPerBoqUnit) : "", notes: r?.notes ?? "", applicationNote: r?.applicationNote ?? "", isAuto: r?.isAuto ?? false };
 }
 
-function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; boqUnit: string; projectId: number }) {
+function MaterialsTab({ boqItemId, boqUnit, projectId, onPendingSave }: { boqItemId: number; boqUnit: string; projectId: number; onPendingSave?: (fn: (() => Promise<void>) | null) => void }) {
   const { toast } = useToast();
   const { data: existing = [], isLoading } = useQuery<BoqItemMaterialsRow[]>({
     queryKey: ["/api/boq/items", boqItemId, "materials"],
@@ -937,6 +955,10 @@ function MaterialsTab({ boqItemId, boqUnit, projectId }: { boqItemId: number; bo
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
+
+  useEffect(() => {
+    onPendingSave?.(dirty ? () => saveMutation.mutateAsync() : null);
+  }, [dirty]);
 
   function insertSuggestion(s: RecipeMaterialUsed) {
     if (rows.some((r) => r.materialName.toLowerCase() === s.materialName.toLowerCase())) {
@@ -1275,6 +1297,7 @@ export function BoqItemRecipeDialog({
   allItems?: BoqItemWithCategory[];
   onClose: () => void;
 }) {
+  const { toast } = useToast();
   const [tab, setTab] = useState("layer-config");
   const [showMapToNorm, setShowMapToNorm] = useState(false);
 
@@ -1284,8 +1307,23 @@ export function BoqItemRecipeDialog({
     (currentItem.layerConfig as LayerConfig | null) ?? null
   );
 
-  // When navigating to a new item, reset localLayerConfig from the incoming item's data
-  function goToItem(next: BoqItemWithCategory) {
+  // Tabs register their pending-save function here so navigation can auto-save
+  const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const handlePendingSave = useCallback((fn: (() => Promise<void>) | null) => {
+    pendingSaveRef.current = fn;
+  }, []);
+
+  // Navigate to another item — auto-saves unsaved changes in the active tab first
+  async function goToItem(next: BoqItemWithCategory) {
+    if (pendingSaveRef.current) {
+      try {
+        await pendingSaveRef.current();
+        toast({ title: "Changes saved" });
+      } catch {
+        toast({ title: "Auto-save failed — some changes may not have been saved", variant: "destructive" });
+      }
+      pendingSaveRef.current = null;
+    }
     setCurrentItem(next);
     setLocalLayerConfig((next.layerConfig as LayerConfig | null) ?? null);
   }
@@ -1372,9 +1410,9 @@ export function BoqItemRecipeDialog({
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
               <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} /></TabsContent>
-              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} /></TabsContent>
-              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={currentItem.unit} labourTypeList={labourTypeList} /></TabsContent>
-              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={currentItem.unit} projectId={currentItem.boqProjectId} /></TabsContent>
+              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="pt-2 border-t flex items-center justify-between">
