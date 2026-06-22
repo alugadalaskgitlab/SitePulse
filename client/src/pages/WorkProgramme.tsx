@@ -243,8 +243,20 @@ function StretchRow({
     const capacityPct = result.requiredResourceMultiplier != null
       ? Math.round(result.requiredResourceMultiplier * 100)
       : null;
-    return { ...result, exceedsCapacity, capacityPct };
-  }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays, capacityMonthlyOutput]);
+    // Compute additional equipment units needed when schedule exceeds capacity
+    let additionalEquipmentNeeded: number | null = null;
+    const bottleneckEquipmentName = autoDuration?.bottleneckEquipment ?? null;
+    if (exceedsCapacity && capacityMonthlyOutput != null && capacityMonthlyOutput > 0 && bottleneckEquipmentName) {
+      const bottleneckEq = equipment.find(e => e.name === bottleneckEquipmentName);
+      const bottleneckCount = bottleneckEq?.count ?? 1;
+      const outputPerUnit = capacityMonthlyOutput / bottleneckCount;
+      if (outputPerUnit > 0) {
+        const unitsRequired = Math.ceil(result.monthlyOutput / outputPerUnit);
+        additionalEquipmentNeeded = Math.max(0, unitsRequired - bottleneckCount);
+      }
+    }
+    return { ...result, exceedsCapacity, capacityPct, additionalEquipmentNeeded, bottleneckEquipmentName };
+  }, [durationModeState, project.startDate, autoQty, bar.plannedQty, smNum, endMNum, workingDays, capacityMonthlyOutput, autoDuration, equipment]);
 
   // Haul distance: prefer new directional lead distance fields; fall back to legacy chainage fields.
   const haulDistanceKm = useMemo(() => {
@@ -478,6 +490,16 @@ function StretchRow({
           </button>
         )}
 
+        {/* Auto-mode computed end date — read-only badge */}
+        {durationModeState === "auto" && project.startDate && !isNaN(liveEnd) && (
+          <span
+            className="text-xs text-slate-400 flex-shrink-0 ml-0.5 font-mono"
+            title="Computed end date (auto-duration from equipment output)"
+          >
+            → {formatDateForInput(monthIndexToDate(liveEnd, project.startDate))}
+          </span>
+        )}
+
         {/* End date (fixed mode only) */}
         {durationModeState === "fixed" && project.startDate && (
           <>
@@ -521,12 +543,18 @@ function StretchRow({
                 ? `= ${requiredOutput.capacityPct}% of equipment capacity`
                 : "",
               requiredOutput.exceedsCapacity ? "⚠ Exceeds normal equipment capacity!" : "",
+              requiredOutput.additionalEquipmentNeeded != null && requiredOutput.additionalEquipmentNeeded > 0
+                ? `Need +${requiredOutput.additionalEquipmentNeeded} more ${requiredOutput.bottleneckEquipmentName} to meet this deadline`
+                : "",
             ].filter(Boolean).join(" ")}
           >
             {requiredOutput.exceedsCapacity && <AlertTriangle className="w-2.5 h-2.5" />}
             {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
             {requiredOutput.capacityPct != null && (
               <span className="opacity-75"> ({requiredOutput.capacityPct}%)</span>
+            )}
+            {requiredOutput.exceedsCapacity && requiredOutput.additionalEquipmentNeeded != null && requiredOutput.additionalEquipmentNeeded > 0 && (
+              <span className="font-normal opacity-90"> · +{requiredOutput.additionalEquipmentNeeded} {requiredOutput.bottleneckEquipmentName}</span>
             )}
           </span>
         )}
@@ -600,16 +628,18 @@ function StretchRow({
         {/* Road Estimator–style label: "qty unit | X.XXd" below the bar */}
         {barWidth > 8 && (
           <div
-            className="absolute pointer-events-none select-none whitespace-nowrap text-[12px] font-semibold leading-tight"
+            className="absolute pointer-events-none select-none whitespace-nowrap text-[12px] font-semibold leading-tight overflow-hidden"
             style={{
               left: barLeft,
               top: 34,
+              maxWidth: barWidth,
               color: color,
               opacity: 0.9,
             }}
+            title={`${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d${autoDuration?.bottleneckEquipment ? ` · ${autoDuration.bottleneckEquipment}` : ""}`}
           >
-            {`${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d`}
-            {autoDuration?.bottleneckEquipment && (
+            {barWidth >= 50 && `${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d`}
+            {barWidth >= 50 && autoDuration?.bottleneckEquipment && (
               <span className="opacity-60 font-normal"> · {autoDuration.bottleneckEquipment}</span>
             )}
           </div>
@@ -822,11 +852,11 @@ function InlineGanttTable({
   const totalRightW = totalMonths * colW;
 
   return (
-    <div className="rounded-xl border overflow-hidden bg-white dark:bg-gray-950">
-      <div className="overflow-x-auto">
+    <div className="rounded-xl border bg-white dark:bg-gray-950" style={{ overflow: "clip" }}>
+      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 240px)" }}>
         {/* ── Header row ── */}
         <div
-          style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: 44 }}
+          style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: 44, position: "sticky", top: 0, zIndex: 30 }}
           className="border-b border-slate-700"
         >
           {/* Left header */}
