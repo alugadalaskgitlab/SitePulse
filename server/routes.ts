@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError } from "./storage";
-import { autoMapBoqItems, remapBoqProject } from "./snlAutoMapper";
+import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -10597,18 +10597,28 @@ async function seedPlanningMasters() {
 
 // Bump this version string whenever the SNL seed data changes (shortLabels, new items, etc.)
 // The function checks the stored version and only re-seeds when the constant differs.
-const SNL_SEED_VERSION = "v2-earthwork-shortlabels";
+const SNL_SEED_VERSION = "v3-embankment-subgrade-vocab";
 
 async function seedSnlItems() {
   try {
     const storedVersion = await storage.getSetting("snl_seed_version");
-    if (storedVersion === SNL_SEED_VERSION) return;
+    if (storedVersion === SNL_SEED_VERSION) {
+      // Seed is current — still run a global remap fire-and-forget so any items
+      // that were imported while the app was down get processed on next startup.
+      autoMapAllUnmappedItems().then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
+        .catch(err => console.error("SNL global remap failed:", err));
+      return;
+    }
     const sources = await storage.getSnlSources();
     const totalItems = sources.reduce((sum, s) => sum + (s.itemCount ?? 0), 0);
     console.log(`SNL: seed version mismatch (have "${storedVersion}", want "${SNL_SEED_VERSION}"), re-seeding ${totalItems} → latest...`);
     const result = await storage.seedSnlMorthSdb();
     await storage.setSetting("snl_seed_version", SNL_SEED_VERSION);
     console.log(`SNL seed complete: ${result.items} items from ${result.source.code}`);
+    // After every seed (especially version upgrades), remap ALL unmapped/needs_review items
+    // so existing projects benefit from improved SNL data without requiring a manual re-import.
+    autoMapAllUnmappedItems().then(r => console.log(`SNL global remap: ${r.remapped} items processed`))
+      .catch(err => console.error("SNL global remap failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);
   }

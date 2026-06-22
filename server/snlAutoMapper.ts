@@ -52,6 +52,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 
 function normalizeUnit(u: string): string {
   return u.trim().toUpperCase()
+    .replace(/^\d+\s+/, "")   // strip leading quantity prefix: "1 Cum" → "CUM", "2 SQM" → "SQM"
     .replace(/\bSQM\b/, "SQM")
     .replace(/\bCUM\b|M3\b/, "CUM")
     .replace(/\bMT\b|TON(S)?\b|TONNE(S)?\b/, "MT")
@@ -317,6 +318,22 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       console.error(`[autoMapper] Failed for boqItemId=${boqRow.id}:`, err);
     }
   }
+}
+
+/**
+ * Re-map ALL unmapped / needs_review BOQ items across every project.
+ * Called at startup after SNL seeding so existing items benefit from updated
+ * SNL data and scorer logic without requiring a manual re-import.
+ */
+export async function autoMapAllUnmappedItems(): Promise<{ remapped: number }> {
+  const rows = await db
+    .select({ id: boqItems.id })
+    .from(boqItems)
+    .where(inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]));
+  if (rows.length === 0) return { remapped: 0 };
+  const ids = rows.map(r => r.id);
+  await autoMapBoqItems(ids);
+  return { remapped: ids.length };
 }
 
 /**

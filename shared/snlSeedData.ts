@@ -18,7 +18,7 @@ export const MORTH_SDB_SOURCE = {
 export const EMBANKMENT_ITEM = {
   itemCode: "3.16",
   description: "Construction of embankment with approved material obtained from borrow pits including clearing of borrow areas, excavation in all types of soils, carriage, spreading in layers and compacting to achieve the desired compaction for embankment as per Table 300-2.",
-  shortLabel: "Embankment Construction | forming embankment excavated material borrow fill compaction",
+  shortLabel: "Embankment Construction | forming embankment excavated material borrow fill compaction sub grade subgrade compacted vibratory",
   unit: "CUM",
   workCategory: "EARTHWORK",
   workSubCategory: "Embankment",
