@@ -321,6 +321,9 @@ function LayerConfigTab({
       lastSavedLcRef.current = JSON.stringify(layerConfig);
       setDirty(false);
       onLayerConfigChange(layerConfig);
+      // Invalidate the parent items list so the updated layerConfig is reflected
+      // when the dialog is closed and reopened (prevents stale-cache reversion).
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
       if (layerType !== "none") {
         await queryClient.invalidateQueries({ queryKey: ["/api/boq/items", item.id, "materials"] });
         toast({
