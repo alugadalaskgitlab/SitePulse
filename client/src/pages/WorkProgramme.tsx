@@ -871,9 +871,9 @@ function InlineGanttTable({
               <div
                 key={m.num}
                 style={{ width: colW, minWidth: colW }}
-                className="relative flex items-center justify-center text-[12px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none"
+                className="relative flex items-center justify-center text-[12px] font-semibold text-white/90 border-r border-teal-600/50 flex-shrink-0 select-none overflow-hidden"
               >
-                {m.label}
+                <span className="truncate px-1">{m.label}</span>
                 {/* Drag-to-resize handle — right edge of every month header */}
                 <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/25 active:bg-white/40 z-10"
@@ -932,26 +932,26 @@ function InlineGanttTable({
                     >
                       {/* Item left */}
                       <div
-                        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+                        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10, overflow: "hidden" }}
                         className="flex items-center gap-2 px-3 bg-white dark:bg-gray-950 border-r border-slate-200 dark:border-slate-700"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-1.5 overflow-hidden">
                             {item.itemCode && (
-                              <span className="text-xs font-mono text-muted-foreground">{item.itemCode}</span>
+                              <span className="text-xs font-mono text-muted-foreground flex-shrink-0">{item.itemCode}</span>
                             )}
                             <span
-                              className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
-                              title={item.description}
+                              className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0"
+                              title={(item as any).itemName || item.description}
                             >
-                              {(item as any).itemName || item.description.slice(0, 40)}
+                              {(item as any).itemName || item.description}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[12px] text-muted-foreground">{fmt(item.currentQty)} {item.unit}</span>
+                          <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
+                            <span className="text-[12px] text-muted-foreground flex-shrink-0">{fmt(item.currentQty)} {item.unit}</span>
                             <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} />
                             {!hasEquipment && (
-                              <span className="text-xs text-amber-500 flex items-center gap-0.5">
+                              <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0">
                                 <Info className="w-2.5 h-2.5" /> no equipment
                               </span>
                             )}
