@@ -17,7 +17,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9832,7 +9832,14 @@ export async function registerRoutes(
       const mixLinks = await storage.getBoqMixLinks(projectId);
       const mixTypeToTemplateId = new Map<string, number>();
       for (const link of mixLinks) {
-        if (link.mixTemplateId) mixTypeToTemplateId.set(link.mixType.toUpperCase(), link.mixTemplateId);
+        if (link.mixTemplateId) {
+          // Index both the raw key and its normalised form so lookups succeed
+          // regardless of whether links were saved as "BC" or "Bituminous Concrete".
+          const raw = link.mixType.toUpperCase();
+          const normalised = normaliseMixType(link.mixType);
+          mixTypeToTemplateId.set(raw, link.mixTemplateId);
+          if (normalised !== raw) mixTypeToTemplateId.set(normalised, link.mixTemplateId);
+        }
       }
       // Also add link template IDs to the fetch set
       for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
@@ -9879,10 +9886,18 @@ export async function registerRoutes(
           // 4. single-link generic fallback when project has exactly one bituminous link
           let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
           if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
-            resolvedMixTemplateId = mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ?? null;
+            // Try exact upper-case first, then normalised form (handles "Bituminous Concrete" → "BC")
+            resolvedMixTemplateId =
+              mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ??
+              mixTypeToTemplateId.get(normaliseMixType(lc.mixType)) ??
+              null;
           }
           if (!resolvedMixTemplateId && lc.layerType === "bituminous" && (item as any).workCategory) {
-            resolvedMixTemplateId = mixTypeToTemplateId.get(((item as any).workCategory as string).toUpperCase()) ?? null;
+            const cat = (item as any).workCategory as string;
+            resolvedMixTemplateId =
+              mixTypeToTemplateId.get(cat.toUpperCase()) ??
+              mixTypeToTemplateId.get(normaliseMixType(cat)) ??
+              null;
           }
           if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
             // Generic fallback: if there is exactly one bituminous mix-link for this project use it

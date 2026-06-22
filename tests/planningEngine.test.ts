@@ -3,6 +3,8 @@ import {
   getUnitConversionFactor,
   calculateTipperFleet,
   getEffectiveOutputPerHrConverted,
+  normaliseMixType,
+  deriveMaterialsFromLayerConfig,
 } from "@shared/planningEngine";
 
 // ─── getUnitConversionFactor ─────────────────────────────────────────────────
@@ -216,5 +218,86 @@ describe("getEffectiveOutputPerHrConverted", () => {
     const single = getEffectiveOutputPerHrConverted(paverEq, "MT", {});
     const doubled = getEffectiveOutputPerHrConverted(twoEq, "MT", {});
     expect(doubled.outputPerHr).toBeCloseTo(single.outputPerHr * 2, 4);
+  });
+});
+
+// ─── normaliseMixType ─────────────────────────────────────────────────────────
+
+describe("normaliseMixType", () => {
+  it("returns canonical abbreviation for full mix names", () => {
+    expect(normaliseMixType("Bituminous Concrete")).toBe("BC");
+    expect(normaliseMixType("Dense Bituminous Macadam")).toBe("DBM");
+    expect(normaliseMixType("Bituminous Macadam")).toBe("BM");
+    expect(normaliseMixType("Semi-Dense Bituminous Concrete")).toBe("SDBC");
+    expect(normaliseMixType("Semi Dense Bituminous Concrete")).toBe("SDBC");
+  });
+
+  it("is case-insensitive and trims whitespace", () => {
+    expect(normaliseMixType("  bituminous concrete  ")).toBe("BC");
+    expect(normaliseMixType("DENSE BITUMINOUS MACADAM")).toBe("DBM");
+  });
+
+  it("keeps abbreviations unchanged", () => {
+    expect(normaliseMixType("BC")).toBe("BC");
+    expect(normaliseMixType("DBM")).toBe("DBM");
+    expect(normaliseMixType("WMM")).toBe("WMM");
+  });
+
+  it("returns the trimmed upper-case input when no alias is found", () => {
+    expect(normaliseMixType("CustomMix")).toBe("CUSTOMMIX");
+    expect(normaliseMixType("XYZ")).toBe("XYZ");
+  });
+});
+
+// ─── deriveMaterialsFromLayerConfig — bituminous fallback ─────────────────────
+
+describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", () => {
+  const baseLayerConfig = {
+    layerType: "bituminous" as const,
+    thicknessMm: 50,
+    densityTPerCum: 2.4,
+  };
+
+  it("returns multiple component rows for BC when no mix template is provided", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
+    expect(rows.length).toBeGreaterThan(1);
+    const bitumenRow = rows.find(r => r.materialName.toLowerCase().includes("bitumen"));
+    expect(bitumenRow).toBeDefined();
+    const aggRow = rows.find(r => r.materialName.toLowerCase().includes("aggregate"));
+    expect(aggRow).toBeDefined();
+  });
+
+  it("returns multiple component rows for DBM when no mix template is provided", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "DBM" }, "SQM", undefined);
+    expect(rows.length).toBeGreaterThan(1);
+    const bitumenRow = rows.find(r => r.materialName.toLowerCase().includes("bitumen"));
+    expect(bitumenRow).toBeDefined();
+  });
+
+  it("uses IRC defaults when mixType is the full name 'Bituminous Concrete'", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "Bituminous Concrete" }, "SQM", undefined);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows[0].materialName).toMatch(/bitumen/i);
+  });
+
+  it("falls back to single 'Bituminous Mix' row for unknown mix type with no template", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "CBGB" }, "SQM", undefined);
+    expect(rows.length).toBe(1);
+    expect(rows[0].materialName).toBe("CBGB Mix");
+  });
+
+  it("falls back to 'Bituminous Mix' when no mixType and no template", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig }, "SQM", undefined);
+    expect(rows.length).toBe(1);
+    expect(rows[0].materialName).toBe("Bituminous Mix");
+  });
+
+  it("component quantities sum to mtPerSqm within ±0.1% (proportions add to 100%)", () => {
+    const thickness = 50;
+    const density = 2.4;
+    const mtPerSqm = (thickness / 1000) * density;
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
+    const total = rows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
+    expect(total).toBeCloseTo(mtPerSqm, 3);
   });
 });

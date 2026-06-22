@@ -713,6 +713,84 @@ export const SPRAY_RATES_KG_M2: Record<string, number> = {
 };
 
 /**
+ * Maps full mix-type names (and common aliases) to their canonical abbreviation.
+ * Used to normalise mix-type strings entered by users or stored in project settings
+ * before comparing against mix-template link keys.
+ */
+const MIX_TYPE_ALIASES: Record<string, string> = {
+  "BITUMINOUS CONCRETE": "BC",
+  "BC": "BC",
+  "DENSE BITUMINOUS MACADAM": "DBM",
+  "DBM": "DBM",
+  "BITUMINOUS MACADAM": "BM",
+  "BM": "BM",
+  "SEMI-DENSE BITUMINOUS CONCRETE": "SDBC",
+  "SEMI DENSE BITUMINOUS CONCRETE": "SDBC",
+  "SDBC": "SDBC",
+  "SURFACE DRESSING": "SD",
+  "SD": "SD",
+  "WET MIX MACADAM": "WMM",
+  "WMM": "WMM",
+  "GRANULAR SUB BASE": "GSB",
+  "GSB": "GSB",
+};
+
+/**
+ * Normalise a mix-type string to its canonical upper-case abbreviation.
+ * Returns the trimmed upper-case input unchanged when no alias is found.
+ */
+export function normaliseMixType(mixType: string): string {
+  const key = mixType.trim().toUpperCase();
+  return MIX_TYPE_ALIASES[key] ?? key;
+}
+
+/**
+ * IRC-standard proportions (%) for common bituminous mixes, used as a
+ * deterministic fallback when no mix template is configured for a project.
+ * Values are approximate guidance figures from MoRTH / IRC SP-11 specifications.
+ * bitumenPct + sum(aggregates.pct) = 100
+ */
+export const BITUMINOUS_IRC_DEFAULTS: Record<string, {
+  bitumenPct: number;
+  aggregates: Array<{ name: string; pct: number }>;
+}> = {
+  BC: {
+    bitumenPct: 5.5,
+    aggregates: [
+      { name: "20mm Aggregate", pct: 32.0 },
+      { name: "10mm Aggregate", pct: 25.0 },
+      { name: "Stone Dust",     pct: 35.0 },
+      { name: "Filler (Lime)",  pct: 2.5  },
+    ],
+  },
+  SDBC: {
+    bitumenPct: 5.0,
+    aggregates: [
+      { name: "13mm Aggregate", pct: 37.0 },
+      { name: "Stone Dust",     pct: 58.0 },
+    ],
+  },
+  DBM: {
+    bitumenPct: 4.5,
+    aggregates: [
+      { name: "40mm Aggregate", pct: 28.0 },
+      { name: "20mm Aggregate", pct: 27.0 },
+      { name: "10mm Aggregate", pct: 30.0 },
+      { name: "Stone Dust",     pct: 10.5 },
+    ],
+  },
+  BM: {
+    bitumenPct: 3.5,
+    aggregates: [
+      { name: "40mm Aggregate", pct: 38.0 },
+      { name: "20mm Aggregate", pct: 30.0 },
+      { name: "10mm Aggregate", pct: 22.0 },
+      { name: "Stone Dust",     pct: 6.5  },
+    ],
+  },
+};
+
+/**
  * Derives material rows from a BOQ item's layer config.
  * mixTemplate should include bitumen% and aggregate component list.
  */
@@ -767,8 +845,18 @@ export function deriveMaterialsFromLayerConfig(
         }
       }
     } else {
-      const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
-      rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+      // Use IRC standard proportions when no mix template is configured.
+      // This gives component-level rows (bitumen + aggregates) rather than a single synthetic line.
+      const ircDefaults = BITUMINOUS_IRC_DEFAULTS[normaliseMixType(layerConfig.mixType ?? "")];
+      if (ircDefaults) {
+        rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (ircDefaults.bitumenPct / 100) * mtPerSqm, isAuto: true });
+        for (const agg of ircDefaults.aggregates) {
+          rows.push({ materialName: agg.name, uom: "MT", qtyPerBoqUnit: (agg.pct / 100) * mtPerSqm, isAuto: true });
+        }
+      } else {
+        const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
+        rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+      }
     }
     return rows;
   }
