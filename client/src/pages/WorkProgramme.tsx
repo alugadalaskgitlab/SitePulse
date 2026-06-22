@@ -324,7 +324,7 @@ function StretchRow({
 
   return (
     <div
-      style={{ display: "flex", height: ROW_H, minHeight: ROW_H, overflow: "hidden" }}
+      style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
       className="border-b border-dashed border-slate-100 dark:border-slate-800"
       data-testid={`stretch-row-${bar.id}`}
     >
