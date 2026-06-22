@@ -454,6 +454,15 @@ function preferDisplayName(existing: string, candidate: string): string {
   if (allCaps(existing) && !allCaps(candidate)) return candidate;
   return existing;
 }
+// Equipment groups by BASE name only — the size/spec in brackets is ignored, e.g.
+// "Vibratory Roller (11T)" / "(10T)" / "VIBRATORY ROLLER" → one "Vibratory Roller".
+function equipmentBaseName(name: string): string {
+  const base = name.split("(")[0].trim();
+  return base || name.trim();
+}
+function canonEquipmentKey(name: string): string {
+  return equipmentBaseName(name).toUpperCase().replace(/\s+/g, " ");
+}
 
 export function calculateBomDemand(
   items: BomInputItem[],
@@ -522,12 +531,13 @@ export function calculateBomDemand(
       if (e.isClientSupplied) continue;
       const cnt = e.count ?? 1;
       const lineHours = e.qtyPerBoqUnit * workQty * cnt;
-      const key = canonResourceKey(e.equipmentName);
+      const key = canonEquipmentKey(e.equipmentName);
+      const display = equipmentBaseName(e.equipmentName);
       if (!eqMap.has(key)) {
-        eqMap.set(key, { equipmentName: e.equipmentName, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+        eqMap.set(key, { equipmentName: display, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
       }
       const row = eqMap.get(key)!;
-      row.equipmentName = preferDisplayName(row.equipmentName, e.equipmentName);
+      row.equipmentName = preferDisplayName(row.equipmentName, display);
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });

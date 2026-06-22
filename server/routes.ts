@@ -9916,12 +9916,21 @@ export async function registerRoutes(
             : lc.layerType === "spray_coat" ? "direct"
             : undefined;
           if (derived.length > 0) {
+            // Qualify a generic "Aggregate" with its layer's mix type so GSB and WMM
+            // aggregates show as separate, clearly-labelled lines in BOM & Procurement.
+            const desc = String((item as any).description ?? "");
+            const aggTag =
+              (lc.mixType && lc.mixType.trim()) ||
+              (/wet\s*mix|\bwmm\b/i.test(desc) ? "WMM" :
+               /granular\s*sub-?base|\bgsb\b/i.test(desc) ? "GSB" : null);
             return {
               ...item,
               materials: derived.map(dm => ({
                 id: 0,
                 boqItemId: item.id,
-                materialName: dm.materialName,
+                materialName: (aggTag && /^aggregate$/i.test(dm.materialName.trim()))
+                  ? `Aggregate (${aggTag})`
+                  : dm.materialName,
                 uom: dm.uom,
                 qtyPerBoqUnit: dm.qtyPerBoqUnit,
                 wastagePct: 0,

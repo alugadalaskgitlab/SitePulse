@@ -142,7 +142,6 @@ function MaterialsTable({
                 {isExpanded && (
                   <tr key={`${row.materialName}__drill`} className="bg-teal-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[12px] font-semibold text-teal-700 mb-1.5 uppercase tracking-wide">Source BOQ Items</p>
                       <div className="rounded-lg border border-teal-100 bg-white overflow-hidden">
                         <table className="text-xs w-full border-collapse">
                           <thead>
@@ -268,7 +267,6 @@ function EquipmentTable({
                 {isExpanded && (
                   <tr key={`${row.equipmentName}__drill`} className="bg-blue-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[12px] font-semibold text-blue-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: hr/unit × work qty = hours</p>
                       <div className="rounded-lg border border-blue-100 bg-white overflow-hidden">
                         <table className="text-xs w-full border-collapse">
                           <thead>
@@ -382,7 +380,6 @@ function LabourTable({
                 {isExpanded && (
                   <tr key={`${row.designation}__drill`} className="bg-purple-50/40">
                     <td colSpan={colSpan} className="px-4 py-2">
-                      <p className="text-[12px] font-semibold text-purple-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: day/unit × work qty = days</p>
                       <div className="rounded-lg border border-purple-100 bg-white overflow-hidden">
                         <table className="text-xs w-full border-collapse">
                           <thead>

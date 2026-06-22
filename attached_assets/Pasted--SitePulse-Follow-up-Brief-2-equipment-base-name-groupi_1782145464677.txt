@@ -1,0 +1,166 @@
+# SitePulse — Follow-up Brief 2: equipment base-name grouping + simpler BOM drill-down + GSB/WMM aggregate split
+
+> **How to use:** Paste this whole file into the Replit AI agent with the instruction:
+> "Apply FOLLOW-UP FIX 1, 2 and 3 exactly as written. These are additive — do not change
+> any other logic, route or module." No DB migration needed; just restart.
+>
+> These build on the earlier UI brief. If you already applied the previous equipment
+> case-merge (FIX B3), **FOLLOW-UP FIX 1 below replaces it** with base-name grouping.
+
+---
+
+## FOLLOW-UP FIX 1 — Group equipment by BASE name (ignore the size/spec in brackets)
+File: `shared/planningEngine.ts`
+
+Goal: "Vibratory Roller (11T)", "Vibratory Roller (10–12T)", "Vibratory Roller (10T)" and
+"VIBRATORY ROLLER" all collapse into a single **"Vibratory Roller"** row (hours summed).
+Same for every machine — the part in parentheses (size/capacity) is ignored for grouping.
+
+### 1a — add two helpers next to the existing `canonResourceKey` / `preferDisplayName`
+```ts
+// Equipment groups by BASE name only — the size/spec in brackets is ignored, e.g.
+// "Vibratory Roller (11T)" / "(10T)" / "VIBRATORY ROLLER" → one "Vibratory Roller".
+function equipmentBaseName(name: string): string {
+  const base = name.split("(")[0].trim();
+  return base || name.trim();
+}
+function canonEquipmentKey(name: string): string {
+  return equipmentBaseName(name).toUpperCase().replace(/\s+/g, " ");
+}
+```
+
+### 1b — replace the Equipment grouping block
+Find (this is the version from the previous brief; if you never applied that, your
+current block uses `const key = e.equipmentName;` — replace whichever you have):
+```ts
+      const key = canonResourceKey(e.equipmentName);
+      if (!eqMap.has(key)) {
+        eqMap.set(key, { equipmentName: e.equipmentName, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+      }
+      const row = eqMap.get(key)!;
+      row.equipmentName = preferDisplayName(row.equipmentName, e.equipmentName);
+```
+Replace with:
+```ts
+      const key = canonEquipmentKey(e.equipmentName);
+      const display = equipmentBaseName(e.equipmentName);
+      if (!eqMap.has(key)) {
+        eqMap.set(key, { equipmentName: display, count: cnt, totalHours: 0, monthlyHours: {}, breakdown: [] });
+      }
+      const row = eqMap.get(key)!;
+      row.equipmentName = preferDisplayName(row.equipmentName, display);
+```
+
+> Materials and Labour keep their full-name (case-insensitive) grouping from the previous
+> brief — only **equipment** uses base-name grouping. The expand drill-down still lists
+> each source BOQ item, so you can see how the combined hours add up. "Motor Grader with
+> Scarifier" stays separate from "Motor Grader" because that extra wording is part of the
+> base name (it is a different operation), not a size in brackets.
+
+---
+
+## FOLLOW-UP FIX 2 — Simpler, cleaner BOM drill-down (remove the extra "Source BOQ Items" sub-header)
+File: `client/src/pages/WorkDemand.tsx`
+
+Today an expanded row shows three layers: a "SOURCE BOQ ITEMS" label, then a column
+header, then the rows. Remove the redundant label line in all three tables so it reads
+as a clean single sub-table (like Road Estimator).
+
+### 2a — Materials: delete this line
+```tsx
+                      <p className="text-[12px] font-semibold text-teal-700 mb-1.5 uppercase tracking-wide">Source BOQ Items</p>
+```
+
+### 2b — Equipment: delete this line
+```tsx
+                      <p className="text-[12px] font-semibold text-blue-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: hr/unit × work qty = hours</p>
+```
+
+### 2c — Labour: delete this line
+```tsx
+                      <p className="text-[12px] font-semibold text-purple-700 mb-1.5 uppercase tracking-wide">Source BOQ Items · Formula: day/unit × work qty = days</p>
+```
+
+> Leave the inner tables (BOQ Item / Qty-Unit / Work Qty / Line total columns) as-is —
+> they are the clean item list. Only the uppercase label paragraph is removed.
+
+---
+
+## FOLLOW-UP FIX 3 — Split the generic "Aggregate" into GSB vs WMM
+File: `server/routes.ts`  (the `GET /api/boq/projects/:id/bom` handler)
+
+Cause: granular layers (GSB sub-base and WMM macadam) both derive a single material named
+**"Aggregate"**, so the BOM merges them into one 4,046 CUM line. We qualify that name with
+the layer's mix type (GSB / WMM) using the item context that is already available here.
+
+In the `expandedItems = items.map(item => { ... })` block, find the derived-materials
+return (the part that maps `derived` into material rows):
+```ts
+          if (derived.length > 0) {
+            return {
+              ...item,
+              materials: derived.map(dm => ({
+                id: 0,
+                boqItemId: item.id,
+                materialName: dm.materialName,
+                uom: dm.uom,
+                qtyPerBoqUnit: dm.qtyPerBoqUnit,
+                wastagePct: 0,
+                isClientSupplied: false,
+                isAuto: true as const,
+                sortOrder: 0,
+                createdAt: null,
+                supplyType: derivedSupplyType,
+              })),
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+```
+Replace it with (adds an `aggTag` and renames a bare "Aggregate"):
+```ts
+          if (derived.length > 0) {
+            // Qualify a generic "Aggregate" with its layer's mix type so GSB and WMM
+            // aggregates show as separate, clearly-labelled lines in BOM & Procurement.
+            const desc = String((item as any).description ?? "");
+            const aggTag =
+              (lc.mixType && lc.mixType.trim()) ||
+              (/wet\s*mix|\bwmm\b/i.test(desc) ? "WMM" :
+               /granular\s*sub-?base|\bgsb\b/i.test(desc) ? "GSB" : null);
+            return {
+              ...item,
+              materials: derived.map(dm => ({
+                id: 0,
+                boqItemId: item.id,
+                materialName: (aggTag && /^aggregate$/i.test(dm.materialName.trim()))
+                  ? `Aggregate (${aggTag})`
+                  : dm.materialName,
+                uom: dm.uom,
+                qtyPerBoqUnit: dm.qtyPerBoqUnit,
+                wastagePct: 0,
+                isClientSupplied: false,
+                isAuto: true as const,
+                sortOrder: 0,
+                createdAt: null,
+                supplyType: derivedSupplyType,
+              })),
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+```
+
+> The tag comes first from the layer config's mix type (deterministic); if that isn't set,
+> it falls back to a light keyword check on the item description **only to choose the GSB/
+> WMM label** (it does not affect any SDB norm mapping). After this, BOM Materials and the
+> Procurement tab will show e.g. "Aggregate (GSB)" 1,526.7 CUM and "Aggregate (WMM)"
+> 2,520 CUM as separate rows instead of one merged "Aggregate".
+
+---
+
+## TEST PLAN (no DB migration; just restart)
+1. **BOM → Equipment tab:** each machine is a single row by base name — one "Vibratory
+   Roller", one "Motor Grader", one "Tipper" — with the size variants' hours combined.
+2. **BOM → expand any Material/Equipment/Labour row:** the drill-down is a single clean
+   table (no "SOURCE BOQ ITEMS" label line above it).
+3. **BOM → Materials and Procurement:** the old single "Aggregate" line is now two clear
+   lines — "Aggregate (GSB)" and "Aggregate (WMM)" — with the right quantities.
+4. Confirm totals and every other material/row are unchanged.
