@@ -978,7 +978,29 @@ export default function SiteEntry() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-sm">Qty</Label>
+                    <Label className="text-sm flex items-center gap-1">
+                      Qty
+                      {(() => {
+                        const boqItem = entry.boqItemId != null
+                          ? siteBoqItems.find(i => i.id === entry.boqItemId)
+                          : null;
+                        if (!boqItem) return null;
+                        const f = boqItem.dprConversionFactor;
+                        if (f != null && f !== 1) {
+                          return (
+                            <span
+                              className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 normal-case"
+                              title={`DPR qty × ${f} → ${boqItem.unit} for Plan vs Actual`}
+                            >
+                              → {boqItem.unit}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] text-slate-400 font-normal">{boqItem.unit}</span>
+                        );
+                      })()}
+                    </Label>
                     <Input
                       type="number"
                       step="0.01"

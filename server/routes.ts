@@ -10683,6 +10683,13 @@ async function ensureDprBoqProjectColumn() {
 async function ensureBoqDprConversionFactor() {
   try {
     await db.execute(sql.raw(`ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_conversion_factor real`));
+    // Backfill known Takkadpally items: item 13 = Clearing & Grubbing (SQM → Ha = 0.0001)
+    await db.execute(sql.raw(`
+      UPDATE boq_items
+      SET dpr_conversion_factor = 0.0001
+      WHERE id = 13
+        AND dpr_conversion_factor IS NULL
+    `));
     console.log("boq_items: dpr_conversion_factor column ensured");
   } catch (err) {
     console.error("ensureBoqDprConversionFactor failed:", err);

@@ -181,10 +181,44 @@ function ItemEditDialog({
               placeholder="Leave blank for 1 (no conversion)"
               data-testid="input-edit-conv-factor"
             />
-            <p className="text-xs text-slate-400 mt-0.5">
-              Multiplies DPR progress quantities before adding to actuals.
-              Common: SQM→Ha = 0.0001 · m→km = 0.001 · same unit = 1 (or blank)
-            </p>
+            {/* Unit-pair suggestions based on current BOQ unit */}
+            {(() => {
+              const u = form.unit.trim().toUpperCase();
+              const suggestions: { label: string; factor: string }[] = [];
+              if (u === "HA" || u === "HECTARE" || u === "HECTARES") {
+                suggestions.push({ label: "SQM → Ha  (÷10000)", factor: "0.0001" });
+              } else if (u === "KM" || u === "KMS") {
+                suggestions.push({ label: "m → km  (÷1000)", factor: "0.001" });
+                suggestions.push({ label: "RMT → km  (÷1000)", factor: "0.001" });
+              } else if (u === "MT" || u === "TON" || u === "TONS") {
+                suggestions.push({ label: "kg → MT  (÷1000)", factor: "0.001" });
+              } else if (u === "SQM" || u === "M2") {
+                suggestions.push({ label: "Same unit — no conversion", factor: "1" });
+              } else if (u === "CUM" || u === "M3") {
+                suggestions.push({ label: "Same unit — no conversion", factor: "1" });
+              } else if (u === "RMT" || u === "RM") {
+                suggestions.push({ label: "Same unit — no conversion", factor: "1" });
+              }
+              if (suggestions.length === 0) return (
+                <p className="text-xs text-slate-400 mt-1">Multiplies DPR quantities before summing actuals. Common: SQM→Ha = 0.0001 · m→km = 0.001 · same unit = 1</p>
+              );
+              return (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-slate-400">Quick fill:</span>
+                  {suggestions.map(s => (
+                    <button
+                      key={s.factor}
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, dprConversionFactor: s.factor }))}
+                      className="text-xs px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                      data-testid={`preset-conv-${s.factor}`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
         <DialogFooter>

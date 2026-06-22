@@ -19786,6 +19786,7 @@ export class DatabaseStorage implements IStorage {
         itemName: boqItems.itemName,
         mappingStatus: boqItems.mappingStatus,
         layerConfig: boqItems.layerConfig,
+        dprConversionFactor: boqItems.dprConversionFactor,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
