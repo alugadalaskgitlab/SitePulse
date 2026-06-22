@@ -1,11 +1,11 @@
-import { useState, useMemo, useRef, useImperativeHandle, forwardRef } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -512,33 +512,25 @@ type SnlSearchResult = {
   sourceCode: string;
 };
 
-type SnlMappingPanelHandle = { openAndFocus: () => void };
-type SnlMappingPanelProps = { projectId: number; items: BoqItemWithCategory[]; onMapped: () => void };
-
-const SnlMappingPanel = forwardRef<SnlMappingPanelHandle, SnlMappingPanelProps>(
-function SnlMappingPanel({ projectId, items, onMapped }, ref) {
+function SnlMappingPanel({
+  projectId,
+  items,
+  onMapped,
+  onClose,
+}: {
+  projectId: number;
+  items: BoqItemWithCategory[];
+  onMapped: () => void;
+  onClose: () => void;
+}) {
   const { toast } = useToast();
-  const panelRef = useRef<HTMLDivElement>(null);
 
   const needsReview = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "needs_review");
   const unmapped    = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "unmapped");
   const mapped      = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped");
 
-  const fullyMapped = items.length > 0 && mapped.length === items.length;
-
-  // Auto-collapse when fully mapped; auto-expand when any action is needed
-  const [collapsed, setCollapsed] = useState(() => fullyMapped);
   const [searchItem, setSearchItem] = useState<BoqItemWithCategory | null>(null);
   const [searchQ, setSearchQ] = useState("");
-
-  useImperativeHandle(ref, () => ({
-    openAndFocus() {
-      setCollapsed(false);
-      setTimeout(() => {
-        panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 50);
-    },
-  }));
 
   const remapMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {}),
@@ -581,22 +573,23 @@ function SnlMappingPanel({ projectId, items, onMapped }, ref) {
   if (items.length === 0) return null;
 
   return (
-    <Card ref={panelRef as any} className="border-slate-200 overflow-hidden" data-testid="panel-snl-mapping">
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        className="w-full bg-teal-800 hover:bg-teal-700 transition-colors px-4 py-2.5 flex items-center justify-between text-left"
-        data-testid="button-toggle-snl-panel"
-      >
+    <div className="flex flex-col h-full" data-testid="panel-snl-mapping">
+      {/* Floating panel header */}
+      <div className="bg-teal-800 px-4 py-2.5 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <Link2 className="w-3.5 h-3.5 text-teal-300" />
           <span className="text-sm font-semibold text-white">SNL Mapping</span>
-          <span className="text-[12px] px-1.5 py-0.5 rounded bg-teal-900 text-teal-200">
+          <span className={`text-[12px] px-1.5 py-0.5 rounded font-semibold ${
+            mapped.length === items.length
+              ? "bg-emerald-700 text-emerald-100"
+              : "bg-amber-600 text-amber-100"
+          }`}>
             {mapped.length}/{items.length}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={e => { e.stopPropagation(); remapMutation.mutate(); }}
+            onClick={() => remapMutation.mutate()}
             className="p-1 rounded hover:bg-teal-600 text-teal-300 hover:text-white transition-colors"
             title="Re-run auto-mapping for all items"
             disabled={remapMutation.isPending}
@@ -604,12 +597,19 @@ function SnlMappingPanel({ projectId, items, onMapped }, ref) {
           >
             <RefreshCw className={`w-3 h-3 ${remapMutation.isPending ? "animate-spin" : ""}`} />
           </button>
-          {collapsed ? <ChevronDown className="w-4 h-4 text-teal-300" /> : <ChevronUp className="w-4 h-4 text-teal-300" />}
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-teal-600 text-teal-300 hover:text-white transition-colors"
+            title="Close panel"
+            data-testid="button-close-snl-panel"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
-      </button>
+      </div>
 
-      {!collapsed && (
-        <div className="p-3 space-y-3">
+      {/* Scrollable body */}
+      <div className="p-3 space-y-3 overflow-y-auto flex-1">
           {/* Status summary */}
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
@@ -713,7 +713,7 @@ function SnlMappingPanel({ projectId, items, onMapped }, ref) {
             </div>
           )}
         </div>
-      )}
+      </div>
 
       {/* Search modal */}
       {searchItem && (
@@ -780,9 +780,9 @@ function SnlMappingPanel({ projectId, items, onMapped }, ref) {
           </DialogContent>
         </Dialog>
       )}
-    </Card>
+    </div>
   );
-});
+}
 
 // ─── Revision Panel ────────────────────────────────────────────────────────────
 
@@ -1165,7 +1165,7 @@ export default function BoqProjectDetail() {
   const projectId = parseInt(params.id);
   const [showImport, setShowImport] = useState(false);
   const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
-  const snlPanelRef = useRef<SnlMappingPanelHandle>(null);
+  const [snlFloatingOpen, setSnlFloatingOpen] = useState(false);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -1357,7 +1357,7 @@ export default function BoqProjectDetail() {
                 : snlFullyMapped ? "All mapped ✓" : undefined,
             extraCls: snlNeedsAction ? "text-amber-600" : "text-emerald-600",
             highlight: snlNeedsAction,
-            onClick: items.length > 0 ? () => snlPanelRef.current?.openAndFocus() : undefined,
+            onClick: items.length > 0 ? () => setSnlFloatingOpen(true) : undefined,
           },
           { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—" },
         ];
@@ -1446,14 +1446,8 @@ export default function BoqProjectDetail() {
             )}
           </div>
 
-          {/* ── Right: SNL Mapping + Revision panel ── */}
-          <div className="w-full lg:w-72 xl:w-80 flex-shrink-0 space-y-3">
-            <SnlMappingPanel
-              ref={snlPanelRef}
-              projectId={projectId}
-              items={items}
-              onMapped={() => { void refetchItems(); }}
-            />
+          {/* ── Right: Revision panel only (SNL is now a floating overlay) ── */}
+          <div className="w-full lg:w-64 xl:w-72 flex-shrink-0">
             <RevisionPanel
               projectId={projectId}
               revisions={revisions}
@@ -1461,6 +1455,22 @@ export default function BoqProjectDetail() {
               onActivated={() => void refetchItems()}
             />
           </div>
+        </div>
+      )}
+
+      {/* ── Floating SNL Mapping panel ── */}
+      {snlFloatingOpen && items.length > 0 && (
+        <div
+          className="fixed right-5 top-20 z-50 w-80 xl:w-96 rounded-xl shadow-2xl border border-slate-200 bg-white dark:bg-gray-950 overflow-hidden flex flex-col"
+          style={{ maxHeight: "calc(100vh - 6rem)" }}
+          data-testid="floating-snl-panel"
+        >
+          <SnlMappingPanel
+            projectId={projectId}
+            items={items}
+            onMapped={() => { void refetchItems(); }}
+            onClose={() => setSnlFloatingOpen(false)}
+          />
         </div>
       )}
 
