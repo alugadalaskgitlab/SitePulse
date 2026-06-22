@@ -528,10 +528,10 @@ function StretchRow({
           </>
         )}
 
-        {/* Required output intensity badge — always shown in fixed mode; red when exceeds capacity */}
+        {/* Required output intensity badge — tooltip carries the full detail; badge is compact */}
         {requiredOutput && (
           <span
-            className={`inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border ${
+            className={`inline-flex items-center gap-0.5 text-xs font-semibold rounded px-1 py-0.5 flex-shrink-0 ml-0.5 border max-w-[110px] overflow-hidden ${
               requiredOutput.exceedsCapacity
                 ? "text-red-700 bg-red-50 border-red-300 dark:bg-red-950/30 dark:text-red-400"
                 : "text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400"
@@ -548,14 +548,13 @@ function StretchRow({
                 : "",
             ].filter(Boolean).join(" ")}
           >
-            {requiredOutput.exceedsCapacity && <AlertTriangle className="w-2.5 h-2.5" />}
-            {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
-            {requiredOutput.capacityPct != null && (
-              <span className="opacity-75"> ({requiredOutput.capacityPct}%)</span>
-            )}
-            {requiredOutput.exceedsCapacity && requiredOutput.additionalEquipmentNeeded != null && requiredOutput.additionalEquipmentNeeded > 0 && (
-              <span className="font-normal opacity-90"> · +{requiredOutput.additionalEquipmentNeeded} {requiredOutput.bottleneckEquipmentName}</span>
-            )}
+            {requiredOutput.exceedsCapacity && <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />}
+            <span className="truncate">
+              {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
+              {requiredOutput.capacityPct != null && (
+                <span className="opacity-75"> ({requiredOutput.capacityPct}%)</span>
+              )}
+            </span>
           </span>
         )}
 
@@ -598,7 +597,7 @@ function StretchRow({
           />
         ))}
 
-        {/* Gantt bar */}
+        {/* Gantt bar — label rendered inside the bar to avoid vertical overflow into rows below */}
         <div
           className="absolute rounded overflow-hidden group select-none"
           style={{
@@ -623,27 +622,20 @@ function StretchRow({
           })()}
         >
           <div className="absolute inset-0 group-hover:bg-white/15 rounded" />
+          {/* Inline label — white text inside bar; no vertical bleed into next row */}
+          {barWidth >= 50 && (
+            <div
+              className="absolute inset-0 flex items-center px-1.5 pointer-events-none select-none overflow-hidden"
+            >
+              <span className="text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis opacity-90 drop-shadow-sm">
+                {fmtQty(liveQty, 1)} {bar.unit} | {(durationMonths * workingDays).toFixed(1)}d
+                {autoDuration?.bottleneckEquipment && (
+                  <span className="opacity-70 font-normal"> · {autoDuration.bottleneckEquipment}</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
-
-        {/* Road Estimator–style label: "qty unit | X.XXd" below the bar */}
-        {barWidth > 8 && (
-          <div
-            className="absolute pointer-events-none select-none whitespace-nowrap text-[12px] font-semibold leading-tight overflow-hidden"
-            style={{
-              left: barLeft,
-              top: 34,
-              maxWidth: barWidth,
-              color: color,
-              opacity: 0.9,
-            }}
-            title={`${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d${autoDuration?.bottleneckEquipment ? ` · ${autoDuration.bottleneckEquipment}` : ""}`}
-          >
-            {barWidth >= 50 && `${fmtQty(liveQty, 1)} ${bar.unit} | ${(durationMonths * workingDays).toFixed(2)}d`}
-            {barWidth >= 50 && autoDuration?.bottleneckEquipment && (
-              <span className="opacity-60 font-normal"> · {autoDuration.bottleneckEquipment}</span>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
