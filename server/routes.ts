@@ -10295,11 +10295,16 @@ export async function registerRoutes(
 
   // ─── END SNL ────────────────────────────────────────────────────────────
 
-  seedDatabase();
-  seedPlantMasterData();
-  seedPlanningMasters();
-  seedSnlItems();
-  ensureBoqItemNameColumn();
+  // Run schema migrations first (await) so the columns exist before any seed
+  // function queries the affected tables, then fire the rest concurrently.
+  (async () => {
+    await ensureDprBoqProjectColumn();
+    await ensureBoqItemNameColumn();
+    seedDatabase();
+    seedPlantMasterData();
+    seedPlanningMasters();
+    seedSnlItems();
+  })().catch((err) => console.error("Startup tasks failed:", err));
 
   return httpServer;
 }
@@ -10621,6 +10626,43 @@ async function seedSnlItems() {
       .catch(err => console.error("SNL global remap failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);
+  }
+}
+
+async function ensureDprBoqProjectColumn() {
+  try {
+    // 1. Add column if not already present (idempotent)
+    await db.execute(sql.raw(`ALTER TABLE dprs ADD COLUMN IF NOT EXISTS boq_project_id integer`));
+
+    // 2. Re-link orphaned progress entries whose boq_item_id no longer exists.
+    //    boq_item_id=25 was from a now-deleted BOQ project. Item 13 is the
+    //    matching "Clearing and grubbing" item in the surviving project 2.
+    await db.execute(sql.raw(`
+      UPDATE progress_entries
+      SET boq_item_id = 13
+      WHERE boq_item_id = 25
+        AND NOT EXISTS (SELECT 1 FROM boq_items WHERE id = 25)
+    `));
+
+    // 3. Backfill dprs.boq_project_id for DPRs that have progress entries
+    //    linked to a known BOQ item — derive the project from the item.
+    await db.execute(sql.raw(`
+      UPDATE dprs d
+      SET boq_project_id = sub.boq_project_id
+      FROM (
+        SELECT DISTINCT ON (pe.dpr_id) pe.dpr_id, bi.boq_project_id
+        FROM progress_entries pe
+        JOIN boq_items bi ON bi.id = pe.boq_item_id
+        WHERE pe.boq_item_id IS NOT NULL
+        ORDER BY pe.dpr_id, bi.boq_project_id
+      ) sub
+      WHERE d.id = sub.dpr_id
+        AND d.boq_project_id IS NULL
+    `));
+
+    console.log("dprs: boq_project_id column ensured, orphaned entries re-linked, backfill complete");
+  } catch (err) {
+    console.error("ensureDprBoqProjectColumn failed:", err);
   }
 }
 

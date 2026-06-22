@@ -1553,6 +1553,7 @@ export class DatabaseStorage implements IStorage {
         engineer: dprData.engineer.toUpperCase(),
         submittedAt: submittedAt,
         workType: dprData.workType ?? "road",
+        boqProjectId: (dprData as any).boqProjectId ?? null,
       }).returning();
 
       const dprId = newDpr.id;

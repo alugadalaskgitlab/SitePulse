@@ -193,8 +193,8 @@ export default function SiteEntry() {
     return sitesList.find((s) => s.name === header.site)?.id ?? null;
   }, [header.site, sitesList]);
 
-  // Find the BOQ project linked to this site (if any)
-  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
+  // Find the BOQ project(s) linked to this site (if any)
+  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; itemCount?: number }>>({
     queryKey: ["/api/boq/projects", selectedSiteId],
     queryFn: async () => {
       const res = await fetch(`/api/boq/projects?siteId=${selectedSiteId}`, { credentials: "include" });
@@ -202,7 +202,20 @@ export default function SiteEntry() {
     },
     enabled: !!selectedSiteId,
   });
-  const siteBoqProjectId = siteBoqProjects[0]?.id ?? null;
+
+  // Prefer the project that has BOQ items set up (has a work programme), falling
+  // back to the first project returned. This prevents auto-selecting an empty
+  // project when a site has multiple BOQ projects.
+  const siteBoqProjectId = useMemo(() => {
+    if (siteBoqProjects.length === 0) return null;
+    const withItems = siteBoqProjects.find((p) => (p.itemCount ?? 0) > 0);
+    return (withItems ?? siteBoqProjects[0]).id;
+  }, [siteBoqProjects]);
+
+  const siteBoqProjectName = useMemo(() => {
+    if (!siteBoqProjectId) return null;
+    return siteBoqProjects.find((p) => p.id === siteBoqProjectId)?.name ?? null;
+  }, [siteBoqProjectId, siteBoqProjects]);
 
   // Fetch items of that BOQ project
   const { data: siteBoqItems = [] } = useQuery<SiteBoqItem[]>({
@@ -414,6 +427,7 @@ export default function SiteEntry() {
         engineer: header.engineer,
         role: "engineer",
         workType,
+        boqProjectId: siteBoqProjectId ?? undefined,
         progress: workType === "structure" ? [] : progressWithCalc,
         structureItems: workType === "structure" ? structureItems.filter(s => s.structureType && s.itemOfWork) : [],
         equipment: normalizedEquipment,
@@ -573,6 +587,13 @@ export default function SiteEntry() {
             </div>
           </div>
         </CardContent>
+        {siteBoqProjectName && (
+          <div className="px-6 pb-4">
+            <Badge variant="outline" className="text-xs text-muted-foreground gap-1" data-testid="badge-boq-project">
+              <span className="font-medium text-foreground">BOQ:</span> {siteBoqProjectName}
+            </Badge>
+          </div>
+        )}
       </Card>
 
       {/* Activity Progress */}

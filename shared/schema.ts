@@ -24,6 +24,9 @@ export const dprs = pgTable("dprs", {
   unlockedAt: timestamp("unlocked_at"),
   unlockReason: text("unlock_reason"),
   workType: text("work_type").default("road").notNull(),
+  // Explicit link to the BOQ project this DPR reports against.
+  // Prevents orphaned progress entries when a site has multiple BOQ projects.
+  boqProjectId: integer("boq_project_id"),
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),
 }));
