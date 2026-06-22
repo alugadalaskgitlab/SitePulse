@@ -324,7 +324,7 @@ function StretchRow({
 
   return (
     <div
-      style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
+      style={{ display: "flex", height: ROW_H, minHeight: ROW_H, overflow: "hidden" }}
       className="border-b border-dashed border-slate-100 dark:border-slate-800"
       data-testid={`stretch-row-${bar.id}`}
     >
@@ -585,7 +585,7 @@ function StretchRow({
 
       {/* ── Right: Gantt cells ── */}
       <div
-        style={{ width: totalMonths * colW, minWidth: totalMonths * colW, position: "relative", flexShrink: 0 }}
+        style={{ width: totalMonths * colW, minWidth: totalMonths * colW, position: "relative", flexShrink: 0, overflow: "hidden" }}
         className="bg-slate-50/20 dark:bg-slate-900/10"
       >
         {/* Month column grid lines */}
@@ -927,7 +927,7 @@ function InlineGanttTable({
                   <div key={item.id} className="border-b border-slate-200 dark:border-slate-700">
                     {/* Item header row */}
                     <div
-                      style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: ITEM_H }}
+                      style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: ITEM_H, overflow: "hidden" }}
                       className="border-b border-slate-100 dark:border-slate-800"
                     >
                       {/* Item left */}
