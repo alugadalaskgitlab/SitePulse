@@ -107,7 +107,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; itemCode: string | null; unit: string };
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
@@ -809,7 +809,7 @@ export default function SiteEntry() {
                           <SelectItem value="__none__">— Select activity —</SelectItem>
                           {siteBoqItems.map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.description}
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.itemName || item.description}
                             </SelectItem>
                           ))}
                         </SelectContent>
