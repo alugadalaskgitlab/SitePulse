@@ -1,0 +1,168 @@
+# SitePulse — Brief: SDB Excel Import + Norm Catalog Seed + Sector Gating
+
+> **How to use:** Paste this whole file into the Replit AI agent with the instruction:
+> "Implement this brief. Build ON TOP of the existing `snl_*` catalog tables — do NOT
+> create new sdb_* tables. After the schema change run `npm run db:push`, then restart."
+>
+> This is a feature spec (the agent implements against the live code). It reuses the
+> existing Norms Library (`snl_sources / snl_items / snl_item_productivity /
+> snl_item_equipment / snl_item_labour / snl_item_materials`) and the existing
+> `applySnlMappingToRecipes` + deterministic code-mapping.
+
+---
+
+## 0. Principles (important — read first)
+1. **Norms ship WITH the app.** The SDB norm catalog is loaded once (by seed or admin), not
+   by customers. Each deployed copy auto-seeds its norms on first run.
+2. **Customers only import BOQs.** They pick a sector, import their BOQ, and the existing
+   flow (map → recipe → Gantt → BOM → DPR → IRN → PI) runs. The **"Import SDB" screen is
+   admin-only**.
+3. **Sector-gated per copy.** A deployment shows only the sectors that customer purchased,
+   controlled by one config value (no multi-tenant logic needed now).
+4. **Quantities only** — never rates.
+
+---
+
+## 1. Schema change — add `sector` to `snl_items`
+In `shared/schema.ts`, `snlItems` table, add after `workSubCategory`:
+```ts
+  sector: text("sector"),   // ROAD | STRUCTURE | IRRIGATION | GATES_HOIST | BUILDING | WATER | ELECTRICAL
+```
+Run `npm run db:push`. (Existing rows get NULL → treat NULL as ROAD for back-compat, or
+backfill the 17 seeded road items to sector='ROAD'.)
+
+---
+
+## 2. The import file format (already produced — these are the files to ingest)
+Each sector is one `.xlsx` with 4 data sheets + a READ_ME. **Exact headers:**
+
+**Items:** `code | description | unit | sector | chapter | shift_hours | is_mix_specific | notes`
+**Equipment:** `code | equipment_label | count | shift_output | output_unit | qty_per_shift | hrs_per_unit | ref`
+**Labour:** `code | designation | count | qty_per_shift | days_per_unit | ref`
+**Materials:** `code | material_name | unit | qty_per_item_unit | is_project_specific | ref`
+
+The `code` column links the 4 sheets. `hrs_per_unit` / `days_per_unit` / `qty_per_item_unit`
+are already the per-BOQ-unit values (no recompute needed).
+
+### Field mapping → `snl_*` tables (per row)
+For each **Items** row, upsert one `snl_items` (+ a `snl_item_productivity`):
+| Excel | snl column |
+|---|---|
+| code | `snl_items.item_code` |
+| description | `snl_items.description` (also `short_label` = first ~60 chars) |
+| unit | `snl_items.unit` and `snl_item_productivity.output_unit` |
+| sector | `snl_items.sector` **and** `snl_items.work_category` (work_category is NOT NULL → set = sector) |
+| chapter | `snl_items.chapter_no` |
+| shift_hours | `snl_item_productivity.shift_hours` |
+| is_mix_specific | `snl_items.is_mix_specific` (parse TRUE/FALSE) |
+| (from Equipment.shift_output of same code) | `snl_item_productivity.shift_output` (the item output) |
+
+> `snl_item_productivity` is REQUIRED for duration. Set `shift_output` = the `shift_output`
+> value found on that code's Equipment rows (they all carry the item output); if no equipment
+> rows, default `shift_output = 1`, `output_unit = unit`. Also set
+> `derived_per_hour = shift_output / shift_hours`.
+
+For each **Equipment** row → `snl_item_equipment`:
+| Excel | snl column |
+|---|---|
+| equipment_label | `equipment_type` (put whole label here; `equipment_spec` = the text inside the first `(...)` if any) |
+| (n/a) | `unit` = `'hrs'` |
+| qty_per_shift | `quantity_per_shift` |
+| shift_output | `shift_output_ref` (NOT NULL) |
+| hrs_per_unit | `derived_per_unit`  ← **authoritative; this is what `applySnlMappingToRecipes` reads** |
+
+For each **Labour** row → `snl_item_labour`:
+| designation | `designation` ; `unit`='day' ; `skill_tier`='UNSKILLED' (or 'SKILLED' if name contains mason/skilled/operator/fitter/blacksmith/carpenter/sinker) |
+| qty_per_shift | `quantity_per_shift` |
+| shift_output (item) | `shift_output_ref` |
+| days_per_unit | `derived_per_unit` |
+
+For each **Materials** row → `snl_item_materials`:
+| material_name | `material_name` ; `material_category` = 'AGGREGATE' if name matches /aggregate|gsb|wmm/i, 'CEMENT' if /cement/i, 'BITUMEN' if /bitumen|emulsion/i, else 'OTHER' |
+| unit | `unit` |
+| qty_per_item_unit | `derived_per_unit` ; also `shift_output_ref` = item output, `quantity_per_shift` = round(qty_per_item_unit × item_output, 4) |
+| is_project_specific | `is_design_specific` |
+
+All rows use `project_category = 'ALL'`.
+
+---
+
+## 3. Import endpoint (admin-only) — `POST /api/snl/import`
+- `multipart/form-data` with an `.xlsx` file + optional `sourceName`, `sourceCode`, `year`.
+- Use the existing `xlsx` dependency to read the 4 sheets.
+- **Upsert source:** find/create one `snl_sources` row (e.g. code from the file's sector, name
+  like "AP WRD 2025-26" or "MoRTH SDB"). Use a `sourceCode` so re-import updates, not duplicates.
+- **Upsert items by `(source_id, item_code)`** (there's already a unique index
+  `snl_items_source_code_idx`). On update, delete that item's existing
+  productivity/equipment/labour/material child rows and re-insert from the sheet (clean refresh).
+- Return JSON: `{ itemsInserted, itemsUpdated, equipment, labour, materials, errors: [...] }`
+  with a row-level error list for any malformed rows (bad number, missing code).
+- Gate to admin role (same role gate the Norms Library page already uses).
+
+---
+
+## 4. Bundle the norm files as seed (norms ship with each copy)
+1. Put the sector `.xlsx` files in the repo at `server/seed/sdb/` (commit them). Start with:
+   `SDB_ROAD.xlsx`, `SDB_STRUCTURES.xlsx`, `SDB_IRRIGATION_CANALS.xlsx`, `SDB_GATES_HOIST.xlsx`
+   (download them from the links the user has).
+2. Add a **startup auto-seed**: on boot, if `snl_items` count is 0 (or a `seed_version` marker
+   is older), import every bundled file whose sector is in the enabled-sectors config (section 5).
+   Reuse the same parser as the import endpoint. This makes a fresh copy self-populate — the
+   customer does nothing.
+3. Keep the existing programmatic 17-item road seed as a fallback only if the bundled files are
+   absent (don't double-seed — guard by source/code uniqueness).
+
+---
+
+## 5. Sector gating (per-copy, simple)
+- Add config `ENABLED_SECTORS` (env var or a settings row), e.g. `"ROAD,STRUCTURE"`.
+- **Seed** only imports files whose sector is enabled.
+- **BOQ flow:** the project's sector picker lists only enabled sectors; SNL lookups/auto-map
+  filter `snl_items.sector IN (enabled)`. Default = all, if unset.
+- This is the licensing knob: a "Roads-only" customer's copy ships with `ENABLED_SECTORS=ROAD`.
+
+---
+
+## 6. Make duration work for ALL sectors (critical — avoids "duration = 0")
+SDB equipment rows are activity-specific machine-hours, not universal machine outputs. So:
+- **Primary:** when a BOQ item is SDB-mapped, the Work Programme AUTO duration should use the
+  item's **`snl_item_productivity.shift_output`** as the governing (bottleneck) output:
+  `duration_days = boq_qty / shift_output` (× shift→calendar factor as the engine already does).
+  The MoRTH/AP output already embeds the bottleneck-resource logic.
+- Wire this into the existing auto-duration path: if the mapped item has an `snl_item_productivity`
+  row, drive duration from `shift_output`; otherwise fall back to the current equipment-based
+  `calculateAutoDurationFull`.
+- **Equipment / labour / material demand** continue to come from the per-unit norms
+  (`derived_per_unit`) via `applySnlMappingToRecipes` / `calculateBomDemand` — unchanged.
+- Also apply the earlier **FIX 5** (link recipe equipment to planning types where names match) so
+  equipment counts still display; but duration no longer depends on it.
+
+---
+
+## 7. Template download (admin)
+`GET /api/snl/import-template` → returns a `.xlsx` with the 4 sheets, the exact headers from
+section 2, a READ_ME tab, and 1–2 sample rows. (Re-use any bundled file's layout.)
+
+---
+
+## 8. UI (admin-only) on the existing Norms Library page (`/norms`)
+- Add **"Import SDB"** button → file picker → POST `/api/snl/import` → show the result summary
+  (items/equipment/labour/materials inserted-updated + any error rows).
+- Add **"Download template"** button → `GET /api/snl/import-template`.
+- Add a **sector filter** dropdown on the catalog list (uses `snl_items.sector`).
+- Both buttons hidden for non-admin users.
+
+---
+
+## TEST PLAN
+1. **Seed:** fresh DB boot auto-loads enabled sectors → Norms Library shows hundreds of items
+   tagged by sector. Customer did nothing.
+2. **Admin import:** upload `SDB_IRRIGATION_CANALS.xlsx` → summary shows ~257 items; re-upload →
+   shows "updated" not duplicated.
+3. **Gating:** set `ENABLED_SECTORS=ROAD` → only road sector appears in the project sector picker
+   and norms list.
+4. **End-to-end:** create an Irrigation project → import a canal BOQ (with SDB codes) → items
+   auto-map → Work Programme AUTO duration is non-zero (driven by `shift_output`) → BOM shows
+   material/equipment/labour demand → DPR/IRN/PI flow works.
+5. **Template:** download template → matches the 4-sheet format → fill 1 row → import succeeds.
+6. Confirm no rates/costs appear anywhere except client BOQ rate.

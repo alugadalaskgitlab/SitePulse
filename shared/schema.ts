@@ -2649,6 +2649,7 @@ export const snlItems = pgTable("snl_items", {
   unit: text("unit").notNull(),
   workCategory: text("work_category").notNull(),
   workSubCategory: text("work_sub_category"),
+  sector: text("sector"),
   sourcePage: text("source_page"),
   specClause: text("spec_clause"),
   isMixSpecific: boolean("is_mix_specific").notNull().default(false),
