@@ -2478,9 +2478,6 @@ function renderScopePanel(){
   var sm = scopeState.mixing||{};
   var sv = scopeState.spraying||{};
   var sp = scopeState.paving||{};
-  var mType = mixTypes[0]||{binderPct:5.4,fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6}};
-  var aggL = parseFloat(((document.getElementById('aggLanded')||{}).value||'0').replace(/,/g,''))||0;
-  var bitP = n('bitPrice');
   var sMgn = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
   var mf = 1+sMgn/100;
 
@@ -2504,8 +2501,8 @@ function renderScopePanel(){
     if(sm.tipperHire) mx+=sc.tipperHire||0;
     if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
     if(sm.crew)       mx+=sc.crewPerMT||0;
-    if(sm.bitumen)    mx+=mType.binderPct/100*1000*bitP;
-    if(sm.aggregate)  mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*aggL;
+    if(sm.bitumen)    mx+=sc.bitumen||0;
+    if(sm.aggregate)  mx+=sc.aggregate||0;
     mx*=mf; totalMT+=mx;
     rows.push(_mk('🏭 Mixing',mx,'MT'));
   }
@@ -2532,7 +2529,8 @@ function renderScopePanel(){
     pv*=mf; totalMT+=pv;
     rows.push(_mk('🛣️ Paving',pv,'MT'));
   }
-  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.6px;margin-bottom:6px">Scope Breakdown</div>';
+  var _avgNote = mixTypes.length>1 ? '<span style="font-size:9px;font-weight:400;color:var(--gray-400);text-transform:none;letter-spacing:0"> — avg of '+mixTypes.length+' mix types</span>' : '';
+  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.6px;margin-bottom:6px">Scope Breakdown'+_avgNote+'</div>';
   html+=rows.join('');
   if(rows.length>1&&totalMT>0){
     html+='<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700;border-top:1px solid var(--gray-200);margin-top:5px;padding-top:5px">'
@@ -5449,8 +5447,9 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
       mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hire', esc(ce.name)+' — hire', ce.hire, 'MT'));
       if(ce.hsd>0) mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hsd', esc(ce.name)+' HSD (fuel)', ce.hsd, 'MT'));
     });
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen', 'Bitumen / Binder', sc.bitumen, 'MT'));
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)', sc.aggregate, 'MT'));
+    var _avgSuffix = mixTypes.length>1 ? ' <em style="font-size:10px;color:var(--gray-400)">(avg)</em>' : '';
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen', 'Bitumen / Binder'+_avgSuffix, sc.bitumen, 'MT'));
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)'+_avgSuffix, sc.aggregate, 'MT'));
     mixCont.appendChild(renderScopeAlwaysRow('Plant Crew + Overhead', sc.crewPerMT, 'MT'));
   }
 
