@@ -5,6 +5,8 @@ import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems } from "./snl
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
+import multer from 'multer';
+import { importSdbXlsx, buildImportTemplate } from './snlImporter';
 import PDFDocument from 'pdfkit';
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
@@ -10192,7 +10194,8 @@ export async function registerRoutes(
   app.get("/api/snl/sources/:id/items", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
-      res.json(await storage.getSnlItems(parseInt(req.params.id), category));
+      const sector = req.query.sector as string | undefined;
+      res.json(await storage.getSnlItems(parseInt(req.params.id), category, sector));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL items" });
     }
@@ -10213,7 +10216,8 @@ export async function registerRoutes(
       const q = (req.query.q as string) || "";
       const category = req.query.category as string | undefined;
       const sourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
-      res.json(await storage.searchSnlItems(q, category, sourceId));
+      const sector = req.query.sector as string | undefined;
+      res.json(await storage.searchSnlItems(q, category, sourceId, sector));
     } catch (err) {
       res.status(500).json({ error: "Failed to search SNL" });
     }
@@ -10300,6 +10304,38 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/snl/seed:", err);
       res.status(500).json({ error: "Seed failed" });
+    }
+  });
+
+  // ─── SNL Import (admin) ──────────────────────────────────────────────────
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+  app.post("/api/snl/import", upload.single("file"), async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const { sourceName, sourceCode, year } = req.body;
+      const result = await importSdbXlsx(req.file.buffer, {
+        sourceName: sourceName || undefined,
+        sourceCode: sourceCode || undefined,
+        year: year ? parseInt(year) : undefined,
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("POST /api/snl/import:", err);
+      res.status(500).json({ error: err.message ?? "Import failed" });
+    }
+  });
+
+  app.get("/api/snl/import-template", async (_req, res) => {
+    try {
+      const buf = buildImportTemplate();
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", 'attachment; filename="SDB_Import_Template.xlsx"');
+      res.send(buf);
+    } catch (err) {
+      console.error("GET /api/snl/import-template:", err);
+      res.status(500).json({ error: "Template generation failed" });
     }
   });
 
@@ -10611,29 +10647,64 @@ async function seedPlanningMasters() {
   }
 }
 
-// Bump this version string whenever the SNL seed data changes (shortLabels, new items, etc.)
-// The function checks the stored version and only re-seeds when the constant differs.
-const SNL_SEED_VERSION = "v3-embankment-subgrade-vocab";
+// Bump this version string whenever the SNL seed data changes.
+const SNL_SEED_VERSION = "v4-sdb-multi-sector";
+
+// Bundled SDB xlsx files shipped with the app in server/seed/sdb/
+const SDB_BUNDLES = [
+  { file: "SDB_ROAD.xlsx",             sourceCode: "SDB_ROAD",        sourceName: "AP SDB Road Works",           year: 2024 },
+  { file: "SDB_STRUCTURES.xlsx",       sourceCode: "SDB_STRUCTURES",  sourceName: "AP SDB Structures",           year: 2024 },
+  { file: "SDB_IRRIGATION_CANALS.xlsx",sourceCode: "SDB_IRRIGATION",  sourceName: "AP SDB Irrigation Canals",    year: 2024 },
+  { file: "SDB_GATES_HOIST.xlsx",      sourceCode: "SDB_GATES",       sourceName: "AP SDB Gates & Hoist",        year: 2024 },
+];
+
+async function seedSnlFromBundles(): Promise<void> {
+  const seedDir = path.resolve(process.cwd(), "server/seed/sdb");
+  const sources = await storage.getSnlSources();
+  const existingCodes = new Set(sources.map(s => s.code));
+  let totalNew = 0;
+  for (const bundle of SDB_BUNDLES) {
+    if (existingCodes.has(bundle.sourceCode)) {
+      continue; // already imported — skip (re-import only via POST /api/snl/import)
+    }
+    const filePath = path.join(seedDir, bundle.file);
+    if (!fs.existsSync(filePath)) {
+      console.log(`SNL bundle seed: ${bundle.file} not found, skipping`);
+      continue;
+    }
+    try {
+      const buf = fs.readFileSync(filePath);
+      const result = await importSdbXlsx(buf, {
+        sourceCode: bundle.sourceCode,
+        sourceName: bundle.sourceName,
+        year: bundle.year,
+      });
+      console.log(`SNL bundle seed: ${bundle.sourceCode} — ${result.itemsInserted} items, ${result.errors.length} errors`);
+      if (result.errors.length > 0) {
+        result.errors.slice(0, 10).forEach(e => console.error(`  SNL import error: ${e}`));
+      }
+      totalNew += result.itemsInserted;
+    } catch (err) {
+      console.error(`SNL bundle seed: ${bundle.file} failed:`, err);
+    }
+  }
+  if (totalNew > 0) console.log(`SNL bundle seed complete: ${totalNew} new items across all sectors`);
+}
 
 async function seedSnlItems() {
   try {
     const storedVersion = await storage.getSetting("snl_seed_version");
-    if (storedVersion === SNL_SEED_VERSION) {
-      // Seed is current — still run a global remap fire-and-forget so any items
-      // that were imported while the app was down get processed on next startup.
-      autoMapAllUnmappedItems().then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
-        .catch(err => console.error("SNL global remap failed:", err));
-      return;
+    if (storedVersion !== SNL_SEED_VERSION) {
+      console.log(`SNL: version mismatch (have "${storedVersion}", want "${SNL_SEED_VERSION}"), re-seeding in-memory items...`);
+      const result = await storage.seedSnlMorthSdb();
+      await storage.setSetting("snl_seed_version", SNL_SEED_VERSION);
+      console.log(`SNL in-memory seed complete: ${result.items} items from ${result.source.code}`);
     }
-    const sources = await storage.getSnlSources();
-    const totalItems = sources.reduce((sum, s) => sum + (s.itemCount ?? 0), 0);
-    console.log(`SNL: seed version mismatch (have "${storedVersion}", want "${SNL_SEED_VERSION}"), re-seeding ${totalItems} → latest...`);
-    const result = await storage.seedSnlMorthSdb();
-    await storage.setSetting("snl_seed_version", SNL_SEED_VERSION);
-    console.log(`SNL seed complete: ${result.items} items from ${result.source.code}`);
-    // After every seed (especially version upgrades), remap ALL unmapped/needs_review items
-    // so existing projects benefit from improved SNL data without requiring a manual re-import.
-    autoMapAllUnmappedItems().then(r => console.log(`SNL global remap: ${r.remapped} items processed`))
+    // Auto-import any bundled sector files not yet in the DB
+    await seedSnlFromBundles();
+    // Global remap — pick up items mapped while the app was down
+    autoMapAllUnmappedItems()
+      .then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
       .catch(err => console.error("SNL global remap failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);

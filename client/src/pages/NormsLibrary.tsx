@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, ChevronRight, Search, Loader2, RefreshCw,
   Wrench, Users, Package, BarChart3, ChevronDown, ChevronUp,
-  Database, AlertCircle,
+  Database, AlertCircle, Upload, Download, Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,38 @@ interface SnlItemFull {
   }>;
 }
 
+interface ImportResult {
+  sourceName: string;
+  sourceCode: string;
+  itemsInserted: number;
+  itemsUpdated: number;
+  equipment: number;
+  labour: number;
+  materials: number;
+  errors: string[];
+}
+
+const SECTOR_OPTIONS = [
+  { value: "", label: "All Sectors" },
+  { value: "ROAD", label: "ROAD" },
+  { value: "STRUCTURE", label: "STRUCTURE" },
+  { value: "IRRIGATION", label: "IRRIGATION" },
+  { value: "GATES_HOIST", label: "GATES & HOIST" },
+  { value: "BUILDING", label: "BUILDING" },
+  { value: "WATER", label: "WATER" },
+  { value: "ELECTRICAL", label: "ELECTRICAL" },
+];
+
+const SECTOR_COLORS: Record<string, string> = {
+  ROAD: "bg-orange-100 text-orange-700 border-orange-200",
+  STRUCTURE: "bg-blue-100 text-blue-700 border-blue-200",
+  IRRIGATION: "bg-teal-100 text-teal-700 border-teal-200",
+  GATES_HOIST: "bg-purple-100 text-purple-700 border-purple-200",
+  BUILDING: "bg-amber-100 text-amber-700 border-amber-200",
+  WATER: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  ELECTRICAL: "bg-yellow-100 text-yellow-700 border-yellow-200",
+};
+
 const CATEGORY_COLORS: Record<string, string> = {
   EARTHWORK: "bg-orange-100 text-orange-700 border-orange-200",
   GRANULAR: "bg-amber-100 text-amber-700 border-amber-200",
@@ -108,7 +141,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 function catBadge(cat: string) {
-  const cls = CATEGORY_COLORS[cat] ?? "bg-slate-100 text-slate-600 border-slate-200";
+  const cls = SECTOR_COLORS[cat] ?? CATEGORY_COLORS[cat] ?? "bg-slate-100 text-slate-600 border-slate-200";
   return <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${cls}`}>{cat}</span>;
 }
 
@@ -155,7 +188,6 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
           <p className="text-sm font-medium mt-0.5">{item.description}</p>
           <p className="text-xs text-muted-foreground">Unit: <span className="font-medium">{item.unit}</span> · Source: {item.source.code} ({item.source.year}) · {item.source.authority}</p>
         </div>
-        {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
           {cats.filter(c => c !== "ALL").length > 1 && (
             <div className="flex items-center gap-1">
@@ -177,7 +209,6 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
         </div>
       </div>
 
-      {/* Productivity */}
       {prod.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
           <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><BarChart3 className="w-3 h-3" />SHIFT PRODUCTIVITY</p>
@@ -291,14 +322,17 @@ function ItemDetailPanel({ itemId }: { itemId: number }) {
 
 // ─── Items List ──────────────────────────────────────────────────────────────
 
-function SourceItemsList({ sourceId }: { sourceId: number }) {
+function SourceItemsList({ sourceId, sectorFilter }: { sourceId: number; sectorFilter?: string }) {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [catFilter, setCatFilter] = useState<string>("");
 
   const { data: items = [], isLoading } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/sources", sourceId, "items", catFilter],
+    queryKey: ["/api/snl/sources", sourceId, "items", catFilter, sectorFilter],
     queryFn: async () => {
-      const url = catFilter ? `/api/snl/sources/${sourceId}/items?category=${catFilter}` : `/api/snl/sources/${sourceId}/items`;
+      const params = new URLSearchParams();
+      if (catFilter) params.set("category", catFilter);
+      if (sectorFilter) params.set("sector", sectorFilter);
+      const url = `/api/snl/sources/${sourceId}/items${params.size ? "?" + params.toString() : ""}`;
       const res = await fetch(url, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
@@ -311,7 +345,6 @@ function SourceItemsList({ sourceId }: { sourceId: number }) {
   return (
     <div className="flex gap-4 h-full">
       <div className="w-72 shrink-0 space-y-1 overflow-y-auto pr-1">
-        {/* Category filter */}
         <div className="flex flex-wrap gap-1 mb-2">
           <button onClick={() => setCatFilter("")} className={`text-[12px] px-2 py-0.5 rounded border transition-colors ${!catFilter ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-600 hover:border-teal-400"}`}>All</button>
           {categories.map(c => (
@@ -352,14 +385,16 @@ function SourceItemsList({ sourceId }: { sourceId: number }) {
 
 // ─── Search Panel ────────────────────────────────────────────────────────────
 
-function SearchPanel() {
+function SearchPanel({ sectorFilter }: { sectorFilter?: string }) {
   const [q, setQ] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
 
   const { data: results = [], isLoading, isFetching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", q],
+    queryKey: ["/api/snl/search", q, sectorFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/snl/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      const params = new URLSearchParams({ q });
+      if (sectorFilter) params.set("sector", sectorFilter);
+      const res = await fetch(`/api/snl/search?${params.toString()}`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
     enabled: q.trim().length > 1 || q === "",
@@ -416,8 +451,12 @@ function SearchPanel() {
 
 export default function NormsLibrary() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [tab, setTab] = useState<"browse" | "search">("browse");
+  const [sectorFilter, setSectorFilter] = useState<string>("");
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sources = [], isLoading, refetch } = useQuery<SnlSource[]>({
     queryKey: ["/api/snl/sources"],
@@ -432,13 +471,49 @@ export default function NormsLibrary() {
     onError: () => toast({ title: "Seed failed", variant: "destructive" }),
   });
 
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/snl/import", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(err.error ?? "Import failed");
+      }
+      return res.json() as Promise<ImportResult>;
+    },
+    onSuccess: async (data) => {
+      setImportResult(data);
+      await queryClient.invalidateQueries({ queryKey: ["/api/snl/sources"] });
+      toast({
+        title: `Import complete — ${data.sourceName}`,
+        description: `${data.itemsInserted} inserted, ${data.itemsUpdated} updated, ${data.errors.length} errors`,
+      });
+    },
+    onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+  });
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) importMutation.mutate(file);
+    e.target.value = "";
+  }
+
+  function handleTemplateDownload() {
+    window.location.href = "/api/snl/import-template";
+  }
+
   const hasSource = sources.length > 0;
   const activeSource = sources.find(s => s.id === selectedSourceId);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-teal-600" />
@@ -448,18 +523,95 @@ export default function NormsLibrary() {
             Reference norms from MoRTH, IS codes, and other authoritative sources. Use "Map to Norm" inside any BOQ item to populate its recipes.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => seedMutation.mutate()}
-          disabled={seedMutation.isPending}
-          className="shrink-0"
-          data-testid="button-seed-snl"
-        >
-          {seedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Database className="w-3.5 h-3.5 mr-1" />}
-          {hasSource ? "Re-seed MoRTH SDB" : "Load MoRTH SDB 2019"}
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Sector filter */}
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+            <select
+              value={sectorFilter}
+              onChange={e => setSectorFilter(e.target.value)}
+              className="h-8 text-sm rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              data-testid="select-sector-filter"
+            >
+              {SECTOR_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Admin buttons */}
+          {isAdmin && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTemplateDownload}
+                className="shrink-0"
+                data-testid="button-download-template"
+              >
+                <Download className="w-3.5 h-3.5 mr-1" />
+                Download template
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importMutation.isPending}
+                className="shrink-0"
+                data-testid="button-import-sdb"
+              >
+                {importMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
+                Import SDB
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={handleFileChange}
+                data-testid="input-import-file"
+              />
+            </>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => seedMutation.mutate()}
+            disabled={seedMutation.isPending}
+            className="shrink-0"
+            data-testid="button-seed-snl"
+          >
+            {seedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Database className="w-3.5 h-3.5 mr-1" />}
+            {hasSource ? "Re-seed MoRTH SDB" : "Load MoRTH SDB 2019"}
+          </Button>
+        </div>
       </div>
+
+      {/* Import result summary */}
+      {importResult && (
+        <div className="rounded-xl border border-teal-200 bg-teal-50/40 p-4 text-sm space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-teal-800">Import complete — {importResult.sourceName} ({importResult.sourceCode})</p>
+            <button onClick={() => setImportResult(null)} className="text-xs text-muted-foreground hover:text-slate-700">dismiss</button>
+          </div>
+          <div className="flex gap-4 text-[13px] text-slate-700">
+            <span>✓ {importResult.itemsInserted} inserted</span>
+            <span>↻ {importResult.itemsUpdated} updated</span>
+            <span>⚙ {importResult.equipment} equip rows</span>
+            <span>👷 {importResult.labour} labour rows</span>
+            <span>📦 {importResult.materials} material rows</span>
+          </div>
+          {importResult.errors.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-xs text-red-600 cursor-pointer">{importResult.errors.length} row error(s)</summary>
+              <ul className="mt-1 text-xs text-red-700 space-y-0.5 ml-3">
+                {importResult.errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="py-16 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…</div>
@@ -469,7 +621,7 @@ export default function NormsLibrary() {
           <p className="text-sm">No norm sources loaded yet.</p>
           <Button onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending} className="bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-seed-snl-empty">
             {seedMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Database className="w-4 h-4 mr-2" />}
-            Load MoRTH SDB 2019 (5 items)
+            Load MoRTH SDB 2019
           </Button>
         </div>
       ) : (
@@ -506,8 +658,10 @@ export default function NormsLibrary() {
             <TabsContent value="browse" className="mt-3">
               {selectedSourceId && activeSource ? (
                 <div className="rounded-xl border p-4 min-h-[400px]">
-                  <p className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">{activeSource.name} — {activeSource.itemCount} items</p>
-                  <SourceItemsList sourceId={selectedSourceId} />
+                  <p className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+                    {activeSource.name} — {activeSource.itemCount} items{sectorFilter ? ` · filtered: ${sectorFilter}` : ""}
+                  </p>
+                  <SourceItemsList sourceId={selectedSourceId} sectorFilter={sectorFilter || undefined} />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2 rounded-xl border border-dashed">
@@ -519,7 +673,7 @@ export default function NormsLibrary() {
 
             <TabsContent value="search" className="mt-3">
               <div className="rounded-xl border p-4 min-h-[400px]">
-                <SearchPanel />
+                <SearchPanel sectorFilter={sectorFilter || undefined} />
               </div>
             </TabsContent>
           </Tabs>

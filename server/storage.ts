@@ -20670,9 +20670,10 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getSnlItems(sourceId: number, category?: string): Promise<SnlItem[]> {
+  async getSnlItems(sourceId: number, category?: string, sector?: string): Promise<SnlItem[]> {
     const conds = [eq(snlItems.sourceId, sourceId), eq(snlItems.isActive, true)];
     if (category) conds.push(eq(snlItems.workCategory, category));
+    if (sector) conds.push(sql`coalesce(${snlItems.sector}, ${snlItems.workCategory}) = ${sector}`);
     return db.select().from(snlItems).where(and(...conds)).orderBy(snlItems.chapterNo, snlItems.itemCode);
   }
 
@@ -20690,7 +20691,7 @@ export class DatabaseStorage implements IStorage {
     return { ...item, source, productivity, equipment, labour, materials };
   }
 
-  async searchSnlItems(q: string, category?: string, sourceId?: number): Promise<SnlSearchResult[]> {
+  async searchSnlItems(q: string, category?: string, sourceId?: number, sector?: string): Promise<SnlSearchResult[]> {
     const conds: ReturnType<typeof eq>[] = [eq(snlItems.isActive, true)];
     if (q.trim()) {
       // Split on whitespace and require ALL words to appear somewhere in code|description|shortLabel.
@@ -20706,6 +20707,7 @@ export class DatabaseStorage implements IStorage {
     }
     if (category) conds.push(eq(snlItems.workCategory, category));
     if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
+    if (sector) conds.push(sql`coalesce(${snlItems.sector}, ${snlItems.workCategory}) = ${sector}`);
 
     const rows = await db
       .select({
