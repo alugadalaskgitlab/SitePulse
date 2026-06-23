@@ -1,0 +1,351 @@
+# SitePulse — Mix Calculator Rate Reconciliation Fix
+
+**File to edit:** `client/public/mix-calculator.html`
+**Goal:** Make **"Plant Subtotal"**, **"Detailed Scope of Work"**, and **"Scope Breakdown"** all reconcile to the same cost basis.
+
+---
+
+## Why the three numbers disagreed (root cause)
+
+The calculator had **three independent cost engines** that each computed bitumen & aggregate differently:
+
+| Panel | Engine | Mix used | Wastage applied? | Margin baked in? |
+|---|---|---|---|---|
+| **Plant Subtotal** (Rate Summary) | `mixRates` | each mix (per-mix) | ✅ yes | ❌ no |
+| **Detailed Scope of Work** | `calcScopeComponents` | **AVERAGED across all mixes** | ❌ no | ✅ yes |
+| **Scope Breakdown** | `renderScopePanel` | **mixTypes[0] only** | ❌ no | ✅ yes |
+
+So e.g. `5516` (Plant Subtotal) vs `5922` (Detailed Scope) vs `6349` (Scope Breakdown) came from: averaging instead of using the selected mix + missing aggregate/bitumen **wastage** + **margin** being mixed into the displayed cost.
+> The earlier "average rates across mix types" change made this **worse**, not better.
+
+## The fix (agreed approach)
+
+1. **Single source of truth** = the per-mix **Plant Subtotal** basis (selected/active mix, *with* aggregate & bitumen wastage, **no margin**).
+2. Scope panels use the **active/selected mix only** (not an average, not always mix #1).
+3. Scope panels show **pre-margin cost** (so they match Plant Subtotal), with **margin on a separate, clearly-labelled line**.
+
+Apply the 8 find/replace edits below **exactly** (whitespace matters). All edits are inside `client/public/mix-calculator.html`.
+
+---
+
+### EDIT 1 — `calcScopeComponentsFromInputs`: use the active mix + apply wastage
+
+**FIND:**
+```js
+  var bitPrice = _v('bitPrice');
+  var bitCostPerMT = mTypes.length>0 ? mTypes.reduce(function(s,m){return s+(m.binderPct||0);},0)/mTypes.length/100*1000*bitPrice : 0;
+
+  var aggLandedVal = 0;
+  if(inp._aggLanded!=null){ aggLandedVal=parseFloat(inp._aggLanded)||0; }
+  else {
+    var _aRate=_v('aggRate'), _aDens=_v('aggDensity'), _aDist=_v('aggDist'), _aFr=_v('aggFreightRate'), _aPl=_v('aggPayload');
+    var _aFrt=_aPl>0?(_aDist*2*_aFr/_aPl):0;
+    var _aBasis=inp._aggBasis||'MT';
+    var _aRateMT=(_aBasis==='CFT'&&_aDens>0)?(_aRate/_aDens*35.3147):_aRate;
+    aggLandedVal=_aRateMT+_aFrt;
+  }
+  var avgAggFrac = mTypes.length>0 ? mTypes.reduce(function(s,m){return s+FRAC_KEYS.reduce(function(a,k){return a+((m.fractions||{})[k]||0);},0);},0)/mTypes.length/100 : 0;
+  var aggCostPerMT = avgAggFrac * aggLandedVal;
+```
+
+**REPLACE WITH:**
+```js
+  var bitPrice = _v('bitPrice');
+  // Wastage uplifts — identical to the per-mix Rate Summary engine (single source of truth)
+  var _aggWastePct = _v('aggWastage');
+  var _bitWastePct = _v('bitWastage');
+  // Use the ACTIVE / selected mix only so scope rates reconcile with "Plant Subtotal"
+  var _scIdx = (inp._activeMixIdx!=null ? inp._activeMixIdx : 0);
+  var _scMix = mTypes[_scIdx] || mTypes[0] || {binderPct:0, fractions:{}};
+  var _scBitFrac = (_scMix.binderPct||0)/100;
+  var _scBitKgPerMT = _scBitFrac*1000*(1+_bitWastePct/100);
+  var bitCostPerMT = _scBitKgPerMT*bitPrice;
+
+  var aggLandedVal = 0;
+  if(inp._aggLanded!=null){ aggLandedVal=parseFloat(inp._aggLanded)||0; }
+  else {
+    var _aRate=_v('aggRate'), _aDens=_v('aggDensity'), _aDist=_v('aggDist'), _aFr=_v('aggFreightRate'), _aPl=_v('aggPayload');
+    var _aFrt=_aPl>0?(_aDist*2*_aFr/_aPl):0;
+    var _aBasis=inp._aggBasis||'MT';
+    var _aRateMT=(_aBasis==='CFT'&&_aDens>0)?(_aRate/_aDens*35.3147):_aRate;
+    aggLandedVal=_aRateMT+_aFrt;
+  }
+  var _scAggFrac = FRAC_KEYS.reduce(function(a,k){return a+((_scMix.fractions||{})[k]||0);},0)/100;
+  var aggCostPerMT = _scAggFrac*(1+_aggWastePct/100)*aggLandedVal;
+```
+
+---
+
+### EDIT 2 — `calcScopeComponents`: tell the engine which mix is active
+
+**FIND:**
+```js
+  inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  if(_wTransPerMT > 0) inp._wTransOverride = _wTransPerMT;
+  return calcScopeComponentsFromInputs(inp, equipDefs, mixTypes);
+```
+
+**REPLACE WITH:**
+```js
+  inp._aggLanded = parseFloat(((document.getElementById('aggLanded')||{}).value||'').replace(/,/g,''))||0;
+  inp._activeMixIdx = activeMixIdx;
+  if(_wTransPerMT > 0) inp._wTransOverride = _wTransPerMT;
+  return calcScopeComponentsFromInputs(inp, equipDefs, mixTypes);
+```
+
+---
+
+### EDIT 3 — `renderScopePanel` ("Scope Breakdown"): active mix + wastage + margin as a separate line
+
+**FIND:** (the block starting `var mType = mixTypes[0]||{binderPct:5.4,...` down to `el.innerHTML=html;`)
+```js
+  var mType = mixTypes[0]||{binderPct:5.4,fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6}};
+  var aggL = parseFloat(((document.getElementById('aggLanded')||{}).value||'0').replace(/,/g,''))||0;
+  var bitP = n('bitPrice');
+  var sMgn = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
+  var mf = 1+sMgn/100;
+
+  function _mk(label,val,unit,color){
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;padding:3px 0">'
+      +'<span style="color:var(--gray-600)">'+label+'</span>'
+      +'<span style="font-weight:600;color:'+(color||'var(--gray-800)')+'">₹'+fmtR(val)
+      +'<span style="font-size:10px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>'
+      +'</div>';
+  }
+
+  var rows=[], totalMT=0;
+  if(sg.mixing){
+    var mx=0;
+    if(sm.hotmixHire) mx+=sc.hotmixHire||0;
+    if(sm.ldo)        mx+=sc.ldo||0;
+    if(sm.dgHire)     mx+=sc.dgHire||0;
+    if(sm.dgHsd)      mx+=sc.dgHsd||0;
+    if(sm.jcbHire)    mx+=sc.jcbHire||0;
+    if(sm.jcbHsd)     mx+=sc.jcbHsd||0;
+    if(sm.tipperHire) mx+=sc.tipperHire||0;
+    if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
+    if(sm.crew)       mx+=sc.crewPerMT||0;
+    if(sm.bitumen)    mx+=mType.binderPct/100*1000*bitP;
+    if(sm.aggregate)  mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*aggL;
+    mx*=mf; totalMT+=mx;
+    rows.push(_mk('🏭 Mixing',mx,'MT'));
+  }
+  if(sg.transport){
+    var tx = (typeof _wTransPerMT!=='undefined'&&_wTransPerMT>0)?_wTransPerMT:(sc.transPerMT||0);
+    tx*=mf; totalMT+=tx;
+    rows.push(_mk('🚛 Transport',tx,'MT'));
+  }
+  if(sg.spraying){
+    var prC = sv.prime?(sc.primeEm+sc.sprayOp):0;
+    var tkC = sv.tack?(sc.tackEm+sc.sprayOp):0;
+    var spTotal = (prC+tkC)*mf;
+    if(spTotal>0) rows.push(_mk('💦 Spraying',spTotal,'sqm'));
+  }
+  if(sg.paving){
+    var pv=0;
+    if(sp.paverHire) pv+=sc.paverHire||0;
+    if(sp.paverHsd)  pv+=sc.paverHsd||0;
+    if(sp.rollerHire)pv+=sc.rollerHire||0;
+    if(sp.rollerHsd) pv+=sc.rollerHsd||0;
+    if(sp.ptrHire&&sc.ptrEnabled)  pv+=sc.ptrHire||0;
+    if(sp.ptrHsd&&sc.ptrEnabled)   pv+=sc.ptrHsd||0;
+    if(sp.crew)      pv+=sc.layCrewPerMT||0;
+    pv*=mf; totalMT+=pv;
+    rows.push(_mk('🛣️ Paving',pv,'MT'));
+  }
+  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.6px;margin-bottom:6px">Scope Breakdown</div>';
+  html+=rows.join('');
+  if(rows.length>1&&totalMT>0){
+    html+='<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700;border-top:1px solid var(--gray-200);margin-top:5px;padding-top:5px">'
+      +'<span style="color:#1e3a5f">Scope Total (₹/MT)</span>'
+      +'<span style="color:var(--amber)">₹'+fmtR(totalMT)+'</span></div>';
+  }
+  el.innerHTML=html;
+```
+
+**REPLACE WITH:**
+```js
+  var mType = mixTypes[activeMixIdx]||mixTypes[0]||{binderPct:5.4,fractions:{f20mm:25,f10mm:20,f6mm:15,fDust:30,fFiller:4.6}};
+  var aggL = parseFloat(((document.getElementById('aggLanded')||{}).value||'0').replace(/,/g,''))||0;
+  var bitP = n('bitPrice');
+  var _aggW = n('aggWastage');   // wastage uplift — match Plant Subtotal basis
+  var _bitW = n('bitWastage');
+  var sMgn = parseFloat((document.getElementById('scopeMarginPct')||{}).value)||0;
+
+  function _mk(label,val,unit,color){
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;padding:3px 0">'
+      +'<span style="color:var(--gray-600)">'+label+'</span>'
+      +'<span style="font-weight:600;color:'+(color||'var(--gray-800)')+'">₹'+fmtR(val)
+      +'<span style="font-size:10px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>'
+      +'</div>';
+  }
+
+  var rows=[], totalMT=0;
+  if(sg.mixing){
+    var mx=0;
+    if(sm.hotmixHire) mx+=sc.hotmixHire||0;
+    if(sm.ldo)        mx+=sc.ldo||0;
+    if(sm.dgHire)     mx+=sc.dgHire||0;
+    if(sm.dgHsd)      mx+=sc.dgHsd||0;
+    if(sm.jcbHire)    mx+=sc.jcbHire||0;
+    if(sm.jcbHsd)     mx+=sc.jcbHsd||0;
+    if(sm.tipperHire) mx+=sc.tipperHire||0;
+    if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
+    if(sm.crew)       mx+=sc.crewPerMT||0;
+    if(sm.bitumen)    mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
+    if(sm.aggregate)  mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
+    totalMT+=mx;
+    rows.push(_mk('🏭 Mixing',mx,'MT'));
+  }
+  if(sg.transport){
+    var tx = (typeof _wTransPerMT!=='undefined'&&_wTransPerMT>0)?_wTransPerMT:(sc.transPerMT||0);
+    totalMT+=tx;
+    rows.push(_mk('🚛 Transport',tx,'MT'));
+  }
+  if(sg.spraying){
+    var prC = sv.prime?(sc.primeEm+sc.sprayOp):0;
+    var tkC = sv.tack?(sc.tackEm+sc.sprayOp):0;
+    var spTotal = prC+tkC;
+    if(spTotal>0) rows.push(_mk('💦 Spraying',spTotal,'sqm'));
+  }
+  if(sg.paving){
+    var pv=0;
+    if(sp.paverHire) pv+=sc.paverHire||0;
+    if(sp.paverHsd)  pv+=sc.paverHsd||0;
+    if(sp.rollerHire)pv+=sc.rollerHire||0;
+    if(sp.rollerHsd) pv+=sc.rollerHsd||0;
+    if(sp.ptrHire&&sc.ptrEnabled)  pv+=sc.ptrHire||0;
+    if(sp.ptrHsd&&sc.ptrEnabled)   pv+=sc.ptrHsd||0;
+    if(sp.crew)      pv+=sc.layCrewPerMT||0;
+    totalMT+=pv;
+    rows.push(_mk('🛣️ Paving',pv,'MT'));
+  }
+  var html='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray-400);letter-spacing:.6px;margin-bottom:6px">Scope Breakdown <span style="font-weight:500;text-transform:none;color:var(--gray-400)">(cost, pre-margin)</span></div>';
+  html+=rows.join('');
+  var _scopeMgnMT = totalMT*sMgn/100;
+  if(totalMT>0){
+    html+='<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;border-top:1px solid var(--gray-200);margin-top:5px;padding-top:5px">'
+      +'<span style="color:#1e3a5f;font-weight:600">Scope Cost (₹/MT)</span>'
+      +'<span style="color:var(--gray-800);font-weight:700">₹'+fmtR(totalMT)+'</span></div>';
+    if(sMgn>0){
+      html+=_mk('Margin ('+sMgn+'%)',_scopeMgnMT,'MT','var(--gray-600)');
+      html+='<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:700;border-top:1px solid var(--gray-200);margin-top:5px;padding-top:5px">'
+        +'<span style="color:#1e3a5f">Quoted Rate (₹/MT)</span>'
+        +'<span style="color:var(--amber)">₹'+fmtR(totalMT+_scopeMgnMT)+'</span></div>';
+    }
+  }
+  el.innerHTML=html;
+```
+
+---
+
+### EDIT 4 — `computeMixScopeRate` (cached per-mix scope rate used by BOQ): apply wastage
+
+**FIND:**
+```js
+    var mixBitumen   =(sg.mixing&&sm.bitumen)   ?(mType.binderPct/100*1000*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&sm.aggregate) ?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*aggLandedVal):0;
+```
+
+**REPLACE WITH:**
+```js
+    var _cmAggW=n('aggWastage'), _cmBitW=n('bitWastage');
+    var mixBitumen   =(sg.mixing&&sm.bitumen)   ?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&sm.aggregate) ?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
+```
+
+---
+
+### EDIT 5 — `renderScopeQuotation` ("Detailed Scope of Work"): keep `mixBase` pre-margin
+
+**FIND:**
+```js
+    mixBase += sc.crewPerMT;
+    mixBase *= mf;
+  }
+  var transTotal  = showTrans  ? sc.transPerMT * mf : 0;
+```
+
+**REPLACE WITH:**
+```js
+    mixBase += sc.crewPerMT;
+    // mixBase kept PRE-MARGIN — margin applied once at the grand total
+  }
+  var transTotal  = showTrans  ? sc.transPerMT : 0;
+```
+
+---
+
+### EDIT 6 — `renderScopeQuotation`: spraying rows pre-margin
+
+**FIND:**
+```js
+    primeSprayTotal = (spOp + prEm) * mf;
+    tackSprayTotal  = (spOp + tkEm) * mf;
+```
+
+**REPLACE WITH:**
+```js
+    primeSprayTotal = (spOp + prEm);
+    tackSprayTotal  = (spOp + tkEm);
+```
+
+---
+
+### EDIT 7 — `renderScopeQuotation`: keep `pavBase` pre-margin
+
+**FIND:**
+```js
+    pavBase += sc.layCrewPerMT;
+    pavBase *= mf;
+  }
+```
+
+**REPLACE WITH:**
+```js
+    pavBase += sc.layCrewPerMT;
+    // pavBase kept PRE-MARGIN — margin applied once at the grand total
+  }
+```
+
+---
+
+### EDIT 8 — `renderScopeQuotation`: compute margin once, on the pre-margin base
+
+**FIND:**
+```js
+  var primeCost = showPrime ? primeSprayTotal * scopePrimeArea : 0;
+  var tackCost  = showTack  ? tackSprayTotal  * scopeTackArea  : 0;
+  var grandScopeTotal = mtCost + primeCost + tackCost;
+  var marginAmt = (scopeMargin > 0 && mf > 0) ? grandScopeTotal * (1 - 1/mf) : 0;
+  var baseAmt   = grandScopeTotal - marginAmt;
+```
+
+**REPLACE WITH:**
+```js
+  var primeCost = showPrime ? primeSprayTotal * scopePrimeArea : 0;
+  var tackCost  = showTack  ? tackSprayTotal  * scopeTackArea  : 0;
+  var baseAmt   = mtCost + primeCost + tackCost;            // pre-margin cost (reconciles with Plant Subtotal)
+  var marginAmt = baseAmt * scopeMargin/100;                // margin shown as a separate line
+  var grandScopeTotal = baseAmt + marginAmt;
+```
+
+---
+
+### EDIT 8b — `renderScopeQuotation`: relabel header (it now shows cost, not a margin-inclusive quote)
+
+**FIND:**
+```js
+  var marginNote = scopeMargin>0 ? ' <span style="font-size:10px;color:var(--gray-500);font-weight:500">(incl. '+scopeMargin+'% margin)</span>' : '';
+  var outHtml = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Quoted Scope Rate'+marginNote+'</div><div class="scope-output-grid">';
+```
+
+**REPLACE WITH:**
+```js
+  var marginNote = ' <span style="font-size:10px;color:var(--gray-500);font-weight:500">(cost, pre-margin)</span>';
+  var outHtml = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin-bottom:10px">Scope Rate'+marginNote+'</div><div class="scope-output-grid">';
+```
+
+---
+
+## After applying — how to verify (2 min)
