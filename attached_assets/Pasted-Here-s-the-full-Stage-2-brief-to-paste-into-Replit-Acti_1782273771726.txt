@@ -1,0 +1,109 @@
+Here's the full **Stage 2** brief to paste into Replit 👇
+Action: view_file({"path": "/app/SITEPULSE_MIXCALC_STAGE2.md"})
+Observation: [Showing lines 1-105 of 105 total] /app/SITEPULSE_MIXCALC_STAGE2.md:
+1|# SitePulse Mix Calculator — Rate Consistency Rebuild (STAGE 2 of 3)
+2|
+3|**File:** `client/public/mix-calculator.html`
+4|**Prereq:** Stage 1 done — the shared `computeRate(mix, opts)` engine exists, the Quote-Mode bar is unhidden with **Materials by (Us/Client)** + **₹/MT↔₹/CUM** switches, estimating panels iterate only **mixes used in Sites/Jobs**, and Stage 1's 6-point checklist passes.
+5|
+6|**Stage 2 goal:** make the **per-job/site rate cards**, the **Impact/variation** feature, and the **Per-km / Lumpsum** quotes all run through the SAME `computeRate` engine, so a mix shows the identical rate in the job card, the panels, and Profitability — and the "is this profitable?" answer is consistent.
+7|
+8|> This brief defines behaviour. Implement, then run the Stage 2 test checklist in the running app.
+9|
+10|---
+11|
+12|## 1. Per-job rate cards (`renderJobCard` + the recalc cell-filler)
+13|
+14|The job card table cells (`jmPlantRate_*`, `jmTransRate_*`, `jmLayRate_*`, `jmTotalRate_*` and their `*Cum` twins) are filled inside `recalc`. Route them through `computeRate`:
+15|
+16|For each job `j`, each mix row `mx` (mix = `mixTypes[mx.mixIdx]`):
+17|```js
+18|var r = computeRate(mix, { transPerMT: siteLeadTransPerMT(site), quoteMode: quoteMode, materialsBy: materialsBy });
+19|// Plant column = mixing cost only (layers 1-6 + overhead), regardless of scope:
+20|var plantPerMT = r.layers.plantHire + r.layers.plantHsd + r.layers.crew + r.layers.ovh
+21|               + (materialsBy==='client' ? 0 : (r.layers.agg + r.layers.bit + r.layers.ldo));
+22|var transPerMT = (quoteMode!=='supply_only') ? r.layers.trans : 0;
+23|var layPerMT   = (quoteMode==='supply_laying'||quoteMode==='full_road') ? r.layers.lay : 0;
+24|var totalPerMT = r.perMT_cost;          // already = plant+trans+lay per the active scope
+25|```
+26|Rules:
+27|- **Plant ₹/MT** must drop aggregate+bitumen+LDO when `materialsBy='client'` (Replit Task 3). The job card already shows Plant/Trans/Lay separately — keep that, it's the clearest breakdown — but each comes from `r.layers`.
+28|- **₹/CUM** columns = the ₹/MT value × `mix.density` (use `r.perCUM_cost` for the total).
+29|- **Total ₹/MT** respects the current **Quote Mode** (so a "Supply only" job card total excludes transport & laying, matching the Rate Summary).
+30|- Per-site **transport** uses that site's lead km; label the Trans column header or cell tooltip `@ <lead> km`.
+31|- Coat rows (Prime/Tack) stay per-sqm from the same prime/tack component values.
+32|
+33|## 2. Detailed Scope alignment
+34|
+35|- Detailed Scope of Work must iterate the **same used-mix set** as the job cards (not the active mix only) when jobs exist; show one block per used mix, or a quantity-weighted roll-up clearly labelled "All jobs (weighted)". Default: **per-mix blocks** (no averaging).
+36|- Its Mixing/Transport/Spraying/Paving group totals must equal the corresponding `computeRate` layers for that mix + current switches. Pre-margin cost + a separate margin line (already from Stage-1 work).
+37|
+38|## 3. Impact / Variation (original vs varied) — `renderProfitability` scenario path
+39|
+40|Today this uses `_baseCost` / `_scenarioCost` and `revisedMixRates` / `frozenBaseMixRates` / `scenarioBaseVals`. Re-base it on `computeRate` so Impact reconciles with every panel:
+41|
+42|- **Original rate** = `computeRate(mix, {…, _inputs: baseInputs})` using the frozen base prices.
+43|- **Varied rate** = `computeRate(mix, {…, _inputs: variedInputs})` using the current/varied prices.
+44|- To support this cleanly, let `computeRate` optionally take an `inp` snapshot (price set) instead of reading the live DOM, so you can call it twice (base vs varied) without mutating the UI:
+45|```js
+46|function computeRate(mix, opts){
+47|  var P = (opts && opts.prices) || livePrices();   // {aggLanded,bitPrice,ldoPerMT,plantEquipPerMT,plantHsdPerMT,crewPerMT,layPerMT,overheadPerMT, aggWastage,bitWastage}
+48|  // …use P.* instead of reading DOM directly…
+49|}
+50|```
+51|- For each used mix per site show: **Original ₹/unit · Varied ₹/unit · Δ (₹ & %)**, then at the contract/quoted price show **Profit at original cost** vs **Profit at varied cost** (₹ and %). This is the heart of your negotiation tool — same numbers as the rate cards.
+52|- Keep the existing **Target Margin "Ask"** reverse-calc; it should compute off the **varied** cost when a scenario is active (it already branches on `scenarioMode`), and the "Ask" rate must equal `computeRate`-derived cost / (1 − margin).
+53|
+54|## 4. Per-km quote (per-site `perkm` mode)
+55|
+56|When a site is in **Per km** mode:
+57|```js
+58|// Our cost per km, from the jobs in that stretch:
+59|var stretchKm = site.totalRoadKm;                  // from road length
+60|var ourCostForStretch = Σ over used mixes: computeRate(mix,{transPerMT:lead}).perMT_cost * mixMT_in_stretch
+61|                        + primeCost + tackCost;     // per current Quote Mode + materialsBy
+62|var ourCostPerKm = stretchKm>0 ? ourCostForStretch / stretchKm : 0;
+63|```
+64|Show three labelled numbers: **Our cost ₹/km** · **Contract ₹/km** (their offer / your ask) · **Profit ₹/km** = Contract − Our cost, plus **Total profit** = profit/km × km. Apply the per-km adjustment as today. Add the **"includes:" chip** so it's clear whether materials/transport/laying are in the per-km figure.
+65|
+66|## 5. Lumpsum quote (per-site `lumpsum` mode) — your "₹30L for 1.3 km" case
+67|
+68|When a site is in **Lumpsum** mode:
+69|```js
+70|var ourCostForStretch = (same Σ as per-km above);          // total cost to do the whole stretch
+71|var theirOffer = contractRates[site.id+'__LUMPSUM'] + (adj||0);
+72|var profit = theirOffer - ourCostForStretch;
+73|var profitPct = ourCostForStretch>0 ? profit/ourCostForStretch*100 : 0;
+74|```
+75|Show a clear 3-line verdict:
+76|- **Our cost (all-in):** ₹<ourCostForStretch>  ·  includes-chip
+77|- **Their offer:** ₹<theirOffer>
+78|- **Profit / (Loss):** ₹<profit> (<profitPct>%) — green if ≥0, red if <0, with a "✅ Worth doing" / "⚠️ Below cost" badge.
+79|This directly answers "should I take ₹30L for this 1.3 km?".
+80|
+81|## 6. Materials-by wiring (Replit Tasks 1 & 3)
+82|
+83|- **Single source of truth:** the rate exclusion is driven ONLY by `materialsBy` inside `computeRate`. The Scope material checkboxes (aggregate/bitumen/LDO/plant-HSD) should be **auto-set AND disabled (greyed)** when `materialsBy='client'`, purely as a visual reflection — they must NOT be independently re-enableable in a way that re-adds material cost.
+84|- **Profitability auto-cost** (Task 3): the per-site auto cost/rate must come from `computeRate(...).perMT_cost` / `.perCUM_cost`, so when Client supplies, the profitability cost drops materials in lock-step with the job cards and panels.
+85|
+86|---
+87|
+88|## Stage 2 test checklist (run in the app)
+89|
+90|1. Create a site with 2 jobs (DBM + BC), site lead 12 km, **Full scope, Materials: Us, Margin 0**:
+91|   - Job card **Total ₹/MT** for DBM == Rate Summary DBM Cost == Detailed Scope DBM == Profitability DBM auto (₹/MT). To the rupee.
+92|2. Switch **Materials: Client** → Plant ₹/MT in the job card, the panels, and Profitability auto-cost ALL drop aggregate+bitumen+LDO together; the Scope material checkboxes grey out.
+93|3. Switch **Quote Mode → Supply only** → job-card Total, Rate Summary, and Profitability auto all exclude transport & laying identically.
+94|4. **Impact:** change bitumen price (varied) → every surface shows Original vs Varied vs Δ with the same numbers; profit at original vs varied is consistent between the rate card and Profitability.
+95|5. **Per-km:** put a site in Per-km mode, enter road length + a contract ₹/km → Our cost/km matches Σ(job costs)/km; Profit/km = contract − cost; total profit correct.
+96|6. **Lumpsum:** put a site in Lumpsum mode, enter their offer (e.g. ₹30,00,000 for 1.3 km) → Our all-in cost, their offer, and Profit/(Loss) ₹ & % shown with the right verdict badge.
+97|
+98|When all 6 pass, reply and I'll send **Stage 3** (consolidate the redundant estimating tiles into one clean "Rate Workbench", + a per-site Quotation print/PDF with the includes-chips and Cost→Margin→Quoted breakdown).
+99|
+100|---
+101|
+102|### Notes
+103|- Don't duplicate cost math anywhere — if a panel needs a number, it calls `computeRate`. If you find yourself writing `binderPct/100*1000*...` again, stop and call the engine.
+104|- Keep per-site **transport lead** flowing into `computeRate` via `opts.transPerMT`; that's the *only* legitimate reason two sites show different rates for the same mix — and it must be labelled.
+105|
+[End of file]

@@ -3915,7 +3915,7 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Aggregates: HLC-supplied or contractor-supplied based on scope ---
     if(totalAggMT>0){
-      if(g.mixing && scopeState.mixing.aggregate){
+      if(g.mixing && scopeState.mixing.aggregate && materialsBy==='us'){
         FRAC_KEYS.forEach(function(k,fi){
           var qty=fracQtys[k], amt=qty*aggLanded;
           var revAmt = rv ? qty*rv.aggLanded : null;
@@ -3929,13 +3929,13 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
             +'<td style="text-align:right">'+fmtR(aggLanded)+'</td><td style="text-align:right;font-weight:600">'+fmtI(Math.round(totalAggAmt))+'</td>'
             +(rv?revCells(aggLanded,totalAggAmt,rv.aggLanded,totalAggAmtRev):'')+'</tr>';
       } else {
+        var _aggNote = (materialsBy==='client') ? '(client-supplied)' : (g.mixing ? '(aggregate unchecked in scope)' : '(contractor-supplied)');
         FRAC_KEYS.forEach(function(k,fi){
           var qty=fracQtys[k];
-          if(qty>0) html+=qtyOnlyRow(FRAC_LABELS[fi], qty.toFixed(1), 'MT',
-            g.mixing ? '(aggregate unchecked in scope)' : '(contractor-supplied)');
+          if(qty>0) html+=qtyOnlyRow(FRAC_LABELS[fi], qty.toFixed(1), 'MT', _aggNote);
         });
         html+='<tr style="color:var(--gray-500);font-weight:600;background:var(--gray-50)">'
-            +'<td>Total Aggregates <span style="font-size:10px;font-weight:400;color:var(--gray-400)">'+(g.mixing?'(aggregate unchecked in scope)':'(contractor-supplied)')+'</span></td>'
+            +'<td>Total Aggregates <span style="font-size:10px;font-weight:400;color:var(--gray-400)">'+_aggNote+'</span></td>'
             +'<td style="text-align:right">'+totalAggMT.toFixed(1)+'</td><td>MT</td>'
             +'<td style="text-align:right">—</td><td style="text-align:right">—</td>'
             +(rv?'<td></td><td></td><td></td>':'')+'</tr>';
@@ -3944,11 +3944,13 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
 
     // --- Bitumen: HLC-supplied or contractor-supplied based on scope ---
     if(totalBitMT>0){
-      if(g.mixing && scopeState.mixing.bitumen){
+      if(g.mixing && scopeState.mixing.bitumen && materialsBy==='us'){
+        // shown below in HLC-supplied section
       } else {
+        var _bitNote = (materialsBy==='client') ? '(client-supplied)' : (g.mixing ? '(bitumen unchecked in scope)' : '(contractor-supplied)');
         html+=qtyOnlyRow('Bitumen (VG30)',
           (totalBitMT*1000).toFixed(0)+' kg ('+totalBitMT.toFixed(2)+' MT)',
-          '', g.mixing ? '(bitumen unchecked in scope)' : '(contractor-supplied)');
+          '', _bitNote);
       }
     }
 
@@ -3979,10 +3981,10 @@ function renderProcurement(mixRates, transPerMT, layPerMT, primePerSqm, tackPerS
     var scopeHsdL = scopeHsdLPerMT*totalMT;
     var scopeHsdAmt = scopeHsdL*hsdPrice;
     var scopeGrandTotal = 0, scopeGrandScTotal = 0;
-    if(g.mixing && scopeState.mixing.aggregate){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
+    if(g.mixing && scopeState.mixing.aggregate && materialsBy==='us'){ scopeGrandTotal += totalAggAmt; scopeGrandScTotal += (rv ? (totalAggAmtRev||totalAggAmt) : totalAggAmt); }
 
-    // Bitumen — show as HLC-supplied if bitumen checked in scope
-    if(totalBitMT>0 && g.mixing && scopeState.mixing.bitumen){
+    // Bitumen — show as HLC-supplied if bitumen checked in scope AND we supply materials
+    if(totalBitMT>0 && g.mixing && scopeState.mixing.bitumen && materialsBy==='us'){
       html+='<tr><td>Bitumen (VG30)</td>'
           +'<td style="text-align:right">'+(totalBitMT*1000).toFixed(0)+' <span style="color:var(--gray-400);font-size:11px">('+totalBitMT.toFixed(2)+' MT)</span></td><td>kg</td>'
           +'<td style="text-align:right">'+fmtR(bitPrice)+'</td>'
@@ -4222,7 +4224,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
         if(scopeState.mixing.jcbHsd) mx+=sc2.jcbHsd*hm;
         if(scopeState.mixing.tipperHire) mx+=sc2.tipperHire;
         if(scopeState.mixing.tipperHsd) mx+=sc2.tipperHsd*hm;
-        if(scopeState.mixing.aggregate) mx+=sc2.aggregate*am;
+        if(scopeState.mixing.aggregate && materialsBy==='us') mx+=sc2.aggregate*am;
         mx+=sc2.crewPerMT;
         (sc2.customEquip||[]).forEach(function(ce){
           if(ce.isLaying||!ce.enabled) return;
@@ -4288,7 +4290,7 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     _scopePav=_rScopePav; _rScopePav=_tmpSP;
     hasRevised=true;
   }
-  var _scopeBit = (_scopeActive && _sg.mixing && scopeState.mixing.bitumen);
+  var _scopeBit = (_scopeActive && _sg.mixing && scopeState.mixing.bitumen && materialsBy==='us');
   function _effCPM(stpm,rev,bitCostPMT){ if(!_scopeActive)return null; return ((rev?_rScopeMix:_scopeMix)+(_scopeBit?(bitCostPMT||0):0)+(_sg.transport?stpm:0)+(rev?_rScopePav:_scopePav)); }
   var _sPrimeRaw = _smf>0 ? _sPrime/_smf : _sPrime;
   var _sTackRaw = _smf>0 ? _sTack/_smf : _sTack;
@@ -5475,17 +5477,26 @@ function calcScopeComponents(){
   return calcScopeComponentsFromInputs(inp, equipDefs, mixTypes);
 }
 
-function renderScopeRow(container, stateObj, key, label, val, unit){
-  var on = stateObj[key];
+function renderScopeRow(container, stateObj, key, label, val, unit, disabled){
+  // disabled=true: materialsBy is the authority — lock checkbox off and grey the row
+  var on = disabled ? false : !!stateObj[key];
   var row = document.createElement('div');
   row.className = 'scope-row';
+  var disabledAttr = disabled ? ' disabled' : '';
+  var rowStyle = disabled ? ' style="opacity:0.38;cursor:not-allowed"' : '';
+  var disabledTitle = disabled ? ' title="Controlled by Materials toggle — set to Us to enable"' : '';
   row.innerHTML =
-    '<label>'+
-      '<input type="checkbox" '+(on?'checked':'')+
-        ' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;renderScopeQuotation();recalc()"> '+
-      label+
+    '<label'+rowStyle+disabledTitle+'>'+
+      '<input type="checkbox" '+(on?'checked':'')+disabledAttr+
+        (!disabled?' onchange="scopeState.'+container+'[\''+key+'\']=this.checked;renderScopeQuotation();recalc()"':'')+
+      '> '+label+
     '</label>'+
-    '<span class="sc-amt'+(on?'':' off')+'">'+fmtR(val)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
+    '<span class="sc-amt off">'+fmtR(val)+'<span style="font-size:11px;font-weight:400;color:var(--gray-400)"> /'+unit+'</span></span>';
+  if(!disabled){
+    // Restore active styling when checked
+    var span = row.querySelector('.sc-amt');
+    if(on && span) span.className = 'sc-amt';
+  }
   return row;
 }
 
@@ -5504,8 +5515,8 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
     var sg=scopeState.groups, sm=scopeState.mixing||{}, sp=scopeState.paving||{};
     var mf=1+(parseFloat(scopeMarginPct)||0)/100;
     var _cmAggW=n('aggWastage'), _cmBitW=n('bitWastage');
-    var mixBitumen   =(sg.mixing&&sm.bitumen)   ?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
-    var mixAggregate =(sg.mixing&&sm.aggregate) ?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
+    var mixBitumen   =(sg.mixing&&sm.bitumen  &&materialsBy==='us')?(mType.binderPct/100*1000*(1+_cmBitW/100)*bitPriceVal):0;
+    var mixAggregate =(sg.mixing&&sm.aggregate&&materialsBy==='us')?(FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_cmAggW/100)*aggLandedVal):0;
     var mixCost=0;
     if(sg.mixing){
       if(sm.hotmixHire) mixCost+=sc.hotmixHire||0;
@@ -5594,8 +5605,9 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
       mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hire', esc(ce.name)+' — hire', ce.hire, 'MT'));
       if(ce.hsd>0) mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, ce.id+'Hsd', esc(ce.name)+' HSD (fuel)', ce.hsd, 'MT'));
     });
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen', 'Bitumen / Binder', sc.bitumen, 'MT'));
-    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)', sc.aggregate, 'MT'));
+    var _matDisabled = (materialsBy === 'client');
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'bitumen',   'Bitumen / Binder',     sc.bitumen,   'MT', _matDisabled));
+    mixCont.appendChild(renderScopeRow('mixing', scopeState.mixing, 'aggregate', 'Aggregates (landed)',  sc.aggregate, 'MT', _matDisabled));
     mixCont.appendChild(renderScopeAlwaysRow('Plant Crew + Overhead', sc.crewPerMT, 'MT'));
   }
 
