@@ -5,7 +5,7 @@ import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2, BookOpen,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -1271,6 +1271,17 @@ export default function BoqProjectDetail() {
     enabled: !isNaN(projectId),
   });
 
+  const remapMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {}),
+    onSuccess: async () => {
+      toast({ title: "Re-mapping BOQ → SNL…", description: "Auto-matching items against the Standard Norms Library." });
+      await new Promise((r) => setTimeout(r, 1200));
+      await refetchItems();
+      toast({ title: "Re-map complete ✓" });
+    },
+    onError: () => toast({ title: "Re-map failed", variant: "destructive" }),
+  });
+
   // ── Derived values ──
   const groupedByWorkCat = useMemo(() => {
     const map: Record<string, BoqItemWithCategory[]> = {};
@@ -1408,6 +1419,22 @@ export default function BoqProjectDetail() {
               </Button>
             </a>
           </Link>
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-teal-300 text-teal-700 hover:bg-teal-50 h-8"
+              onClick={() => remapMutation.mutate()}
+              disabled={remapMutation.isPending}
+              data-testid="button-remap-all-header"
+              title="Re-run BOQ → SNL auto-mapping for all items"
+            >
+              {remapMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
+              Re-map All
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1429,7 +1456,12 @@ export default function BoqProjectDetail() {
         const snlFullyMapped = items.length > 0 && mappedCount === items.length;
         const snlNeedsAction = items.length > 0 && (reviewCount > 0 || unmappedCount > 0);
 
-        const tiles: { label: string; value: string; extra?: string; extraCls?: string; onClick?: () => void; highlight?: boolean }[] = [
+        const autoConfItems = items.filter(i => (i.snlMappingStatus ?? i.mappingStatus) === "mapped" && i.snlConfidence != null);
+        const avgConfidence = autoConfItems.length > 0
+          ? Math.round((autoConfItems.reduce((s, i) => s + (i.snlConfidence ?? 0), 0) / autoConfItems.length) * 100)
+          : null;
+
+        const tiles: { label: string; value: string; extra?: string; extraCls?: string; onClick?: () => void; highlight?: boolean; confidence?: number }[] = [
           { label: "BOQ Items", value: String(items.length) },
           { label: "Work Categories", value: String(workCatSections.filter(s => s.items.length > 0).length + (hasUncategorised ? 1 : 0)) },
           { label: "Revisions", value: String(revisions.length) },
@@ -1444,13 +1476,14 @@ export default function BoqProjectDetail() {
             extraCls: snlNeedsAction ? "text-amber-600" : "text-emerald-600",
             highlight: snlNeedsAction,
             onClick: items.length > 0 ? () => setSnlFloatingOpen(true) : undefined,
+            confidence: avgConfidence ?? undefined,
           },
           { label: "Total BOQ Value", value: totalAmount > 0 ? `₹${(totalAmount / 1e7).toFixed(2)} Cr` : "—" },
         ];
 
         return (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {tiles.map(({ label, value, extra, extraCls, onClick, highlight }) => (
+            {tiles.map(({ label, value, extra, extraCls, onClick, highlight, confidence }) => (
               <Card
                 key={label}
                 className={`border-slate-200 transition-colors ${onClick ? "cursor-pointer hover:border-teal-400 hover:shadow-sm" : ""} ${highlight ? "border-amber-300 bg-amber-50/40" : ""}`}
@@ -1461,6 +1494,11 @@ export default function BoqProjectDetail() {
                   <p className="text-sm text-muted-foreground">{label}</p>
                   <p className={`text-lg font-bold mt-0.5 ${highlight ? "text-amber-700" : "text-slate-800"}`}>{value}</p>
                   {extra && <p className={`text-[12px] mt-0.5 ${extraCls ?? ""}`}>{extra}</p>}
+                  {confidence != null && (
+                    <Badge variant="outline" className="mt-1 text-[10px] bg-teal-50 border-teal-200 text-teal-700 inline-flex items-center gap-1 px-1.5 py-0">
+                      <Sparkles className="w-2.5 h-2.5" /> {confidence}% avg confidence
+                    </Badge>
+                  )}
                   {onClick && (
                     <p className="text-[11px] text-teal-600 mt-0.5 opacity-70">
                       {highlight ? "Click to review →" : "Click to view →"}
