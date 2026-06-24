@@ -2383,7 +2383,10 @@ function recalc(){
   var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
 
   // Canonical rate objects — all panels must use these (produced by computeRate)
-  var usedMixTypes = hasAnyJob ? mixTypes.filter(function(_,i){ return usedMixIdxs[i]; }) : mixTypes;
+  // When no jobs exist show only the active mix tab (not all mix types)
+  var usedMixTypes = hasAnyJob
+    ? mixTypes.filter(function(_,i){ return usedMixIdxs[i]; })
+    : [mixTypes[activeMixIdx] || mixTypes[0]];
   var usedMixRates = usedMixTypes.map(function(mt){ return computeRate(mt); });
   // Store module-level cache keyed by mix name for panels outside recalc()
   _lastComputedRates = {};
@@ -2425,7 +2428,16 @@ function renderSupplyQuote(mixRates, marginPct){
     // Use computeRate output fields — respect quoteMode and materialsBy
     var cost   = isCUM ? r.perCUM_cost   : r.perMT_cost;
     var quoted = isCUM ? r.perCUM_quoted : r.perMT_quoted;
-    var total  = (isCUM ? r.perCUM_quoted : r.perMT_quoted) * mt;
+    // Total quantity and label must match the selected unit
+    var qty, qtyLabel;
+    if(isCUM){
+      qty = (r.density > 0) ? mt / r.density : 0;   // MT → CUM
+      qtyLabel = fmtI(Math.round(qty * 10) / 10) + ' CUM';
+    } else {
+      qty = mt;
+      qtyLabel = fmtI(mt) + ' MT';
+    }
+    var total  = quoted * qty;
     html += '<div style="background:#fffbf0;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
     if(mixRates.length>1){
       html += '<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px">'+esc(r.name)+'</div>';
@@ -2433,7 +2445,7 @@ function renderSupplyQuote(mixRates, marginPct){
     html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
     html += _sqCell('Cost ₹'+unitLabel, fmtI(Math.round(cost)), '#374151', false);
     html += _sqCell('Quoted ₹'+unitLabel, fmtI(Math.round(quoted)), '#b45309', true);
-    html += _sqCell('Total for '+fmtI(mt)+' MT', fmtI(Math.round(total)), '#1e40af', true);
+    html += _sqCell('Total for '+qtyLabel, fmtI(Math.round(total)), '#1e40af', true);
     html += '</div>';
     var notes=[];
     if((r.overhead||0)>0) notes.push('OH ₹'+fmtI(Math.round(r.overhead))+'/MT incl.');
@@ -2467,11 +2479,14 @@ function renderRateSummary(mixRates){
   var isCUM      = (rateUnit === 'CUM');
   var colHdr     = isCUM ? '₹/CUM' : '₹/MT';
 
+  // Single unit column per mix — unit determined by rateUnit toggle
+  function _v(r, perMT){ return isCUM ? perMT * r.density : perMT; }
+
   var nc = mixRates.length;
   var html = '<table class="rate-table"><thead><tr><th></th>';
-  mixRates.forEach(function(r){ html+='<th colspan="2" style="text-align:center">'+r.name+'</th>'; });
+  mixRates.forEach(function(r){ html+='<th style="text-align:center">'+r.name+'</th>'; });
   html += '</tr><tr><th></th>';
-  mixRates.forEach(function(){ html+='<th>₹/MT</th><th style="color:var(--blue)">₹/CUM</th>'; });
+  mixRates.forEach(function(){ html+='<th>'+colHdr+'</th>'; });
   html += '</tr></thead><tbody>';
 
   // Material rows — hidden when client supplies materials
@@ -2482,11 +2497,11 @@ function renderRateSummary(mixRates){
   if(materialsBy === 'us'){
     matRows.forEach(function(row){
       html+='<tr><td>'+row.label+'</td>';
-      mixRates.forEach(function(r){ html+='<td>'+fmtR(r[row.key])+'</td><td style="color:var(--blue)">'+fmtR(r[row.key]*r.density)+'</td>'; });
+      mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r[row.key]))+'</td>'; });
       html+='</tr>';
     });
   } else {
-    html+='<tr><td colspan="'+(nc*2+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Materials supplied by client — agg &amp; bitumen excluded</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Materials supplied by client — agg &amp; bitumen excluded</td></tr>';
   }
   var eqFuelRows = [
     {label:'Equipment (Hire)', key:'equipment'},
@@ -2495,26 +2510,26 @@ function renderRateSummary(mixRates){
   ];
   eqFuelRows.forEach(function(row){
     html+='<tr><td>'+row.label+'</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(r[row.key])+'</td><td style="color:var(--blue)">'+fmtR(r[row.key]*r.density)+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r[row.key]))+'</td>'; });
     html+='</tr>';
   });
-  html+='<tr class="separator"><td colspan="'+(nc*2+1)+'"></td></tr>';
+  html+='<tr class="separator"><td colspan="'+(nc+1)+'"></td></tr>';
   html+='<tr style="font-weight:700"><td>Plant Subtotal</td>';
-  mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(r.exPlant)+'</td><td style="color:var(--blue)">'+fmtR(r.exPlant*r.density)+'</td>'; });
+  mixRates.forEach(function(r){ html+='<td style="color:var(--amber)">'+fmtR(_v(r, r.exPlant))+'</td>'; });
   html+='</tr>';
   if(_showTrans){
     html+='<tr><td>Transport</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.transport)+'</td><td style="color:var(--blue)">'+fmtR(r.transport*r.density)+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.transport))+'</td>'; });
     html+='</tr>';
   }
   if(_showPav){
     html+='<tr><td>Laying</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.laying)+'</td><td style="color:var(--blue)">'+fmtR(r.laying*r.density)+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.laying))+'</td>'; });
     html+='</tr>';
   }
   if(mixRates[0]&&(mixRates[0].overhead||0)>0){
     html+='<tr><td>Mob/Demob</td>';
-    mixRates.forEach(function(r){ html+='<td>'+fmtR(r.overhead||0)+'</td><td style="color:var(--blue)">'+fmtR((r.overhead||0)*r.density)+'</td>'; });
+    mixRates.forEach(function(r){ html+='<td>'+fmtR(_v(r, r.overhead||0))+'</td>'; });
     html+='</tr>';
   }
   var _mPct = n('marginPct')/100;
@@ -2522,14 +2537,14 @@ function renderRateSummary(mixRates){
     html+='<tr><td>Margin / Profit</td>';
     mixRates.forEach(function(r){
       var mgn = r.quotedCost * _mPct;
-      html+='<td>'+fmtR(mgn)+'</td><td style="color:var(--blue)">'+fmtR(mgn*r.density)+'</td>';
+      html+='<td>'+fmtR(_v(r, mgn))+'</td>';
     });
     html+='</tr>';
   }
   // Cost row (pre-margin, scope-gated)
   html+='<tr style="font-weight:600;background:#f0fdf4"><td>Cost (pre-margin)</td>';
   mixRates.forEach(function(r){
-    html+='<td style="color:#15803d">'+fmtR(r.quotedCost)+'</td><td style="color:#15803d">'+fmtR(r.quotedCost*r.density)+'</td>';
+    html+='<td style="color:#15803d">'+fmtR(isCUM ? r.perCUM_cost : r.perMT_cost)+'</td>';
   });
   html+='</tr>';
   var _finalLabels = {
@@ -2539,12 +2554,13 @@ function renderRateSummary(mixRates){
   var _finalLabel = _finalLabels[quoteMode] || 'Final Rate';
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
-    html+='<td style="color:var(--amber)">'+fmtR(r.perMT_quoted)+'</td><td style="color:var(--blue);font-weight:700">'+fmtR(r.perCUM_quoted)+'</td>';
+    var finalVal = isCUM ? r.perCUM_quoted : r.perMT_quoted;
+    html+='<td style="color:var(--amber);font-weight:700">'+fmtR(finalVal)+'</td>';
   });
   html+='</tr>';
   // "Includes" chip
   if(mixRates[0]&&mixRates[0].includes){
-    html+='<tr><td colspan="'+(nc*2+1)+'" style="font-size:10px;color:var(--gray-400);font-style:italic;padding:4px 8px">Includes: '+mixRates[0].includes+'</td></tr>';
+    html+='<tr><td colspan="'+(nc+1)+'" style="font-size:10px;color:var(--gray-400);font-style:italic;padding:4px 8px">Includes: '+mixRates[0].includes+'</td></tr>';
   }
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
@@ -2720,32 +2736,41 @@ function _buildRecQuoteRows(mixRates, minPft, tgtPft, prmPft, mPct){
   var tbl = document.getElementById('recQuoteTable');
   if(!tbl) return;
   if(!mixRates||!mixRates.length){ tbl.innerHTML=''; return; }
+  var _isCUM = (rateUnit === 'CUM');
+  var _unitLbl = _isCUM ? 'CUM' : 'MT';
   var mPctLabel = mPct>0 ? ' (incl. '+fmtR(mPct)+'% overhead margin)' : '';
   var html = '';
   mixRates.forEach(function(r){
-    // Base = finalLaid = full cost including the overhead margin % set in Overhead section
-    var base = (r.finalLaid !== undefined) ? r.finalLaid : ((r.quotedCost !== undefined) ? r.quotedCost : r.exPlant);
-    var minRate = base + minPft;
-    var tgtRate = base + tgtPft;
-    var prmRate = base + prmPft;
-    var minPct  = base > 0 ? (minPft/base*100) : 0;
-    var tgtPct  = base > 0 ? (tgtPft/base*100) : 0;
-    var prmPct  = base > 0 ? (prmPft/base*100) : 0;
+    // Base always in ₹/MT internally; convert to display unit
+    var baseMT = (r.finalLaid !== undefined) ? r.finalLaid : ((r.quotedCost !== undefined) ? r.quotedCost : r.exPlant);
+    var dens = r.density || 1;
+    var base = _isCUM ? baseMT * dens : baseMT;
+    // Profit inputs are ₹/MT; convert to display unit for the table
+    var minPftD = _isCUM ? minPft * dens : minPft;
+    var tgtPftD = _isCUM ? tgtPft * dens : tgtPft;
+    var prmPftD = _isCUM ? prmPft * dens : prmPft;
+    var minRate = base + minPftD;
+    var tgtRate = base + tgtPftD;
+    var prmRate = base + prmPftD;
+    var minPct  = base > 0 ? (minPftD/base*100) : 0;
+    var tgtPct  = base > 0 ? (tgtPftD/base*100) : 0;
+    var prmPct  = base > 0 ? (prmPftD/base*100) : 0;
 
     html += '<div style="margin-bottom:14px">';
     html += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">'+esc(r.name)+'</div>';
-    // Base cost callout — always visible so user knows what we're adding to
+    // Base cost callout — always visible
     html += '<div style="font-size:11px;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:6px">'
       +'<span style="color:#6b7280">Full cost base: </span>'
-      +'<strong style="color:#111827">₹'+fmtR(base)+'/MT</strong>'
-      +(mPct>0?'<span style="font-size:10px;color:#9ca3af">'+mPctLabel+'</span>':'')
+      +'<strong style="color:#111827">₹'+fmtR(base)+'/'+_unitLbl+'</strong>'
+      +(_isCUM?'<span style="font-size:10px;color:#9ca3af"> (₹'+fmtR(baseMT)+'/MT)</span>':'')
+      +(mPct>0?'<span style="font-size:10px;color:#9ca3af"> '+mPctLabel+'</span>':'')
       +'</div>';
 
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
     html += '<thead><tr style="background:#f3f4f6">'
       +'<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;font-weight:600">Level</th>'
       +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">Cost + Profit</th>'
-      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">Quote ₹/MT</th>'
+      +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">Quote ₹/'+_unitLbl+'</th>'
       +'<th style="padding:4px 6px;text-align:right;border:1px solid #e5e7eb;font-weight:600">Margin %</th>'
       +'</tr></thead><tbody>';
 
@@ -2759,21 +2784,21 @@ function _buildRecQuoteRows(mixRates, minPft, tgtPft, prmPft, mPct){
     // Min Acceptable
     html += '<tr style="background:#fefce8">'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#92400e;font-weight:600">Min Acceptable</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#b45309">₹'+fmtR(base)+' + ₹'+fmtR(minPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#b45309">₹'+fmtR(base)+' + ₹'+fmtR(minPftD)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#92400e">₹'+fmtR(minRate)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#92400e">'+fmtR(minPct)+'%</td></tr>';
 
     // Target Quote
     html += '<tr style="background:#eff6ff">'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#1d4ed8;font-weight:700">Target Quote ⭐</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#3b82f6">₹'+fmtR(base)+' + ₹'+fmtR(tgtPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#3b82f6">₹'+fmtR(base)+' + ₹'+fmtR(tgtPftD)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1d4ed8;font-size:12px">₹'+fmtR(tgtRate)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#1d4ed8;font-weight:600">'+fmtR(tgtPct)+'%</td></tr>';
 
     // Premium Quote
     html += '<tr style="background:#f5f3ff">'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;color:#7c3aed;font-weight:700">Premium Quote</td>'
-      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#8b5cf6">₹'+fmtR(base)+' + ₹'+fmtR(prmPft)+'</td>'
+      +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-size:10px;color:#8b5cf6">₹'+fmtR(base)+' + ₹'+fmtR(prmPftD)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#7c3aed">₹'+fmtR(prmRate)+'</td>'
       +'<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:right;color:#7c3aed">'+fmtR(prmPct)+'%</td></tr>';
 
