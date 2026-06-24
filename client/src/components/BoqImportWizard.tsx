@@ -37,6 +37,7 @@ interface ParsedItem {
   itemCode?: string;
   snlCode?: string;
   clientRate?: number;
+  categoryName?: string;
   sortOrder: number;
 }
 
@@ -59,6 +60,40 @@ function parseExcelFile(file: File): Promise<(string | number | null)[][]> {
     reader.onerror = reject;
     reader.readAsBinaryString(file);
   });
+}
+
+// ─── MoRTH / EPC BoQ structure helpers ──────────────────────────────────────
+function toNum(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+// BoQ codes: numeric 201 → "201"; float-mangled 2.0199999 → "2.02"; "2.03A" → "2.03A"
+function normCode(v: string | number | null): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "number") {
+    return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
+  }
+  return String(v).trim();
+}
+// "BILL No. 1", "Bill No 2", "BILL No.1" → section/category header
+function isBillRow(itemCol: string): boolean {
+  return /^bill\s*no\.?/i.test(itemCol.trim());
+}
+// "Total Carried to Summary", "Sub Total", "Grand Total"
+function isTotalRow(desc: string): boolean {
+  return /total\s+carried|carried to summary|^sub\s*total$|^total$|grand total/i.test(desc.trim());
+}
+// Find the real header row (contains Description + Unit + Quantity) within the first ~15 rows
+function findHeaderRowIdx(rows: (string | number | null)[][]): number {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const cells = rows[i].map((c) => (c == null ? "" : String(c).toLowerCase()));
+    const hasDesc = cells.some((c) => c.includes("desc") || c === "item name" || c.includes("particular"));
+    const hasUnit = cells.some((c) => c === "unit" || c === "uom" || c.includes("unit"));
+    const hasQty = cells.some((c) => c.includes("quantity") || c.includes("qty"));
+    if (hasDesc && hasUnit && hasQty) return i;
+  }
+  return 0;
 }
 
 function cellStr(v: string | number | null): string {
@@ -119,18 +154,21 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
         setParseError("The file appears to be empty.");
         return;
       }
-      setRawRows(nonEmpty);
+      // Skip any title/banner rows above the real header (e.g. "BILL OF QUANTITY")
+      const headerIdx = findHeaderRowIdx(nonEmpty);
+      const trimmed = nonEmpty.slice(headerIdx);
+      setRawRows(trimmed);
       setFileName(file.name);
-      const header = nonEmpty[0].map(cellStr);
+      const header = trimmed[0].map(cellStr);
       const autoMap: ColumnMap = { ...EMPTY_COL_MAP };
       header.forEach((h, i) => {
-        const lh = h.toLowerCase();
-        if (autoMap.description == null && (lh.includes("desc") || lh.includes("item name") || lh.includes("work"))) autoMap.description = i;
+        const lh = h.toLowerCase().trim();
+        if (autoMap.description == null && (lh.includes("desc") || lh === "item name" || lh.includes("particular"))) autoMap.description = i;
         else if (autoMap.unit == null && (lh === "unit" || lh === "uom" || lh.includes("unit of"))) autoMap.unit = i;
         else if (autoMap.boqQty == null && (lh.includes("qty") || lh.includes("quantity") || lh === "nos" || lh.includes("boq"))) autoMap.boqQty = i;
-        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book"))) autoMap.snlCode = i;
-        else if (autoMap.itemCode == null && (lh.includes("code") || lh.includes("sl") || lh === "no." || lh === "sno" || lh === "s.no" || lh === "item no")) autoMap.itemCode = i;
-        else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price") || lh.includes("amount"))) autoMap.clientRate = i;
+        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book") || lh.includes("spec ref") || lh.includes("mort") || lh.includes("clause"))) autoMap.snlCode = i;
+        else if (autoMap.itemCode == null && (lh === "item" || lh === "item no" || lh.includes("item no") || lh.includes("code") || lh === "sl" || lh === "sl no" || lh === "no." || lh === "sno" || lh === "s.no")) autoMap.itemCode = i;
+        else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price"))) autoMap.clientRate = i;
       });
       setColMap(autoMap);
       setStep(1);
@@ -162,27 +200,99 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   }
 
   const parsedItems: ParsedItem[] = useMemo(() => {
-    return dataRows
-      .filter(row => {
-        const desc = colMap.description != null ? cellStr(row[colMap.description]) : "";
-        const unit = colMap.unit != null ? cellStr(row[colMap.unit]) : "";
-        return desc.length > 0 && unit.length > 0;
-      })
-      .map((row, i) => {
-        const desc = colMap.description != null ? cellStr(row[colMap.description]) : "";
-        const unit = colMap.unit != null ? cellStr(row[colMap.unit]) : "";
-        const qtyRaw = colMap.boqQty != null ? row[colMap.boqQty] : null;
-        const rateRaw = colMap.clientRate != null ? row[colMap.clientRate] : null;
-        return {
-          description: desc,
-          unit,
-          boqQty: typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw ?? "0")) || 0,
-          itemCode: colMap.itemCode != null ? (cellStr(row[colMap.itemCode]) || undefined) : undefined,
-          snlCode: colMap.snlCode != null ? (cellStr(row[colMap.snlCode]) || undefined) : undefined,
-          clientRate: rateRaw != null ? (typeof rateRaw === "number" ? rateRaw : parseFloat(String(rateRaw))) || undefined : undefined,
-          sortOrder: i,
-        };
+    if (colMap.description == null || colMap.unit == null) return [];
+    const dCol = colMap.description, uCol = colMap.unit;
+    const iCol = colMap.itemCode, sCol = colMap.snlCode, qCol = colMap.boqQty, rCol = colMap.clientRate;
+
+    const get = (row: (string | number | null)[]) => ({
+      item: iCol != null ? normCode(row[iCol]) : "",
+      desc: cellStr(row[dCol]),
+      unit: cellStr(row[uCol]),
+      spec: sCol != null ? normCode(row[sCol]) : "",
+      qc: qCol != null ? row[qCol] : null,
+      rc: rCol != null ? row[rCol] : null,
+    });
+    type Row = ReturnType<typeof get>;
+    const isSkippable = (r: Row) =>
+      !r.desc || isTotalRow(r.desc) || r.desc.toLowerCase() === "description" || r.item.toLowerCase() === "item";
+
+    // The next meaningful row (null if a BILL boundary or end-of-sheet is hit first).
+    // Used to decide whether a coded row is a PARENT heading (i.e. its next line is a
+    // blank-coded sub-item) vs a self-contained priced leaf.
+    const nextMeaningful = (start: number): Row | null => {
+      for (let j = start + 1; j < dataRows.length; j++) {
+        const rr = get(dataRows[j]);
+        if (isBillRow(rr.item)) return null;
+        if (isSkippable(rr)) continue;
+        return rr;
+      }
+      return null;
+    };
+
+    const out: ParsedItem[] = [];
+    let currentCategory = "";
+    let parent: { code?: string; spec?: string; desc: string; unit: string } | null = null;
+    let parentHadChild = false;
+    let order = 0;
+
+    const flushParent = () => {
+      // A coded heading that turned out to have NO sub-items → keep it as its own line
+      if (parent && !parentHadChild) {
+        out.push({
+          description: parent.desc, unit: parent.unit || "-", boqQty: 0,
+          itemCode: parent.code, snlCode: parent.spec,
+          categoryName: currentCategory || undefined, sortOrder: order++,
+        });
+      }
+      parent = null; parentHadChild = false;
+    };
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = get(dataRows[i]);
+
+      // 1) "BILL No. X" → start a new category
+      if (isBillRow(r.item)) { flushParent(); if (r.desc) currentCategory = r.desc; continue; }
+      // 2) Skip empty / total / echoed-header rows
+      if (isSkippable(r)) continue;
+
+      const hasCode = r.item.length > 0;
+      const hasUnit = r.unit.length > 0;
+      const nxt = nextMeaningful(i);
+      const isParentHeading = hasCode && nxt != null && nxt.item === ""; // next line is a sub-item
+
+      // 3) Parent heading → store context, do not import the heading itself yet
+      if (isParentHeading) {
+        flushParent();
+        parent = { code: r.item, spec: r.spec || undefined, desc: r.desc, unit: r.unit };
+        parentHadChild = false;
+        continue;
+      }
+
+      // 4) Self-contained priced leaf (own code, no sub-items follow)
+      if (hasCode) {
+        flushParent();
+        out.push({
+          description: r.desc, unit: r.unit || "-", boqQty: toNum(r.qc),
+          itemCode: r.item, snlCode: r.spec || undefined,
+          clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
+          categoryName: currentCategory || undefined, sortOrder: order++,
+        });
+        continue;
+      }
+
+      // 5) Blank code → sub-item of the current parent (skip strays with no unit & no parent)
+      if (!hasUnit && !parent) continue;
+      out.push({
+        description: parent?.desc ? `${parent.desc} — ${r.desc}` : r.desc,
+        unit: r.unit || "-", boqQty: toNum(r.qc),
+        itemCode: parent?.code, snlCode: r.spec || parent?.spec || undefined,
+        clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
+        categoryName: currentCategory || undefined, sortOrder: order++,
       });
+      parentHadChild = true;
+    }
+    flushParent();
+    return out;
   }, [dataRows, colMap]);
 
   function enterStep2() {

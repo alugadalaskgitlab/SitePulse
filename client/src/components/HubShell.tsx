@@ -89,8 +89,9 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores" },
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
-    ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
-    ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
+    // Work Programme & Norms hidden from nav until ready for production — routes still exist in App.tsx
+    // ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+    // ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
     { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
   ];
 

@@ -1,0 +1,306 @@
+# SitePulse — MoRTH / EPC BoQ Import Fix
+
+**File to edit:** `client/src/components/BoqImportWizard.tsx`
+**Backend:** no change needed — `importBoqItems` already creates categories from `categoryName` and stores `itemCode`, `snlCode`, `workCategory`. The whole fix is in the wizard's **parsing** step.
+
+---
+
+## What was wrong (NH-167 sample)
+
+A standard MoRTH multi-bill EPC BoQ has 3 structural features the importer ignored:
+
+1. A **title row** (`BILL OF QUANTITY`) sits above the real header row (`Item | MoRT&H Spec Ref | Description | Unit | Quantity | Unit Rate | Amount`). The wizard used the title row as the header, so the **real header row got imported as a data item**, and auto column-mapping failed.
+2. **`BILL No. X` rows are section headers** (SITE CLEARANCE, EARTH WORK, SUB-BASE & BASE, BITUMINOUS WORKS, CULVERTS…). They have no Unit, so the old filter *dropped* them → every item collapsed into one **"Miscellaneous Works"** bucket.
+3. **Parent → sub-item structure.** A parent row (`1.02 Cutting of trees`, code in col A) has no Unit; the priced lines are the `i) ii) iii)` rows below with a **blank** code. The old filter dropped the parent and kept the children **without a code**, so they showed `—` and were uncategorised.
+
+Plus: `Total Carried to Summary` rows and items with **0 qty** (valid in EPC — the consultant lists the whole menu) need correct handling.
+
+## What the fix does
+
+- Detects the **header row by content** (the row with Description + Unit + Quantity), not by position.
+- Treats **`BILL No.` rows as Categories** and assigns every following line to that category until the next bill.
+- **Carries forward** the parent's Item No (→ `itemCode`) and MoRT&H Spec Ref (→ `snlCode`) onto its blank-coded sub-rows, and **flattens** each priced sub-row into one item with description `"Parent — sub-item"`. A coded row is treated as a *parent heading* only when the **next meaningful row is a blank-coded sub-item** (lookahead) — this correctly handles parents that carry a unit and/or a literal `0` qty (e.g. `4.03 DBM`, `5.05 PCC`, `5.15 Hume pipes`).
+- **Skips** the title row, the echoed header, and `Total Carried to Summary` rows.
+- **Keeps 0-qty items** (they import with `boqQty = 0`).
+- Cleans up float-mangled codes (`2.0199999…` → `2.02`).
+
+Apply the 4 edits below to `client/src/components/BoqImportWizard.tsx`.
+
+---
+
+### EDIT 1 — add `categoryName` to the `ParsedItem` interface
+
+**FIND:**
+```ts
+interface ParsedItem {
+  description: string;
+  unit: string;
+  boqQty: number;
+  itemCode?: string;
+  snlCode?: string;
+  clientRate?: number;
+  sortOrder: number;
+}
+```
+
+**REPLACE WITH:**
+```ts
+interface ParsedItem {
+  description: string;
+  unit: string;
+  boqQty: number;
+  itemCode?: string;
+  snlCode?: string;
+  clientRate?: number;
+  categoryName?: string;
+  sortOrder: number;
+}
+```
+
+---
+
+### EDIT 2 — add MoRTH BoQ helper functions (place right after the `cellStr` function)
+
+**FIND:** (the closing of `cellStr` — match the first occurrence)
+```ts
+function cellStr(v: string | number | null): string {
+  if (v == null) return "";
+```
+
+**REPLACE WITH:**
+```ts
+// ─── MoRTH / EPC BoQ structure helpers ──────────────────────────────────────
+function toNum(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+// BoQ codes: numeric 201 → "201"; float-mangled 2.0199999 → "2.02"; "2.03A" → "2.03A"
+function normCode(v: string | number | null): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "number") {
+    return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
+  }
+  return String(v).trim();
+}
+// "BILL No. 1", "Bill No 2", "BILL No.1" → section/category header
+function isBillRow(itemCol: string): boolean {
+  return /^bill\s*no\.?/i.test(itemCol.trim());
+}
+// "Total Carried to Summary", "Sub Total", "Grand Total"
+function isTotalRow(desc: string): boolean {
+  return /total\s+carried|carried to summary|^sub\s*total$|^total$|grand total/i.test(desc.trim());
+}
+// Find the real header row (contains Description + Unit + Quantity) within the first ~15 rows
+function findHeaderRowIdx(rows: (string | number | null)[][]): number {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const cells = rows[i].map((c) => (c == null ? "" : String(c).toLowerCase()));
+    const hasDesc = cells.some((c) => c.includes("desc") || c === "item name" || c.includes("particular"));
+    const hasUnit = cells.some((c) => c === "unit" || c === "uom" || c.includes("unit"));
+    const hasQty = cells.some((c) => c.includes("quantity") || c.includes("qty"));
+    if (hasDesc && hasUnit && hasQty) return i;
+  }
+  return 0;
+}
+
+function cellStr(v: string | number | null): string {
+  if (v == null) return "";
+```
+
+---
+
+### EDIT 3 — header-row detection + smarter auto column-mapping (inside `processFile`)
+
+**FIND:**
+```ts
+      setRawRows(nonEmpty);
+      setFileName(file.name);
+      const header = nonEmpty[0].map(cellStr);
+      const autoMap: ColumnMap = { ...EMPTY_COL_MAP };
+      header.forEach((h, i) => {
+        const lh = h.toLowerCase();
+        if (autoMap.description == null && (lh.includes("desc") || lh.includes("item name") || lh.includes("work"))) autoMap.description = i;
+        else if (autoMap.unit == null && (lh === "unit" || lh === "uom" || lh.includes("unit of"))) autoMap.unit = i;
+        else if (autoMap.boqQty == null && (lh.includes("qty") || lh.includes("quantity") || lh === "nos" || lh.includes("boq"))) autoMap.boqQty = i;
+        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book"))) autoMap.snlCode = i;
+        else if (autoMap.itemCode == null && (lh.includes("code") || lh.includes("sl") || lh === "no." || lh === "sno" || lh === "s.no" || lh === "item no")) autoMap.itemCode = i;
+        else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price") || lh.includes("amount"))) autoMap.clientRate = i;
+      });
+      setColMap(autoMap);
+      setStep(1);
+```
+
+**REPLACE WITH:**
+```ts
+      // Skip any title/banner rows above the real header (e.g. "BILL OF QUANTITY")
+      const headerIdx = findHeaderRowIdx(nonEmpty);
+      const trimmed = nonEmpty.slice(headerIdx);
+      setRawRows(trimmed);
+      setFileName(file.name);
+      const header = trimmed[0].map(cellStr);
+      const autoMap: ColumnMap = { ...EMPTY_COL_MAP };
+      header.forEach((h, i) => {
+        const lh = h.toLowerCase().trim();
+        if (autoMap.description == null && (lh.includes("desc") || lh === "item name" || lh.includes("particular"))) autoMap.description = i;
+        else if (autoMap.unit == null && (lh === "unit" || lh === "uom" || lh.includes("unit of"))) autoMap.unit = i;
+        else if (autoMap.boqQty == null && (lh.includes("qty") || lh.includes("quantity") || lh === "nos" || lh.includes("boq"))) autoMap.boqQty = i;
+        else if (autoMap.snlCode == null && (lh.includes("snl") || lh.includes("sdb") || lh.includes("norm") || lh.includes("data book") || lh.includes("spec ref") || lh.includes("mort") || lh.includes("clause"))) autoMap.snlCode = i;
+        else if (autoMap.itemCode == null && (lh === "item" || lh === "item no" || lh.includes("item no") || lh.includes("code") || lh === "sl" || lh === "sl no" || lh === "no." || lh === "sno" || lh === "s.no")) autoMap.itemCode = i;
+        else if (autoMap.clientRate == null && (lh.includes("rate") || lh.includes("price"))) autoMap.clientRate = i;
+      });
+      setColMap(autoMap);
+      setStep(1);
+```
+> Note: `"amount"` was removed from the rate detection so it doesn't grab the *Amount* column instead of *Unit Rate*. If a sheet has only an Amount column, the user can still map it manually in Step 1.
+
+---
+
+### EDIT 4 — structured parser with categories + parent/sub-item flattening
+
+**FIND:**
+```ts
+  const parsedItems: ParsedItem[] = useMemo(() => {
+    return dataRows
+      .filter(row => {
+        const desc = colMap.description != null ? cellStr(row[colMap.description]) : "";
+        const unit = colMap.unit != null ? cellStr(row[colMap.unit]) : "";
+        return desc.length > 0 && unit.length > 0;
+      })
+      .map((row, i) => {
+        const desc = colMap.description != null ? cellStr(row[colMap.description]) : "";
+        const unit = colMap.unit != null ? cellStr(row[colMap.unit]) : "";
+        const qtyRaw = colMap.boqQty != null ? row[colMap.boqQty] : null;
+        const rateRaw = colMap.clientRate != null ? row[colMap.clientRate] : null;
+        return {
+          description: desc,
+          unit,
+          boqQty: typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw ?? "0")) || 0,
+          itemCode: colMap.itemCode != null ? (cellStr(row[colMap.itemCode]) || undefined) : undefined,
+          snlCode: colMap.snlCode != null ? (cellStr(row[colMap.snlCode]) || undefined) : undefined,
+          clientRate: rateRaw != null ? (typeof rateRaw === "number" ? rateRaw : parseFloat(String(rateRaw))) || undefined : undefined,
+          sortOrder: i,
+        };
+      });
+  }, [dataRows, colMap]);
+```
+
+**REPLACE WITH:**
+```ts
+  const parsedItems: ParsedItem[] = useMemo(() => {
+    if (colMap.description == null || colMap.unit == null) return [];
+    const dCol = colMap.description, uCol = colMap.unit;
+    const iCol = colMap.itemCode, sCol = colMap.snlCode, qCol = colMap.boqQty, rCol = colMap.clientRate;
+
+    const get = (row: (string | number | null)[]) => ({
+      item: iCol != null ? normCode(row[iCol]) : "",
+      desc: cellStr(row[dCol]),
+      unit: cellStr(row[uCol]),
+      spec: sCol != null ? normCode(row[sCol]) : "",
+      qc: qCol != null ? row[qCol] : null,
+      rc: rCol != null ? row[rCol] : null,
+    });
+    type Row = ReturnType<typeof get>;
+    const isSkippable = (r: Row) =>
+      !r.desc || isTotalRow(r.desc) || r.desc.toLowerCase() === "description" || r.item.toLowerCase() === "item";
+
+    // The next meaningful row (null if a BILL boundary or end-of-sheet is hit first).
+    // Used to decide whether a coded row is a PARENT heading (i.e. its next line is a
+    // blank-coded sub-item) vs a self-contained priced leaf.
+    const nextMeaningful = (start: number): Row | null => {
+      for (let j = start + 1; j < dataRows.length; j++) {
+        const rr = get(dataRows[j]);
+        if (isBillRow(rr.item)) return null;
+        if (isSkippable(rr)) continue;
+        return rr;
+      }
+      return null;
+    };
+
+    const out: ParsedItem[] = [];
+    let currentCategory = "";
+    let parent: { code?: string; spec?: string; desc: string; unit: string } | null = null;
+    let parentHadChild = false;
+    let order = 0;
+
+    const flushParent = () => {
+      // A coded heading that turned out to have NO sub-items → keep it as its own line
+      if (parent && !parentHadChild) {
+        out.push({
+          description: parent.desc, unit: parent.unit || "-", boqQty: 0,
+          itemCode: parent.code, snlCode: parent.spec,
+          categoryName: currentCategory || undefined, sortOrder: order++,
+        });
+      }
+      parent = null; parentHadChild = false;
+    };
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = get(dataRows[i]);
+
+      // 1) "BILL No. X" → start a new category
+      if (isBillRow(r.item)) { flushParent(); if (r.desc) currentCategory = r.desc; continue; }
+      // 2) Skip empty / total / echoed-header rows
+      if (isSkippable(r)) continue;
+
+      const hasCode = r.item.length > 0;
+      const hasUnit = r.unit.length > 0;
+      const nxt = nextMeaningful(i);
+      const isParentHeading = hasCode && nxt != null && nxt.item === ""; // next line is a sub-item
+
+      // 3) Parent heading → store context, do not import the heading itself yet
+      if (isParentHeading) {
+        flushParent();
+        parent = { code: r.item, spec: r.spec || undefined, desc: r.desc, unit: r.unit };
+        parentHadChild = false;
+        continue;
+      }
+
+      // 4) Self-contained priced leaf (own code, no sub-items follow)
+      if (hasCode) {
+        flushParent();
+        out.push({
+          description: r.desc, unit: r.unit || "-", boqQty: toNum(r.qc),
+          itemCode: r.item, snlCode: r.spec || undefined,
+          clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
+          categoryName: currentCategory || undefined, sortOrder: order++,
+        });
+        continue;
+      }
+
+      // 5) Blank code → sub-item of the current parent (skip strays with no unit & no parent)
+      if (!hasUnit && !parent) continue;
+      out.push({
+        description: parent?.desc ? `${parent.desc} — ${r.desc}` : r.desc,
+        unit: r.unit || "-", boqQty: toNum(r.qc),
+        itemCode: parent?.code, snlCode: r.spec || parent?.spec || undefined,
+        clientRate: cellStr(r.rc) !== "" ? toNum(r.rc) || undefined : undefined,
+        categoryName: currentCategory || undefined, sortOrder: order++,
+      });
+      parentHadChild = true;
+    }
+    flushParent();
+    return out;
+  }, [dataRows, colMap]);
+```
+
+---
+
+## (Optional) EDIT 5 — "Hide zero-qty items" toggle in the BoQ view
+
+In `client/src/pages/BoqProjectDetail.tsx`, add a checkbox that filters out rows where `currentQty === 0 && boqQty === 0` before rendering. This declutters the EPC "full menu" while keeping those items in the database (they'll reappear when a revision adds quantity). This is cosmetic — skip if you prefer to always show every line. (Tell me if you want this and I'll write the exact edit for that file.)
+
+---
+
+## After applying — verify with NH-167 (2 min)
+
+1. Create a project → Import → upload `NH 167 BoQ SK Sample.xlsx`.
+2. **Step 1** should auto-map: Item Code → col 1, SNL/SDB Code → "MoRT&H Spec Ref", Description → col 3, Unit → col 4, Qty → "Quantity", Rate → "Unit Rate". No stray `MoRT&H Spec Ref` data row.
+3. **After import** you should see **12 categories** (≈274 items total) instead of one "Miscellaneous Works":
+   - SITE CLEARANCE · EARTH WORK · SUB-BASE AND BASE COURSES · BITUMINOUS WORKS · Culverts · ROAD MARKINGS & SIGN BOARDS · Drainage and Protection Works · BRIDGES · Miscellaneous · Junctions/Bus Bay/Truck Laybay · Toll Plaza · HIGHWAY LIGHTING.
+4. **Every sub-item now carries a code** (validated: 0 code-less rows). e.g. *"Cutting of trees — iii) Girth size above 900mm up to 1800mm"* → **1.02 / 201& 305**; *"…DBM… — VG 40"* → **4.03 / 507**; *"…Hume pipes — e) 1200 dia"* → **5.15**; *"…PCC for foundations — c) M25 grade"* → **5.05**.
+5. Items with 0 qty are present (e.g. *i) PCC Structures*) — they no longer break grouping.
+6. `Total Carried to Summary` rows do **not** appear as items.
+
+> Result: the 276-row "Miscellaneous" blob becomes clean bills with proper Item codes + MoRT&H spec refs, ready for SDB/SNL norm mapping and the Work Programme.
+
+**Multi-bill / carriageway vs service-road note:** because categories come straight from the `BILL No.` rows, BoQs that split scope into separate bills (e.g. *Bill 4A – Carriageway*, *Bill 4B – Service Road*) will group automatically — no extra config needed.
