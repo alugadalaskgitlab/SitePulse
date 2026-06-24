@@ -1,0 +1,180 @@
+lse Mix Calculator — Rate Consistency Rebuild (STAGE 1 of 3)
+
+**File:** `client/public/mix-calculator.html`
+**Objective:** the **same item must show the SAME rate everywhere**, and every figure must be self-explanatory (unit + what's included + cost vs quoted). This brief tells you (the Replit agent) exactly how the rates should behave; implement it and **test in the running app** (the author cannot run it).
+
+> Read this whole brief first. Stage 1 builds the single rate engine + the master switches + reconciles the estimating panels. Stages 2-3 (per-job/site, Impact, per-km/lumpsum polish) follow.
+
+---
+
+## A. How rates are computed TODAY (current state — for your context)
+
+There are **two families** of rate surfaces, and they don't agree:
+
+**1. Estimating panels** (generic, not tied to actual jobs):
+- `renderRateSummary` (Rate Summary table) — iterates **all** `mixTypes`, uses the per-mix `mixRates[]`, rows gated by `quoteMode`.
+- `renderSupplyQuote` (Quick Supply Quote) — uses `mixRates`, shows `exPlant → +overhead → +margin`, **ignores quoteMode** (always ex-plant).
+- `renderScopePanel` (Scope Breakdown) — now uses the **active mix** only.
+- `renderScopeQuotation` (Detailed Scope of Work) — uses `calcScopeComponents()` (active mix), gated by `scopeState.groups`.
+- `renderRecommendedQuote` — uses `mixRates`, `finalLaid` + profit/MT.
+
+**2. The Profitability / contract block** (`renderProfitability`, ~line 4052) — the **correct, job-driven** surface. Per **Site** it offers a contract **mode**:
+- **Itemised** → per-mix rate. Sub-modes: *Item Rates* (₹/CUM per mix + ₹/sqm prime/tack) or *Scope Rate* (₹/MT per mix, auto from scope). Auto-filled from cost, override-able (amber=auto, green=manual), with **Adjustment ₹** and **Target Margin %** → back-calculates the "Ask ₹/CUM".
+- **Per km** → road length + ₹/km.
+- **Lumpsum** → single ₹ for the whole stretch.
+It uses **only the mixes actually used in that site's jobs** (`row.mixQty`) and computes **base vs varied (Impact)** cost.
+
+### Why the numbers differ (the bug)
+| Difference | Estimating panels | Profitability block |
+|---|---|---|
+| **Mix set** | iterate **all** `mixTypes` (or just active) | only mixes **used in jobs** |
+| **Inclusions** | each panel hard-codes its own (Supply Quote ignores quoteMode; Scope uses `scopeState`; Rate Summary uses `quoteMode`) | driven by scope + per-site mode |
+| **Unit** | ₹/MT | ₹/CUM (Item Rates) or ₹/MT (Scope Rate) |
+| **Margin** | some include, some don't, often unlabelled | explicit target margin |
+
+So the same DBM appears ex-plant in one tile, +margin in another, per-CUM in a third, averaged or for an unused mix in a fourth — none labelled. **That is the confusion to eliminate.**
+
+---
+
+## B. The canonical model (single source of truth)
+
+Every rate = a stack of **cost layers**, always for **one specific mix**, never averaged:
+
+| # | Layer | Group | Unit |
+|---|---|---|---|
+| 1 | Aggregates (landed + wastage) | Material | ₹/MT |
+| 2 | Bitumen/binder (+ wastage) | Material | ₹/MT |
+| 3 | LDO + boiler fuel | Fuel | ₹/MT |
+| 4 | Plant equipment hire (HMP, DG, JCB, tipper) | Plant | ₹/MT |
+| 5 | Plant HSD (running fuel) | Fuel | ₹/MT |
+| 6 | Plant crew | Labour | ₹/MT |
+| 7 | Transport to site (site lead km) | Transport | ₹/MT |
+| 8 | Prime + Tack coat | Spraying | ₹/sqm |
+| 9 | Laying & compaction (paver/roller/PTR + crew) | Laying | ₹/MT |
+| 10 | Overhead (mob/demob) | Overhead | ₹/MT |
+| 11 | Margin % | Profit | % |
+
+A **quote** is defined by **4 switches** (and unit):
+- **Scope** (`quoteMode`): `supply_only` = layers 1-6,10 · `supply_transport` = +7 · `supply_laying` = +8,9 · `full_road` = all.
+- **Materials by** (`materialsBy`): `us` (include 1,2,3,5) or `client` (EXCLUDE 1,2,3,5 → job-work "we only mix/lay" rate). **NEW.**
+- **Plant cost** (`plantCostMode`): `full` (owning+running) or `marginal` (running only). *(already exists)*
+- **Unit**: `MT` · `CUM` · `km` · `lumpsum`.
+
+**Cost vs Quoted:** a panel shows **Cost** (layers, pre-margin) and **Quoted** (Cost × (1+margin)) as two clearly-labelled numbers — never blend them silently.
+
+### Reference engine — add ONE function; every panel calls it
+Add near the other rate helpers (after `mixRates` is built inside `recalc`, expose the inputs it needs, or compute from `calcScopeComponentsFromInputs`). Reference implementation:
+
+```js
+// Canonical per-mix rate. mix = a mixTypes[] entry. opts carries the switches + per-site context.
+// Returns { perMT_cost, perMT_quoted, perCUM_cost, perCUM_quoted, layers:{...}, includes:[...] }
+function computeRate(mix, opts){
+  opts = opts || {};
+  var scope    = opts.quoteMode || quoteMode;            // supply_only|supply_transport|supply_laying|full_road
+  var matBy    = opts.materialsBy || materialsBy;        // 'us' | 'client'
+  var margin   = (opts.marginPct!=null ? opts.marginPct : n('marginPct'))/100;
+  var transPMT = (opts.transPerMT!=null ? opts.transPerMT : _wTransPerMT) || 0; // per-site lead if provided
+
+  // Per-mix component values WITH wastage (same basis as mixRates / Plant Subtotal):
+  var aggW=n('aggWastage')/100, bitW=n('bitWastage')/100;
+  var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(mix.fractions[k]||0);},0)/100;
+  var agg  = aggFrac*(1+aggW)*aggLanded;                 // layer 1
+  var bit  = (mix.binderPct/100)*1000*(1+bitW)*bitPrice; // layer 2
+  var ldo  = ldoPerMT+boilerProdPerMT+boilerPreheatPerMT; // layer 3
+  var plantHire = plantEquipPerMT;                       // layer 4 (already respects plantCostMode)
+  var plantHsd  = plantHsdPerMT;                         // layer 5
+  var crew = crewPerMT;                                  // layer 6
+  var lay  = layPerMT;                                   // layer 9
+  var ovh  = overheadPerMT;                              // layer 10
+
+  // Materials-by switch: client supplies aggregate+bitumen+LDO+plant-running-fuel
+  var matCost = (matBy==='client') ? 0 : (agg+bit);
+  var fuelMat = (matBy==='client') ? plantHsd : (ldo+plantHsd); // client supplies fuel too in job-work
+  // (Expose a finer toggle later if a client supplies materials but NOT fuel.)
+
+  var includes = [];
+  var cost = plantHire + crew;                 includes.push('plant','crew');
+  cost += fuelMat;                             if(fuelMat>0) includes.push('fuel');
+  if(matBy!=='client'){ cost += matCost;       includes.push('aggregate','bitumen'); }
+  cost += ovh;                                 if(ovh>0) includes.push('overhead');
+  if(scope!=='supply_only'){ cost += transPMT; if(transPMT>0) includes.push('transport'); }
+  if(scope==='supply_laying'||scope==='full_road'){ cost += lay; includes.push('laying'); }
+
+  var quoted = cost*(1+margin);
+  var dens = mix.density||0;
+  return {
+    perMT_cost: cost, perMT_quoted: quoted,
+    perCUM_cost: cost*dens, perCUM_quoted: quoted*dens,
+    layers:{agg:agg,bit:bit,ldo:ldo,plantHire:plantHire,plantHsd:plantHsd,crew:crew,trans:transPMT,lay:lay,ovh:ovh,margin:quoted-cost},
+    includes: includes
+  };
+}
+```
+(Adapt variable names to whatever is in scope inside `recalc`; the values above already exist as `aggLanded`, `bitPrice`, `ldoPerMT`, `plantEquipPerMT`, `plantHsdPerMT`, `crewPerMT`, `layPerMT`, `overheadPerMT`, `_wTransPerMT`.)
+
+Add two globals near the other state vars and persist them like `quoteMode`:
+```js
+var materialsBy = 'us';   // 'us' | 'client'
+var rateUnit = 'MT';      // 'MT' | 'CUM'  (km/lumpsum handled in Profitability per-site)
+```
+
+---
+
+## C. What each panel must show AFTER Stage 1
+
+**Rule 0 — Mix set:** every estimating panel iterates the **same** list:
+- If Sites & Jobs exist → only the **mixes used in jobs** (union of `mixQty`), each with its **job quantity**.
+- If no jobs yet → the **active mix** only.
+- **Never** iterate all `mixTypes` blindly, and **never** average across mixes.
+
+**Rule 1 — Switches are global & visible:** unhide the **Quote-Mode bar** and add the **Materials-by** + **Unit (MT/CUM)** toggles next to it. These drive *every* panel via `computeRate(mix, …)`.
+
+**Rule 2 — Label every number:** show the **unit** (₹/MT, ₹/CUM, ₹/sqm) and a **Cost / Quoted** tag, plus a small **"includes: …"** chip (from `result.includes`).
+
+| Panel | Shows | Basis |
+|---|---|---|
+| **Quote-Mode bar** (unhidden) | Scope · Materials-by · Plant cost · Unit | the 4 switches |
+| **Rate Summary** | per used-mix: each layer + **Cost** + **Quoted** rows, in selected unit | `computeRate` |
+| **Quick Supply Quote** | per used-mix: Cost ₹/unit, Quoted ₹/unit, Total for job qty | `computeRate` (respect quoteMode now) |
+| **Scope Breakdown** | active/used mix: layer chips + **Cost** + **Margin** + **Quoted** | `computeRate.layers` |
+| **Detailed Scope of Work** | same as Rate Summary but grouped Mixing/Transport/Spraying/Paving, **pre-margin** + margin line | `computeRate` |
+| **Recommended Quote** | per used-mix: Quoted = Cost + chosen profit/MT (Min/Target/Premium) | `computeRate` |
+| **Profitability (Itemised/Perkm/Lumpsum)** | unchanged logic, but **auto-fill rates come from `computeRate`** so they match the panels | `computeRate` |
+
+After this, the Profitability "auto" rate, the Rate Summary "Quoted", and the Detailed Scope total for the **same mix + same switches** are **identical**.
+
+---
+
+## D. Implementation steps (Stage 1)
+
+1. **Add globals** `materialsBy`, `rateUnit`; persist/restore them in `saveState`/`loadState` exactly like `quoteMode`/`plantCostMode`.
+2. **Add `computeRate(mix, opts)`** (Section B) inside `recalc` scope (or refactor the per-mix loop to call it so `mixRates[]` is built FROM it — single source).
+3. **Unhide the Quote-Mode bar**: remove `#quoteModeBar{display:none!important}` (line ~192). Add two pill groups to that bar:
+   - **Materials:** `Us | Client` → `setMaterialsBy('us'|'client')` (mirror `setQuoteMode`: set var, persist, `recalc()`).
+   - **Unit:** `₹/MT | ₹/CUM` → `setRateUnit('MT'|'CUM')`.
+4. **Determine the shared mix set** once per `recalc`: `usedMixes = jobs exist ? union(mixQty) : [activeMix]`. Pass each used mix's **job quantity** for "Total" columns.
+5. **Refactor each estimating render fn** (`renderRateSummary`, `renderSupplyQuote`, `renderScopePanel`, `renderScopeQuotation`, `renderRecommendedQuote`) to: iterate `usedMixes`, call `computeRate(mix, {transPerMT: siteLeadIfAny})`, render in `rateUnit`, and show **Cost + Quoted + includes-chip**. Remove their bespoke math.
+6. **Profitability auto-fill**: make `_scopeAutoRates` / itemised auto values come from `computeRate(mix,…).perCUM_cost` (Item Rates) and `.perMT_cost` (Scope Rate) so the contract auto-rates equal the panel rates.
+7. Keep **per-site transport**: when a site has a lead, pass `transPerMT` for that site so per-site rates differ correctly by distance (this is intended, and must be labelled "incl. transport @ <lead> km").
+
+---
+
+## E. Test checklist (run in the app)
+
+1. One mix, no jobs, Margin 0, **Supply Only / Materials: Us**:
+   - Rate Summary **Plant Subtotal** == Scope Breakdown **Cost** == Detailed Scope **Mixing** == Quick Supply **Cost** == Profitability auto (₹/MT). All equal to the rupee.
+2. Switch **Unit → ₹/CUM**: every panel shows the same number × density, consistently.
+3. **Materials: Client**: aggregate+bitumen+fuel drop out of *every* panel together; the rate is the pure mixing(+lay/transport) charge.
+4. Add 2 sites with **different leads**: each site's rate differs only by transport, and each is labelled with its lead km. A mix **not** used in any job does **not** appear anywhere.
+5. Switch **Quote Mode** across the 4 options: transport/laying layers appear/disappear **identically** in Rate Summary, Detailed Scope and Profitability auto-rates.
+6. Margin 10%: every panel's **Quoted = Cost × 1.10**, with margin on its own labelled line.
+
+When all 6 pass, Stage 1 is done. Reply and I'll send **Stage 2** (per-job cards, Impact/variation original-vs-varied using `computeRate`, and the per-km / lumpsum compare polish) and **Stage 3** (consolidating redundant tiles + print/summary).
+
+---
+
+## F. Notes
+- `computeRate` makes the **Impact/variation** feature trivial later: call it with original inputs vs varied inputs → Δ and profit, same everywhere.
+- Don't delete the Profitability per-site Itemised/Perkm/Lumpsum logic — it's correct; only its **auto-fill source** changes to `computeRate`.
+- Per-km and Lumpsum already exist per-site; Stage 3 just adds the same Cost/Quoted/includes labelling and an explicit "your offer vs our cost → profit/loss" line for the lumpsum case (your "₹30L for 1.3 km" scenario).
+
