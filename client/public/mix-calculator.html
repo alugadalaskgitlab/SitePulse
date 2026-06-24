@@ -916,6 +916,7 @@ var ldoMode = 'norm';               // 'norm' | 'actual'
 var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
 var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
 var _lastComputedRates = {};        // mix name → computeRate result; set inside recalc() for outside use
+var _computeRate = null;            // pointer to recalc()-closure computeRate; set each recalc pass
 var _summarySectionQuoteLevel = 'target'; // 'min' | 'target' | 'premium'
 var _quoteProfitMin     = 150;      // JS-level profit state — survives innerHTML rebuilds
 var _quoteProfitTarget  = 300;
@@ -2206,32 +2207,43 @@ function recalc(){
 
   // ====== computeRate — canonical single-mix rate function (Stage 1) ======
   // All display panels call this so they always show identical numbers.
+  // Snapshot of current closure prices — lets computeRate be called with frozen inputs (Impact/Variation).
+  function livePrices(){
+    return {
+      aggLanded: aggLanded, bitPrice: bitPrice, fuelTotal: fuelTotal,
+      plantEquipPerMT: plantEquipPerMT, crewPerMT: crewPerMT,
+      layPerMT: layPerMT, overheadPerMT: overheadPerMT,
+      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct
+    };
+  }
   // opts.transPerMT overrides the weighted average (for per-site labelling).
+  // opts.prices    overrides the live price snapshot  (for Impact/Variation base vs varied).
   function computeRate(mix, opts){
     opts = opts || {};
+    var P = opts.prices || livePrices();
     var tpm = (opts.transPerMT !== undefined) ? opts.transPerMT : _wTransPerMT;
     var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(mix.fractions[k]||0);},0)/100;
     var bitFrac = mix.binderPct/100;
     // Client-supplied materials → zero out material costs; keep plant equipment
-    var aggCostPMT = (materialsBy==='us') ? aggFrac*(1+_aggWastePct/100)*aggLanded : 0;
-    var bitCostPMT = (materialsBy==='us') ? bitFrac*1000*(1+_bitWastePct/100)*bitPrice : 0;
-    var exPlant = aggCostPMT + bitCostPMT + plantEquipPerMT + fuelTotal + crewPerMT;
-    var quotedBase = exPlant + (_qShowTrans ? tpm : 0) + (_qShowLaying ? layPerMT : 0) + overheadPerMT;
+    var aggCostPMT = (materialsBy==='us') ? aggFrac*(1+P.aggWastePct/100)*P.aggLanded : 0;
+    var bitCostPMT = (materialsBy==='us') ? bitFrac*1000*(1+P.bitWastePct/100)*P.bitPrice : 0;
+    var exPlant = aggCostPMT + bitCostPMT + P.plantEquipPerMT + P.fuelTotal + P.crewPerMT;
+    var quotedBase = exPlant + (_qShowTrans ? tpm : 0) + (_qShowLaying ? P.layPerMT : 0) + P.overheadPerMT;
     var marginAmt = quotedBase * marginPct / 100;
-    var perMT_cost   = exPlant + tpm + layPerMT + overheadPerMT;
+    var perMT_cost   = exPlant + tpm + P.layPerMT + P.overheadPerMT;
     var perMT_quoted = quotedBase + marginAmt;
     var incl = [];
     if(materialsBy==='us'){ incl.push('Agg'); incl.push('Bit'); }
     incl.push('Plant+Fuel'); incl.push('Crew');
     if(_qShowTrans && tpm>0) incl.push('Trans');
-    if(_qShowLaying && layPerMT>0) incl.push('Laying');
-    if(overheadPerMT>0) incl.push('OH');
+    if(_qShowLaying && P.layPerMT>0) incl.push('Laying');
+    if(P.overheadPerMT>0) incl.push('OH');
     if(marginPct>0) incl.push('Margin '+marginPct+'%');
     return {
       name: mix.name, density: mix.density,
       aggregate: aggCostPMT, bitumen: bitCostPMT,
-      equipment: plantEquipPerMT, plantHsd: plantHsdPerMT, fuel: fuelTotal, crew: crewPerMT,
-      overhead: overheadPerMT, transport: tpm, laying: layPerMT,
+      equipment: P.plantEquipPerMT, plantHsd: plantHsdPerMT, fuel: P.fuelTotal, crew: P.crewPerMT,
+      overhead: P.overheadPerMT, transport: tpm, laying: P.layPerMT,
       exPlant: exPlant, quotedCost: quotedBase, finalLaid: perMT_quoted,
       perMT_cost: perMT_cost, perMT_quoted: perMT_quoted,
       perCUM_cost: perMT_cost * mix.density, perCUM_quoted: perMT_quoted * mix.density,
@@ -2307,15 +2319,13 @@ function recalc(){
     var revBoilerProdPerMT = boilerCampaignMt>0?(boilerProdLhr*revLdoRate*boilerProdHrs/boilerCampaignMt):0;
     var revBoilerPreheatPerMT = boilerCampaignMt>0?(boilerPreheatLhr*revLdoRate*boilerPreheatHrs/boilerCampaignMt):0;
     var revFuelTotal = revPlantHsdPerMT + revLdoPerMT2 + revBoilerProdPerMT + revBoilerPreheatPerMT;
-    revisedMixRates = mixTypes.map(function(m){
-      var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
-      var bitFrac = m.binderPct/100;
-      var revBitCostPerMT = bitFrac*1000*(1+_bitWastePct/100)*revBitPrice;
-      var ps = aggFrac*(1+_aggWastePct/100)*revAggLanded + revBitCostPerMT + plantEquipPerMT + revFuelTotal + crewPerMT;
-      var revQuotedBase = ps+(_qShowTrans?_wTransPerMT:0)+(_qShowLaying?revLayPerMT:0)+overheadPerMT;
-      var exP = ps;
-      return {name:m.name, density:m.density, exPlant:exP, transport:_wTransPerMT, laying:revLayPerMT, overhead:overheadPerMT, finalLaid:revQuotedBase*(1+marginPct/100), bitumen:revBitCostPerMT, quotedCost:revQuotedBase};
-    });
+    var _revPricesSnap = {
+      aggLanded: revAggLanded, bitPrice: revBitPrice, fuelTotal: revFuelTotal,
+      plantEquipPerMT: plantEquipPerMT, crewPerMT: crewPerMT,
+      layPerMT: revLayPerMT, overheadPerMT: overheadPerMT,
+      aggWastePct: _aggWastePct, bitWastePct: _bitWastePct
+    };
+    revisedMixRates = mixTypes.map(function(m){ return computeRate(m, { prices: _revPricesSnap }); });
     revisedProcPrices = {aggLanded:revAggLanded, bitPrice:revBitPrice, hsdPrice:revHsdPrice, ldoRate:revLdoRate};
   }
 
@@ -2388,7 +2398,8 @@ function recalc(){
     ? mixTypes.filter(function(_,i){ return usedMixIdxs[i]; })
     : [mixTypes[activeMixIdx] || mixTypes[0]];
   var usedMixRates = usedMixTypes.map(function(mt){ return computeRate(mt); });
-  // Store module-level cache keyed by mix name for panels outside recalc()
+  // Expose computeRate and its results for top-level functions (recalcJobs, renderProfitability)
+  _computeRate = computeRate;
   _lastComputedRates = {};
   mixTypes.forEach(function(mt, i){ _lastComputedRates[mt.name] = computeRate(mt); });
 
@@ -3566,26 +3577,24 @@ function recalcJobs(mixRates, transPerMT, layPerMT, primePerSqm, tackPerSqm, pri
         if(!mr) return;
         var mix = mixTypes[mx.mixIdx]||mixTypes[0];
         var mt = (mx.qty_mt!=null&&mx.qty_mt>0)?mx.qty_mt:(cum>0&&mix.density>0?cum*mix.density:0);
-        var plantAmt = mt*mr.exPlant;
-        var transAmt = mt*siteTransPerMT;
-        var layAmt = mt*layPerMT;
-        var overheadAmt = mt*(mr.overhead||0);
+        // Route all rate columns through computeRate so every panel shows identical numbers
+        var r = _computeRate(mix, { transPerMT: siteTransPerMT });
+        var plantAmt = mt*r.exPlant;
+        var transAmt = mt*r.transport;
+        var layAmt   = mt*r.laying;
+        var overheadAmt = mt*r.overhead;
         var mxCum = mix.density>0?mt/mix.density:0;
 
         var el;
-        var plantPerCum = mr.exPlant*mix.density;
-        var transPerCum = siteTransPerMT*mix.density;
-        var layPerCum = layPerMT*mix.density;
-        var siteTotalPerMT = (mr.exPlant+siteTransPerMT+layPerMT+(mr.overhead||0))*(1+marginPct/100);
-        var totalRatePerMT = siteTotalPerMT;
-        var totalRatePerCum = mix.density>0?siteTotalPerMT*mix.density:0;
-        el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(mr.exPlant);
-        el=document.getElementById('jmPlantCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(plantPerCum);
-        el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(siteTransPerMT);
-        el=document.getElementById('jmTransCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(transPerCum);
-        el=document.getElementById('jmLayRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(layPerMT);
-        el=document.getElementById('jmLayCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(layPerCum);
-        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtR(totalRatePerMT):'—';
+        var transLabel = siteTransPerMT>0 ? fmtR(r.transport)+' @'+siteLead+'km' : fmtR(r.transport);
+        var totalRatePerCum = mix.density>0 ? r.finalLaid*mix.density : 0;
+        el=document.getElementById('jmPlantRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.exPlant);
+        el=document.getElementById('jmPlantCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.exPlant*mix.density);
+        el=document.getElementById('jmTransRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=transLabel;
+        el=document.getElementById('jmTransCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.transport*mix.density);
+        el=document.getElementById('jmLayRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.laying);
+        el=document.getElementById('jmLayCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=fmtR(r.laying*mix.density);
+        el=document.getElementById('jmTotalRate_'+si+'_'+ji+'_'+mi); if(el) el.textContent=mt>0?fmtR(r.finalLaid):'—';
         el=document.getElementById('jmTotalCum_'+si+'_'+ji+'_'+mi); if(el) el.textContent=(mt>0&&totalRatePerCum>0)?fmtR(totalRatePerCum):'—';
 
         mx._mt=mt; mx._plantAmt=plantAmt; mx._transAmt=transAmt; mx._layAmt=layAmt; mx._overheadAmt=overheadAmt;
@@ -4488,16 +4497,13 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
     });
     var totalRoadKm=(s.roadLengthM||0)/1000;
 
-    var _arSource = (scenarioMode && revisedMixRates) ? revisedMixRates : mixRates;
     var autoRates = {};
     Object.keys(mixQty).forEach(function(mn){
       var mq=mixQty[mn];
-      var mr=_arSource[mq.mixIdx]||_arSource[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-      var perMT = (mr.exPlant + siteTransPerMT + layPerMT + (mr.overhead||0)) * _marginMul;
-      var perCUM = mix.density > 0 ? perMT * mix.density : 0;
       var key = s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
-      autoRates[key] = Math.round(perCUM*100)/100;
+      var _ar = _computeRate ? _computeRate(mix, { transPerMT: siteTransPerMT }) : null;
+      autoRates[key] = _ar ? Math.round(_ar.perCUM_quoted*100)/100 : 0;
     });
     if(primeArea>0) autoRates[s.id+'_PRIME'] = Math.round(primePerSqm*100)/100;
     if(tackArea>0) autoRates[s.id+'_TACK'] = Math.round(tackPerSqm*100)/100;
@@ -4515,7 +4521,8 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
           var mq=mixQty[mn];
           var rmr=_rarSource[mq.mixIdx]||_rarSource[0]; if(!rmr) return;
           var mix=mixTypes[mq.mixIdx]||mixTypes[0];
-          var perMT = (rmr.exPlant + _ratStp + _ratLay + (rmr.overhead||0)) * _marginMul;
+          var _rl2 = rmr.laying!=null ? rmr.laying : _ratLay;
+          var perMT = (rmr.exPlant + _ratStp + _rl2 + (rmr.overhead||0)) * _marginMul;
           var perCUM = mix.density > 0 ? perMT * mix.density : 0;
           var key = s.id+'_'+mn.toUpperCase().replace(/[\s-]+/g,'_');
           revAutoRates[key] = Math.round(perCUM*100)/100;
@@ -4534,11 +4541,14 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       var mr=mixRates[mq.mixIdx]||mixRates[0]; if(!mr) return;
       var mix=mixTypes[mq.mixIdx]||mixTypes[0];
       var vol=mq.cum*mix.density;
-      basePlantCost += mq.cum*mr.exPlant*mix.density;
+      // Use _lastComputedRates.exPlant so materialsBy gate is honoured (client-supply drops agg+bit)
+      var _cr=_lastComputedRates[mix.name];
+      var _exPlant=_cr?_cr.exPlant:mr.exPlant;
+      basePlantCost += mq.cum*_exPlant*mix.density;
       baseTransCost += mq.cum*baseSiteTransPerMT*mix.density;
       baseLayCost += mq.cum*baseLayPerMT*mix.density;
       baseOverheadCost += vol*baseOverheadPerMT;
-      fullJobCost += vol*(mr.exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
+      fullJobCost += vol*(_exPlant+baseSiteTransPerMT+baseLayPerMT+baseOverheadPerMT);
     });
     var basePrimeCost = primeArea*rawBasePrimePerSqm;
     var baseTackCost = tackArea*rawBaseTackPerSqm;
@@ -4858,6 +4868,32 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       }
       html+='</div>';
       html+='</div>';
+      if(row.totalRoadKm>0){
+        var _km=row.totalRoadKm;
+        var _ourCostKm=_km>0?row._baseCost/_km:0;
+        var _ctrKm=(kmRate||0)+(contractRates[s.id+'__ADJ_PER_KM']||0);
+        var _profitKm=kmRate!=null?(_ctrKm-_ourCostKm):null;
+        var _totalProfit=_profitKm!=null?_profitKm*_km:null;
+        var _firstMixName=Object.keys(row.mixQty)[0];
+        var _inclData=_lastComputedRates[_firstMixName];
+        var _inclChip=_inclData?_inclData.includes:'';
+        html+='<div style="margin-top:12px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+        html+='<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">Cost vs Contract</div>';
+        html+='<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">';
+        html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Our cost ₹/km</div>';
+        html+='<div style="font-size:18px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round(_ourCostKm))+'</div></div>';
+        if(kmRate!=null){
+          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Contract ₹/km'+(contractRates[s.id+'__ADJ_PER_KM']?'+adj':'')+'</div>';
+          html+='<div style="font-size:18px;font-weight:700;color:#16a34a">₹'+fmtI(Math.round(_ctrKm))+'</div></div>';
+          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Profit ₹/km</div>';
+          html+='<div style="font-size:18px;font-weight:700;color:'+(_profitKm>=0?'#16a34a':'#ef4444')+'">'+(_profitKm>=0?'+':'')+fmtI(Math.round(_profitKm))+'</div></div>';
+          html+='<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px">Total profit ('+_km.toFixed(2)+' km)</div>';
+          html+='<div style="font-size:18px;font-weight:700;color:'+(_totalProfit>=0?'#16a34a':'#ef4444')+'">'+(_totalProfit<0?'−':'')+'₹'+fmtI(Math.round(Math.abs(_totalProfit)))+(_totalProfit<0?' Loss':'')+'</div></div>';
+        }
+        html+='</div>';
+        if(_inclChip) html+='<div style="font-size:11px;color:#6b7280;margin-top:6px">includes: '+esc(_inclChip)+'</div>';
+        html+='</div>';
+      }
     } else {
       var lsKey=s.id+'__LUMPSUM';
       var lsAmt=contractRates[lsKey]!=null?contractRates[lsKey]:null;
@@ -4870,6 +4906,33 @@ function renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revise
       if(lsAdjVal && lsAdjVal!==0){ html+='<div style="font-size:12px;color:'+(lsAdjVal>0?'#16a34a':'#ef4444')+';font-weight:600;margin-top:2px">'+(lsAdjVal>0?'+':'')+fmtI(Math.round(lsAdjVal))+' adjustment</div>'; }
       html+='</div>';
       html+='</div>';
+      if(row._baseCost>0 || lsAmt!=null){
+        var _lsOurCost = row._baseCost;
+        var _lsOffer = (lsAmt!=null?(lsAmt||0):0)+(lsAdjVal||0);
+        var _lsProfit = _lsOffer - _lsOurCost;
+        var _lsPct = _lsOurCost>0 ? _lsProfit/_lsOurCost*100 : 0;
+        var _lsWorth = _lsProfit >= 0;
+        var _lsMixName=Object.keys(row.mixQty)[0];
+        var _lsInclData=_lastComputedRates[_lsMixName];
+        var _lsInclChip=_lsInclData?_lsInclData.includes:'';
+        html+='<div style="margin-top:12px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+        html+='<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">Lumpsum Verdict</div>';
+        html+='<div style="display:flex;flex-direction:column;gap:6px">';
+        html+='<div style="display:flex;justify-content:space-between;align-items:baseline;max-width:400px">';
+        html+='<span style="font-size:13px;color:#6b7280">Our cost (all-in)</span>';
+        html+='<span style="font-size:15px;font-weight:700;color:#1e293b">₹'+fmtI(Math.round(_lsOurCost))+'</span></div>';
+        if(lsAmt!=null){
+          html+='<div style="display:flex;justify-content:space-between;align-items:baseline;max-width:400px">';
+          html+='<span style="font-size:13px;color:#6b7280">Their offer'+(lsAdjVal?'+adj':'')+'</span>';
+          html+='<span style="font-size:15px;font-weight:700;color:#16a34a">₹'+fmtI(Math.round(_lsOffer))+'</span></div>';
+          html+='<div style="display:flex;justify-content:space-between;align-items:baseline;max-width:400px;padding-top:6px;border-top:1px solid #e5e7eb">';
+          html+='<span style="font-size:13px;font-weight:700;color:#374151">Profit / (Loss)</span>';
+          html+='<span style="font-size:16px;font-weight:700;color:'+(_lsWorth?'#16a34a':'#ef4444')+'">'+(_lsWorth?'+':'')+fmtI(Math.round(_lsProfit))+' ('+_lsPct.toFixed(1)+'%) '+(_lsWorth?'<span style="font-size:12px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:600">✅ Worth doing</span>':'<span style="font-size:12px;background:#fee2e2;color:#ef4444;padding:2px 8px;border-radius:10px;font-weight:600">⚠️ Below cost</span>')+'</span></div>';
+        }
+        html+='</div>';
+        if(_lsInclChip) html+='<div style="font-size:11px;color:#6b7280;margin-top:8px">includes: '+esc(_lsInclChip)+'</div>';
+        html+='</div>';
+      }
     }
 
     var tmKey=s.id+'__TARGET_MARGIN';
