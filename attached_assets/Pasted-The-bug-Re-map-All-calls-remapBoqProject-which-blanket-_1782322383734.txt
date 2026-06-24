@@ -1,0 +1,68 @@
+The bug: "Re-map All" calls remapBoqProject, which blanket-resets every item to "unmapped" and re-runs the auto-mapper — and the auto-mapper overwrites/ignores manual mappings. That's why your manual work vanished.
+
+The good news: the no-match branch only flips the status flag — it does not delete your manual mapping rows. So your manual mappings (the cross-category ones the auto-mapper can't re-find, like HYSD/tree-cutting) are still in the database, just hidden. I confirmed manual maps are tagged isAutoMapped=false, so I can protect and recover them.
+
+The fix (3 edits, server/snlAutoMapper.ts) — also auto-recovers your lost mappings
+EDIT 1 — import notInArray. FIND:
+
+import { eq, and, inArray } from "drizzle-orm";
+REPLACE:
+
+import { eq, and, inArray, notInArray } from "drizzle-orm";
+EDIT 2 — make the auto-mapper preserve & restore manual mappings. FIND:
+
+  if (snlRows.length === 0) {
+    // No SNL data loaded — leave status as unmapped
+    return;
+  }
+
+  for (const boqRow of boqRows) {
+REPLACE:
+
+  if (snlRows.length === 0) {
+    // No SNL data loaded — leave status as unmapped
+    return;
+  }
+
+  // Preserve manual mappings: never overwrite or unmap user-confirmed items.
+  // Also RESTORES their "mapped" status if a prior remap/reset cleared it.
+  const manualRows = await db
+    .select({ boqItemId: snlBoqMappings.boqItemId })
+    .from(snlBoqMappings)
+    .where(and(inArray(snlBoqMappings.boqItemId, boqItemIds), eq(snlBoqMappings.isAutoMapped, false)));
+  const manualSet = new Set(manualRows.map((r) => r.boqItemId));
+
+  for (const boqRow of boqRows) {
+    if (manualSet.has(boqRow.id)) {
+      await db
+        .update(boqItems)
+        .set({ mappingStatus: "mapped" })
+        .where(eq(boqItems.id, boqRow.id));
+      continue;
+    }
+EDIT 3 — stop the reset from touching manual items. FIND:
+
+  // Reset all to unmapped first
+  await db
+    .update(boqItems)
+    .set({ mappingStatus: "unmapped" })
+    .where(eq(boqItems.boqProjectId, boqProjectId));
+
+  await autoMapBoqItems(ids);
+REPLACE:
+
+  // Reset to unmapped first — but NEVER touch manually-mapped items.
+  const manualIds = (await db
+    .select({ id: snlBoqMappings.boqItemId })
+    .from(snlBoqMappings)
+    .innerJoin(boqItems, eq(snlBoqMappings.boqItemId, boqItems.id))
+    .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(snlBoqMappings.isAutoMapped, false))))
+    .map((r) => r.id);
+  await db
+    .update(boqItems)
+    .set({ mappingStatus: "unmapped" })
+    .where(manualIds.length > 0
+      ? and(eq(boqItems.boqProjectId, boqProjectId), notInArray(boqItems.id, manualIds))
+      : eq(boqItems.boqProjectId, boqProjectId));
+
+  await autoMapBoqItems(ids);

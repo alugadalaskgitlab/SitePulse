@@ -20,7 +20,7 @@
 
 import { db } from "./db";
 import { boqItems, snlItems, snlBoqMappings } from "@shared/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -207,7 +207,22 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     return;
   }
 
+  // Preserve manual mappings: never overwrite or unmap user-confirmed items.
+  // Also RESTORES their "mapped" status if a prior remap/reset cleared it.
+  const manualRows = await db
+    .select({ boqItemId: snlBoqMappings.boqItemId })
+    .from(snlBoqMappings)
+    .where(and(inArray(snlBoqMappings.boqItemId, boqItemIds), eq(snlBoqMappings.isAutoMapped, false)));
+  const manualSet = new Set(manualRows.map((r) => r.boqItemId));
+
   for (const boqRow of boqRows) {
+    if (manualSet.has(boqRow.id)) {
+      await db
+        .update(boqItems)
+        .set({ mappingStatus: "mapped" })
+        .where(eq(boqItems.id, boqRow.id));
+      continue;
+    }
     try {
       // ── 0. Deterministic SNL-code match (highest priority) ──────────────
       // Try the explicit SNL code first, then fall back to the BOQ item code.
@@ -404,11 +419,19 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
   const ids = rows.map(r => r.id);
   if (ids.length === 0) return { remapped: 0 };
 
-  // Reset all to unmapped first
+  // Reset to unmapped first — but NEVER touch manually-mapped items.
+  const manualIds = (await db
+    .select({ id: snlBoqMappings.boqItemId })
+    .from(snlBoqMappings)
+    .innerJoin(boqItems, eq(snlBoqMappings.boqItemId, boqItems.id))
+    .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(snlBoqMappings.isAutoMapped, false))))
+    .map((r) => r.id);
   await db
     .update(boqItems)
     .set({ mappingStatus: "unmapped" })
-    .where(eq(boqItems.boqProjectId, boqProjectId));
+    .where(manualIds.length > 0
+      ? and(eq(boqItems.boqProjectId, boqProjectId), notInArray(boqItems.id, manualIds))
+      : eq(boqItems.boqProjectId, boqProjectId));
 
   await autoMapBoqItems(ids);
   return { remapped: ids.length };
