@@ -1,0 +1,66 @@
+PATCH 1 of 2 — Step 1: BOQ grouping + SNL mapping fixes
+Fixes the category-taxonomy mismatch (GSB/WMM mapping), adds a server-side category fallback on import, and makes SNL manual search work across categories. 3 edits, all in server/.
+
+EDIT 1 — server/snlAutoMapper.ts
+FIND:
+
+function inferWorkCategory(desc: string): string | null {
+  const d = desc.toLowerCase();
+  if (/\b(excavat|earthwork|earthen|embankment|subgrade|sub.?grade|borrow.?pit|cutting|formation)\b/.test(d)) return "EARTHWORK";
+  if (/\b(gsb|wmm|wet.?mix|granular|sub.?base|base.?course|crusher.?run)\b/.test(d)) return "GRANULAR";
+  if (/\b(bituminous|bitumen|asphalt|\bdbm\b|\bbc\b|wearing.?course|binder.?course|prime.?coat|tack.?coat|seal.?coat)\b/.test(d)) return "BITUMINOUS";
+  if (/\b(concrete|rcc|pcc|cement.?concrete|reinforced|pavement.?quality)\b/.test(d)) return "CONCRETE";
+  if (/\b(clear|grub|dismantl|demolish|scarif|site.?clear|vegetation)\b/.test(d)) return "SITE_CLEARANCE";
+  if (/\b(drain|culvert|pipe|catch.?pit|kerb|median)\b/.test(d)) return "DRAINAGE";
+  if (/\b(struct|bridge|retaining.?wall|abutment|pier|slab)\b/.test(d)) return "STRUCTURES";
+  return null;
+}
+REPLACE WITH:
+
+function inferWorkCategory(desc: string): string | null {
+  const d = desc.toLowerCase();
+  // Codes MUST match shared/boqWorkCategories.ts + the SNL seed workCategory values.
+  // Order matters: most specific first.
+  if (/\b(clear|grub|dismantl|demolish|scarif|site.?clear|vegetation)\b/.test(d)) return "SITE_CLEARANCE";
+  if (/\b(excavat|earthwork|earthen|embankment|subgrade|sub.?grade|borrow.?pit|cutting|formation)\b/.test(d)) return "EARTHWORK";
+  if (/\b(gsb|wmm|wet.?mix|granular|sub.?base|base.?course|crusher.?run|wbm|water.?bound)\b/.test(d)) return "SUBBASE_BASE";
+  if (/\b(bituminous|bitumen|asphalt|\bdbm\b|\bbc\b|\bsdbc\b|wearing.?course|binder.?course|prime.?coat|tack.?coat|seal.?coat|mastic)\b/.test(d)) return "BITUMINOUS";
+  if (/\b(concrete|rcc|pcc|cement.?concrete|reinforced|pavement.?quality|\bpqc\b|\bdlc\b)\b/.test(d)) return "CONCRETE";
+  if (/\b(median|paved.?shoulder|shoulder)\b/.test(d)) return "SHOULDERS_MEDIANS";
+  if (/\b(kerb|curb|road.?marking|\bsign\b|crash.?barrier|guard.?rail|delineator|road.?stud)\b/.test(d)) return "ROAD_FURNITURE";
+  if (/\b(drain|catch.?pit|chute|kerb.?channel)\b/.test(d)) return "DRAINAGE";
+  if (/\b(culvert|hume.?pipe|\bpipe\b)\b/.test(d)) return "CROSS_DRAINAGE";
+  if (/\b(bridge|retaining.?wall|abutment|\bpier\b|deck.?slab|girder)\b/.test(d)) return "MAJOR_BRIDGES";
+  return null;
+}
+EDIT 2 — server/storage.ts (two changes)
+2a. FIND:
+
+import { canonicalizeMachineType } from "@shared/canonicalize";
+ADD this line immediately after it:
+
+import { suggestWorkCategory } from "@shared/boqWorkCategories";
+2b. FIND (inside importBoqItems):
+
+        sortOrder: item.sortOrder ?? i,
+        workCategory: item.workCategory ?? null,
+      }).returning({ id: boqItems.id });
+REPLACE WITH:
+
+        sortOrder: item.sortOrder ?? i,
+        workCategory: item.workCategory ?? suggestWorkCategory(item.itemCode) ?? null,
+      }).returning({ id: boqItems.id });
+EDIT 3 — server/storage.ts searchSnlItems (soft category filter)
+⚠️ There are two identical if (category) conds.push(...) lines in this file. Change only the one that is immediately followed by the if (sourceId) ... line (that's the one inside searchSnlItems).
+
+FIND:
+
+    if (category) conds.push(eq(snlItems.workCategory, category));
+    if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
+REPLACE WITH:
+
+    // Soft category filter: only constrain by category when there is NO free-text query.
+    // During manual search the user types keywords, so we search across ALL categories.
+    if (category && !q.trim()) conds.push(eq(snlItems.workCategory, category));
+    if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
+After applying: restart, open a BOQ project, click Re-map (or POST /api/boq/projects/<id>/remap). GSB/WMM/DBM/Earthwork should show Mapped; manual SNL search returns results across categories.

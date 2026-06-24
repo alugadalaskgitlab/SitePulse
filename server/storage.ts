@@ -303,6 +303,7 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { suggestWorkCategory } from "@shared/boqWorkCategories";
 import {
   HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
   HEATING_TRENDS_HOT_OIL_DELTA_MIN_C,
@@ -19863,7 +19864,7 @@ export class DatabaseStorage implements IStorage {
         clientRate: item.clientRate ?? null,
         clientAmount,
         sortOrder: item.sortOrder ?? i,
-        workCategory: item.workCategory ?? null,
+        workCategory: item.workCategory ?? suggestWorkCategory(item.itemCode) ?? null,
       }).returning({ id: boqItems.id });
       insertedIds.push(inserted.id);
     }
@@ -20705,7 +20706,9 @@ export class DatabaseStorage implements IStorage {
         );
       }
     }
-    if (category) conds.push(eq(snlItems.workCategory, category));
+    // Soft category filter: only constrain by category when there is NO free-text query.
+    // During manual search the user types keywords, so we search across ALL categories.
+    if (category && !q.trim()) conds.push(eq(snlItems.workCategory, category));
     if (sourceId) conds.push(eq(snlItems.sourceId, sourceId));
     if (sector) conds.push(sql`coalesce(${snlItems.sector}, ${snlItems.workCategory}) = ${sector}`);
 

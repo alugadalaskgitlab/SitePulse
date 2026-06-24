@@ -77,13 +77,18 @@ function chapterOf(code: string | null | undefined): string | null {
  */
 function inferWorkCategory(desc: string): string | null {
   const d = desc.toLowerCase();
-  if (/\b(excavat|earthwork|earthen|embankment|subgrade|sub.?grade|borrow.?pit|cutting|formation)\b/.test(d)) return "EARTHWORK";
-  if (/\b(gsb|wmm|wet.?mix|granular|sub.?base|base.?course|crusher.?run)\b/.test(d)) return "GRANULAR";
-  if (/\b(bituminous|bitumen|asphalt|\bdbm\b|\bbc\b|wearing.?course|binder.?course|prime.?coat|tack.?coat|seal.?coat)\b/.test(d)) return "BITUMINOUS";
-  if (/\b(concrete|rcc|pcc|cement.?concrete|reinforced|pavement.?quality)\b/.test(d)) return "CONCRETE";
+  // Codes MUST match shared/boqWorkCategories.ts + the SNL seed workCategory values.
+  // Order matters: most specific first.
   if (/\b(clear|grub|dismantl|demolish|scarif|site.?clear|vegetation)\b/.test(d)) return "SITE_CLEARANCE";
-  if (/\b(drain|culvert|pipe|catch.?pit|kerb|median)\b/.test(d)) return "DRAINAGE";
-  if (/\b(struct|bridge|retaining.?wall|abutment|pier|slab)\b/.test(d)) return "STRUCTURES";
+  if (/\b(excavat|earthwork|earthen|embankment|subgrade|sub.?grade|borrow.?pit|cutting|formation)\b/.test(d)) return "EARTHWORK";
+  if (/\b(gsb|wmm|wet.?mix|granular|sub.?base|base.?course|crusher.?run|wbm|water.?bound)\b/.test(d)) return "SUBBASE_BASE";
+  if (/\b(bituminous|bitumen|asphalt|\bdbm\b|\bbc\b|\bsdbc\b|wearing.?course|binder.?course|prime.?coat|tack.?coat|seal.?coat|mastic)\b/.test(d)) return "BITUMINOUS";
+  if (/\b(concrete|rcc|pcc|cement.?concrete|reinforced|pavement.?quality|\bpqc\b|\bdlc\b)\b/.test(d)) return "CONCRETE";
+  if (/\b(median|paved.?shoulder|shoulder)\b/.test(d)) return "SHOULDERS_MEDIANS";
+  if (/\b(kerb|curb|road.?marking|\bsign\b|crash.?barrier|guard.?rail|delineator|road.?stud)\b/.test(d)) return "ROAD_FURNITURE";
+  if (/\b(drain|catch.?pit|chute|kerb.?channel)\b/.test(d)) return "DRAINAGE";
+  if (/\b(culvert|hume.?pipe|\bpipe\b)\b/.test(d)) return "CROSS_DRAINAGE";
+  if (/\b(bridge|retaining.?wall|abutment|\bpier\b|deck.?slab|girder)\b/.test(d)) return "MAJOR_BRIDGES";
   return null;
 }
 
