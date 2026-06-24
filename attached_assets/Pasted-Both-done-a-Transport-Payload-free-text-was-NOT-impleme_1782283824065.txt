@@ -1,0 +1,166 @@
+Both done. 
+
+## (a) Transport Payload → free-text (was NOT implemented — still a dropdown; now fixed & validated)
+
+```html
+<!-- FIND (section ⑥ Transport): -->
+      <div class="form-group">
+        <label>Payload (MT)</label>
+        <select id="transPayloadSel" onchange="...">...</select>
+        <input id="transPayloadCustom" ... >
+        <input id="transPayload" type="number" value="16" style="display:none">
+      </div>
+<!-- REPLACE WITH: -->
+      <div class="form-group">
+        <label>Payload (MT)</label>
+        <input id="transPayload" type="number" value="16" step="0.5" min="0" oninput="recalc()" style="width:100px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+      </div>
+```
+(`transPayload` is already in PERSIST_INPUTS, so it persists; the select/custom fields were only self-referenced — safe to remove. JS validated.)
+
+## (b) Part 4 — Live multi-user sync brief 👇
+Action: view_file({"path": "/app/SITEPULSE_MIXCALC_LIVESYNC.md"})
+Observation: [Showing lines 1-142 of 142 total] /app/SITEPULSE_MIXCALC_LIVESYNC.md:
+1|# SitePulse Mix Calculator — Part 4: Live multi-user sync
+2|
+3|**Goal:** when you and a colleague open the **same saved estimate**, each person's changes appear for the other within a few seconds — without overwriting unsaved work.
+4|
+5|**Feasibility: confirmed.** Estimates already persist to `/api/mix-estimates/:id`; `storage.updateMixEstimate` already sets `updatedAt = new Date()` on every PUT; the client already has `autoSaveToDb()` and an estimate-load path. So this is **polling-based** (no websockets) and mostly client-side.
+6|
+7|> Files: `client/public/mix-calculator.html` (all required changes). Server changes are **optional** (attribution only).
+8|
+9|---
+10|
+11|## A. Make autosave fire on *every* edit (currently only site/job edits autosave)
+12|
+13|Today `autoSaveToDb()` is called only from site/job mutations (≈ lines 3606-3638). Cost-input edits (raw materials, plant, fuel, transport, etc.) only hit `localStorage` via `saveState()` — they reach the DB only on the explicit **Save** button. For live sync, autosave must run (debounced) on all edits.
+14|
+15|**A1 — add state + a debounced scheduler** (place near `autoSaveToDb`):
+16|```js
+17|var _syncedUpdatedAt = null;   // server updatedAt this client last has
+18|var _localDirty = false;       // true while this user has unsaved edits
+19|var _suppressAutoSave = false; // true during boot / applying a remote state
+20|var _autoSaveTimer = null;
+21|function scheduleAutoSave(){
+22|  if(_suppressAutoSave || !currentEstimateId || scenarioMode) return;
+23|  _localDirty = true;
+24|  if(_autoSaveTimer) clearTimeout(_autoSaveTimer);
+25|  _autoSaveTimer = setTimeout(function(){ autoSaveToDb(); }, 1500);
+26|}
+27|```
+28|
+29|**A2 — call it from `recalc()`** (recalc already runs on every input). Add at the **end** of `recalc()`:
+30|```js
+31|  scheduleAutoSave();
+32|```
+33|
+34|**A3 — capture `updatedAt` + clear dirty after a successful autosave.** In `autoSaveToDb`, replace the `.then(function(r){ ... })` block with:
+35|```js
+36|  }).then(function(r){
+37|    if(r.status === 404){
+38|      currentEstimateId = null; currentEstimateName = '';
+39|      localStorage.removeItem(STORAGE_KEY+'_estId');
+40|      localStorage.removeItem(STORAGE_KEY+'_estName');
+41|      updateBadge();
+42|      return null;
+43|    }
+44|    return r.json();
+45|  }).then(function(est){
+46|    if(est && est.updatedAt){ _syncedUpdatedAt = est.updatedAt; _localDirty = false; }
+47|  }).catch(function(){});
+48|```
+49|Do the same `_syncedUpdatedAt = est.updatedAt` capture in `saveToDb()` (manual Save) and in `loadFromDb()` (set `_syncedUpdatedAt = est.updatedAt` before the reload), so a client never treats its **own** save as a remote change.
+50|
+51|---
+52|
+53|## B. Apply a remote change (silent — no confirm)
+54|
+55|Add a non-confirming variant of `loadFromDb` for sync:
+56|```js
+57|function applyRemoteState(est){
+58|  try{
+59|    var state = migrateState(JSON.parse(est.state));
+60|    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+61|    localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
+62|    localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+63|  }catch(e){ return; }
+64|  _syncedUpdatedAt = est.updatedAt;
+65|  _localDirty = false;
+66|  location.reload(); // Part-2 fix keeps the user on their current section
+67|}
+68|```
+69|
+70|---
+71|
+72|## C. The poller (every 6s, only when an estimate is open + tab visible)
+73|
+74|```js
+75|function startLiveSync(){
+76|  setInterval(function(){
+77|    if(!currentEstimateId || scenarioMode) return;
+78|    if(document.visibilityState !== 'visible') return;
+79|    fetch('/api/mix-estimates/'+currentEstimateId)
+80|      .then(function(r){ return r.ok ? r.json() : null; })
+81|      .then(function(est){
+82|        if(!est || !est.updatedAt) return;
+83|        if(!_syncedUpdatedAt){ _syncedUpdatedAt = est.updatedAt; return; } // seed on first poll
+84|        if(new Date(est.updatedAt) > new Date(_syncedUpdatedAt)){
+85|          if(_localDirty){
+86|            showSyncBanner(est);                       // don't clobber unsaved edits
+87|          } else {
+88|            showToast(est.updatedBy ? ('Synced changes from '+est.updatedBy) : 'Synced changes from a colleague');
+89|            applyRemoteState(est);
+90|          }
+91|        }
+92|      }).catch(function(){});
+93|  }, 6000);
+94|}
+95|```
+96|
+97|**Banner** (shown only when the local user has unsaved edits, so they choose when to refresh):
+98|```js
+99|function showSyncBanner(est){
+100|  if(document.getElementById('liveSyncBanner')) return;
+101|  var b=document.createElement('div'); b.id='liveSyncBanner';
+102|  b.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e3a5f;color:#fff;padding:10px 16px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:13px;display:flex;gap:12px;align-items:center';
+103|  b.appendChild(document.createTextNode('⟳ A colleague updated this estimate.'));
+104|  var btn=document.createElement('button'); btn.textContent='Refresh to load';
+105|  btn.style.cssText='background:#f59e0b;border:none;color:#1e3a5f;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer';
+106|  btn.onclick=function(){ applyRemoteState(est); };
+107|  var x=document.createElement('button'); x.textContent='✕';
+108|  x.style.cssText='background:transparent;border:none;color:#fff;cursor:pointer;font-size:14px';
+109|  x.onclick=function(){ b.remove(); };
+110|  b.appendChild(btn); b.appendChild(x); document.body.appendChild(b);
+111|}
+112|```
+113|
+114|**Start it at the end of boot** (after the section-restore lines), and guard boot against false-dirty:
+115|- At the very start of boot set `_suppressAutoSave = true;`
+116|- After `recalc(); showSection(...)` and the URL-param block, set `_suppressAutoSave = false;` then call `startLiveSync();`
+117|
+118|---
+119|
+120|## D. Server (OPTIONAL — only for "who changed it" attribution)
+121|Not required for sync to work. If you want the toast to name the colleague:
+122|1. `shared/schema.ts` → add `updatedBy: integer("updated_by")` to `mixEstimates`.
+123|2. `PUT /api/mix-estimates/:id` handler → set `updatedBy: req.authUser?.id` in the update payload.
+124|3. `GET /api/mix-estimates/:id` → join the users table and return `updatedBy` as the user's **name** (string) so the client toast can show it.
+125|(If skipped, the toast just says "a colleague".)
+126|
+127|---
+128|
+129|## E. Honest limitation (tell your colleague too)
+130|The estimate is stored as **one JSON blob**, so this is **last-write-wins at the whole-estimate level**. Two people editing *different* fields a few seconds apart is handled well (autosave + 6s poll + the refresh banner). But if both save within the same ~1.5s window, the later save wins the whole blob. If you find yourselves colliding often, the next step is **soft section locks** (e.g. "Raw Materials is being edited by <name>") — a Phase-2 add-on; tell me and I'll spec it.
+131|
+132|---
+133|
+134|## F. Test (two logins, same estimate)
+135|1. Both users **Load the same saved estimate** (so both have the same `currentEstimateId`).
+136|2. User A changes Bitumen price (don't touch anything else) → within ~6s User B (who is idle) sees a toast and the new rate.
+137|3. User B is **mid-edit** when A saves → B sees the **"colleague updated — Refresh to load"** banner instead of being interrupted; clicking it loads A's version.
+138|4. Switch a tab to background → polling pauses (no needless requests); return → it resumes.
+139|5. Neither user's explicit Save nor autosave triggers a false "synced from colleague" toast on their **own** machine.
+140|
+141|> Prerequisite: both users must be working on a **saved** estimate (an `id` exists). If you start from a fresh unsaved sheet, Save it once and have both Load it.
+142|
+[End of file]

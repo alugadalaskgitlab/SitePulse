@@ -627,12 +627,7 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Rate (₹/km/load)</label><input id="transRate" type="number" value="9" oninput="recalc()"></div>
       <div class="form-group">
         <label>Payload (MT)</label>
-        <select id="transPayloadSel" onchange="(function(){var v=this.value;document.getElementById('transPayload').value=v==='custom'?'':v;document.getElementById('transPayloadCustom').style.display=v==='custom'?'':'none';if(v!=='custom')recalc();}).call(this)" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
-          <option value="16">16 MT</option><option value="22">22 MT</option><option value="28">28 MT</option>
-          <option value="32">32 MT</option><option value="34">34 MT</option><option value="custom">Custom</option>
-        </select>
-        <input id="transPayloadCustom" type="number" style="width:60px;margin-left:4px;display:none" placeholder="MT" oninput="document.getElementById('transPayload').value=this.value;recalc()">
-        <input id="transPayload" type="number" value="16" style="display:none">
+        <input id="transPayload" type="number" value="16" step="0.5" min="0" oninput="recalc()" style="width:100px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
       </div>
       <div class="form-group" style="align-items:center;gap:8px">
         <label>Return Trip Included?</label>
@@ -1464,6 +1459,7 @@ function confirmSaveToDb(){
         currentEstimateName = est.name;
         localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
         localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+        _syncedUpdatedAt = est.updatedAt||null; _localDirty = false;
         updateBadge();
         showToast('Saved ✓');
       })
@@ -1484,6 +1480,7 @@ function confirmSaveToDb(){
             currentEstimateName = est.name;
             localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
             localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+            _syncedUpdatedAt = est.updatedAt||null; _localDirty = false;
             updateBadge();
             showToast('Saved ✓');
           });
@@ -1517,13 +1514,76 @@ function autoSaveToDb(){
     body:JSON.stringify(payload)
   }).then(function(r){
     if(r.status === 404){
-      currentEstimateId = null;
-      currentEstimateName = '';
+      currentEstimateId = null; currentEstimateName = '';
       localStorage.removeItem(STORAGE_KEY+'_estId');
       localStorage.removeItem(STORAGE_KEY+'_estName');
       updateBadge();
+      return null;
     }
+    return r.json();
+  }).then(function(est){
+    if(est && est.updatedAt){ _syncedUpdatedAt = est.updatedAt; _localDirty = false; }
   }).catch(function(){});
+}
+
+// ====== LIVE MULTI-USER SYNC (Part 4) ======
+var _syncedUpdatedAt = null;
+var _localDirty = false;
+var _suppressAutoSave = false;
+var _autoSaveTimer = null;
+
+function scheduleAutoSave(){
+  if(_suppressAutoSave || !currentEstimateId || scenarioMode) return;
+  _localDirty = true;
+  if(_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(function(){ autoSaveToDb(); }, 1500);
+}
+
+function applyRemoteState(est){
+  try{
+    var state = migrateState(JSON.parse(est.state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
+    localStorage.setItem(STORAGE_KEY+'_estName', est.name);
+  }catch(e){ return; }
+  _syncedUpdatedAt = est.updatedAt;
+  _localDirty = false;
+  location.reload();
+}
+
+function showSyncBanner(est){
+  if(document.getElementById('liveSyncBanner')) return;
+  var b = document.createElement('div'); b.id = 'liveSyncBanner';
+  b.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e3a5f;color:#fff;padding:10px 16px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:13px;display:flex;gap:12px;align-items:center';
+  b.appendChild(document.createTextNode('⟳ A colleague updated this estimate.'));
+  var btn = document.createElement('button'); btn.textContent = 'Refresh to load';
+  btn.style.cssText = 'background:#f59e0b;border:none;color:#1e3a5f;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer';
+  btn.onclick = function(){ applyRemoteState(est); };
+  var x = document.createElement('button'); x.textContent = '✕';
+  x.style.cssText = 'background:transparent;border:none;color:#fff;cursor:pointer;font-size:14px';
+  x.onclick = function(){ b.remove(); };
+  b.appendChild(btn); b.appendChild(x); document.body.appendChild(b);
+}
+
+function startLiveSync(){
+  setInterval(function(){
+    if(!currentEstimateId || scenarioMode) return;
+    if(document.visibilityState !== 'visible') return;
+    fetch('/api/mix-estimates/'+currentEstimateId)
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(est){
+        if(!est || !est.updatedAt) return;
+        if(!_syncedUpdatedAt){ _syncedUpdatedAt = est.updatedAt; return; }
+        if(new Date(est.updatedAt) > new Date(_syncedUpdatedAt)){
+          if(_localDirty){
+            showSyncBanner(est);
+          } else {
+            showToast(est.updatedBy ? ('Synced changes from '+est.updatedBy) : 'Synced changes from a colleague');
+            applyRemoteState(est);
+          }
+        }
+      }).catch(function(){});
+  }, 6000);
 }
 
 function openSavedPanel(){
@@ -1565,6 +1625,7 @@ function loadFromDb(est){
   localStorage.setItem(STORAGE_KEY+'_estId', String(est.id));
   localStorage.setItem(STORAGE_KEY+'_estName', est.name);
   localStorage.setItem('hlc_mix_calc_focus', 'jobs');
+  _syncedUpdatedAt = est.updatedAt||null; _localDirty = false;
   closeModal();
   location.reload();
 }
@@ -2437,6 +2498,7 @@ function recalc(){
     if(_activeSection==='rec-quote') _renderRecQuoteSection();
     if(_activeSection==='final-summary') _renderFinalSummary();
   }
+  scheduleAutoSave();
 }
 
 function renderSupplyQuote(mixRates, marginPct){
@@ -6140,6 +6202,7 @@ function _sanitizeMn(mn){ return mn.toUpperCase().replace(/[\s-]+/g,'_'); }
 
 // ====== INIT ======
 function init(){
+  _suppressAutoSave = true;
   var params = new URLSearchParams(location.search);
   var cloneId = params.get('clone');
   if(cloneId){
@@ -6229,6 +6292,9 @@ function init(){
     localStorage.removeItem('hlc_mix_calc_focus');
     setTimeout(collapseSectionsForJobView, 150);
   }
+
+  _suppressAutoSave = false;
+  startLiveSync();
 }
 init();
 
