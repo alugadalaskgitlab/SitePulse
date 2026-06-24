@@ -133,6 +133,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   // Import mode when project already has items
   const [importMode, setImportMode] = useState<"append" | "replace">("append");
+  const [skipZeroQty, setSkipZeroQty] = useState(true);
 
   const importMutation = useMutation({
     mutationFn: ({ items, mode }: { items: any[]; mode: "append" | "replace" }) =>
@@ -335,16 +336,21 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   }
 
   const canProceedStep1 = colMap.description != null && colMap.unit != null && colMap.boqQty != null;
-  const unassignedCount = itemWorkCats.filter(c => c === "").length;
+  const zeroQtyCount = parsedItems.filter(it => (it.boqQty ?? 0) <= 0).length;
+  const importCount = skipZeroQty ? parsedItems.length - zeroQtyCount : parsedItems.length;
+  // Rows that will be skipped don't need a category, so they don't block the gate.
+  const unassignedCount = itemWorkCats.filter((c, i) => c === "" && !(skipZeroQty && (parsedItems[i]?.boqQty ?? 0) <= 0)).length;
   const canProceedStep2 = unassignedCount === 0;
 
   const mappedColIndices = Object.values(colMap).filter((v): v is number => typeof v === "number");
 
   function buildFinalItems() {
-    return parsedItems.map((item, idx) => ({
-      ...item,
-      workCategory: itemWorkCats[idx] || undefined,
-    }));
+    return parsedItems
+      .map((item, idx) => ({
+        ...item,
+        workCategory: itemWorkCats[idx] || undefined,
+      }))
+      .filter(item => !(skipZeroQty && (item.boqQty ?? 0) <= 0));
   }
 
   const finalItems = step >= 3 ? buildFinalItems() : [];
@@ -715,9 +721,26 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
 
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
               <p className="text-sm font-semibold text-emerald-800">Ready to import</p>
+              <label className="flex items-center gap-2 cursor-pointer bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-600"
+                  checked={skipZeroQty}
+                  onChange={e => setSkipZeroQty(e.target.checked)}
+                  data-testid="checkbox-skip-zero-qty"
+                />
+                <span className="text-sm text-emerald-900">
+                  Skip rows with zero quantity
+                  {zeroQtyCount > 0 && (
+                    <span className="ml-1 font-semibold text-amber-700">
+                      ({zeroQtyCount} row{zeroQtyCount !== 1 ? "s" : ""} {skipZeroQty ? "will be skipped" : "found"})
+                    </span>
+                  )}
+                </span>
+              </label>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
-                  <p className="text-2xl font-bold text-emerald-700">{parsedItems.length}</p>
+                  <p className="text-2xl font-bold text-emerald-700">{importCount}</p>
                   <p className="text-sm text-muted-foreground mt-0.5">BOQ Items</p>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-emerald-100">
@@ -820,7 +843,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
           {step === 3 && (
             <Button
               onClick={() => importMutation.mutate({ items: buildFinalItems(), mode: importMode })}
-              disabled={importMutation.isPending || parsedItems.length === 0}
+              disabled={importMutation.isPending || importCount === 0}
               className={importMode === "replace" && existingItemCount > 0
                 ? "bg-red-600 hover:bg-red-700 text-white"
                 : "bg-emerald-600 hover:bg-emerald-700 text-white"}
@@ -829,8 +852,8 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
               {importMutation.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Importing…</>
                 : importMode === "replace" && existingItemCount > 0
-                  ? <><Trash2 className="w-4 h-4 mr-1" /> Replace &amp; Import {parsedItems.length} Items</>
-                  : <><Check className="w-4 h-4 mr-1" /> Import {parsedItems.length} Items</>
+                  ? <><Trash2 className="w-4 h-4 mr-1" /> Replace &amp; Import {importCount} Items</>
+                  : <><Check className="w-4 h-4 mr-1" /> Import {importCount} Items</>
               }
             </Button>
           )}

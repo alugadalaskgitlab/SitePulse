@@ -1,0 +1,176 @@
+# SitePulse — BOQ Import: skip zero-quantity rows (toggle, default ON, live count)
+
+Adds a **"Skip rows with zero quantity"** toggle to Step 3 (Review) of the import
+wizard. Default **ON**. Shows a live count of how many rows will be skipped, and only
+imports rows with `qty > 0` when enabled. Zero-qty rows also stop blocking the
+"all items must have a category" gate.
+
+All changes are in **`client/src/components/BoqImportWizard.tsx`**. Purely additive;
+apply on top of the checkbox-multiselect patch you already merged.
+
+---
+
+## EDIT 1 — add the toggle state
+
+**FIND:**
+
+```tsx
+  const [importMode, setImportMode] = useState<"append" | "replace">("append");
+```
+
+**REPLACE WITH:**
+
+```tsx
+  const [importMode, setImportMode] = useState<"append" | "replace">("append");
+  const [skipZeroQty, setSkipZeroQty] = useState(true);
+```
+
+---
+
+## EDIT 2 — make the category gate ignore skipped rows + compute counts
+
+**FIND:**
+
+```tsx
+  const canProceedStep1 = colMap.description != null && colMap.unit != null && colMap.boqQty != null;
+  const unassignedCount = itemWorkCats.filter(c => c === "").length;
+  const canProceedStep2 = unassignedCount === 0;
+```
+
+**REPLACE WITH:**
+
+```tsx
+  const canProceedStep1 = colMap.description != null && colMap.unit != null && colMap.boqQty != null;
+  const zeroQtyCount = parsedItems.filter(it => (it.boqQty ?? 0) <= 0).length;
+  const importCount = skipZeroQty ? parsedItems.length - zeroQtyCount : parsedItems.length;
+  // Rows that will be skipped don't need a category, so they don't block the gate.
+  const unassignedCount = itemWorkCats.filter((c, i) => c === "" && !(skipZeroQty && (parsedItems[i]?.boqQty ?? 0) <= 0)).length;
+  const canProceedStep2 = unassignedCount === 0;
+```
+
+---
+
+## EDIT 3 — drop zero-qty rows from the final import payload
+
+**FIND:**
+
+```tsx
+  function buildFinalItems() {
+    return parsedItems.map((item, idx) => ({
+      ...item,
+      workCategory: itemWorkCats[idx] || undefined,
+    }));
+  }
+```
+
+**REPLACE WITH:**
+
+```tsx
+  function buildFinalItems() {
+    return parsedItems
+      .map((item, idx) => ({
+        ...item,
+        workCategory: itemWorkCats[idx] || undefined,
+      }))
+      .filter(item => !(skipZeroQty && (item.boqQty ?? 0) <= 0));
+  }
+```
+
+---
+
+## EDIT 4 — add the toggle UI + skipped count to the "Ready to import" card
+
+**FIND:**
+
+```tsx
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-800">Ready to import</p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white rounded-lg p-3 border border-emerald-100">
+                  <p className="text-2xl font-bold text-emerald-700">{parsedItems.length}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">BOQ Items</p>
+                </div>
+```
+
+**REPLACE WITH:**
+
+```tsx
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-800">Ready to import</p>
+              <label className="flex items-center gap-2 cursor-pointer bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-600"
+                  checked={skipZeroQty}
+                  onChange={e => setSkipZeroQty(e.target.checked)}
+                  data-testid="checkbox-skip-zero-qty"
+                />
+                <span className="text-sm text-emerald-900">
+                  Skip rows with zero quantity
+                  {zeroQtyCount > 0 && (
+                    <span className="ml-1 font-semibold text-amber-700">
+                      ({zeroQtyCount} row{zeroQtyCount !== 1 ? "s" : ""} {skipZeroQty ? "will be skipped" : "found"})
+                    </span>
+                  )}
+                </span>
+              </label>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white rounded-lg p-3 border border-emerald-100">
+                  <p className="text-2xl font-bold text-emerald-700">{importCount}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">BOQ Items</p>
+                </div>
+```
+
+---
+
+## EDIT 5 — use the import count on the confirm button
+
+**FIND:**
+
+```tsx
+            <Button
+              onClick={() => importMutation.mutate({ items: buildFinalItems(), mode: importMode })}
+              disabled={importMutation.isPending || parsedItems.length === 0}
+              className={importMode === "replace" && existingItemCount > 0
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+              data-testid="button-import-confirm"
+            >
+              {importMutation.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Importing…</>
+                : importMode === "replace" && existingItemCount > 0
+                  ? <><Trash2 className="w-4 h-4 mr-1" /> Replace &amp; Import {parsedItems.length} Items</>
+                  : <><Check className="w-4 h-4 mr-1" /> Import {parsedItems.length} Items</>
+              }
+            </Button>
+```
+
+**REPLACE WITH:**
+
+```tsx
+            <Button
+              onClick={() => importMutation.mutate({ items: buildFinalItems(), mode: importMode })}
+              disabled={importMutation.isPending || importCount === 0}
+              className={importMode === "replace" && existingItemCount > 0
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+              data-testid="button-import-confirm"
+            >
+              {importMutation.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Importing…</>
+                : importMode === "replace" && existingItemCount > 0
+                  ? <><Trash2 className="w-4 h-4 mr-1" /> Replace &amp; Import {importCount} Items</>
+                  : <><Check className="w-4 h-4 mr-1" /> Import {importCount} Items</>
+              }
+            </Button>
+```
+
+---
+
+## Verify
+
+1. Import a BOQ that contains section-header / zero-qty rows.
+2. Step 3 shows the toggle (checked) and e.g. "(12 rows will be skipped)"; the "BOQ Items"
+   tile and the Import button count drop to the qty>0 total.
+3. Untick → count jumps back to the full row count.
+4. Import → only qty>0 rows are created (when toggle is on).
