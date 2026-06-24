@@ -251,6 +251,15 @@ function CategorySection({
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
+  const { toast } = useToast();
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/boq/items/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+      toast({ title: "Item deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
+  });
 
   const subtotal = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const boqSubtotal = items.reduce((s, i) => s + (i.clientRate ?? 0) * i.boqQty, 0);
@@ -354,6 +363,19 @@ function CategorySection({
                           data-testid={`button-edit-item-${item.id}`}
                         >
                           <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete "${(item as any).itemName || item.description.slice(0, 50)}"?\nThis removes the item and its Gantt stretches. This cannot be undone.`)) {
+                              deleteItemMutation.mutate(item.id);
+                            }
+                          }}
+                          disabled={deleteItemMutation.isPending}
+                          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                          title="Delete item"
+                          data-testid={`button-delete-item-${item.id}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     </td>

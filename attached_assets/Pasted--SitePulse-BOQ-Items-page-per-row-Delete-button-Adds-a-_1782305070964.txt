@@ -1,0 +1,90 @@
+# SitePulse — BOQ Items page: per-row Delete button
+
+Adds a trash/delete button to every row in the BOQ Items list (inside each work-category
+section). Uses the existing `DELETE /api/boq/items/:id` endpoint — no backend change.
+A native confirm prevents accidental deletes.
+
+All changes are in **`client/src/pages/BoqProjectDetail.tsx`**, inside the
+`CategorySection` component. `useMutation`, `apiRequest`, `queryClient`, `useToast`
+and the `Trash2` icon are already imported at the top of the file.
+
+---
+
+## EDIT 1 — add a delete mutation inside `CategorySection`
+
+**FIND:**
+
+```tsx
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
+```
+
+**REPLACE WITH:**
+
+```tsx
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [editItem, setEditItem] = useState<BoqItemWithCategory | null>(null);
+  const { toast } = useToast();
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/boq/items/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+      toast({ title: "Item deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
+  });
+```
+
+---
+
+## EDIT 2 — add the delete button after the Edit (pencil) button
+
+**FIND:**
+
+```tsx
+                        <button
+                          onClick={() => setEditItem(item)}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Edit item"
+                          data-testid={`button-edit-item-${item.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                        <button
+                          onClick={() => setEditItem(item)}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Edit item"
+                          data-testid={`button-edit-item-${item.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete "${(item as any).itemName || item.description.slice(0, 50)}"?\nThis removes the item and its Gantt stretches. This cannot be undone.`)) {
+                              deleteItemMutation.mutate(item.id);
+                            }
+                          }}
+                          disabled={deleteItemMutation.isPending}
+                          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                          title="Delete item"
+                          data-testid={`button-delete-item-${item.id}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+```
+
+---
+
+## Verify
+
+1. Open a BOQ project → each item row now shows a red trash icon next to the pencil.
+2. Click it → confirm dialog → on OK the row disappears and the list refreshes.
+3. The category subtotal and SNL-mapped counts update automatically.
+
+> Note: deleting a BOQ item also removes its work-programme stretches (DB cascade), so
+> re-check the Gantt if you delete after scheduling.
