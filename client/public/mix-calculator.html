@@ -189,7 +189,6 @@ body{font-size:11px;background:#fff}
 .rate-panel{box-shadow:none;border:1px solid #ddd}
 .rate-panel h2{font-size:14px}
 #fullBreakdown{display:block!important}
-#quoteModeBar{display:none!important}
 .rec-quote-card{display:none!important}
 .site-card,.job-card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
 .site-header{padding:6px 10px;font-size:11px}
@@ -347,6 +346,18 @@ body{font-size:11px;background:#fff}
     <button id="qm_supply_transport" class="qm-btn" onclick="setQuoteMode('supply_transport')">🚛 Supply + Transport</button>
     <button id="qm_supply_laying" class="qm-btn" onclick="setQuoteMode('supply_laying')">🛣️ Supply + Laying</button>
     <button id="qm_full_road" class="qm-btn qm-active" onclick="setQuoteMode('full_road')">🏗️ Full Scope</button>
+  </div>
+  <div style="width:1px;height:24px;background:rgba(255,255,255,.2);margin:0 4px"></div>
+  <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Materials:</span>
+  <div style="display:flex;gap:4px">
+    <button id="mb_us"     class="qm-btn qm-active" onclick="setMaterialsBy('us')">🏭 Us</button>
+    <button id="mb_client" class="qm-btn"           onclick="setMaterialsBy('client')">🤝 Client</button>
+  </div>
+  <div style="width:1px;height:24px;background:rgba(255,255,255,.2);margin:0 4px"></div>
+  <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Unit:</span>
+  <div style="display:flex;gap:4px">
+    <button id="ru_MT"  class="qm-btn qm-active" onclick="setRateUnit('MT')">₹/MT</button>
+    <button id="ru_CUM" class="qm-btn"            onclick="setRateUnit('CUM')">₹/CUM</button>
   </div>
   <div id="quoteModeDesc" style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.65);font-style:italic;white-space:nowrap">Ex-plant rate — transport, laying &amp; coat excluded</div>
 </div>
@@ -904,6 +915,7 @@ var transReturnTrip = false;        // same for finished mix transport
 var ldoMode = 'norm';               // 'norm' | 'actual'
 var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned equipment depreciation)
 var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
+var _lastComputedRates = {};        // mix name → computeRate result; set inside recalc() for outside use
 var _summarySectionQuoteLevel = 'target'; // 'min' | 'target' | 'premium'
 var _quoteProfitMin     = 150;      // JS-level profit state — survives innerHTML rebuilds
 var _quoteProfitTarget  = 300;
@@ -972,6 +984,8 @@ var jobCounter = 0;
 var contractRates = {};
 var procScenarioContractRates = null;
 var procBaseContractRates = null;
+var materialsBy = 'us';   // 'us' | 'client'
+var rateUnit    = 'MT';   // 'MT' | 'CUM'
 function profitInputChanged(key, val){
   var v = parseFloat(val);
   if(isNaN(v) || val.trim()===''){
@@ -1134,6 +1148,8 @@ function migrateState(state){
   if(state.transReturnTrip === undefined) state.transReturnTrip = false;
   if(!state.ldoMode) state.ldoMode = 'norm';
   if(!state.plantCostMode) state.plantCostMode = 'full';
+  if(!state.materialsBy) state.materialsBy = 'us';
+  if(!state.rateUnit)    state.rateUnit    = 'MT';
   return state;
 }
 
@@ -1206,6 +1222,7 @@ function saveState(){
       scopeState: scopeState, scopeMarginPct: scopeMargin,
       quoteMode: quoteMode, aggReturnTrip: aggReturnTrip,
       transReturnTrip: transReturnTrip, ldoMode: ldoMode, plantCostMode: plantCostMode,
+      materialsBy: materialsBy, rateUnit: rateUnit,
       _savedAt: Date.now()
     }));
     _showDraftSavedBadge();
@@ -1275,6 +1292,8 @@ function loadState(){
     }
     if(state.ldoMode) setLdoMode(state.ldoMode, true);
     if(state.plantCostMode) setPlantCostMode(state.plantCostMode, true);
+    if(state.materialsBy) setMaterialsBy(state.materialsBy, true);
+    if(state.rateUnit)    setRateUnit(state.rateUnit, true);
     if(state._savedAt){
       _draftSavedAt = new Date(state._savedAt);
       var badge = document.getElementById('draftSavedBadge');
@@ -2185,6 +2204,41 @@ function recalc(){
   var _aggWastePct = n('aggWastage');
   var _bitWastePct = n('bitWastage');
 
+  // ====== computeRate — canonical single-mix rate function (Stage 1) ======
+  // All display panels call this so they always show identical numbers.
+  // opts.transPerMT overrides the weighted average (for per-site labelling).
+  function computeRate(mix, opts){
+    opts = opts || {};
+    var tpm = (opts.transPerMT !== undefined) ? opts.transPerMT : _wTransPerMT;
+    var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(mix.fractions[k]||0);},0)/100;
+    var bitFrac = mix.binderPct/100;
+    // Client-supplied materials → zero out material costs; keep plant equipment
+    var aggCostPMT = (materialsBy==='us') ? aggFrac*(1+_aggWastePct/100)*aggLanded : 0;
+    var bitCostPMT = (materialsBy==='us') ? bitFrac*1000*(1+_bitWastePct/100)*bitPrice : 0;
+    var exPlant = aggCostPMT + bitCostPMT + plantEquipPerMT + fuelTotal + crewPerMT;
+    var quotedBase = exPlant + (_qShowTrans ? tpm : 0) + (_qShowLaying ? layPerMT : 0) + overheadPerMT;
+    var marginAmt = quotedBase * marginPct / 100;
+    var perMT_cost   = exPlant + tpm + layPerMT + overheadPerMT;
+    var perMT_quoted = quotedBase + marginAmt;
+    var incl = [];
+    if(materialsBy==='us'){ incl.push('Agg'); incl.push('Bit'); }
+    incl.push('Plant+Fuel'); incl.push('Crew');
+    if(_qShowTrans && tpm>0) incl.push('Trans');
+    if(_qShowLaying && layPerMT>0) incl.push('Laying');
+    if(overheadPerMT>0) incl.push('OH');
+    if(marginPct>0) incl.push('Margin '+marginPct+'%');
+    return {
+      name: mix.name, density: mix.density,
+      aggregate: aggCostPMT, bitumen: bitCostPMT,
+      equipment: plantEquipPerMT, plantHsd: plantHsdPerMT, fuel: fuelTotal, crew: crewPerMT,
+      overhead: overheadPerMT, transport: tpm, laying: layPerMT,
+      exPlant: exPlant, quotedCost: quotedBase, finalLaid: perMT_quoted,
+      perMT_cost: perMT_cost, perMT_quoted: perMT_quoted,
+      perCUM_cost: perMT_cost * mix.density, perCUM_quoted: perMT_quoted * mix.density,
+      includes: incl.join(', ')
+    };
+  }
+
   var mixRates = mixTypes.map(function(m){
     var aggFrac = FRAC_KEYS.reduce(function(s,k){return s+(m.fractions[k]||0);},0)/100;
     var bitFrac = m.binderPct/100;
@@ -2328,8 +2382,15 @@ function recalc(){
   sites.forEach(function(s){ s.jobs.forEach(function(j){ hasAnyJob=true; (j.mixes||[]).forEach(function(mx){ usedMixIdxs[mx.mixIdx]=true; }); }); });
   var displayMixRates = hasAnyJob ? mixRates.filter(function(_,i){ return usedMixIdxs[i]; }) : mixRates;
 
-  renderRateSummary(displayMixRates);
-  _lastMixRates = displayMixRates;
+  // Canonical rate objects — all panels must use these (produced by computeRate)
+  var usedMixTypes = hasAnyJob ? mixTypes.filter(function(_,i){ return usedMixIdxs[i]; }) : mixTypes;
+  var usedMixRates = usedMixTypes.map(function(mt){ return computeRate(mt); });
+  // Store module-level cache keyed by mix name for panels outside recalc()
+  _lastComputedRates = {};
+  mixTypes.forEach(function(mt, i){ _lastComputedRates[mt.name] = computeRate(mt); });
+
+  renderRateSummary(usedMixRates);
+  _lastMixRates = usedMixRates;
   renderProcurementPanel();
   renderCostBar(mixRates);
   if(breakdownOpen) renderFullBreakdown(displayMixRates);
@@ -2340,7 +2401,7 @@ function recalc(){
   renderProfitability(mixRates, layPerMT, primePerSqm, tackPerSqm, revisedMixRates, revisedProcPrices, frozenBaseMixRates, scenarioBaseVals);
   renderScopeQuotation();
   renderProfGlance(mixRates);
-  renderSupplyQuote(mixRates, marginPct);
+  renderSupplyQuote(usedMixRates, marginPct);
   saveState();
   // refresh lazy-rendered analysis sections
   if(typeof _activeSection !== 'undefined'){
@@ -2357,26 +2418,26 @@ function renderSupplyQuote(mixRates, marginPct){
     el.innerHTML='<p style="font-size:12px;color:var(--gray-400);margin:0">Fill in sections ②–⑤ to see rates here.</p>';
     return;
   }
-  var mPct = marginPct||0;
+  var isCUM = (rateUnit === 'CUM');
+  var unitLabel = isCUM ? '/CUM' : '/MT';
   var html='';
   mixRates.forEach(function(r){
-    var base     = r.exPlant||0;
-    var withOvhd = base + (r.overhead||0);
-    var quoted   = withOvhd * (1 + mPct/100);
-    var total    = quoted * mt;
+    // Use computeRate output fields — respect quoteMode and materialsBy
+    var cost   = isCUM ? r.perCUM_cost   : r.perMT_cost;
+    var quoted = isCUM ? r.perCUM_quoted : r.perMT_quoted;
+    var total  = (isCUM ? r.perCUM_quoted : r.perMT_quoted) * mt;
     html += '<div style="background:#fffbf0;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
     if(mixRates.length>1){
       html += '<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px">'+esc(r.name)+'</div>';
     }
-    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
-    html += _sqCell('Mix cost ₹/MT', fmtI(Math.round(base)), '#374151', false);
-    html += _sqCell('With overhead ₹/MT', fmtI(Math.round(withOvhd)), '#374151', false);
-    html += _sqCell('Quoted rate ₹/MT', fmtI(Math.round(quoted)), '#b45309', true);
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+    html += _sqCell('Cost ₹'+unitLabel, fmtI(Math.round(cost)), '#374151', false);
+    html += _sqCell('Quoted ₹'+unitLabel, fmtI(Math.round(quoted)), '#b45309', true);
     html += _sqCell('Total for '+fmtI(mt)+' MT', fmtI(Math.round(total)), '#1e40af', true);
     html += '</div>';
     var notes=[];
-    if((r.overhead||0)>0) notes.push('Overhead ₹'+fmtI(Math.round(r.overhead))+'/MT included');
-    if(mPct>0) notes.push('Margin '+mPct+'% applied');
+    if((r.overhead||0)>0) notes.push('OH ₹'+fmtI(Math.round(r.overhead))+'/MT incl.');
+    if(r.includes) notes.push('Includes: '+r.includes);
     if(notes.length) html += '<div style="font-size:10px;color:var(--gray-500);margin-top:8px">'+notes.join(' · ')+'</div>';
     html += '</div>';
   });
@@ -2400,9 +2461,11 @@ function renderRateSummary(mixRates){
   var _titleEl = document.getElementById('rateSummaryTitle');
   if(_titleEl) _titleEl.textContent = _titleMap[quoteMode] || 'Live Rate Summary';
 
-  // Quote mode drives which rows are shown (overrides scopeState for the summary panel)
+  // Quote mode drives which rows are shown
   var _showTrans = (quoteMode !== 'supply_only');
   var _showPav   = (quoteMode === 'supply_laying' || quoteMode === 'full_road');
+  var isCUM      = (rateUnit === 'CUM');
+  var colHdr     = isCUM ? '₹/CUM' : '₹/MT';
 
   var nc = mixRates.length;
   var html = '<table class="rate-table"><thead><tr><th></th>';
@@ -2411,12 +2474,26 @@ function renderRateSummary(mixRates){
   mixRates.forEach(function(){ html+='<th>₹/MT</th><th style="color:var(--blue)">₹/CUM</th>'; });
   html += '</tr></thead><tbody>';
 
-  var rows = [
-    {label:'Aggregate',key:'aggregate'},{label:'Bitumen',key:'bitumen'},
-    {label:'Equipment (Hire)',key:'equipment'},{label:'Fuel & Energy',key:'fuel'},
-    {label:'Crew',key:'crew'}
+  // Material rows — hidden when client supplies materials
+  var matRows = [
+    {label:'Aggregate', key:'aggregate'},
+    {label:'Bitumen',   key:'bitumen'}
   ];
-  rows.forEach(function(row){
+  if(materialsBy === 'us'){
+    matRows.forEach(function(row){
+      html+='<tr><td>'+row.label+'</td>';
+      mixRates.forEach(function(r){ html+='<td>'+fmtR(r[row.key])+'</td><td style="color:var(--blue)">'+fmtR(r[row.key]*r.density)+'</td>'; });
+      html+='</tr>';
+    });
+  } else {
+    html+='<tr><td colspan="'+(nc*2+1)+'" style="font-size:11px;color:var(--gray-400);font-style:italic;padding:4px 8px">Materials supplied by client — agg &amp; bitumen excluded</td></tr>';
+  }
+  var eqFuelRows = [
+    {label:'Equipment (Hire)', key:'equipment'},
+    {label:'Fuel &amp; Energy', key:'fuel'},
+    {label:'Crew',             key:'crew'}
+  ];
+  eqFuelRows.forEach(function(row){
     html+='<tr><td>'+row.label+'</td>';
     mixRates.forEach(function(r){ html+='<td>'+fmtR(r[row.key])+'</td><td style="color:var(--blue)">'+fmtR(r[row.key]*r.density)+'</td>'; });
     html+='</tr>';
@@ -2444,12 +2521,17 @@ function renderRateSummary(mixRates){
   if(mixRates[0]&&_mPct>0){
     html+='<tr><td>Margin / Profit</td>';
     mixRates.forEach(function(r){
-      var inScopeBase = r.exPlant+(_showTrans?r.transport:0)+(_showPav?r.laying:0)+(r.overhead||0);
-      var inScopeMgn = inScopeBase*_mPct;
-      html+='<td>'+fmtR(inScopeMgn)+'</td><td style="color:var(--blue)">'+fmtR(inScopeMgn*r.density)+'</td>';
+      var mgn = r.quotedCost * _mPct;
+      html+='<td>'+fmtR(mgn)+'</td><td style="color:var(--blue)">'+fmtR(mgn*r.density)+'</td>';
     });
     html+='</tr>';
   }
+  // Cost row (pre-margin, scope-gated)
+  html+='<tr style="font-weight:600;background:#f0fdf4"><td>Cost (pre-margin)</td>';
+  mixRates.forEach(function(r){
+    html+='<td style="color:#15803d">'+fmtR(r.quotedCost)+'</td><td style="color:#15803d">'+fmtR(r.quotedCost*r.density)+'</td>';
+  });
+  html+='</tr>';
   var _finalLabels = {
     'supply_only':'Ex-Plant Rate','supply_transport':'Delivered Rate',
     'supply_laying':'Laid Rate (ex-coat)','full_road':'Final Laid Rate'
@@ -2457,11 +2539,13 @@ function renderRateSummary(mixRates){
   var _finalLabel = _finalLabels[quoteMode] || 'Final Rate';
   html+='<tr class="total-row"><td>'+_finalLabel+'</td>';
   mixRates.forEach(function(r){
-    var inScopeBase = r.exPlant+(_showTrans?r.transport:0)+(_showPav?r.laying:0)+(r.overhead||0);
-    var inScopeFinal = inScopeBase*(1+_mPct);
-    html+='<td style="color:var(--amber)">'+fmtR(inScopeFinal)+'</td><td style="color:var(--blue);font-weight:700">'+fmtR(inScopeFinal*r.density)+'</td>';
+    html+='<td style="color:var(--amber)">'+fmtR(r.perMT_quoted)+'</td><td style="color:var(--blue);font-weight:700">'+fmtR(r.perCUM_quoted)+'</td>';
   });
   html+='</tr>';
+  // "Includes" chip
+  if(mixRates[0]&&mixRates[0].includes){
+    html+='<tr><td colspan="'+(nc*2+1)+'" style="font-size:10px;color:var(--gray-400);font-style:italic;padding:4px 8px">Includes: '+mixRates[0].includes+'</td></tr>';
+  }
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
   renderScopePanel();
@@ -2505,8 +2589,8 @@ function renderScopePanel(){
     if(sm.tipperHire) mx+=sc.tipperHire||0;
     if(sm.tipperHsd)  mx+=sc.tipperHsd||0;
     if(sm.crew)       mx+=sc.crewPerMT||0;
-    if(sm.bitumen)    mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
-    if(sm.aggregate)  mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
+    if(sm.bitumen  && materialsBy==='us') mx+=mType.binderPct/100*1000*(1+_bitW/100)*bitP;
+    if(sm.aggregate&& materialsBy==='us') mx+=FRAC_KEYS.reduce(function(s,k){return s+(mType.fractions[k]||0);},0)/100*(1+_aggW/100)*aggL;
     totalMT+=mx;
     rows.push(_mk('🏭 Mixing',mx,'MT'));
   }
@@ -2610,6 +2694,24 @@ function setPlantCostMode(mode, noRecalc){
   if(fullBtn) fullBtn.classList.toggle('active', mode==='full');
   if(margBtn) margBtn.classList.toggle('active', mode==='marginal');
   if(!noRecalc) recalc();
+}
+
+function setMaterialsBy(mode, noRecalc){
+  materialsBy = mode;
+  var usBtn = document.getElementById('mb_us');
+  var clBtn = document.getElementById('mb_client');
+  if(usBtn) usBtn.classList.toggle('qm-active', mode==='us');
+  if(clBtn) clBtn.classList.toggle('qm-active', mode==='client');
+  if(!noRecalc){ saveState(); recalc(); }
+}
+
+function setRateUnit(unit, noRecalc){
+  rateUnit = unit;
+  var mtBtn  = document.getElementById('ru_MT');
+  var cumBtn = document.getElementById('ru_CUM');
+  if(mtBtn)  mtBtn.classList.toggle('qm-active', unit==='MT');
+  if(cumBtn) cumBtn.classList.toggle('qm-active', unit==='CUM');
+  if(!noRecalc){ saveState(); recalc(); }
 }
 
 // ====== RECOMMENDED QUOTE PANEL ======
