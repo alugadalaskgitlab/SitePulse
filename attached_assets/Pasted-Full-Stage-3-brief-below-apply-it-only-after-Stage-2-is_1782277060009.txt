@@ -1,0 +1,103 @@
+Full **Stage 3** brief below 👇 (apply it only after Stage 2 is implemented and its 6 checks pass green).
+Action: view_file({"path": "/app/SITEPULSE_MIXCALC_STAGE3.md"})
+Observation: [Showing lines 1-99 of 99 total] /app/SITEPULSE_MIXCALC_STAGE3.md:
+1|# SitePulse Mix Calculator — Rate Consistency Rebuild (STAGE 3 of 3)
+2|
+3|**File:** `client/public/mix-calculator.html`
+4|**Prereq (must be true before starting):** Stages 1 & 2 done and **both checklists pass** — every panel (Rate Summary, Quick Supply, Scope Breakdown, Detailed Scope, Recommended Quote, job cards, Profitability auto) already shows the **same ₹/MT for the same mix + switches**, all via `computeRate`.
+5|
+6|**Stage 3 goal:** now that the numbers agree, remove the *visual* confusion. Consolidate the overlapping rate tiles into ONE clear **"Rate Workbench"**, finish the per-mix Detailed Scope blocks, and add a clean **per-site Quotation (print/PDF)** so you can hand a client a self-explanatory quote. No new math — purely presentation/consolidation on top of `computeRate`.
+7|
+8|> Implement, then run the Stage 3 checklist in the running app.
+9|
+10|---
+11|
+12|## 1. The "Rate Workbench" — one panel instead of many
+13|
+14|**Problem:** Quick Supply Quote, Rate Summary, Scope Breakdown, and Detailed Scope of Work now show the *same* numbers in 4 different layouts — that redundancy is itself confusing.
+15|
+16|**Action:** merge them into a single section called **"Rate Workbench"** (reuse the Rate Summary container; retitle it). It is driven by the master **Quote-Mode bar** (Scope · Materials-by · Plant cost · Unit) and shows, per **used mix**:
+17|
+18|```
+19|┌ Rate Workbench ───────────────────────────  [Scope▾][Materials▾][Plant▾][₹/MT|₹/CUM]
+20|│  DBM (Grade II)                         includes: agg · bitumen · fuel · plant · crew · transport · laying
+21|│  ── Cost layers (₹/MT) ──────────────────────────────────────────
+22|│   Aggregates      1,842    Bitumen       2,310    Fuel(LDO+HSD)   410
+23|│   Plant hire        520    Crew            180    Transport       260   Laying  240
+24|│   ─────────────────────────────────────────────────────────────
+25|│   Cost  ₹5,422/MT   ( ₹12,470/CUM )
+26|│   Margin (10%)  ₹542/MT
+27|│   ▶ QUOTED  ₹5,964/MT   ( ₹13,717/CUM )
+28|└───────────────────────────────────────────────────────────────────
+29|```
+30|
+31|Rules:
+32|- One block **per used mix** (the same `usedMixes` set as job cards). No averaging.
+33|- Each layer value comes from `computeRate(mix).layers`; the **Cost / Margin / Quoted** trio is explicit and labelled.
+34|- Layers that are excluded by the current switches are **hidden or greyed** (e.g. transport hidden in Supply-only; aggregate/bitumen greyed when Materials = Client) — and reflected in the `includes:` chip.
+35|- Unit toggle flips every number ₹/MT ↔ ₹/CUM.
+36|
+37|**Retire the now-duplicate tiles:** convert **Quick Supply Quote**, **Scope Breakdown**, and **Detailed Scope of Work** into either (a) collapsed/removed, or (b) thin wrappers that just render the Workbench. Recommended: **remove the separate Quick Supply Quote + Scope Breakdown tiles**, and make **"Detailed Scope of Work"** section BE the Rate Workbench (it's the most descriptive name). Keep:
+38|- **Cost Breakdown by Component** (waterfall/`renderCostBar`) — useful visual, now consistent.
+39|- **Recommended Quote** (Min/Target/Premium profit/MT) — keep as a small strip under the Workbench.
+40|- **Profitability** (per-site Itemised/Per-km/Lumpsum) — unchanged; it's the contract layer.
+41|
+42|Update the left nav (① … ⑮) to drop the items whose tiles are removed, so the section list matches what's on screen.
+43|
+44|## 2. Detailed Scope per-mix blocks (deferred from Stage 2 §2)
+45|
+46|Inside the Workbench, when jobs exist, render the **per-mix layer blocks** for each used mix (as above). When no jobs exist, render the **active mix** only. This is the §2 item Replit deferred — it's now just the Workbench body, so no separate work.
+47|
+48|## 3. Per-site **Quotation** (print / PDF)
+49|
+50|Add a **"Generate Quotation"** button on each Site (and a master one in the Summary & Print section ⑮). It opens a clean, print-optimised quotation for that site using the existing `no-print` / print CSS.
+51|
+52|**Quotation layout (per site):**
+53|- **Header:** your firm name/logo (from Project Info), client/contractor name, site name, date, quote validity.
+54|- **Engagement:** the scope mode in plain words (e.g. "Supply + Transport + Laying; materials by us") + the `includes:` list.
+55|- **Line items** (one row per used mix, in the chosen unit):
+56|  | Item | Qty | Unit | Rate (Quoted) | Amount |
+57|  |---|---|---|---|---|
+58|  | DBM Grade II | 1,250 MT | ₹/MT | 5,964 | 74,55,000 |
+59|  | BC | 850 MT | ₹/MT | 6,210 | 52,78,500 |
+60|  | Prime coat | 9,000 sqm | ₹/sqm | 24 | 2,16,000 |
+61|  | Tack coat | 9,000 sqm | ₹/sqm | 12 | 1,08,000 |
+62|- **Per the site's contract mode:**
+63|  - *Itemised* → the table above + grand total.
+64|  - *Per-km* → "₹<rate>/km × <km> = ₹<total>".
+65|  - *Lumpsum* → single "₹<amount> for the whole work" line.
+66|- **Optional internal page (toggle "show cost basis"):** Cost → Margin → Quoted breakdown + the profit/(loss) verdict — for *your* file, hide before sending to client.
+67|- Honour `quoteMode`, `materialsBy`, `rateUnit`, and any manual/adjusted rates exactly as shown on screen (read the same `contractRates` values; do not recompute differently).
+68|
+69|Implementation: build the quotation HTML into a hidden `<div id="quotationPrint">`, then `window.print()` with a print stylesheet that shows only that div (`@media print`). This mirrors the existing Summary print path.
+70|
+71|## 4. (Optional) Scenario compare strip
+72|
+73|A small table that runs `computeRate` for the same used mix under three engagement presets side-by-side, so you can advise a client which model is cheapest:
+74|| | Supply only | Supply+Transport | Full road | Job-work (client materials) |
+75||---|---|---|---|---|
+76|| DBM ₹/MT (Quoted) | 4,180 | 4,440 | 5,964 | 2,310 |
+77|
+78|Pure presentation — six `computeRate` calls with different `{quoteMode, materialsBy}` opts. Include if time permits; otherwise defer.
+79|
+80|---
+81|
+82|## Stage 3 test checklist (run in the app)
+83|
+84|1. **Workbench:** the consolidated Rate Workbench shows one block per used mix with Cost → Margin → Quoted and an `includes:` chip; flipping each master switch updates layers/chips correctly; ₹/MT↔₹/CUM toggle flips all numbers.
+85|2. **No duplicate tiles:** Quick Supply Quote / Scope Breakdown no longer appear as separate conflicting cards (or render identical Workbench numbers); left nav matches the visible sections.
+86|3. **Numbers unchanged:** for a fixed mix + switches, the Workbench Quoted rate equals the job-card Total and the Profitability auto rate (Stage 1/2 still green — no regression).
+87|4. **Quotation (Itemised):** Generate Quotation for a site → clean client-facing sheet, correct qty × quoted rate = amount per line, grand total correct, coats included when ticked.
+88|5. **Quotation (Per-km & Lumpsum):** the quote reflects the site's contract mode correctly (₹/km × km, or single lumpsum line).
+89|6. **Cost-basis toggle:** the internal "show cost basis" page reveals Cost/Margin/Quoted + profit verdict; hidden by default for the client copy.
+90|
+91|When these pass, the rebuild is complete: one number per item everywhere, every figure labelled and explainable, and a clean quote you can hand to clients and colleagues.
+92|
+93|---
+94|
+95|### Notes
+96|- Still **zero new cost math** — everything reads from `computeRate` / `contractRates`. If a number would need recomputing, you've taken a wrong turn.
+97|- Keep the print/PDF read-only (it must reflect on-screen values exactly, including manual overrides and adjustments).
+98|- If removing tiles feels risky, **collapse** them behind a "Show legacy view" toggle first, ship, then remove once you've confirmed nothing else references them.
+99|
+[End of file]

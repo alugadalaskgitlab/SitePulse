@@ -177,6 +177,9 @@ table.proc-table tr.grand-total td{font-weight:700;border-top:2px solid var(--am
 .procurement-grid{grid-template-columns:1fr}
 }
 @media print{
+body.printing-quote .calc-shell,body.printing-quote .right-col,body.printing-quote .top-bar,body.printing-quote #quoteModeBar,body.printing-quote .scenario-banner,body.printing-quote .calc-nav{display:none!important}
+body.printing-quote #quotationPrint{display:block!important;position:static!important;box-shadow:none;border:none;background:#fff}
+body.printing-quote #quotationPrint .no-print{display:none!important}
 .top-bar .btn,.toggle-group,.breakdown-toggle,.no-print,.equip-card,.validation-bar,.mix-tab-bar{display:none!important}
 .card-body{display:block!important}
 .calc-nav{display:none!important}
@@ -383,7 +386,7 @@ body{font-size:11px;background:#fff}
   <div class="nav-item" id="navitem-laying" onclick="showSection('laying')">⑧ Laying &amp; Compaction</div>
   <div class="nav-item" id="navitem-labour-overhead" onclick="showSection('labour-overhead')">⑨ Overhead &amp; Margin</div>
   <div class="nav-group-label">Analysis</div>
-  <div class="nav-item" id="navitem-scope" onclick="showSection('scope')">⑩ Detailed Scope of Work</div>
+  <div class="nav-item" id="navitem-scope" onclick="showSection('scope')">⑩ Rate Workbench</div>
   <div class="nav-item" id="navitem-rec-quote" onclick="showSection('rec-quote')">⑪ Recommended Quote</div>
   <div class="nav-item" id="navitem-procurement" onclick="showSection('procurement')">⑫ Procurement Costs</div>
   <div class="nav-item" id="navitem-price-impact" onclick="showSection('price-impact')">⑬ Price Impact</div>
@@ -414,7 +417,7 @@ body{font-size:11px;background:#fff}
 </div>
 
 <!-- Supply Quote Panel -->
-<div class="card" id="cardSupplyQuote" style="border-left:4px solid #f59e0b">
+<div class="card" id="cardSupplyQuote" style="display:none">
   <div class="card-header open" onclick="toggleCard(this)">
     <h2>📦 Quick Supply Quote</h2><span class="chevron">▼</span>
   </div>
@@ -707,12 +710,22 @@ body{font-size:11px;background:#fff}
 <!-- Section: Scope of Work -->
 <div class="calc-section" id="sec-scope">
 
-<!-- ⑩ Scope of Work -->
-<div class="card" id="cardScopeQuotation">
+<!-- ⑩ Rate Workbench -->
+<div class="card" id="cardRateWorkbench">
   <div class="card-header open" onclick="toggleCard(this)">
-    <h2>⑩ Detailed Scope of Work</h2><span class="chevron">▼</span>
+    <h2>⑩ Rate Workbench</h2><span class="chevron">▼</span>
   </div>
-  <div class="card-body open" id="scopeCardBody">
+  <div class="card-body open">
+    <div id="rateWorkbenchContent"><p style="font-size:12px;color:var(--gray-400);margin:0">Fill in sections ①–⑨ to see rates here.</p></div>
+  </div>
+</div>
+
+<!-- Custom Scope Quotation (partial-scope with separate margin) -->
+<div class="card" id="cardScopeQuotation">
+  <div class="card-header" onclick="toggleCard(this)">
+    <h2>Custom Scope Quotation</h2><span class="chevron">▼</span>
+  </div>
+  <div class="card-body" id="scopeCardBody">
     <p style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.6">
       Select what HLC provides for this contractor. All costs are pulled live from the equipment cards and inputs above.
       Set a <strong>separate margin</strong> here — partial-scope work typically carries a lower margin since procurement savings aren't available when the contractor controls materials or equipment.
@@ -873,6 +886,9 @@ body{font-size:11px;background:#fff}
 
 </div><!-- /calc-shell -->
 
+<!-- Quotation Print Overlay (Stage 3) -->
+<div id="quotationPrint" style="display:none;position:fixed;inset:0;z-index:9990;background:#fff;overflow-y:auto"></div>
+
 <!-- Print Settings Modal -->
 <div id="printSettingsOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)" onclick="closePrintSettings(event)">
   <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.2);width:420px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column" onclick="event.stopPropagation()">
@@ -917,6 +933,7 @@ var plantCostMode = 'full';         // 'full' | 'marginal' (marginal skips owned
 var _lastMixRates = [];             // cache for re-rendering recommended quote on profit input change
 var _lastComputedRates = {};        // mix name → computeRate result; set inside recalc() for outside use
 var _computeRate = null;            // pointer to recalc()-closure computeRate; set each recalc pass
+var _lastUsedMixRates = [];         // used-mix computeRate results; set each recalc pass for Workbench
 var _summarySectionQuoteLevel = 'target'; // 'min' | 'target' | 'premium'
 var _quoteProfitMin     = 150;      // JS-level profit state — survives innerHTML rebuilds
 var _quoteProfitTarget  = 300;
@@ -2400,10 +2417,12 @@ function recalc(){
   var usedMixRates = usedMixTypes.map(function(mt){ return computeRate(mt); });
   // Expose computeRate and its results for top-level functions (recalcJobs, renderProfitability)
   _computeRate = computeRate;
+  _lastUsedMixRates = usedMixRates;
   _lastComputedRates = {};
   mixTypes.forEach(function(mt, i){ _lastComputedRates[mt.name] = computeRate(mt); });
 
   renderRateSummary(usedMixRates);
+  renderRateWorkbench(usedMixRates, marginPct);
   _lastMixRates = usedMixRates;
   renderProcurementPanel();
   renderCostBar(mixRates);
@@ -2466,6 +2485,248 @@ function renderSupplyQuote(mixRates, marginPct){
   });
   el.innerHTML = html;
 }
+
+// ====== renderRateWorkbench — consolidated Rate Workbench (Stage 3) ======
+// Called from recalc() with usedMixRates. Shows one block per used mix:
+// Cost layers → Cost/Margin/Quoted trio → includes chip. Respects rateUnit toggle.
+function renderRateWorkbench(usedMixRates, marginPct){
+  var el = document.getElementById('rateWorkbenchContent');
+  if(!el) return;
+  var rates = usedMixRates || _lastUsedMixRates;
+  if(!rates || !rates.length){
+    el.innerHTML='<p style="font-size:12px;color:var(--gray-400);margin:0">Fill in sections ①–⑨ to see rates here.</p>';
+    return;
+  }
+  var isCUM  = (rateUnit === 'CUM');
+  var unit   = isCUM ? 'CUM' : 'MT';
+  var mPct   = (marginPct != null) ? marginPct : n('marginPct');
+  function v(perMT, den){ return isCUM ? perMT * den : perMT; }
+
+  var html = '';
+  rates.forEach(function(r){
+    var den  = r.density || 1;
+    var cost = r.quotedCost || 0;   // pre-margin, scope-gated
+    var mgn  = cost * mPct / 100;
+    var vCost  = isCUM ? (r.perCUM_cost   || r.perMT_cost   * den) : (r.perMT_cost   || cost);
+    var vMgn   = isCUM ? mgn * den : mgn;
+    var vQuot  = isCUM ? (r.perCUM_quoted || r.perMT_quoted * den) : (r.perMT_quoted || cost + mgn);
+
+    html += '<div style="border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:#fafafa">';
+    // Mix name + density
+    html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
+    html += '<div style="font-size:15px;font-weight:700;color:var(--gray-800)">'+esc(r.name)+'</div>';
+    html += '<div style="font-size:11px;color:var(--gray-400)">'+den.toFixed(2)+' T/CUM</div>';
+    html += '</div>';
+    // Includes chip
+    if(r.includes){
+      html += '<div style="font-size:11px;color:var(--gray-500);background:#f3f4f6;border-radius:12px;padding:3px 10px;display:inline-block;margin-bottom:10px">includes: '+esc(r.includes)+'</div>';
+    }
+    // Cost layers — hidden / greyed based on current switches
+    var layers = [
+      {label:'Aggregates', val:r.aggregate||0, off:(materialsBy!=='us')},
+      {label:'Bitumen',    val:r.bitumen||0,   off:(materialsBy!=='us')},
+      {label:'Fuel/Energy',val:r.fuel||0,      off:false},
+      {label:'Plant Hire', val:r.equipment||0, off:false},
+      {label:'Crew',       val:r.crew||0,      off:false},
+      {label:'Transport',  val:r.transport||0, off:(quoteMode==='supply_only')},
+      {label:'Laying',     val:r.laying||0,    off:(quoteMode!=='supply_laying'&&quoteMode!=='full_road')},
+      {label:'Mob/OH',     val:r.overhead||0,  off:((r.overhead||0)===0)}
+    ];
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px;padding:8px 0;border-top:1px solid var(--gray-200);border-bottom:1px solid var(--gray-200)">';
+    layers.forEach(function(l){
+      var vv = v(l.val, den);
+      var c  = l.off ? '#d1d5db' : 'var(--gray-700)';
+      var lc = l.off ? '#9ca3af' : 'var(--gray-400)';
+      html += '<div style="min-width:84px">';
+      html += '<div style="font-size:10px;color:'+lc+';font-weight:600;text-transform:uppercase;letter-spacing:.4px">'+l.label+'</div>';
+      html += '<div style="font-size:13px;font-weight:700;color:'+c+'">'+(l.off?'<span title="excluded by current scope">—</span>':'₹'+fmtI(Math.round(vv)))+'</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    // Cost → Margin → Quoted trio
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+    html += '<div style="background:#f0fdf4;border-radius:8px;padding:10px 12px">';
+    html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Cost</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#15803d">₹'+fmtI(Math.round(vCost))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '</div>';
+    html += '<div style="background:#fffbeb;border-radius:8px;padding:10px 12px">';
+    html += '<div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Margin '+fmtR(mPct)+'%</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#92400e">₹'+fmtI(Math.round(vMgn))+'<span style="font-size:10px;font-weight:400;color:#6b7280">/'+unit+'</span></div>';
+    html += '</div>';
+    html += '<div style="background:linear-gradient(135deg,#d97706,#b45309);border-radius:8px;padding:10px 12px">';
+    html += '<div style="font-size:10px;color:rgba(255,255,255,.8);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">▶ QUOTED</div>';
+    html += '<div style="font-size:17px;font-weight:700;color:#fff">₹'+fmtI(Math.round(vQuot))+'<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.7)">/'+unit+'</span></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// ====== generateQuotation — per-site client quotation print (Stage 3) ======
+function generateQuotation(si){
+  var s = sites[si]; if(!s) return;
+  var modeKey  = s.id+'__MODE';
+  var mode     = contractRates[modeKey] || 'itemised';
+  var isCUM    = (rateUnit === 'CUM');
+  var unit     = isCUM ? 'CUM' : 'MT';
+
+  function _fv(id){ var e=document.getElementById(id); return e?(e.value||'').trim():''; }
+  var proj     = _fv('projName')  || '—';
+  var prepBy   = _fv('projBy')    || '—';
+  var projDate = _fv('projDate')  || new Date().toLocaleDateString('en-IN');
+  var address  = _fv('projAddress');
+
+  var _sowMap = {
+    supply_only:     'Ex-Plant Supply of Bituminous Mix',
+    supply_transport:'Supply & Delivery to Site',
+    supply_laying:   'Supply, Transport & Laying',
+    full_road:       'Full Road Scope — Supply, Transport, Laying & Coat Works'
+  };
+  var sowText  = _sowMap[quoteMode] || 'Bituminous Mix Supply';
+  var matText  = (materialsBy==='us') ? 'Materials by HLC' : 'Materials by client';
+
+  var _firstCR = _lastComputedRates[Object.keys(_lastComputedRates)[0]] || {};
+  var inclText = _firstCR.includes || '';
+
+  // Aggregate quantities across all jobs, keyed by mix name
+  var _gTransRate    = n('transRate'), _gTransPayload = n('transPayload'), _gTransDist = n('transDist');
+  var siteLead       = (s.transLead!=null&&s.transLead>0) ? s.transLead : _gTransDist;
+  var siteTransPerMT = _gTransPayload>0 ? (siteLead*2*_gTransRate/_gTransPayload) : 0;
+  var mixSums = {};
+  s.jobs.forEach(function(j){
+    var isGeo = j.basis==='GEOMETRY';
+    var cum = isGeo ? (j.length*j.width*j.thickness/1000) : (j.volume||0);
+    j.mixes.forEach(function(mx){
+      var mix = mixTypes[mx.mixIdx]||mixTypes[0]; if(!mix) return;
+      var cr  = _computeRate ? _computeRate(mix,{transPerMT:siteTransPerMT}) : (_lastComputedRates[mix.name]||{});
+      var mt  = (mx.qty_mt!=null&&mx.qty_mt>0) ? mx.qty_mt : (cum>0&&mix.density>0?cum*mix.density:0);
+      var qty = isCUM ? (mix.density>0?mt/mix.density:0) : mt;
+      var rate = isCUM ? (cr.perCUM_quoted||0) : (cr.perMT_quoted||0);
+      // Honour manual itemised rate override
+      var rk = s.id+'_'+mix.name.toUpperCase().replace(/[\s-]+/g,'_');
+      if(contractRates[rk]!=null) rate = contractRates[rk];
+      if(!mixSums[mix.name]) mixSums[mix.name]={qty:0, rate:rate, density:mix.density||2.35};
+      mixSums[mix.name].qty += qty;
+    });
+  });
+  var lineItems = [];
+  Object.keys(mixSums).forEach(function(mn){
+    var m=mixSums[mn];
+    lineItems.push({name:mn, qty:m.qty, unit:unit, rate:m.rate, amount:m.qty*m.rate});
+  });
+  // Prime / Tack coat lines
+  var primeArea=0, tackArea=0, primeRate=n('primePerSqm')||0, tackRate=n('tackPerSqm')||0;
+  s.jobs.forEach(function(j){
+    if(j.prime!==false) primeArea+=(j._area||0);
+    if(j.tack!==false)  tackArea+=(j._area||0)*(j.mixes.length||1);
+  });
+  if(primeArea>0) lineItems.push({name:'Prime Coat',qty:Math.round(primeArea),unit:'sqm',rate:primeRate,amount:primeArea*primeRate,isSqm:true});
+  if(tackArea>0)  lineItems.push({name:'Tack Coat', qty:Math.round(tackArea), unit:'sqm',rate:tackRate, amount:tackArea*tackRate, isSqm:true});
+  var grandTotal = lineItems.reduce(function(acc,l){return acc+l.amount;},0);
+
+  // Build quotation HTML
+  var h='<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;font-size:13px;color:#1f2937;padding:32px 24px">';
+  // Header row
+  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #d97706;padding-bottom:16px;margin-bottom:20px">';
+  h+='<div><div style="font-size:24px;font-weight:800;color:#1e3a5f;letter-spacing:-1px">HLC</div>';
+  h+='<div style="font-size:11px;color:#6b7280;margin-top:2px">'+esc(address||'Bituminous Hot Mix Plant')+'</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:20px;font-weight:700;color:#1f2937;letter-spacing:.5px">QUOTATION</div>';
+  h+='<div style="font-size:11px;color:#6b7280;margin-top:4px">Ref: '+esc(s.id||('Q'+si))+'</div>';
+  h+='<div style="font-size:11px;color:#6b7280">Date: '+esc(projDate)+'</div></div>';
+  h+='</div>';
+  // Project details
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin-bottom:20px">';
+  h+='<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af">Project</div><div style="font-weight:600;margin-top:2px">'+esc(proj)+'</div></div>';
+  h+='<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af">Site</div><div style="font-weight:600;margin-top:2px">'+esc(s.name||'—')+'</div></div>';
+  h+='<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af">Engagement</div><div style="margin-top:2px">'+esc(sowText)+' — '+esc(matText)+'</div></div>';
+  h+='<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af">Prepared by</div><div style="margin-top:2px">'+esc(prepBy)+'</div></div>';
+  h+='</div>';
+  if(inclText) h+='<div style="font-size:11px;color:#6b7280;background:#f3f4f6;border-radius:8px;padding:6px 12px;margin-bottom:18px">Includes: '+esc(inclText)+'</div>';
+
+  // Main section by contract mode
+  if(mode==='itemised'){
+    h+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">';
+    h+='<thead><tr style="background:#1e3a5f;color:#fff">';
+    ['Item','Qty','Unit','Rate (₹)','Amount (₹)'].forEach(function(th,i){
+      h+='<th style="padding:8px 10px;font-weight:600;text-align:'+(i===0?'left':'right')+';'+(i===2?'text-align:center;':'')+'">'+th+'</th>';
+    });
+    h+='</tr></thead><tbody>';
+    lineItems.forEach(function(li,idx){
+      var bg=idx%2===0?'#fff':'#f9fafb';
+      h+='<tr style="background:'+bg+'">';
+      h+='<td style="padding:8px 10px;font-weight:600">'+esc(li.name)+'</td>';
+      h+='<td style="padding:8px 10px;text-align:right">'+fmtI(Math.round(li.qty*10)/10)+'</td>';
+      h+='<td style="padding:8px 10px;text-align:center;color:#6b7280">'+esc(li.unit)+'</td>';
+      h+='<td style="padding:8px 10px;text-align:right">'+fmtI(Math.round(li.rate))+'</td>';
+      h+='<td style="padding:8px 10px;text-align:right;font-weight:600">'+fmtI(Math.round(li.amount))+'</td>';
+      h+='</tr>';
+    });
+    h+='<tr style="background:#fffbeb;border-top:2px solid #d97706">';
+    h+='<td colspan="4" style="padding:10px;font-weight:700;font-size:14px">GRAND TOTAL</td>';
+    h+='<td style="padding:10px;text-align:right;font-weight:800;font-size:16px;color:#d97706">₹'+fmtI(Math.round(grandTotal))+'</td></tr>';
+    h+='</tbody></table>';
+  } else if(mode==='perkm'){
+    var kmRate  = contractRates[s.id+'__KM_RATE']||0;
+    var adjRate = contractRates[s.id+'__ADJ_PER_KM']||0;
+    var effRate = kmRate + adjRate;
+    var roadKm  = (s.roadLengthM||0)/1000;
+    h+='<div style="background:#fffbeb;border:2px solid #d97706;border-radius:10px;padding:20px;margin-bottom:16px">';
+    h+='<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">Per-Kilometre Contract</div>';
+    h+='<div style="font-size:15px;color:#1f2937">₹<b style="font-size:24px;font-weight:800;color:#1e3a5f">'+fmtI(Math.round(effRate))+'</b>/km × <b>'+roadKm.toFixed(3)+' km</b>';
+    h+=' = <b style="font-size:22px;color:#d97706">₹'+fmtI(Math.round(effRate*roadKm))+'</b></div>';
+    h+='</div>';
+  } else {
+    var lsAmt = (contractRates[s.id+'__LUMPSUM']||0) + (contractRates[s.id+'__ADJ_AMT']||0);
+    h+='<div style="background:#fffbeb;border:2px solid #d97706;border-radius:10px;padding:20px;margin-bottom:16px">';
+    h+='<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">Lumpsum Contract</div>';
+    h+='<div style="font-size:15px;color:#1f2937">Total quoted amount: <b style="font-size:26px;font-weight:800;color:#d97706">₹'+fmtI(Math.round(lsAmt))+'</b></div>';
+    h+='<div style="font-size:11px;color:#6b7280;margin-top:6px">for the complete scope of work as described above</div>';
+    h+='</div>';
+  }
+
+  // Internal cost-basis section (hidden by default)
+  h+='<div id="quoteCostBasisSection" style="display:none;margin-top:20px;border:2px dashed #fca5a5;border-radius:8px;padding:16px">';
+  h+='<div style="font-size:11px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">⚠ Internal — Cost Basis (not for client)</div>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  h+='<tr style="border-bottom:1px solid #e5e7eb">';
+  ['Mix','Cost/'+unit,'Margin','Quoted/'+unit].forEach(function(th,i){ h+='<th style="padding:4px 8px;text-align:'+(i===0?'left':'right')+';color:#6b7280">'+th+'</th>'; });
+  h+='</tr>';
+  Object.keys(_lastComputedRates).forEach(function(mn){
+    var cr=_lastComputedRates[mn];
+    var cv=isCUM?cr.perCUM_cost:cr.perMT_cost;
+    var qv=isCUM?cr.perCUM_quoted:cr.perMT_quoted;
+    h+='<tr><td style="padding:4px 8px;font-weight:600">'+esc(mn)+'</td>';
+    h+='<td style="padding:4px 8px;text-align:right">₹'+fmtI(Math.round(cv))+'</td>';
+    h+='<td style="padding:4px 8px;text-align:right;color:#16a34a">+₹'+fmtI(Math.round(qv-cv))+'</td>';
+    h+='<td style="padding:4px 8px;text-align:right;font-weight:700;color:#d97706">₹'+fmtI(Math.round(qv))+'</td></tr>';
+  });
+  h+='</table></div>';
+
+  // Terms
+  h+='<div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:10px;color:#9ca3af">';
+  h+='This quotation is valid for 30 days from date of issue. Prices are subject to material rate variations. GST &amp; applicable levies are extra.';
+  h+='</div></div>';
+
+  // Wrap with controls bar (no-print)
+  var wrap='<div class="no-print" style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+  wrap+='<div style="font-size:14px;font-weight:700;color:#1f2937">📄 Quotation — '+esc(s.name||s.id)+'</div>';
+  wrap+='<div style="display:flex;gap:8px">';
+  wrap+='<button class="btn btn-secondary btn-sm" onclick="var x=document.getElementById(\'quoteCostBasisSection\');x.style.display=x.style.display===\'none\'?\'block\':\'none\'">👁 Cost Basis</button>';
+  wrap+='<button class="btn btn-secondary" onclick="document.getElementById(\'quotationPrint\').style.display=\'none\';document.body.classList.remove(\'printing-quote\')">✕ Close</button>';
+  wrap+='<button class="btn btn-primary" onclick="window.print()">🖨 Print / PDF</button>';
+  wrap+='</div></div>';
+  wrap+=h;
+
+  var el=document.getElementById('quotationPrint');
+  if(el){
+    el.innerHTML=wrap;
+    el.style.display='block';
+    document.body.classList.add('printing-quote');
+    el.scrollIntoView({behavior:'smooth'});
+  }
+}
+
 function _sqCell(label,value,color,bold){
   return '<div style="text-align:center;background:#fff;border-radius:6px;padding:8px 4px">'
     +'<div style="font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">'+label+'</div>'
@@ -2575,7 +2836,9 @@ function renderRateSummary(mixRates){
   }
   html+='</tbody></table>';
   document.getElementById('rateSummaryTable').innerHTML = html;
-  renderScopePanel();
+  // Scope breakdown panel retired — Rate Workbench (Stage 3) is the canonical view
+  var _spEl = document.getElementById('scopePanelBreakdown');
+  if(_spEl) _spEl.style.display = 'none';
 }
 
 function renderScopePanel(){
@@ -3389,6 +3652,7 @@ function renderSites(){
     html += '<span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--gray-600);white-space:nowrap"><span style="font-weight:600">Lead:</span><input type="number" value="'+(s.transLead!=null?s.transLead:'')+'" placeholder="'+n('transDist')+'" oninput="sites['+si+'].transLead=parseFloat(this.value)||null;recalc()" style="width:58px;padding:3px 6px;border:1px solid var(--gray-300);border-radius:4px;font-size:12px"><span style="font-weight:600">km</span></span>';
     html += '<button class="btn btn-primary btn-sm no-print admin-only" onclick="addSiteJob('+si+')">+ Add Job</button>';
     html += '<button class="btn btn-secondary btn-sm no-print" onclick="openScopeSection()" title="Set scope of work for this contractor" style="color:var(--blue);border-color:var(--blue-border)">⚙ Scope</button>';
+    html += '<button class="btn btn-secondary btn-sm no-print" onclick="generateQuotation('+si+')" title="Generate client quotation for this site" style="color:var(--green);border-color:#bbf7d0">📄 Quote</button>';
     html += '<div style="margin-left:auto;display:flex;gap:6px">';
     html += '<span class="jc-derived" id="siteTotalBadge_'+si+'"></span>';
     html += '<button class="btn btn-danger btn-sm no-print admin-only" onclick="removeSite('+si+')" style="padding:3px 8px">× Site</button>';
