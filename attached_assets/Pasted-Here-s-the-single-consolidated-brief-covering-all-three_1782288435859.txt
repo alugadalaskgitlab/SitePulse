@@ -1,0 +1,84 @@
+Here's the single consolidated brief covering all three edits 👇
+Action: view_file({"path": "/app/SITEPULSE_RESTORE_WP_SWITCH.md"})
+Observation: [Showing lines 1-80 of 80 total] /app/SITEPULSE_RESTORE_WP_SWITCH.md:
+1|# SitePulse — Restore Work Program & SNL behind a real on/off switch
+2|
+3|**Problem:** the Work Program & BOQ and Norms Library (SNL) sidebar links were **hard-commented out** in `HubShell.tsx`, so they're gone in **dev and prod** with no toggle. This puts them behind a proper build flag `VITE_ENABLE_WORK_PROGRAM` — **on in dev** so you can keep working, **off in production** until you launch, flippable with one secret (no code change).
+4|
+5|Two files: `client/src/components/HubShell.tsx` and `client/src/App.tsx`.
+6|
+7|---
+8|
+9|### EDIT 1 — `HubShell.tsx`: add the flag (module top, just after the import lines, before the component)
+10|```ts
+11|const WP_ENABLED = import.meta.env.VITE_ENABLE_WORK_PROGRAM === "true";
+12|```
+13|
+14|### EDIT 2 — `HubShell.tsx`: un-comment the two nav entries and gate them on the flag
+15|
+16|**FIND** (currently commented out, ~lines 93-94):
+17|```ts
+18|    // ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+19|    // ...(sectionVisible("qto_boq") || isAdmin ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
+20|```
+21|**REPLACE WITH:**
+22|```ts
+23|    ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
+24|    ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
+25|```
+26|
+27|### EDIT 3 — `App.tsx`: gate the routes too (so prod truly hides them, not just the nav)
+28|
+29|**EDIT 3a** — add the flag at module top, just after the import block (e.g. after the last `import ... ;` line, around line 109):
+30|```ts
+31|const WP_ENABLED = import.meta.env.VITE_ENABLE_WORK_PROGRAM === "true";
+32|```
+33|
+34|**EDIT 3b** — gate the seven Work Program / Norms routes.
+35|
+36|**FIND** (~lines 307-313):
+37|```tsx
+38|            <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />
+39|            <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "qto_boq")} />
+40|            <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />
+41|            <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "qto_boq")} />
+42|            <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "qto_boq")} />
+43|            <Route path="/work-program/:id/demand" component={gated(WorkDemand, "qto_boq")} />
+44|            <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />
+45|```
+46|**REPLACE WITH:**
+47|```tsx
+48|            {WP_ENABLED && <Route path="/work-program" component={gated(BoqProjects, "qto_boq")} />}
+49|            {WP_ENABLED && <Route path="/work-program/planning-masters" component={gated(PlanningMasters, "qto_boq")} />}
+50|            {WP_ENABLED && <Route path="/work-program/:id" component={gated(BoqProjectDetail, "qto_boq")} />}
+51|            {WP_ENABLED && <Route path="/work-program/:id/settings" component={gated(BoqProgramSettings, "qto_boq")} />}
+52|            {WP_ENABLED && <Route path="/work-program/:id/programme" component={gated(WorkProgramme, "qto_boq")} />}
+53|            {WP_ENABLED && <Route path="/work-program/:id/demand" component={gated(WorkDemand, "qto_boq")} />}
+54|            {WP_ENABLED && <Route path="/norms" component={gated(NormsLibrary, "qto_boq")} />}
+55|```
+56|> With the flag off these routes aren't registered, so even a typed URL `/work-program` won't open it (it falls through to your NotFound/default route).
+57|
+58|---
+59|
+60|## Set the switch
+61|
+62|**Dev (so the hubs show while you work):**
+63|- Replit left sidebar → **Tools → Secrets** → add `VITE_ENABLE_WORK_PROGRAM` = `true`.
+64|- Restart the dev server / rebuild (Vite inlines `VITE_*` at build time, so a restart is needed for it to take effect).
+65|
+66|**Production (hidden until launch):**
+67|- Deployments → your deployment → **Secrets / Environment variables** → set `VITE_ENABLE_WORK_PROGRAM` = `false` (or simply leave it unset — anything other than the exact string `"true"` = hidden).
+68|- Redeploy.
+69|
+70|**To launch later:** set the deployment secret to `true` and redeploy. One flip, no code change.
+71|
+72|---
+73|
+74|## Verify
+75|1. **Dev with `VITE_ENABLE_WORK_PROGRAM=true`** (logged in as **admin** or a user with the `qto_boq` permission): "Work Program & BOQ" and "Norms Library (SNL)" appear in the sidebar and open normally.
+76|2. **Dev/prod with the flag false/unset:** both links are gone **and** typing `/work-program` or `/norms` does not open them.
+77|3. Flipping the secret + restart/redeploy toggles them without any code edit.
+78|
+79|> Reminder: even with the flag `true`, the links respect the existing rule `sectionVisible("qto_boq") || isAdmin` — so make sure the login you test with is admin or has the `qto_boq` permission, otherwise they'll still be hidden for that user by design.
+80|
+[End of file]
