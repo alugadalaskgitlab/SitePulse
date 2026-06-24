@@ -1,0 +1,175 @@
+Here is the complete content of /app/SITEPULSE_BOQ_IMPORT_BULK_CHECKBOX.md. Copy everything between the two ═══ rulers and paste it to Replit:
+
+═══════════════════════════════════════════════════════════════
+
+SitePulse — BOQ Import: checkbox multi-select + "Assign to selected" bulk category
+How category assignment works today (read this first)
+In the Import wizard, Step 2 — Work Category Assignment already does a lot:
+
+Auto-suggest from item code. On entering Step 2, suggestWorkCategory(itemCode) pre-fills the category for every item that has a standard MoRTH/NHAI code (3.xx → Earthwork, 4.xx → Sub-base & Base, 5.xx → Bituminous, etc.). So for a properly-coded BOQ, most rows are already categorised before you touch anything.
+Per-row dropdown. Each row has a category <Select> for manual correction.
+Bulk bar (already present). A "Bulk assign" bar with a category dropdown and two buttons: Set unassigned (N) (fills only blank rows) and Set all (overwrites every row).
+Gate. You can't proceed until 0 rows are unassigned.
+The real gap your suggestion fixes: today bulk-assign is all-or-nothing. There is no way to pick a subset. Checkboxes + "Assign to selected" add that. Frontend-only, in client/src/components/BoqImportWizard.tsx, purely additive.
+
+EDIT 1 — add selection state
+FIND:
+
+  const [bulkCat, setBulkCat] = useState("");
+
+REPLACE WITH:
+
+  const [bulkCat, setBulkCat] = useState("");
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+EDIT 2 — reset selection when (re)entering Step 2, and add helpers
+FIND:
+
+  function enterStep2() {
+    const cats = parsedItems.map(item => suggestWorkCategory(item.itemCode) ?? "");
+    setItemWorkCats(cats);
+    setBulkCat("");
+    setStep(2);
+  }
+
+  function applyBulkCat() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(c => c === "" ? bulkCat : c));
+  }
+
+  function applyBulkCatAll() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(() => bulkCat));
+  }
+REPLACE WITH:
+
+  function enterStep2() {
+    const cats = parsedItems.map(item => suggestWorkCategory(item.itemCode) ?? "");
+    setItemWorkCats(cats);
+    setBulkCat("");
+    setSelectedRows(new Set());
+    setStep(2);
+  }
+
+  function applyBulkCat() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(c => c === "" ? bulkCat : c));
+  }
+
+  function applyBulkCatAll() {
+    if (!bulkCat) return;
+    setItemWorkCats(prev => prev.map(() => bulkCat));
+  }
+
+  function applyBulkCatSelected() {
+    if (!bulkCat || selectedRows.size === 0) return;
+    setItemWorkCats(prev => prev.map((c, i) => selectedRows.has(i) ? bulkCat : c));
+    setSelectedRows(new Set());
+  }
+
+  function toggleRow(idx: number) {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }
+
+  function toggleAllRows() {
+    setSelectedRows(prev =>
+      prev.size === parsedItems.length ? new Set() : new Set(parsedItems.map((_, i) => i))
+    );
+  }
+EDIT 3 — add the "Assign to selected" button in the bulk bar
+FIND:
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-sm border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                onClick={applyBulkCatAll}
+                disabled={!bulkCat}
+                data-testid="button-bulk-assign-all"
+              >
+                Set all
+              </Button>
+            </div>
+REPLACE WITH:
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-sm border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0"
+                onClick={applyBulkCatAll}
+                disabled={!bulkCat}
+                data-testid="button-bulk-assign-all"
+              >
+                Set all
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-sm bg-amber-600 hover:bg-amber-700 text-white flex-shrink-0"
+                onClick={applyBulkCatSelected}
+                disabled={!bulkCat || selectedRows.size === 0}
+                data-testid="button-bulk-assign-selected"
+              >
+                Assign to selected ({selectedRows.size})
+              </Button>
+            </div>
+EDIT 4 — add the checkbox column header (with select-all)
+FIND:
+
+                  <thead className="bg-slate-800 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-14">Code</th>
+REPLACE WITH:
+
+                  <thead className="bg-slate-800 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-2 py-2 text-center w-9">
+                        <input
+                          type="checkbox"
+                          className="accent-amber-500 cursor-pointer"
+                          checked={parsedItems.length > 0 && selectedRows.size === parsedItems.length}
+                          ref={el => { if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < parsedItems.length; }}
+                          onChange={toggleAllRows}
+                          data-testid="checkbox-select-all-rows"
+                          title="Select all"
+                        />
+                      </th>
+                      <th className="px-2 py-2 text-left font-semibold text-slate-300 w-14">Code</th>
+EDIT 5 — add the per-row checkbox cell
+FIND:
+
+                        <tr
+                          key={idx}
+                          className={`border-b border-slate-100 last:border-0 ${isUnassigned ? "bg-red-50/40" : idx % 2 === 1 ? "bg-slate-50/40" : ""}`}
+                          data-testid={`row-cat-assign-${idx}`}
+                        >
+                          <td className="px-2 py-1.5 font-mono text-slate-500 whitespace-nowrap">
+                            {item.itemCode ?? "—"}
+                          </td>
+REPLACE WITH:
+
+                        <tr
+                          key={idx}
+                          className={`border-b border-slate-100 last:border-0 ${selectedRows.has(idx) ? "bg-amber-50" : isUnassigned ? "bg-red-50/40" : idx % 2 === 1 ? "bg-slate-50/40" : ""}`}
+                          data-testid={`row-cat-assign-${idx}`}
+                        >
+                          <td className="px-2 py-1.5 text-center">
+                            <input
+                              type="checkbox"
+                              className="accent-amber-500 cursor-pointer"
+                              checked={selectedRows.has(idx)}
+                              onChange={() => toggleRow(idx)}
+                              data-testid={`checkbox-row-${idx}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 font-mono text-slate-500 whitespace-nowrap">
+                            {item.itemCode ?? "—"}
+                          </td>
+Workflow after this patch
+Codes auto-suggest categories as before.
+To fix a group: tick the rows (or use header select-all), pick a category in the Bulk assign dropdown, click Assign to selected (N).
+Selected rows highlight amber; selection clears after assigning.
+"Set unassigned" / "Set all" still work for broad strokes.
+Uses native checkboxes (same style as the existing import-mode radios) — no new imports needed.
