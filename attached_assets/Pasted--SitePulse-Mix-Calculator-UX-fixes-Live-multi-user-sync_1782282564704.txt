@@ -1,0 +1,143 @@
+# SitePulse Mix Calculator — UX fixes + Live multi-user sync
+
+Covers 4 requests: (1) freight payload free-text, (2) stay on the same page after reload, (3) some pages still open collapsed, (4) live shared editing for you + colleague. Parts 1-3 are small validated patches (JS syntax checked). Part 4 is a feasibility + implementation brief.
+
+**File for Parts 1-3:** `client/public/mix-calculator.html`
+
+---
+
+## Part 1 — Freight Payload: free-text input (not a dropdown)
+
+The current dropdown writes into a *hidden* `#aggPayload`, and on reload the dropdown shows its top option even though the saved value is intact — that's why it "looked" non-persistent. Replacing it with a plain number input fixes both (the input `aggPayload` is already in `PERSIST_INPUTS`, so it persists correctly).
+
+**FIND:**
+```html
+      <div class="form-group">
+        <label>Freight Payload (MT)</label>
+        <select id="aggPayloadSel" onchange="(function(){var v=this.value;document.getElementById('aggPayload').value=v==='custom'?'':v;if(v!=='custom')recalc();}).call(this)" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+          <option value="16">16 MT</option><option value="22">22 MT</option><option value="28">28 MT</option>
+          <option value="32">32 MT</option><option value="34">34 MT</option><option value="custom">Custom</option>
+        </select>
+        <input id="aggPayload" type="number" value="16" oninput="recalc()" style="width:60px;margin-left:4px;display:none">
+      </div>
+```
+**REPLACE WITH:**
+```html
+      <div class="form-group">
+        <label>Freight Payload (MT)</label>
+        <input id="aggPayload" type="number" value="16" step="0.5" min="0" oninput="recalc()" style="width:100px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+      </div>
+```
+> **Transport Payload** (section ⑥) has the same dropdown pattern (`transPayloadSel` → hidden `transPayload`). If you want it free-text too, tell me and I'll send the matching edit — it already persists, just the dropdown display is the issue.
+
+---
+
+## Part 2 + 3 — Stay on the current page after reload, and never open collapsed
+
+Two causes: (a) boot always calls `showSection('quote-setup')`, so reload jumps to Project Info; (b) the "expand cards" step ran *before* lazily-rendered sections (rec-quote / final-summary) injected their cards, so those stayed collapsed.
+
+**EDIT 3a — `showSection`: persist the section + expand cards LAST.**
+
+**FIND:**
+```js
+function showSection(id){
+  _activeSection = id;
+  _sectionIds.forEach(function(sid){
+    var el = document.getElementById('sec-'+sid);
+    if(el) el.classList.toggle('nav-visible', sid===id);
+    var nav = document.getElementById('navitem-'+sid);
+    if(nav) nav.classList.toggle('nav-active', sid===id);
+  });
+  var content = document.getElementById('calcContent');
+  if(content) content.scrollTop = 0;
+  // Each sidebar item is its own page — always show its cards expanded
+  var activeSec = document.getElementById('sec-'+id);
+  if(activeSec){
+    activeSec.querySelectorAll('.card-header').forEach(function(h){ h.classList.add('open'); });
+    activeSec.querySelectorAll('.card-body').forEach(function(b){ b.classList.add('open'); });
+  }
+  // scroll the horizontal nav into view on mobile
+  var navItem = document.getElementById('navitem-'+id);
+  if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  // trigger lazy renders for analysis sections
+  if(id==='rec-quote') _renderRecQuoteSection();
+  if(id==='final-summary') { _summarySectionQuoteLevel = _summarySectionQuoteLevel||'target'; _renderFinalSummary(); }
+}
+```
+**REPLACE WITH:**
+```js
+function showSection(id){
+  _activeSection = id;
+  try{ localStorage.setItem(STORAGE_KEY+'_section', id); }catch(e){}
+  _sectionIds.forEach(function(sid){
+    var el = document.getElementById('sec-'+sid);
+    if(el) el.classList.toggle('nav-visible', sid===id);
+    var nav = document.getElementById('navitem-'+sid);
+    if(nav) nav.classList.toggle('nav-active', sid===id);
+  });
+  var content = document.getElementById('calcContent');
+  if(content) content.scrollTop = 0;
+  // scroll the horizontal nav into view on mobile
+  var navItem = document.getElementById('navitem-'+id);
+  if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  // trigger lazy renders for analysis sections
+  if(id==='rec-quote') _renderRecQuoteSection();
+  if(id==='final-summary') { _summarySectionQuoteLevel = _summarySectionQuoteLevel||'target'; _renderFinalSummary(); }
+  // Each sidebar item is its own page — always show its cards expanded.
+  // Run LAST so lazily-rendered cards (rec-quote / final-summary) are included.
+  var activeSec = document.getElementById('sec-'+id);
+  if(activeSec){
+    activeSec.querySelectorAll('.card-header').forEach(function(h){ h.classList.add('open'); });
+    activeSec.querySelectorAll('.card-body').forEach(function(b){ b.classList.add('open'); });
+  }
+}
+```
+
+**EDIT 3b — boot: restore the last section instead of forcing Project Info.**
+
+**FIND:**
+```js
+  recalc();
+  showSection('quote-setup');
+```
+**REPLACE WITH:**
+```js
+  recalc();
+  // Restore the section the user was last on (so reload doesn't jump back to Project Info)
+  var _savedSec = (function(){ try{ return localStorage.getItem(STORAGE_KEY+'_section'); }catch(e){ return null; } })();
+  showSection(_savedSec && _sectionIds.indexOf(_savedSec)>=0 ? _savedSec : 'quote-setup');
+```
+(The existing `?section=` URL override right after still works and takes priority when present.)
+
+---
+
+## Part 4 — Live multi-user editing (you + colleague on the same project)
+
+### Feasibility: YES (via polling — no websockets needed)
+Estimates already persist to the server (`/api/mix-estimates/:id`), the `mix_estimates` table already has an `updatedAt` timestamp, and the client already has `autoSaveToDb()` and `loadFromDb()`. So we can make edits sync between users **without** adding websockets — using short-interval polling. (A websocket version is possible later for instant push, but the server has no ws infra today, so polling is the pragmatic first step.)
+
+### How it will behave
+1. Both users **open the same estimate** (Load from DB) → same `currentEstimateId`.
+2. **Autosave**: every change debounces a `PUT /api/mix-estimates/:id` (extend the existing `autoSaveToDb` to fire on *all* edits, ~1.5s debounce).
+3. **Live pull**: every ~6s (only when an estimate is open and the tab is visible) `GET /api/mix-estimates/:id`; compare server `updatedAt` with the last value this client saved/loaded:
+   - If newer **and** this user has **no unsaved local edits** → apply it (`loadFromDb`) and show a small toast: *"Synced changes from <colleague>"*.
+   - If newer **and** this user **is mid-edit** → show a non-destructive banner: *"⟳ Colleague updated this estimate — Refresh to load (discards your unsaved edits)"*. This prevents silently clobbering either person's work.
+
+### Server changes (small)
+- In `storage.updateMixEstimate`, set `updatedAt: new Date()` on every update (so polling can detect changes reliably).
+- (Optional, for attribution) add an `updatedBy` column + set it from `req.authUser.id` in the PUT handler, and return the editor's name in `GET /:id` so the toast can say *who* changed it.
+- (Optional, cheaper polling) add `GET /api/mix-estimates/:id/meta` returning just `{ updatedAt, updatedBy }`.
+
+### Client changes (in mix-calculator.html)
+- Track `_syncedUpdatedAt` on load/save; set a `_dirty=true` flag on any input/change, cleared after a successful autosave.
+- Add the 6s `setInterval` poller (guard with `document.visibilityState==='visible'` and `currentEstimateId`).
+- Apply-or-banner logic as above; add the toast + banner UI.
+
+### Honest limitation (important)
+The estimate is stored as **one JSON blob**, so sync is **last-write-wins at the whole-estimate level**. For two people fine-tuning *different* fields a few seconds apart, the autosave + poll + "refresh" banner handles it well. But if both edit and save within the same ~1.5s window, the later save wins for the whole blob. True field-level merge or section locks is a larger effort — recommend the polling approach first; if you find yourselves colliding often, we can add **soft section locks** (e.g. "Raw Materials is being edited by <colleague>") as a Phase 2.
+
+> This is a moderate feature (server + client). I recommend letting Replit implement it and test with two logins on one estimate. Tell me to proceed and I'll write the detailed step-by-step (endpoints + the exact client poller/banner code).
+
+---
+
+## Verify (Parts 1-3)

@@ -488,11 +488,7 @@ body{font-size:11px;background:#fff}
       <div class="form-group"><label>Freight Rate (₹/km/load)</label><input id="aggFreightRate" type="number" value="9" oninput="recalc()"></div>
       <div class="form-group">
         <label>Freight Payload (MT)</label>
-        <select id="aggPayloadSel" onchange="(function(){var v=this.value;document.getElementById('aggPayload').value=v==='custom'?'':v;if(v!=='custom')recalc();}).call(this)" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
-          <option value="16">16 MT</option><option value="22">22 MT</option><option value="28">28 MT</option>
-          <option value="32">32 MT</option><option value="34">34 MT</option><option value="custom">Custom</option>
-        </select>
-        <input id="aggPayload" type="number" value="16" oninput="recalc()" style="width:60px;margin-left:4px;display:none">
+        <input id="aggPayload" type="number" value="16" step="0.5" min="0" oninput="recalc()" style="width:100px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
       </div>
       <div class="form-group" style="align-items:center;gap:8px">
         <label>Return Trip Included?</label>
@@ -3309,6 +3305,7 @@ var _sectionIds = ['quote-setup','mix-types','raw-materials','plant-equip','fuel
 
 function showSection(id){
   _activeSection = id;
+  try{ localStorage.setItem(STORAGE_KEY+'_section', id); }catch(e){}
   _sectionIds.forEach(function(sid){
     var el = document.getElementById('sec-'+sid);
     if(el) el.classList.toggle('nav-visible', sid===id);
@@ -3317,18 +3314,19 @@ function showSection(id){
   });
   var content = document.getElementById('calcContent');
   if(content) content.scrollTop = 0;
-  // Each sidebar item is its own page — always show its cards expanded
-  var activeSec = document.getElementById('sec-'+id);
-  if(activeSec){
-    activeSec.querySelectorAll('.card-header').forEach(function(h){ h.classList.add('open'); });
-    activeSec.querySelectorAll('.card-body').forEach(function(b){ b.classList.add('open'); });
-  }
   // scroll the horizontal nav into view on mobile
   var navItem = document.getElementById('navitem-'+id);
   if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   // trigger lazy renders for analysis sections
   if(id==='rec-quote') _renderRecQuoteSection();
   if(id==='final-summary') { _summarySectionQuoteLevel = _summarySectionQuoteLevel||'target'; _renderFinalSummary(); }
+  // Each sidebar item is its own page — always show its cards expanded.
+  // Run LAST so lazily-rendered cards (rec-quote / final-summary) are included.
+  var activeSec = document.getElementById('sec-'+id);
+  if(activeSec){
+    activeSec.querySelectorAll('.card-header').forEach(function(h){ h.classList.add('open'); });
+    activeSec.querySelectorAll('.card-body').forEach(function(b){ b.classList.add('open'); });
+  }
 }
 
 function _renderRecQuoteSection(){
@@ -6187,7 +6185,9 @@ function init(){
   renderEquipCards();
   renderSites();
   recalc();
-  showSection('quote-setup');
+  // Restore the section the user was last on (so reload doesn't jump back to Project Info)
+  var _savedSec = (function(){ try{ return localStorage.getItem(STORAGE_KEY+'_section'); }catch(e){ return null; } })();
+  showSection(_savedSec && _sectionIds.indexOf(_savedSec)>=0 ? _savedSec : 'quote-setup');
   // Navigate to section from URL param (e.g. returning from Price Impact page)
   (function(){
     try{
