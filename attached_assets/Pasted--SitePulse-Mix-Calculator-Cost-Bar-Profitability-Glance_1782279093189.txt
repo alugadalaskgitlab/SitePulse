@@ -1,0 +1,60 @@
+# SitePulse Mix Calculator — Cost Bar & Profitability-Glance consistency fix
+
+**File:** `client/public/mix-calculator.html`
+**Why:** `renderCostBar` and `renderProfGlance` still read the legacy `mixRates` (which always includes aggregate + bitumen) instead of the shared `computeRate` engine. So in **Materials: Client** mode they show material costs the other panels (Rate Workbench, job cards, Profitability) correctly drop. Also, `renderProfGlance` reads `mr.total`, a field that doesn't exist on the rate objects, so its **Cost ₹/MT** column is effectively ₹0 today — this fixes that too.
+
+Both edits validated (JS syntax OK). They match the engine's semantics exactly: in Client mode only **aggregate + bitumen** are excluded (plant fuel is retained, same as `computeRate`).
+
+---
+
+### EDIT 1 — `renderProfGlance` : use `computeRate` for cost (respects Materials + fixes ₹0 bug)
+
+**FIND:**
+```js
+        var mixObj = mixTypes[mx.mixIdx]||mixTypes[0];
+        var mt = mx._mt||0;
+        if(mt<=0) return;
+        var mr = mixRates[mx.mixIdx]||mixRates[0];
+        if(!mr) return;
+        var costPerMT = mr.total||0;
+```
+
+**REPLACE WITH:**
+```js
+        var mixObj = mixTypes[mx.mixIdx]||mixTypes[0];
+        var mt = mx._mt||0;
+        if(mt<=0) return;
+        // Use the shared computeRate engine so cost respects Materials (Us/Client) + quote mode
+        var _cr = _computeRate ? _computeRate(mixObj, {transPerMT:_wTransPerMT}) : (mixRates[mx.mixIdx]||mixRates[0]);
+        if(!_cr) return;
+        var costPerMT = _cr.perMT_cost||0;
+```
+
+---
+
+### EDIT 2 — `renderCostBar` : exclude agg + bitumen in Client mode
+
+**FIND:**
+```js
+  var r = mixRates[activeMixIdx]||mixRates[0];
+  if(!r) return;
+  var heads = [
+    {label:'Material',color:'#f59e0b',val:r.aggregate},
+    {label:'Bitumen',color:'#8b5cf6',val:r.bitumen},
+```
+
+**REPLACE WITH:**
+```js
+  var r = mixRates[activeMixIdx]||mixRates[0];
+  if(!r) return;
+  // Materials supplied by client → exclude aggregate & bitumen (match computeRate / Workbench)
+  var _mAgg = (materialsBy==='client') ? 0 : r.aggregate;
+  var _mBit = (materialsBy==='client') ? 0 : r.bitumen;
+  var heads = [
+    {label:'Material',color:'#f59e0b',val:_mAgg},
+    {label:'Bitumen',color:'#8b5cf6',val:_mBit},
+```
+
+---
+
+### Verify

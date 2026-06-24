@@ -3205,9 +3205,10 @@ function renderProfGlance(mixRates){
         var mixObj = mixTypes[mx.mixIdx]||mixTypes[0];
         var mt = mx._mt||0;
         if(mt<=0) return;
-        var mr = mixRates[mx.mixIdx]||mixRates[0];
-        if(!mr) return;
-        var costPerMT = mr.total||0;
+        // Use the shared computeRate engine so cost respects Materials (Us/Client) + quote mode
+        var _cr = _computeRate ? _computeRate(mixObj, {transPerMT:_wTransPerMT}) : (mixRates[mx.mixIdx]||mixRates[0]);
+        if(!_cr) return;
+        var costPerMT = _cr.perMT_cost||0;
         // contract rate lookup (manual or auto)
         var mn = mixObj.name.toUpperCase().replace(/[\s-]+/g,'_');
         var ck = site.id+'_'+mn;
@@ -3265,9 +3266,12 @@ function renderProfGlance(mixRates){
 function renderCostBar(mixRates){
   var r = mixRates[activeMixIdx]||mixRates[0];
   if(!r) return;
+  // Materials supplied by client → exclude aggregate & bitumen (match computeRate / Workbench)
+  var _mAgg = (materialsBy==='client') ? 0 : r.aggregate;
+  var _mBit = (materialsBy==='client') ? 0 : r.bitumen;
   var heads = [
-    {label:'Material',color:'#f59e0b',val:r.aggregate},
-    {label:'Bitumen',color:'#8b5cf6',val:r.bitumen},
+    {label:'Material',color:'#f59e0b',val:_mAgg},
+    {label:'Bitumen',color:'#8b5cf6',val:_mBit},
     {label:'Equipment',color:'#3b82f6',val:r.equipment},
     {label:'Fuel',color:'#ef4444',val:r.fuel},
     {label:'Crew',color:'#10b981',val:r.crew},
