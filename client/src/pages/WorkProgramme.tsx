@@ -643,6 +643,17 @@ function StretchRow({
 
 // ─── InlineGanttTable ────────────────────────────────────────────────────────────
 
+// Natural sort for MoRTH bill/item codes: 1.01 < 1.02 < 1.10 < 2.01 < 10.01
+function compareItemCode(a?: string | null, b?: string | null): number {
+  const seg = (s?: string | null) => (s ?? "").split(".").map(p => parseInt(p.replace(/\D/g, ""), 10) || 0);
+  const pa = seg(a), pb = seg(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return (a ?? "").localeCompare(b ?? "");
+}
+
 function InlineGanttTable({
   project,
   items,
@@ -714,12 +725,18 @@ function InlineGanttTable({
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
     }
+    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
+    for (const cat of Object.keys(m)) {
+      m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
+    }
     return m;
   }, [items]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
-    keys.sort();
+    // Order categories by the lowest item code they contain, so bills appear
+    // in BOQ order (Preliminaries → Site Clearance → Earthwork → …).
+    keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
     if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
     return keys;
   }, [grouped]);
@@ -1101,12 +1118,18 @@ function MonthlyPlanView({
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
     }
+    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
+    for (const cat of Object.keys(m)) {
+      m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
+    }
     return m;
   }, [items]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
-    keys.sort();
+    // Order categories by the lowest item code they contain, so bills appear
+    // in BOQ order (Preliminaries → Site Clearance → Earthwork → …).
+    keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
     if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
     return keys;
   }, [grouped]);

@@ -1,0 +1,65 @@
+Confirmed — the exact same grouping block appears twice (Gantt view ~line 710 and Monthly view ~line 1097), and neither sorts items within a category, and both order categories alphabetically by name. Here's the patch (client/src/pages/WorkProgramme.tsx):
+
+EDIT 1 — add a natural bill-code comparator
+FIND:
+
+function InlineGanttTable({
+REPLACE WITH:
+
+// Natural sort for MoRTH bill/item codes: 1.01 < 1.02 < 1.10 < 2.01 < 10.01
+function compareItemCode(a?: string | null, b?: string | null): number {
+  const seg = (s?: string | null) => (s ?? "").split(".").map(p => parseInt(p.replace(/\D/g, ""), 10) || 0);
+  const pa = seg(a), pb = seg(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return (a ?? "").localeCompare(b ?? "");
+}
+
+function InlineGanttTable({
+EDIT 2 — sort items by code + order categories by bill order
+⚠️ This block appears TWICE (Gantt view and Monthly view) — replace both occurrences with the same new text.
+
+FIND:
+
+  const grouped = useMemo(() => {
+    const m: Record<string, BoqItemWithCategory[]> = {};
+    for (const it of items) {
+      const cat = it.categoryName ?? "__uncategorised__";
+      if (!m[cat]) m[cat] = [];
+      m[cat].push(it);
+    }
+    return m;
+  }, [items]);
+
+  const allCategoryKeys = useMemo(() => {
+    const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
+    keys.sort();
+    if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
+    return keys;
+  }, [grouped]);
+REPLACE WITH:
+
+  const grouped = useMemo(() => {
+    const m: Record<string, BoqItemWithCategory[]> = {};
+    for (const it of items) {
+      const cat = it.categoryName ?? "__uncategorised__";
+      if (!m[cat]) m[cat] = [];
+      m[cat].push(it);
+    }
+    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
+    for (const cat of Object.keys(m)) {
+      m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
+    }
+    return m;
+  }, [items]);
+
+  const allCategoryKeys = useMemo(() => {
+    const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
+    // Order categories by the lowest item code they contain, so bills appear
+    // in BOQ order (Preliminaries → Site Clearance → Earthwork → …).
+    keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
+    if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
+    return keys;
+  }, [grouped]);

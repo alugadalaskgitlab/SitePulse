@@ -55,6 +55,17 @@ function fmtAmt(n: number | null | undefined) {
 
 // ─── Inline Item Edit Dialog ──────────────────────────────────────────────────
 
+// Natural sort for MoRTH bill/item codes: 1.01 < 1.02 < 1.10 < 2.01 < 10.01
+function compareItemCode(a?: string | null, b?: string | null): number {
+  const seg = (s?: string | null) => (s ?? "").split(".").map(p => parseInt(p.replace(/\D/g, ""), 10) || 0);
+  const pa = seg(a), pb = seg(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return (a ?? "").localeCompare(b ?? "");
+}
+
 function ItemEditDialog({
   item,
   onClose,
@@ -1302,6 +1313,10 @@ export default function BoqProjectDetail() {
       const key = item.workCategory ?? "__uncategorised__";
       if (!map[key]) map[key] = [];
       map[key].push(item);
+    }
+    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return map;
   }, [items]);
