@@ -9683,6 +9683,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/boq/projects/:id/programme/bulk", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const { bars } = req.body as { bars: Array<Record<string, any>> };
+      if (!Array.isArray(bars) || bars.length === 0) {
+        return res.status(400).json({ error: "bars array is required and must not be empty" });
+      }
+      let created = 0;
+      for (const b of bars) {
+        if (!b.boqItemId || b.startMonth == null || b.endMonth == null) continue;
+        if (b.endMonth < b.startMonth) continue;
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId });
+        created++;
+      }
+      res.status(201).json({ created });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/programme/bulk:", err);
+      res.status(500).json({ error: "Failed to bulk-create programme bars" });
+    }
+  });
+
   app.patch("/api/boq/programme/bars/:id", async (req, res) => {
     try {
       const updated = await storage.updateWorkProgramBar(parseInt(req.params.id), req.body);

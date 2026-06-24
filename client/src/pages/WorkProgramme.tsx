@@ -5,7 +5,7 @@ import {
   ChevronRight, FileSpreadsheet, Plus, Trash2,
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
-  GanttChartSquare, TableProperties, ArrowLeftRight, Settings2,
+  GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1484,6 +1484,67 @@ export default function WorkProgramme() {
     return { under, over, missing };
   }, [items, bars]);
 
+  const autoGenMutation = useMutation({
+    mutationFn: (barsPayload: Record<string, unknown>[]) =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/bulk`, { bars: barsPayload }),
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Programme generated",
+        description: `Created ${(variables as unknown[]).length} bars at Month 1 — drag or set each item's start month to sequence the work.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-generate failed", variant: "destructive" }),
+  });
+
+  function handleAutoGenerate() {
+    if (!effectiveProject) return;
+    const programmedIds = new Set(bars.map(b => b.boqItemId));
+    const roadLen = effectiveProject.roadLengthKm ?? 0;
+    const workingDays = effectiveProject.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
+    const workingHrs = effectiveProject.workingHoursPerDay ?? WORKING_HRS_DEFAULT;
+    const prodSettings: ProductivitySettings | null = progSettings ? {
+      mode: (progSettings.productivityMode ?? "snl") as "snl" | "company" | "project",
+      overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
+    } : null;
+
+    const toCreate = items.filter(it => !programmedIds.has(it.id) && (it.currentQty ?? 0) > 0);
+    if (toCreate.length === 0) {
+      toast({ title: "Nothing to generate", description: "Every item with a quantity is already programmed." });
+      return;
+    }
+
+    const payload = toCreate.map(item => {
+      const qty = item.currentQty;
+      const equipment: EquipmentProductivity[] = (recipesMap.get(item.id) ?? []).map(e => ({
+        outputUnit: e.outputUnit,
+        outputTheoretical: e.outputTheoretical,
+        outputEfficiency: e.outputEfficiency,
+        standardOutputs: e.standardOutputs as Array<{ unit: string; outputPerHr: number }> | null,
+        count: e.count ?? 1,
+      }));
+      const lc = item.layerConfig as LayerConfig | null;
+      const itemType = (lc?.mixType ?? lc?.layerType) ?? null;
+      const dur = qty > 0 && (equipment.length || prodSettings?.mode === "project")
+        ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays, prodSettings, itemType)
+        : null;
+      const sm = 1;
+      const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;
+      return {
+        boqItemId: item.id,
+        chainageFrom: 0,
+        chainageTo: roadLen > 0 ? roadLen : 1,
+        startMonth: sm,
+        endMonth: em,
+        plannedQty: qty,
+        isQtyOverride: false,
+        isDurationOverride: !dur,
+      };
+    });
+
+    autoGenMutation.mutate(payload);
+  }
+
   const isLoading = itemsLoading || barsLoading;
 
   return (
@@ -1532,6 +1593,22 @@ export default function WorkProgramme() {
           </p>
         </div>
         <div className="flex gap-2">
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={handleAutoGenerate}
+              disabled={autoGenMutation.isPending}
+              data-testid="button-auto-generate-programme"
+              title="Create a bar for every unprogrammed item. Duration is auto-computed from SNL equipment norms; all start at Month 1 — then drag or set each item's start month."
+            >
+              {autoGenMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Sparkles className="w-4 h-4 mr-1" />}
+              Auto-generate
+            </Button>
+          )}
           <Link href={`/work-program/${projectId}/demand`}>
             <a>
               <Button variant="outline" size="sm" data-testid="button-bom-demand">

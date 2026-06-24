@@ -1,0 +1,197 @@
+# SitePulse — Work Programme: "Auto-generate" (one bar per item, durations auto-computed)
+
+Turns ~100 manual bar-creations into one click. **Auto-generate** creates a work-programme
+bar for **every unprogrammed item that has a quantity**, with:
+- **start month = 1** for all (you then drag or type each item's start to sequence),
+- **end month = 1 + auto-duration**, where the duration is computed from the item's
+  SNL/recipe equipment norms via the *same* `calculateAutoDurationFull` engine already
+  used when you add a single bar.
+- planned qty = the item's full current qty over chainage `0 → road length`.
+
+Already-programmed items are left untouched, so it's safe to re-run after importing more
+items.
+
+There are **3 client edits** (`client/src/pages/WorkProgramme.tsx`) and **1 backend edit**
+(`server/routes.ts`).
+
+---
+
+## BACKEND EDIT — add a bulk programme endpoint
+
+In **`server/routes.ts`**, find the existing PATCH-bar route:
+
+**FIND:**
+
+```ts
+  app.patch("/api/boq/programme/bars/:id", async (req, res) => {
+```
+
+**REPLACE WITH** (adds the bulk route just above it):
+
+```ts
+  app.post("/api/boq/projects/:id/programme/bulk", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const { bars } = req.body as { bars: Array<Record<string, any>> };
+      if (!Array.isArray(bars) || bars.length === 0) {
+        return res.status(400).json({ error: "bars array is required and must not be empty" });
+      }
+      let created = 0;
+      for (const b of bars) {
+        if (!b.boqItemId || b.startMonth == null || b.endMonth == null) continue;
+        if (b.endMonth < b.startMonth) continue;
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId });
+        created++;
+      }
+      res.status(201).json({ created });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/programme/bulk:", err);
+      res.status(500).json({ error: "Failed to bulk-create programme bars" });
+    }
+  });
+
+  app.patch("/api/boq/programme/bars/:id", async (req, res) => {
+```
+
+---
+
+## CLIENT EDIT 1 — add the `Sparkles` icon to the lucide import
+
+**FIND:**
+
+```tsx
+  GanttChartSquare, TableProperties, ArrowLeftRight, Settings2,
+} from "lucide-react";
+```
+
+**REPLACE WITH:**
+
+```tsx
+  GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
+} from "lucide-react";
+```
+
+---
+
+## CLIENT EDIT 2 — add the auto-generate mutation + handler
+
+In the main `WorkProgramme` component, **FIND:**
+
+```tsx
+  const isLoading = itemsLoading || barsLoading;
+```
+
+**REPLACE WITH:**
+
+```tsx
+  const autoGenMutation = useMutation({
+    mutationFn: (barsPayload: Record<string, unknown>[]) =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/bulk`, { bars: barsPayload }),
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Programme generated",
+        description: `Created ${(variables as unknown[]).length} bars at Month 1 — drag or set each item's start month to sequence the work.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-generate failed", variant: "destructive" }),
+  });
+
+  function handleAutoGenerate() {
+    if (!effectiveProject) return;
+    const programmedIds = new Set(bars.map(b => b.boqItemId));
+    const roadLen = effectiveProject.roadLengthKm ?? 0;
+    const workingDays = effectiveProject.workingDaysPerMonth ?? WORKING_DAYS_DEFAULT;
+    const workingHrs = effectiveProject.workingHoursPerDay ?? WORKING_HRS_DEFAULT;
+    const prodSettings: ProductivitySettings | null = progSettings ? {
+      mode: (progSettings.productivityMode ?? "snl") as "snl" | "company" | "project",
+      overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
+    } : null;
+
+    const toCreate = items.filter(it => !programmedIds.has(it.id) && (it.currentQty ?? 0) > 0);
+    if (toCreate.length === 0) {
+      toast({ title: "Nothing to generate", description: "Every item with a quantity is already programmed." });
+      return;
+    }
+
+    const payload = toCreate.map(item => {
+      const qty = item.currentQty;
+      const equipment: EquipmentProductivity[] = (recipesMap.get(item.id) ?? []).map(e => ({
+        outputUnit: e.outputUnit,
+        outputTheoretical: e.outputTheoretical,
+        outputEfficiency: e.outputEfficiency,
+        standardOutputs: e.standardOutputs as Array<{ unit: string; outputPerHr: number }> | null,
+        count: e.count ?? 1,
+      }));
+      const lc = item.layerConfig as LayerConfig | null;
+      const itemType = (lc?.mixType ?? lc?.layerType) ?? null;
+      const dur = qty > 0 && (equipment.length || prodSettings?.mode === "project")
+        ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays, prodSettings, itemType)
+        : null;
+      const sm = 1;
+      const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;
+      return {
+        boqItemId: item.id,
+        chainageFrom: 0,
+        chainageTo: roadLen > 0 ? roadLen : 1,
+        startMonth: sm,
+        endMonth: em,
+        plannedQty: qty,
+        isQtyOverride: false,
+        isDurationOverride: !dur,
+      };
+    });
+
+    autoGenMutation.mutate(payload);
+  }
+
+  const isLoading = itemsLoading || barsLoading;
+```
+
+---
+
+## CLIENT EDIT 3 — add the button to the page header
+
+**FIND:**
+
+```tsx
+        <div className="flex gap-2">
+          <Link href={`/work-program/${projectId}/demand`}>
+```
+
+**REPLACE WITH:**
+
+```tsx
+        <div className="flex gap-2">
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={handleAutoGenerate}
+              disabled={autoGenMutation.isPending}
+              data-testid="button-auto-generate-programme"
+              title="Create a bar for every unprogrammed item. Duration is auto-computed from SNL equipment norms; all start at Month 1 — then drag or set each item's start month."
+            >
+              {autoGenMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Sparkles className="w-4 h-4 mr-1" />}
+              Auto-generate
+            </Button>
+          )}
+          <Link href={`/work-program/${projectId}/demand`}>
+```
+
+---
+
+## Verify
+
+1. Import / open a project with many items but no Gantt bars.
+2. Header shows **✨ Auto-generate**. Click it → toast "Programme generated — Created N bars…".
+3. Every previously-unprogrammed item now has a bar starting at Month 1 with a realistic
+   length (longer for slow/bottlenecked items). Items already scheduled are untouched.
+4. Drag a bar's left edge or type the start month per item to sequence the work; qty,
+   end-date and demand keep auto-computing as before.
+
+> Behaviour notes: items with no quantity are skipped; items with no equipment recipe get a
+> default 1-month bar (flagged as duration-override) so they still appear and can be adjusted.
