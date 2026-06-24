@@ -3050,6 +3050,12 @@ function showSection(id){
   });
   var content = document.getElementById('calcContent');
   if(content) content.scrollTop = 0;
+  // Each sidebar item is its own page — always show its cards expanded
+  var activeSec = document.getElementById('sec-'+id);
+  if(activeSec){
+    activeSec.querySelectorAll('.card-header').forEach(function(h){ h.classList.add('open'); });
+    activeSec.querySelectorAll('.card-body').forEach(function(b){ b.classList.add('open'); });
+  }
   // scroll the horizontal nav into view on mobile
   var navItem = document.getElementById('navitem-'+id);
   if(navItem) navItem.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
