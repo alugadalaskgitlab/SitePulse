@@ -82,6 +82,7 @@ VAPID_SUBJECT = "mailto:admin@hlc-sitelog.com"
 
 [userenv.development]
 ENABLE_RMC = "true"
+VITE_ENABLE_WORK_PROGRAM = "true"
 
 [postMerge]
 path = "scripts/post-merge.sh"
