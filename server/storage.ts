@@ -1197,6 +1197,7 @@ export interface IStorage {
   updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
   // Delete all BOQ items for a project (replace-mode import). Child records cascade automatically.
   deleteAllBoqItemsForProject(projectId: number): Promise<number>;
+  deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number>;
   // Task #1126 — Program Settings per BOQ project
   ensureBoqProgramSettingsTables(): Promise<void>;
   getBoqProgramSettings(projectId: number): Promise<BoqProgramSettings | null>;
@@ -20060,6 +20061,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAllBoqItemsForProject(projectId: number): Promise<number> {
     const deleted = await db.delete(boqItems).where(eq(boqItems.boqProjectId, projectId)).returning({ id: boqItems.id });
+    return deleted.length;
+  }
+
+  async deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number> {
+    const deleted = await db
+      .delete(boqItems)
+      .where(and(eq(boqItems.boqProjectId, projectId), lte(boqItems.boqQty, 0)))
+      .returning({ id: boqItems.id });
     return deleted.length;
   }
 

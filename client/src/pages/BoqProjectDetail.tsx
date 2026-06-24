@@ -1271,6 +1271,19 @@ export default function BoqProjectDetail() {
     enabled: !isNaN(projectId),
   });
 
+  const zeroQtyItems = items.filter(i => (i.boqQty ?? 0) <= 0);
+  const cleanupZeroQtyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/cleanup-zero-qty`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { deleted: number }) => {
+      await refetchItems();
+      toast({ title: "Cleanup done", description: `Removed ${data.deleted} zero-quantity item${data.deleted === 1 ? "" : "s"}.` });
+    },
+    onError: () => toast({ title: "Cleanup failed", variant: "destructive" }),
+  });
+
   const remapMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/remap`, {}),
     onSuccess: async () => {
@@ -1433,6 +1446,26 @@ export default function BoqProjectDetail() {
                 ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
               Re-map All
+            </Button>
+          )}
+          {zeroQtyItems.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700 hover:bg-red-50 h-8"
+              onClick={() => {
+                if (window.confirm(`Delete ${zeroQtyItems.length} zero-quantity item(s) from this BOQ? This cannot be undone.`)) {
+                  cleanupZeroQtyMutation.mutate();
+                }
+              }}
+              disabled={cleanupZeroQtyMutation.isPending}
+              data-testid="button-cleanup-zero-qty"
+              title="Remove all items with zero quantity from this project"
+            >
+              {cleanupZeroQtyMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                : <Trash2 className="w-3.5 h-3.5 mr-1.5" />}
+              Remove zero-qty ({zeroQtyItems.length})
             </Button>
           )}
           <Button

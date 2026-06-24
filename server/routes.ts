@@ -9584,6 +9584,16 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/boq/projects/:id/cleanup-zero-qty", async (req, res) => {
+    try {
+      const deleted = await storage.deleteZeroQtyBoqItemsForProject(parseInt(req.params.id));
+      res.json({ deleted });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/cleanup-zero-qty:", err);
+      res.status(500).json({ error: "Failed to clean up zero-quantity items" });
+    }
+  });
+
   app.delete("/api/boq/items/:id", async (req, res) => {
     try {
       await storage.deleteBoqItem(parseInt(req.params.id));

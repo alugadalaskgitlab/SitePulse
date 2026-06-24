@@ -1,0 +1,117 @@
+Confirmed apiRequest returns a Response, so I'll parse JSON for the count. GK answer: no — the button is conditional: it only renders when zeroQtyItems.length > 0, and vanishes the moment the project has no zero-qty rows left. Zero permanent clutter.
+
+Here's patch (c) — copy into Replit (paste backend block, let it finish, then the client block).
+
+📄 PATCH (c) — One-click "Remove zero-qty items" cleanup
+Conditional button on the BOQ screen + a tiny endpoint that deletes only qty = 0 rows for that project (keeps mappings/recipes/bars on the surviving items).
+
+BACKEND — server/storage.ts (2 edits) + server/routes.ts (1 edit)
+B1. Add the interface signature. FIND:
+
+  deleteAllBoqItemsForProject(projectId: number): Promise<number>;
+REPLACE WITH:
+
+  deleteAllBoqItemsForProject(projectId: number): Promise<number>;
+  deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number>;
+B2. Add the method. FIND:
+
+  async deleteAllBoqItemsForProject(projectId: number): Promise<number> {
+    const deleted = await db.delete(boqItems).where(eq(boqItems.boqProjectId, projectId)).returning({ id: boqItems.id });
+    return deleted.length;
+  }
+REPLACE WITH:
+
+  async deleteAllBoqItemsForProject(projectId: number): Promise<number> {
+    const deleted = await db.delete(boqItems).where(eq(boqItems.boqProjectId, projectId)).returning({ id: boqItems.id });
+    return deleted.length;
+  }
+
+  async deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number> {
+    const deleted = await db
+      .delete(boqItems)
+      .where(and(eq(boqItems.boqProjectId, projectId), lte(boqItems.boqQty, 0)))
+      .returning({ id: boqItems.id });
+    return deleted.length;
+  }
+B3. Add the route. In server/routes.ts, FIND:
+
+  app.delete("/api/boq/items/:id", async (req, res) => {
+REPLACE WITH (adds the cleanup route just above it):
+
+  app.post("/api/boq/projects/:id/cleanup-zero-qty", async (req, res) => {
+    try {
+      const deleted = await storage.deleteZeroQtyBoqItemsForProject(parseInt(req.params.id));
+      res.json({ deleted });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/cleanup-zero-qty:", err);
+      res.status(500).json({ error: "Failed to clean up zero-quantity items" });
+    }
+  });
+
+  app.delete("/api/boq/items/:id", async (req, res) => {
+CLIENT — client/src/pages/BoqProjectDetail.tsx (2 edits)
+C1. Add the cleanup mutation + the conditional count. FIND:
+
+  // ── Derived values ──
+  const groupedByWorkCat = useMemo(() => {
+REPLACE WITH:
+
+  const zeroQtyItems = items.filter(i => (i.boqQty ?? 0) <= 0);
+  const cleanupZeroQtyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/cleanup-zero-qty`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { deleted: number }) => {
+      await refetchItems();
+      toast({ title: "Cleanup done", description: `Removed ${data.deleted} zero-quantity item${data.deleted === 1 ? "" : "s"}.` });
+    },
+    onError: () => toast({ title: "Cleanup failed", variant: "destructive" }),
+  });
+
+  // ── Derived values ──
+  const groupedByWorkCat = useMemo(() => {
+C2. Add the button (only shows when zero-qty rows exist). FIND:
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
+            onClick={() => setShowImport(true)}
+            data-testid="button-import-boq-header"
+          >
+            <Upload className="w-3.5 h-3.5 mr-1.5" />
+            Import BOQ
+          </Button>
+REPLACE WITH:
+
+          {zeroQtyItems.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700 hover:bg-red-50 h-8"
+              onClick={() => {
+                if (window.confirm(`Delete ${zeroQtyItems.length} zero-quantity item(s) from this BOQ? This cannot be undone.`)) {
+                  cleanupZeroQtyMutation.mutate();
+                }
+              }}
+              disabled={cleanupZeroQtyMutation.isPending}
+              data-testid="button-cleanup-zero-qty"
+              title="Remove all items with zero quantity from this project"
+            >
+              {cleanupZeroQtyMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                : <Trash2 className="w-3.5 h-3.5 mr-1.5" />}
+              Remove zero-qty ({zeroQtyItems.length})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
+            onClick={() => setShowImport(true)}
+            data-testid="button-import-boq-header"
+          >
+            <Upload className="w-3.5 h-3.5 mr-1.5" />
+            Import BOQ
+          </Button>
