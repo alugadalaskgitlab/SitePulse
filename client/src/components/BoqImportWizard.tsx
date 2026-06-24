@@ -130,6 +130,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   const [itemWorkCats, setItemWorkCats] = useState<string[]>([]);
   // Bulk assign
   const [bulkCat, setBulkCat] = useState("");
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   // Import mode when project already has items
   const [importMode, setImportMode] = useState<"append" | "replace">("append");
 
@@ -299,6 +300,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     const cats = parsedItems.map(item => suggestWorkCategory(item.itemCode) ?? "");
     setItemWorkCats(cats);
     setBulkCat("");
+    setSelectedRows(new Set());
     setStep(2);
   }
 
@@ -310,6 +312,26 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
   function applyBulkCatAll() {
     if (!bulkCat) return;
     setItemWorkCats(prev => prev.map(() => bulkCat));
+  }
+
+  function applyBulkCatSelected() {
+    if (!bulkCat || selectedRows.size === 0) return;
+    setItemWorkCats(prev => prev.map((c, i) => selectedRows.has(i) ? bulkCat : c));
+    setSelectedRows(new Set());
+  }
+
+  function toggleRow(idx: number) {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }
+
+  function toggleAllRows() {
+    setSelectedRows(prev =>
+      prev.size === parsedItems.length ? new Set() : new Set(parsedItems.map((_, i) => i))
+    );
   }
 
   const canProceedStep1 = colMap.description != null && colMap.unit != null && colMap.boqQty != null;
@@ -543,6 +565,15 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
               >
                 Set all
               </Button>
+              <Button
+                size="sm"
+                className="h-7 text-sm bg-amber-600 hover:bg-amber-700 text-white flex-shrink-0"
+                onClick={applyBulkCatSelected}
+                disabled={!bulkCat || selectedRows.size === 0}
+                data-testid="button-bulk-assign-selected"
+              >
+                Assign to selected ({selectedRows.size})
+              </Button>
             </div>
 
             {/* Per-item table */}
@@ -551,6 +582,17 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-800 sticky top-0 z-10">
                     <tr>
+                      <th className="px-2 py-2 text-center w-9">
+                        <input
+                          type="checkbox"
+                          className="accent-amber-500 cursor-pointer"
+                          checked={parsedItems.length > 0 && selectedRows.size === parsedItems.length}
+                          ref={el => { if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < parsedItems.length; }}
+                          onChange={toggleAllRows}
+                          data-testid="checkbox-select-all-rows"
+                          title="Select all"
+                        />
+                      </th>
                       <th className="px-2 py-2 text-left font-semibold text-slate-300 w-14">Code</th>
                       <th className="px-2 py-2 text-left font-semibold text-slate-300">Description</th>
                       <th className="px-2 py-2 text-right font-semibold text-slate-300 w-12">Unit</th>
@@ -565,9 +607,18 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
                       return (
                         <tr
                           key={idx}
-                          className={`border-b border-slate-100 last:border-0 ${isUnassigned ? "bg-red-50/40" : idx % 2 === 1 ? "bg-slate-50/40" : ""}`}
+                          className={`border-b border-slate-100 last:border-0 ${selectedRows.has(idx) ? "bg-amber-50" : isUnassigned ? "bg-red-50/40" : idx % 2 === 1 ? "bg-slate-50/40" : ""}`}
                           data-testid={`row-cat-assign-${idx}`}
                         >
+                          <td className="px-2 py-1.5 text-center">
+                            <input
+                              type="checkbox"
+                              className="accent-amber-500 cursor-pointer"
+                              checked={selectedRows.has(idx)}
+                              onChange={() => toggleRow(idx)}
+                              data-testid={`checkbox-row-${idx}`}
+                            />
+                          </td>
                           <td className="px-2 py-1.5 font-mono text-slate-500 whitespace-nowrap">
                             {item.itemCode ?? "—"}
                           </td>
