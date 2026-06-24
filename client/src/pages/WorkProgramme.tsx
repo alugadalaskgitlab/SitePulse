@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -957,12 +958,24 @@ function InlineGanttTable({
                             {item.itemCode && (
                               <span className="text-xs font-mono text-muted-foreground flex-shrink-0">{item.itemCode}</span>
                             )}
-                            <span
-                              className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0"
-                              title={(item as any).itemName || item.description}
-                            >
-                              {(item as any).itemName || item.description}
-                            </span>
+                            <HoverCard openDelay={120} closeDelay={40}>
+                              <HoverCardTrigger asChild>
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                                  {(item as any).itemName || item.description}
+                                </span>
+                              </HoverCardTrigger>
+                              <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                                {item.itemCode && (
+                                  <span className="font-mono text-xs text-teal-700">{item.itemCode}</span>
+                                )}
+                                <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                                  {item.description}
+                                </p>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {fmt(item.currentQty)} {item.unit}
+                                </p>
+                              </HoverCardContent>
+                            </HoverCard>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
                             <span className="text-[12px] text-muted-foreground flex-shrink-0">{fmt(item.currentQty)} {item.unit}</span>
@@ -1191,9 +1204,25 @@ function MonthlyPlanView({
                       className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                       data-testid={`monthly-row-${item.id}`}
                     >
-                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10"
-                        title={item.description}>
-                        {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description.slice(0, 40)}
+                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10 max-w-[320px]">
+                        <HoverCard openDelay={120} closeDelay={40}>
+                          <HoverCardTrigger asChild>
+                            <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description}
+                            </span>
+                          </HoverCardTrigger>
+                          <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                            {item.itemCode && (
+                              <span className="font-mono text-xs text-teal-700">{item.itemCode}</span>
+                            )}
+                            <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                              {item.description}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {fmtQty(item.currentQty, 1)} {item.unit}
+                            </p>
+                          </HoverCardContent>
+                        </HoverCard>
                       </td>
                       <td className="px-2 py-1.5 text-right font-mono text-slate-600 font-semibold">{fmtQty(item.currentQty, 1)}</td>
                       <td className="px-2 py-1.5 text-right text-muted-foreground">{item.unit}</td>
@@ -1292,8 +1321,25 @@ function PlanVsActualView({ projectId }: { projectId: number }) {
         <tbody>
           {rows.map((row: any) => (
             <tr key={row.boqItemId} className="border-b border-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/30">
-              <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300">
-                {row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}
+              <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300 max-w-[320px]">
+                <HoverCard openDelay={120} closeDelay={40}>
+                  <HoverCardTrigger asChild>
+                    <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                      {row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}
+                    </span>
+                  </HoverCardTrigger>
+                  <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                    {row.itemCode && (
+                      <span className="font-mono text-xs text-teal-700">{row.itemCode}</span>
+                    )}
+                    <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                      {row.description}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {fmtQty(row.currentQty, 1)} {row.unit}
+                    </p>
+                  </HoverCardContent>
+                </HoverCard>
               </td>
               <td className="px-2 py-2 text-right font-mono">{fmtQty(row.currentQty, 1)} {row.unit}</td>
               <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.totalPlanned, 1)}</td>

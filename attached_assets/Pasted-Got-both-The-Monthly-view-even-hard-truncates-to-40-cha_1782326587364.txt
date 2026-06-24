@@ -1,0 +1,97 @@
+Got both. The Monthly view even hard-truncates to 40 chars (.slice(0,40)), so the hover card is especially useful there. Here's the complete consolidated patch (all three views) — client/src/pages/WorkProgramme.tsx.
+
+📄 PATCH — Full item description on hover (Gantt + Monthly + Plan vs Actual)
+EDIT 1 — add the HoverCard import
+FIND:
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+REPLACE WITH:
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
+EDIT 2 — Gantt view item name
+FIND:
+
+                            <span
+                              className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0"
+                              title={(item as any).itemName || item.description}
+                            >
+                              {(item as any).itemName || item.description}
+                            </span>
+REPLACE WITH:
+
+                            <HoverCard openDelay={120} closeDelay={40}>
+                              <HoverCardTrigger asChild>
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                                  {(item as any).itemName || item.description}
+                                </span>
+                              </HoverCardTrigger>
+                              <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                                {item.itemCode && (
+                                  <span className="font-mono text-xs text-teal-700">{item.itemCode}</span>
+                                )}
+                                <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                                  {item.description}
+                                </p>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {fmt(item.currentQty)} {item.unit}
+                                </p>
+                              </HoverCardContent>
+                            </HoverCard>
+EDIT 3 — Monthly Plan row
+FIND:
+
+                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10"
+                        title={item.description}>
+                        {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description.slice(0, 40)}
+                      </td>
+REPLACE WITH:
+
+                      <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 sticky left-0 bg-white dark:bg-gray-950 z-10 max-w-[320px]">
+                        <HoverCard openDelay={120} closeDelay={40}>
+                          <HoverCardTrigger asChild>
+                            <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description}
+                            </span>
+                          </HoverCardTrigger>
+                          <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                            {item.itemCode && (
+                              <span className="font-mono text-xs text-teal-700">{item.itemCode}</span>
+                            )}
+                            <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                              {item.description}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {fmtQty(item.currentQty, 1)} {item.unit}
+                            </p>
+                          </HoverCardContent>
+                        </HoverCard>
+                      </td>
+EDIT 4 — Plan vs Actual row
+FIND:
+
+              <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300">
+                {row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}
+              </td>
+REPLACE WITH:
+
+              <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300 max-w-[320px]">
+                <HoverCard openDelay={120} closeDelay={40}>
+                  <HoverCardTrigger asChild>
+                    <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                      {row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}
+                    </span>
+                  </HoverCardTrigger>
+                  <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
+                    {row.itemCode && (
+                      <span className="font-mono text-xs text-teal-700">{row.itemCode}</span>
+                    )}
+                    <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
+                      {row.description}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {fmtQty(row.currentQty, 1)} {row.unit}
+                    </p>
+                  </HoverCardContent>
+                </HoverCard>
+              </td>
