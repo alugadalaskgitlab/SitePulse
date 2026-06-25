@@ -144,6 +144,18 @@ const CONFIDENT_MARGIN = 1.30;      // …and be ≥30% ahead of the 2nd-best ca
 const SUGGEST_FLOOR = 0.04;         // below confident but worth offering for human review
 const UNIT_MISMATCH_PENALTY = 0.30; // multiply score when units differ (near-veto)
 
+// Only these MAJOR, quantity-driving work categories are auto-mapped. Everything else is
+// left for the user to map manually — keeps the BOM reliable and free of obscure clutter.
+const MAJOR_AUTOMAP_CATEGORIES = new Set<string>([
+  "EARTHWORK",
+  "SHOULDERS_MEDIANS",
+  "SUBBASE_BASE",
+  "BITUMINOUS",
+  "CONCRETE",
+  "CROSS_DRAINAGE",
+  "MAJOR_BRIDGES",
+]);
+
 // (Legacy weighted scorer removed — replaced by IDF-weighted cosine + unit/margin gate.)
 
 // ─── Main mapper ──────────────────────────────────────────────────────────────
@@ -211,6 +223,19 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       continue;
     }
     try {
+      // ── Scope guard: only auto-map MAJOR work categories ─────────────────
+      // Non-major items are left for the user to map manually. We also clear any stale
+      // recipe so leftover (previously mis-mapped) materials stop polluting the BOM.
+      const guardCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
+      if (!guardCat || !MAJOR_AUTOMAP_CATEGORIES.has(guardCat)) {
+        await storage.clearBoqItemRecipes(boqRow.id);
+        await db
+          .update(boqItems)
+          .set({ mappingStatus: "unmapped" })
+          .where(eq(boqItems.id, boqRow.id));
+        continue;
+      }
+
       // ── 0. Deterministic SNL-code match (highest priority) ──────────────
       // Only trust an EXPLICIT SNL/SDB norm code here. The BOQ item_code is a tender bill
       // number (e.g. "5.10") that collides with unrelated MoRTH SDB codes — using it mapped
