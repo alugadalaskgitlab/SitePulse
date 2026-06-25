@@ -1,0 +1,397 @@
+# SitePulse — PATCH SET 5 (P0a · step 2): Site Material Stock & Reconciliation
+
+**Delivers your GSB/WMM tracking**, per **site/front**:
+
+| Ordered | Delivered | To be supplied | Consumed | **Lying at site** |
+|---|---|---|---|---|
+| PI approved qty | site deliveries → MT | Ordered − Delivered | DPR work × recipe norm → MT | **Delivered − Consumed** |
+
+- Everything settles in **MT** (using the Patch-4 converter), so CFT/MT receipts and CUM
+  laid-quantities reconcile correctly.
+- **Consumed** uses your **BOQ recipe norm** (`qty × qtyPerBoqUnit × (1+wastage)`); client-
+  supplied recipe lines are excluded (those are the buyer's material).
+- Read-only, on-the-fly — **no schema migration, no risky writes.**
+- Materials it can't map to your master are shown as **"unmatched"** rows (honest — flags
+  data-hygiene gaps instead of hiding them).
+
+---
+
+## STEP 1 — NEW FILE: `shared/materialMatch.ts`
+
+```ts
+// Canonical key for fuzzy-matching material names across deliveries / recipes / master.
+// "GSB Material" -> "GSB", "20 MM Aggregate" -> "20MM", "6mm Down" -> "6MMDOWN".
+export function canonMaterialName(name: string): string {
+  return (name || "")
+    .toUpperCase()
+    .replace(/AGGREGATES?/g, "")
+    .replace(/MATERIAL/g, "")
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+}
+```
+
+### NEW FILE: `tests/materialMatch.test.ts`
+```ts
+import { describe, it, expect } from "vitest";
+import { canonMaterialName } from "../shared/materialMatch";
+
+describe("canonMaterialName", () => {
+  it("normalises common variants", () => {
+    expect(canonMaterialName("GSB")).toBe("GSB");
+    expect(canonMaterialName("GSB Material")).toBe("GSB");
+    expect(canonMaterialName("20 MM Aggregate")).toBe("20MM");
+    expect(canonMaterialName("6mm Down")).toBe("6MMDOWN");
+    expect(canonMaterialName("WMM")).toBe("WMM");
+  });
+});
+```
+
+---
+
+## STEP 2 — `server/storage.ts`
+
+### 2a. Add imports (next to the other `@shared/*` imports, e.g. after the `canonicalize` import)
+
+**FIND**
+```ts
+import { canonicalizeMachineType } from "@shared/canonicalize";
+```
+**REPLACE**
+```ts
+import { canonicalizeMachineType } from "@shared/canonicalize";
+import { convertSolidQty } from "@shared/uomConvert";
+import { canonMaterialName } from "@shared/materialMatch";
+```
+
+### 2b. Add the reconciliation method (insert right after `deleteSiteMaterialTrip`)
+
+**FIND**
+```ts
+  async deleteSiteMaterialTrip(id: number): Promise<void> {
+    await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
+  }
+```
+**REPLACE**
+```ts
+  async deleteSiteMaterialTrip(id: number): Promise<void> {
+    await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
+  }
+
+  // ── Site Material Stock & Reconciliation (read-only, per site/front) ─────────
+  // Settles everything in MT via convertSolidQty. Consumed uses the BOQ recipe norm.
+  async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[] }): Promise<{
+    site: string; material: string; matched: boolean; uom: string;
+    ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+  }[]> {
+    const permitted = filters?.permittedSiteNames;
+    if (permitted !== undefined && permitted.length === 0) return [];
+
+    // Material master → canonical map (bulk density + display name)
+    const materials = await db.select().from(plantMaterials);
+    const matByCanon = new Map<string, { name: string; bulkDensity: number | null }>();
+    for (const m of materials) {
+      matByCanon.set(canonMaterialName(m.name), { name: m.name, bulkDensity: (m as any).bulkDensity ?? null });
+    }
+    const resolve = (raw?: string | null) => (raw ? matByCanon.get(canonMaterialName(raw)) ?? null : null);
+    const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
+      convertSolidQty(qty, uom, "MT", density);
+
+    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; consumed: number };
+    const map = new Map<string, Row>();
+    const bucket = (site: string, materialName: string, matched: boolean): Row => {
+      const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
+      let r = map.get(k);
+      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, consumed: 0 }; map.set(k, r); }
+      return r;
+    };
+
+    // 1) DELIVERED — site material trips
+    const trips = await db.select().from(siteMaterialTrips)
+      .where(permitted ? inArray(siteMaterialTrips.site, permitted) : undefined);
+    for (const t of trips) {
+      if (!t.material || !t.site) continue;
+      const m = resolve(t.material);
+      const mt = toMTsafe(t.quantity ?? 0, t.uom, m?.bulkDensity ?? null);
+      if (mt == null) continue;
+      bucket(t.site, m?.name ?? t.material, !!m).delivered += mt;
+    }
+
+    // 2) CONSUMED — DPR progress × recipe norm
+    const prog = await db.select({
+      site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
+    }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(permitted ? inArray(dprs.site, permitted) : undefined);
+    const boqIds = Array.from(new Set(prog.map(p => p.boqItemId).filter((x): x is number => x != null)));
+    const recipes = boqIds.length
+      ? await db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, boqIds))
+      : [];
+    const recipeByItem = new Map<number, typeof recipes>();
+    for (const r of recipes) { const a = recipeByItem.get(r.boqItemId) ?? []; a.push(r); recipeByItem.set(r.boqItemId, a); }
+    for (const p of prog) {
+      if (p.boqItemId == null || !p.quantity || !p.site) continue;
+      for (const rec of recipeByItem.get(p.boqItemId) ?? []) {
+        if (rec.isClientSupplied) continue;
+        const reqInRecipeUom = p.quantity * (rec.qtyPerBoqUnit ?? 0) * (1 + (rec.wastagePct ?? 0) / 100);
+        if (reqInRecipeUom <= 0) continue;
+        const m = resolve(rec.materialName);
+        const mt = toMTsafe(reqInRecipeUom, rec.uom, m?.bulkDensity ?? null);
+        if (mt == null) continue;
+        bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += mt;
+      }
+    }
+
+    // 3) ORDERED — purchase indent items (site from indent.siteId or raisedFrom)
+    const siteRows = await db.select().from(sites);
+    const siteNameById = new Map<number, string>(siteRows.map(s => [s.id, s.name]));
+    const piItems = await db.select({
+      siteId: purchaseIndents.siteId, raisedFrom: purchaseIndents.raisedFrom,
+      description: purchaseIndentItems.description,
+      qty: purchaseIndentItems.qty, approvedQty: purchaseIndentItems.approvedQty, uom: purchaseIndentItems.uom,
+    }).from(purchaseIndentItems).innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id));
+    for (const it of piItems) {
+      const siteName = (it.siteId != null ? siteNameById.get(it.siteId) : null) ?? it.raisedFrom;
+      if (!siteName) continue;
+      if (permitted && !permitted.includes(siteName)) continue;
+      const m = resolve(it.description);
+      if (!m) continue; // only roll up identifiable bulk materials into Ordered
+      const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, m.bulkDensity);
+      if (mt == null) continue;
+      bucket(siteName, m.name, true).ordered += mt;
+    }
+
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    return Array.from(map.values())
+      .map(r => ({
+        site: r.site, material: r.material, matched: r.matched, uom: "MT",
+        ordered: round(r.ordered), delivered: round(r.delivered), consumed: round(r.consumed),
+        toSupply: round(Math.max(r.ordered - r.delivered, 0)),
+        lying: round(r.delivered - r.consumed),
+      }))
+      .sort((a, b) => a.site.localeCompare(b.site) || a.material.localeCompare(b.material));
+  }
+```
+
+---
+
+## STEP 3 — `server/routes.ts` (add after the site-material-trips DELETE route, ~line 461)
+
+**FIND**
+```ts
+  // ============================================
+  // SITES MASTER
+  // ============================================
+```
+**REPLACE**
+```ts
+  // Site Material Stock & Reconciliation (per site: ordered / delivered / consumed / lying)
+  app.get("/api/site-material-stock", async (req, res) => {
+    try {
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const rows = await storage.getSiteMaterialReconciliation(
+        permittedSiteNames !== null ? { permittedSiteNames } : {},
+      );
+      res.json(rows);
+    } catch (err) {
+      console.error("Error computing site material stock:", err);
+      res.status(500).json({ message: "Failed to compute site material stock" });
+    }
+  });
+
+  // ============================================
+  // SITES MASTER
+  // ============================================
+```
+
+---
+
+## STEP 4 — NEW FILE: `client/src/pages/SiteMaterialStock.tsx`
+
+```tsx
+import { useQuery } from "@tanstack/react-query";
+import { Link, useSearch } from "wouter";
+import { ChevronLeft, Boxes, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+
+type Row = {
+  site: string; material: string; matched: boolean; uom: string;
+  ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+};
+
+const n = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export default function SiteMaterialStock() {
+  const search = useSearch();
+  const backHref = new URLSearchParams(search).get("returnTo") || "/site/hub";
+  const { data: rows = [], isLoading } = useQuery<Row[]>({ queryKey: ["/api/site-material-stock"] });
+
+  const bySite = rows.reduce<Record<string, Row[]>>((acc, r) => {
+    (acc[r.site] ??= []).push(r); return acc;
+  }, {});
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-5xl mx-auto p-4 space-y-5">
+        <div className="flex items-center gap-3">
+          <Link href={backHref}>
+            <Button variant="ghost" size="icon" data-testid="button-back"><ChevronLeft className="w-5 h-5" /></Button>
+          </Link>
+          <Boxes className="w-5 h-5 text-emerald-600" />
+          <div>
+            <h1 className="text-xl font-bold leading-tight">Site Material Stock</h1>
+            <p className="text-sm text-muted-foreground">Ordered · Delivered · Consumed · Lying at site (in MT)</p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">No site material movement yet.</div>
+        ) : (
+          Object.entries(bySite).map(([site, items]) => (
+            <Card key={site} data-testid={`site-card-${site}`}>
+              <CardContent className="p-0">
+                <div className="px-4 py-3 border-b bg-muted/40 font-semibold text-sm">{site}</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/30 border-b text-xs uppercase tracking-wider text-muted-foreground">
+                        <th className="text-left px-4 py-2">Material</th>
+                        <th className="text-right px-3 py-2">Ordered</th>
+                        <th className="text-right px-3 py-2">Delivered</th>
+                        <th className="text-right px-3 py-2">To Supply</th>
+                        <th className="text-right px-3 py-2">Consumed</th>
+                        <th className="text-right px-3 py-2">Lying at Site</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((r, i) => (
+                        <tr key={i} className="border-b border-muted/40" data-testid={`row-${site}-${r.material}`}>
+                          <td className="px-4 py-2 font-medium">
+                            <span className="inline-flex items-center gap-1.5">
+                              {r.material}
+                              {!r.matched && (
+                                <span title="Material not found in master — check spelling/recipe"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">
+                                  <AlertTriangle className="w-3 h-3" /> unmatched
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-500">{n(r.ordered)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-green-700">{n(r.delivered)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-blue-700">{n(r.toSupply)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-orange-700">{n(r.consumed)}</td>
+                          <td className={`px-3 py-2 text-right font-mono font-bold ${r.lying < 0 ? "text-red-600" : ""}`}>
+                            {n(r.lying)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+        <p className="text-xs text-muted-foreground px-1">
+          All quantities in MT. <span className="text-red-600 font-medium">Negative “Lying at Site”</span> means
+          consumption exceeds recorded deliveries — check that deliveries are being logged.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## STEP 5 — `client/src/App.tsx` (register the route)
+
+**FIND**
+```tsx
+import SiteEdit from "@/pages/SiteEdit";
+```
+**REPLACE**
+```tsx
+import SiteEdit from "@/pages/SiteEdit";
+import SiteMaterialStock from "@/pages/SiteMaterialStock";
+```
+
+**FIND**
+```tsx
+            <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
+```
+**REPLACE**
+```tsx
+            <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
+            <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />
+```
+
+---
+
+## STEP 6 — `client/src/pages/SiteHub.tsx` (add a tile)
+
+**FIND**
+```tsx
+import {
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart,
+} from "lucide-react";
+```
+**REPLACE**
+```tsx
+import {
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
+} from "lucide-react";
+```
+
+**FIND**
+```tsx
+            <HubActionTile
+              href={`/site/materials-received?returnTo=${HUB}`}
+              icon={Package}
+              title="Materials Received Report"
+              description="Summary of all material receipts across date ranges"
+              accent="green"
+              iconBg="bg-green-100"
+              enabled={sectionVisible("site_materials")}
+            />
+```
+**REPLACE**
+```tsx
+            <HubActionTile
+              href={`/site/materials-received?returnTo=${HUB}`}
+              icon={Package}
+              title="Materials Received Report"
+              description="Summary of all material receipts across date ranges"
+              accent="green"
+              iconBg="bg-green-100"
+              enabled={sectionVisible("site_materials")}
+            />
+            <HubActionTile
+              href={`/site/material-stock?returnTo=${HUB}`}
+              icon={Boxes}
+              title="Site Material Stock"
+              description="Ordered vs delivered vs consumed — and what's lying at each site"
+              accent="emerald"
+              iconBg="bg-emerald-100"
+              enabled={sectionVisible("site_materials")}
+            />
+```
+
+---
+
+## Verify on Replit
+1. `npm test` — the new `materialMatch` test passes (92 total).
+2. Site hub → **Site Material Stock** → each site shows its materials with
+   Ordered / Delivered / To-supply / Consumed / **Lying at site**.
+3. Log a GSB delivery (Material Entry) → Delivered + Lying rise.
+4. Enter a DPR with a GSB-laying BOQ item (that has a recipe) → Consumed rises, Lying drops.
+5. If a material shows **"unmatched"**, its name doesn't match the plant-material master —
+   align the spelling (or the recipe `materialName`) and it merges automatically.
+
+> Notes: Consumed requires the BOQ item to have a **material recipe** (`qtyPerBoqUnit`).
+> Items without a recipe contribute 0 to Consumed — that's the cue to fill the recipe.
+> Ordered counts approved PI qty for materials it can identify; unidentifiable PI lines are
+> skipped from Ordered (still safe — Delivered/Consumed/Lying are unaffected).

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart,
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -125,6 +125,15 @@ export default function SiteHub() {
               description="Summary of all material receipts across date ranges"
               accent="green"
               iconBg="bg-green-100"
+              enabled={sectionVisible("site_materials")}
+            />
+            <HubActionTile
+              href={`/site/material-stock?returnTo=${HUB}`}
+              icon={Boxes}
+              title="Site Material Stock"
+              description="Ordered vs delivered vs consumed — and what's lying at each site"
+              accent="emerald"
+              iconBg="bg-emerald-100"
               enabled={sectionVisible("site_materials")}
             />
             <HubActionTile

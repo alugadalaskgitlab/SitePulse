@@ -303,6 +303,8 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { convertSolidQty } from "@shared/uomConvert";
+import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory } from "@shared/boqWorkCategories";
 import {
   HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
@@ -975,6 +977,10 @@ export interface IStorage {
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
+  getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[] }): Promise<{
+    site: string; material: string; matched: boolean; uom: string;
+    ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+  }[]>;
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
   getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]>;
@@ -7777,6 +7783,99 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSiteMaterialTrip(id: number): Promise<void> {
     await db.delete(siteMaterialTrips).where(eq(siteMaterialTrips.id, id));
+  }
+
+  // ── Site Material Stock & Reconciliation (read-only, per site/front) ─────────
+  // Settles everything in MT via convertSolidQty. Consumed uses the BOQ recipe norm.
+  async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[] }): Promise<{
+    site: string; material: string; matched: boolean; uom: string;
+    ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+  }[]> {
+    const permitted = filters?.permittedSiteNames;
+    if (permitted !== undefined && permitted.length === 0) return [];
+
+    // Material master → canonical map (bulk density + display name)
+    const materials = await db.select().from(plantMaterials);
+    const matByCanon = new Map<string, { name: string; bulkDensity: number | null }>();
+    for (const m of materials) {
+      matByCanon.set(canonMaterialName(m.name), { name: m.name, bulkDensity: (m as any).bulkDensity ?? null });
+    }
+    const resolve = (raw?: string | null) => (raw ? matByCanon.get(canonMaterialName(raw)) ?? null : null);
+    const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
+      convertSolidQty(qty, uom, "MT", density);
+
+    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; consumed: number };
+    const map = new Map<string, Row>();
+    const bucket = (site: string, materialName: string, matched: boolean): Row => {
+      const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
+      let r = map.get(k);
+      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, consumed: 0 }; map.set(k, r); }
+      return r;
+    };
+
+    // 1) DELIVERED — site material trips
+    const trips = await db.select().from(siteMaterialTrips)
+      .where(permitted ? inArray(siteMaterialTrips.site, permitted) : undefined);
+    for (const t of trips) {
+      if (!t.material || !t.site) continue;
+      const m = resolve(t.material);
+      const mt = toMTsafe(t.quantity ?? 0, t.uom, m?.bulkDensity ?? null);
+      if (mt == null) continue;
+      bucket(t.site, m?.name ?? t.material, !!m).delivered += mt;
+    }
+
+    // 2) CONSUMED — DPR progress × recipe norm
+    const prog = await db.select({
+      site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
+    }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
+      .where(permitted ? inArray(dprs.site, permitted) : undefined);
+    const boqIds = Array.from(new Set(prog.map(p => p.boqItemId).filter((x): x is number => x != null)));
+    const recipes = boqIds.length
+      ? await db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, boqIds))
+      : [];
+    const recipeByItem = new Map<number, typeof recipes>();
+    for (const r of recipes) { const a = recipeByItem.get(r.boqItemId) ?? []; a.push(r); recipeByItem.set(r.boqItemId, a); }
+    for (const p of prog) {
+      if (p.boqItemId == null || !p.quantity || !p.site) continue;
+      for (const rec of recipeByItem.get(p.boqItemId) ?? []) {
+        if (rec.isClientSupplied) continue;
+        const reqInRecipeUom = p.quantity * (rec.qtyPerBoqUnit ?? 0) * (1 + (rec.wastagePct ?? 0) / 100);
+        if (reqInRecipeUom <= 0) continue;
+        const m = resolve(rec.materialName);
+        const mt = toMTsafe(reqInRecipeUom, rec.uom, m?.bulkDensity ?? null);
+        if (mt == null) continue;
+        bucket(p.site, m?.name ?? rec.materialName, !!m).consumed += mt;
+      }
+    }
+
+    // 3) ORDERED — purchase indent items (site from indent.siteId or raisedFrom)
+    const siteRows = await db.select().from(sites);
+    const siteNameById = new Map<number, string>(siteRows.map(s => [s.id, s.name]));
+    const piItems = await db.select({
+      siteId: purchaseIndents.siteId, raisedFrom: purchaseIndents.raisedFrom,
+      description: purchaseIndentItems.description,
+      qty: purchaseIndentItems.qty, approvedQty: purchaseIndentItems.approvedQty, uom: purchaseIndentItems.uom,
+    }).from(purchaseIndentItems).innerJoin(purchaseIndents, eq(purchaseIndentItems.indentId, purchaseIndents.id));
+    for (const it of piItems) {
+      const siteName = (it.siteId != null ? siteNameById.get(it.siteId) : null) ?? it.raisedFrom;
+      if (!siteName) continue;
+      if (permitted && !permitted.includes(siteName)) continue;
+      const m = resolve(it.description);
+      if (!m) continue; // only roll up identifiable bulk materials into Ordered
+      const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, m.bulkDensity);
+      if (mt == null) continue;
+      bucket(siteName, m.name, true).ordered += mt;
+    }
+
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    return Array.from(map.values())
+      .map(r => ({
+        site: r.site, material: r.material, matched: r.matched, uom: "MT",
+        ordered: round(r.ordered), delivered: round(r.delivered), consumed: round(r.consumed),
+        toSupply: round(Math.max(r.ordered - r.delivered, 0)),
+        lying: round(r.delivered - r.consumed),
+      }))
+      .sort((a, b) => a.site.localeCompare(b.site) || a.material.localeCompare(b.material));
   }
 
   async getAllMaterialsReceived(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; supplier?: string; permittedSiteNames?: string[]; workType?: string }): Promise<any[]> {

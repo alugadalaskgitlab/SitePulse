@@ -460,6 +460,20 @@ export async function registerRoutes(
     }
   });
 
+  // Site Material Stock & Reconciliation (per site: ordered / delivered / consumed / lying)
+  app.get("/api/site-material-stock", async (req, res) => {
+    try {
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const rows = await storage.getSiteMaterialReconciliation(
+        permittedSiteNames !== null ? { permittedSiteNames } : {},
+      );
+      res.json(rows);
+    } catch (err) {
+      console.error("Error computing site material stock:", err);
+      res.status(500).json({ message: "Failed to compute site material stock" });
+    }
+  });
+
   // ============================================
   // SITES MASTER
   // ============================================
