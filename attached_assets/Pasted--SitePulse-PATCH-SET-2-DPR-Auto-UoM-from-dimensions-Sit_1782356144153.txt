@@ -1,0 +1,251 @@
+# SitePulse — PATCH SET 2: DPR Auto-UoM from dimensions (SiteEntry / New DPR)
+
+**Goal (your point #2):** when the engineer enters L / W / T, the **UoM is auto-derived
+and the Qty auto-computed** — no manual UOM selection:
+
+| Dimensions entered | Auto UoM | Qty |
+|---|---|---|
+| Length only | **RMT** (running m) | L |
+| Length + Width | **SQM** | L × W |
+| Length + Width + Thickness | **CUM** | L × W × T |
+| No dimensions | *stays manual* (for MT / NOS / lump-sum items) | manual |
+
+This flows straight into reports/inventory because the saved `uom` + `quantity` are now
+derived consistently. Manual entry still works for non-geometric items (steel = MT, kerb = NOS).
+
+> Applied to **SiteEntry.tsx** (`/site/new`) first so you can test the New-DPR flow.
+> Once confirmed, I'll mirror the exact same change into **SiteEdit.tsx**.
+
+---
+
+## STEP 1 — NEW FILE: `client/src/lib/dprUom.ts`
+
+```ts
+// Auto-derive DPR Unit-of-Measure + quantity purely from the dimensions entered.
+//   L only            -> RMT  (running metre)        qty = L
+//   L + W             -> SQM  (square metre)         qty = L × W
+//   L + W + T         -> CUM  (cubic metre)          qty = L × W × T
+//   none              -> null (keep manual: MT / NOS / lump-sum)
+export function deriveDprUom(
+  length?: number | null,
+  width?: number | null,
+  thickness?: number | null,
+): string | null {
+  const L = !!length && length > 0;
+  const W = !!width && width > 0;
+  const T = !!thickness && thickness > 0;
+  if (L && W && T) return "CUM";
+  if (L && W) return "SQM";
+  if (L) return "RMT";
+  return null;
+}
+
+// Quantity implied by the dimensions (UoM auto-derived). null when not derivable.
+export function computeDprQty(
+  length?: number | null,
+  width?: number | null,
+  thickness?: number | null,
+): number | null {
+  const uom = deriveDprUom(length, width, thickness);
+  if (uom === "CUM") return (length as number) * (width as number) * (thickness as number);
+  if (uom === "SQM") return (length as number) * (width as number);
+  if (uom === "RMT") return length as number;
+  return null;
+}
+```
+
+---
+
+## STEP 2 — `client/src/pages/SiteEntry.tsx`
+
+### 2a. Add the import (near the other imports at the top)
+
+**FIND**
+```tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+```
+**REPLACE**
+```tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { deriveDprUom, computeDprQty } from "@/lib/dprUom";
+```
+
+### 2b. Make `calculateQuantity` dimension-driven (auto-sets the row's UoM)
+
+**FIND**
+```tsx
+  const calculateQuantity = (entry: ProgressEntry): number | null => {
+    const length = getEffectiveLength(entry);
+    if (!length || !entry.width) return null;
+    if (entry.uom === "SQM") {
+      return length * entry.width;
+    } else if (entry.uom === "CUM" && entry.thickness) {
+      return length * entry.width * entry.thickness;
+    }
+    return null;
+  };
+```
+**REPLACE**
+```tsx
+  // Derive UoM + qty from the dimensions; mutates entry.uom so the saved row matches.
+  // Falls back to the existing manual uom/qty for non-geometric items (MT / NOS).
+  const calculateQuantity = (entry: ProgressEntry): number | null => {
+    const length = getEffectiveLength(entry);
+    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
+    if (derivedUom) {
+      entry.uom = derivedUom;
+      return computeDprQty(length, entry.width, entry.thickness);
+    }
+    return entry.quantity ?? null;
+  };
+```
+
+### 2c. Recompute on the two chainage fields (they set length)
+
+**FIND**
+```tsx
+                        updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
+                        setProgress(updated);
+```
+**REPLACE**
+```tsx
+                        updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+```
+
+**FIND**
+```tsx
+                        updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
+                        setProgress(updated);
+```
+**REPLACE**
+```tsx
+                        updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+```
+
+### 2d. Recompute on L / W / T inputs
+
+**FIND**
+```tsx
+                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-length-${idx}`}
+```
+**REPLACE**
+```tsx
+                        updated[idx].length = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-length-${idx}`}
+```
+
+**FIND**
+```tsx
+                        updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-width-${idx}`}
+```
+**REPLACE**
+```tsx
+                        updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-width-${idx}`}
+```
+
+**FIND**
+```tsx
+                        updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-thickness-${idx}`}
+```
+**REPLACE**
+```tsx
+                        updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                      data-testid={`input-progress-thickness-${idx}`}
+```
+
+### 2e. Make the UOM dropdown read-only when dimensions drive it
+
+The UOM Select stays for MT/NOS items, but when dimensions are present it should just
+reflect the auto value (so engineers can't override it to a wrong unit).
+
+**FIND**
+```tsx
+                  <div>
+                    <Label className="text-sm">UOM</Label>
+                    <Select
+                      value={entry.uom}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-progress-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+```
+**REPLACE**
+```tsx
+                  <div>
+                    <Label className="text-sm flex items-center gap-1">
+                      UOM
+                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
+                        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+                      )}
+                    </Label>
+                    <Select
+                      value={entry.uom}
+                      disabled={!!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-progress-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+```
+
+---
+
+## Verify on Replit
+1. New DPR → add an activity, type **L=100** only → UOM auto-shows **RMT**, Qty **100**.
+2. Add **W=7** → UOM flips to **SQM**, Qty **700**.
+3. Add **T=0.05** → UOM flips to **CUM**, Qty **35**.
+4. Clear all dimensions → UOM dropdown re-enables → pick **NOS/MT** and type qty manually.
+5. Save → open the DPR report → unit + qty match what was shown.
+
+After you confirm this works, reply and I'll ship the identical patch for **SiteEdit.tsx**
+(the edit form) so both stay consistent.
