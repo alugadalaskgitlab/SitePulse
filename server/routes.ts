@@ -9998,11 +9998,16 @@ export async function registerRoutes(
         return { ...item, isProgrammed: barItemIds.has(item.id) };
       });
 
+      const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
+      console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes}`);
       res.json({
         items: expandedItems,
         bars,
         roadLengthKm: project?.roadLengthKm ?? 0,
         unprogrammedItemIds: items.filter(it => !barItemIds.has(it.id)).map(it => it.id),
+        hasBars: bars.length > 0,
+        hasItems: items.length > 0,
+        hasRecipes,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);

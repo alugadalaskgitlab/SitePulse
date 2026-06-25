@@ -1,0 +1,80 @@
+# SitePulse — PATCH 8C: Fix BOM “No data” despite Work Programme bars existing
+
+Current issue:
+BOM & Demand screen shows:
+
+“No data to compute BOM — Add stretches to the Work Programme first.”
+
+But the Work Programme screen clearly has saved bars/stretches for the same project.
+
+This means the BOM page/API is not receiving the same saved Work Programme bars/items that the Work Programme page is displaying.
+
+Do not change BOQ grouping, SNL mapping, Work Programme UI, recipe logic, Stock, IRN, PI, or dashboard in this patch.
+
+## 1. Verify `/api/boq/projects/:id/bom` response
+
+For the affected project, log/verify the response from:
+
+`GET /api/boq/projects/:id/bom`
+
+Confirm:
+
+* `items.length`
+* `bars.length`
+* `unprogrammedItemIds.length`
+
+If Work Programme has bars but this endpoint returns `bars.length = 0`, fix the endpoint/storage call.
+
+## 2. Make BOM endpoint read the same bars used by Work Programme
+
+The BOM route currently calls work-program bar storage.
+
+Please verify that `/api/boq/projects/:id/bom` uses the exact same table/storage method and project id as the Work Programme screen.
+
+Required:
+
+* BOM endpoint must fetch all saved Work Programme stretches/bars for that BOQ project.
+* It must include bars with date-based fields if Work Programme was updated from month-based bars to start/end dates.
+* If the Work Programme now stores stretches in a newer structure, map them into the `BomInputBar` shape expected by `calculateBomDemand`.
+
+Expected `BomInputBar` data should include at least:
+
+* boqItemId
+* qty
+* start month/date equivalent
+* duration/end month/date equivalent
+
+## 3. Do not show “Add stretches” when bars actually exist
+
+The BOM page should show “Add stretches” only if the BOM endpoint confirms no bars exist for that project.
+
+If bars exist in Work Programme but BOM cannot read them, show a diagnostic warning instead:
+
+“Work Programme bars exist but BOM could not load them. Please check BOM API bar mapping.”
+
+## 4. Allow total BOM even if no bars
+
+Even if no Work Programme bars exist, BOM should still be able to show total demand from BOQ current quantity where recipes exist.
+
+Use this behaviour:
+
+* With bars: show month-wise demand from Work Programme.
+* Without bars but with recipes: show total demand and mark as “Not programmed”.
+* Without recipes: show “Configure mapping/recipes to compute demand.”
+
+So the empty state should distinguish:
+
+A. No BOQ items
+B. BOQ items exist but no recipes
+C. Recipes exist but no bars
+D. Bars exist but BOM endpoint failed to load them
+
+## 5. Verification
+
+Test on NH-167:
+
+1. Open Work Programme and confirm bars are visible.
+2. Open browser/devtools or backend logs and confirm `/api/boq/projects/:id/bom` returns `bars.length > 0`.
+3. BOM & Demand should load materials/equipment/labour.
+4. Diesel/HSD and LDO rows should appear after demand loads.
+5. If bars are removed later, BOM should still show total demand as “Not programmed”, not a blank page.

@@ -795,11 +795,14 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId),
   });
 
-  const { data: bomData, isLoading } = useQuery<{
+  const { data: bomData, isLoading, isError: bomError } = useQuery<{
     items: BomInputItem[];
     bars: BomInputBar[];
     roadLengthKm: number;
     unprogrammedItemIds?: number[];
+    hasBars: boolean;
+    hasItems: boolean;
+    hasRecipes: boolean;
   }>({
     queryKey: ["/api/boq/projects", projectId, "bom"],
     queryFn: async () => {
@@ -903,9 +906,15 @@ export default function WorkDemand() {
             <BookOpen className="w-10 h-10 text-slate-200 mx-auto" />
             <p className="text-sm font-medium">No data to compute BOM</p>
             <p className="text-sm">
-              {!bomData?.bars?.length
-                ? "Add stretches to the Work Programme first."
-                : "Configure equipment, labour, and material recipes on BOQ items to see demand."}
+              {bomError
+                ? "BOM data could not be loaded — please refresh the page or check server logs."
+                : !bomData?.hasItems
+                ? "No BOQ items found for this project. Add items in the BOQ setup first."
+                : !bomData?.hasRecipes
+                ? "Configure material, equipment, and labour recipes on BOQ items to see demand."
+                : !bomData?.hasBars
+                ? "Add stretches to the Work Programme to see month-wise demand. Totals will appear once recipes are confirmed."
+                : "Work Programme bars exist but BOM could not compute demand — check that BOQ items have recipes configured."}
             </p>
           </CardContent>
         </Card>

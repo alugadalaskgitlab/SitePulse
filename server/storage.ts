@@ -20019,6 +20019,9 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS start_date date`));
     await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS end_date date`));
     await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_mode text DEFAULT 'auto'`));
+    // Patch 8B: fuel type and consumption norm on equipment master
+    await db.execute(sql.raw(`ALTER TABLE equipment_master ADD COLUMN IF NOT EXISTS fuel_type text`));
+    await db.execute(sql.raw(`ALTER TABLE equipment_master ADD COLUMN IF NOT EXISTS consumption_norm real`));
     // Copy old working_hours_per_day → shift_hours if old column exists
     await db.execute(sql.raw(`
       DO $$ BEGIN
