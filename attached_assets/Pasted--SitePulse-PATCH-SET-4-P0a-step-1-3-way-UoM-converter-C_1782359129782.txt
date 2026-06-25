@@ -1,0 +1,143 @@
+# SitePulse — PATCH SET 4 (P0a · step 1): 3-way UoM converter `CFT ↔ CUM ↔ MT`
+
+**Why:** materials are received in **CFT or MT**, but DPR work is measured in **CUM** (and
+stock should settle in one base unit). Today the converter only knows one "from" unit per
+material. This helper converts freely between **CFT / CUM / MT** using the material's
+`bulkDensity` (MT per m³). It underpins everything in P0a (site stock, consumption, "lying
+at site"). Pure function + unit tests — safe to add, nothing wired yet.
+
+`1 m³ = 35.3147 CFT`, `MT = m³ × bulkDensity`.
+
+---
+
+## STEP 1 — NEW FILE: `shared/uomConvert.ts`
+
+```ts
+// Free conversion between CFT / CUM / MT for bulk solids (aggregates, GSB, WMM …).
+// Mass<->volume conversions need the material's bulkDensity (MT per m³).
+export const CFT_PER_CUM = 35.3147;
+
+export type UomKind = "CFT" | "CUM" | "MT" | "LITERS" | "NOS" | "OTHER";
+
+export function normalizeUom(uom?: string | null): UomKind {
+  if (!uom) return "OTHER";
+  const u = uom.trim().toUpperCase();
+  if (["CFT", "CU FT", "CUFT", "CU.FT"].includes(u)) return "CFT";
+  if (["CUM", "CU.M", "CU M", "M3", "M³", "CBM", "CUM."].includes(u)) return "CUM";
+  if (["MT", "TON", "TONNE", "TONNES", "T", "MTON"].includes(u)) return "MT";
+  if (["LITERS", "LITRES", "LITER", "LITRE", "LTR", "LT", "L", "LIT"].includes(u)) return "LITERS";
+  if (["NOS", "NO", "NOS.", "NO.", "EACH", "EA"].includes(u)) return "NOS";
+  return "OTHER";
+}
+
+/**
+ * Convert `qty` between CFT / CUM / MT for a solid with `bulkDensity` (MT per m³).
+ * Returns null when conversion is impossible:
+ *   - either unit is not a recognised solid unit (CFT/CUM/MT), or
+ *   - a mass<->volume conversion is requested but bulkDensity is missing/<=0.
+ */
+export function convertSolidQty(
+  qty: number,
+  fromUom: string | null | undefined,
+  toUom: string | null | undefined,
+  bulkDensity?: number | null,
+): number | null {
+  const f = normalizeUom(fromUom);
+  const t = normalizeUom(toUom);
+  if (f === t) return qty;
+
+  const SOLID: UomKind[] = ["CFT", "CUM", "MT"];
+  if (!SOLID.includes(f) || !SOLID.includes(t)) return null;
+
+  const d = bulkDensity && bulkDensity > 0 ? bulkDensity : null;
+
+  // Step 1: source -> CUM (volume canonical)
+  let cum: number | null;
+  if (f === "CUM") cum = qty;
+  else if (f === "CFT") cum = qty / CFT_PER_CUM;
+  else cum = d != null ? qty / d : null; // MT -> CUM needs density
+  if (cum == null) return null;
+
+  // Step 2: CUM -> target
+  if (t === "CUM") return cum;
+  if (t === "CFT") return cum * CFT_PER_CUM;
+  return d != null ? cum * d : null; // CUM -> MT needs density
+}
+
+/** Convenience: convert into MT (base unit for solids). null if not possible. */
+export function toMT(qty: number, fromUom: string | null | undefined, bulkDensity?: number | null): number | null {
+  return convertSolidQty(qty, fromUom, "MT", bulkDensity);
+}
+```
+
+---
+
+## STEP 2 — NEW FILE: `tests/uomConvert.test.ts`
+
+```ts
+import { describe, it, expect } from "vitest";
+import { convertSolidQty, normalizeUom, toMT, CFT_PER_CUM } from "@shared/uomConvert";
+
+describe("normalizeUom", () => {
+  it("maps common spellings", () => {
+    expect(normalizeUom("cft")).toBe("CFT");
+    expect(normalizeUom("Cum")).toBe("CUM");
+    expect(normalizeUom("m³")).toBe("CUM");
+    expect(normalizeUom("Ton")).toBe("MT");
+    expect(normalizeUom("Litres")).toBe("LITERS");
+    expect(normalizeUom("Nos.")).toBe("NOS");
+    expect(normalizeUom("widget")).toBe("OTHER");
+  });
+});
+
+describe("convertSolidQty", () => {
+  const d = 1.75; // GSB bulk density MT/m³
+
+  it("returns same qty for identical units", () => {
+    expect(convertSolidQty(50, "CUM", "CUM", d)).toBe(50);
+  });
+
+  it("CFT <-> CUM needs no density", () => {
+    expect(convertSolidQty(CFT_PER_CUM, "CFT", "CUM")).toBeCloseTo(1, 6);
+    expect(convertSolidQty(1, "CUM", "CFT")).toBeCloseTo(CFT_PER_CUM, 6);
+  });
+
+  it("CUM <-> MT uses density", () => {
+    expect(convertSolidQty(100, "CUM", "MT", d)).toBeCloseTo(175, 6);
+    expect(convertSolidQty(175, "MT", "CUM", d)).toBeCloseTo(100, 6);
+  });
+
+  it("CFT -> MT chains through CUM", () => {
+    // 100 CFT -> 2.83168 m³ -> 4.9554 MT
+    expect(convertSolidQty(100, "CFT", "MT", d)).toBeCloseTo((100 / CFT_PER_CUM) * d, 6);
+  });
+
+  it("mass<->volume without density returns null", () => {
+    expect(convertSolidQty(100, "CUM", "MT", null)).toBeNull();
+    expect(convertSolidQty(100, "MT", "CFT", 0)).toBeNull();
+  });
+
+  it("unknown / non-solid units return null", () => {
+    expect(convertSolidQty(100, "Liters", "MT", d)).toBeNull();
+    expect(convertSolidQty(100, "Nos", "CUM", d)).toBeNull();
+  });
+
+  it("toMT helper", () => {
+    expect(toMT(100, "CUM", d)).toBeCloseTo(175, 6);
+  });
+});
+```
+
+> If `@shared/*` isn't a path alias in your `vitest.config.ts`, change the import to a
+> relative path: `import { ... } from "../shared/uomConvert";`
+
+---
+
+## Verify
+Run the test suite (e.g. `npm test` / `npx vitest run`). You should see the new
+`uomConvert` tests pass alongside the existing 83.
+
+**Next (P0a · step 2):** I'll wire `convertSolidQty` into the stock paths so a CUM-laid
+GSB quantity deducts correctly from a CFT/MT stock balance, then add the **Site stock
+location** + **"lying at site"** view. Consumption will use the **BOQ/SNL norm when the
+item has one, else fall back to volume×density** (the (c) option).
