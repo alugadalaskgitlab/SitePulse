@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { deriveDprUom, computeDprQty } from "@/lib/dprUom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -488,15 +489,16 @@ export default function SiteEdit() {
     return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
   };
 
+  // Derive UoM + qty from the dimensions; mutates entry.uom so the saved row matches.
+  // Falls back to the existing manual uom/qty for non-geometric items (MT / NOS).
   const calculateQuantity = (entry: ProgressEntry): number | null => {
     const length = getEffectiveLength(entry);
-    if (!length || !entry.width) return null;
-    if (entry.uom === "SQM") {
-      return length * entry.width;
-    } else if (entry.uom === "CUM" && entry.thickness) {
-      return length * entry.width * entry.thickness;
+    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
+    if (derivedUom) {
+      entry.uom = derivedUom;
+      return computeDprQty(length, entry.width, entry.thickness);
     }
-    return null;
+    return entry.quantity ?? null;
   };
 
   const calculateHours = (start: string, end: string): number => {
@@ -1078,6 +1080,7 @@ export default function SiteEdit() {
                         updated[idx].chainageFrom = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
                         if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1094,6 +1097,7 @@ export default function SiteEdit() {
                         updated[idx].chainageTo = e.target.value.toUpperCase();
                         const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
                         if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
                         setProgress(updated);
                       }}
                       className="uppercase"
@@ -1149,9 +1153,15 @@ export default function SiteEdit() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm">UOM</Label>
+                    <Label className="text-sm flex items-center gap-1">
+                      UOM
+                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
+                        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+                      )}
+                    </Label>
                     <Select
                       value={entry.uom}
+                      disabled={!!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;

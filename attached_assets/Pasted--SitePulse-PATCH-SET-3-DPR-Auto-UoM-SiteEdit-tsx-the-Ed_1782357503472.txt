@@ -1,0 +1,152 @@
+# SitePulse — PATCH SET 3: DPR Auto-UoM (SiteEdit.tsx — the Edit DPR form)
+
+Mirrors Patch 2 into the **edit** form so both DPR screens behave identically.
+Re-uses the same `client/src/lib/dprUom.ts` helper from Patch 2 (no new file needed).
+
+---
+
+## `client/src/pages/SiteEdit.tsx`
+
+### 3a. Add the import
+
+**FIND**
+```tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+```
+**REPLACE**
+```tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { deriveDprUom, computeDprQty } from "@/lib/dprUom";
+```
+
+### 3b. Make `calculateQuantity` dimension-driven (auto-sets the row's UoM)
+
+**FIND**
+```tsx
+  const calculateQuantity = (entry: ProgressEntry): number | null => {
+    const length = getEffectiveLength(entry);
+    if (!length || !entry.width) return null;
+    if (entry.uom === "SQM") {
+      return length * entry.width;
+    } else if (entry.uom === "CUM" && entry.thickness) {
+      return length * entry.width * entry.thickness;
+    }
+    return null;
+  };
+```
+**REPLACE**
+```tsx
+  // Derive UoM + qty from the dimensions; mutates entry.uom so the saved row matches.
+  // Falls back to the existing manual uom/qty for non-geometric items (MT / NOS).
+  const calculateQuantity = (entry: ProgressEntry): number | null => {
+    const length = getEffectiveLength(entry);
+    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
+    if (derivedUom) {
+      entry.uom = derivedUom;
+      return computeDprQty(length, entry.width, entry.thickness);
+    }
+    return entry.quantity ?? null;
+  };
+```
+
+### 3c. Recompute on the two chainage fields (they set length)
+
+**FIND**
+```tsx
+                        updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
+                        setProgress(updated);
+```
+**REPLACE**
+```tsx
+                        updated[idx].chainageFrom = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(e.target.value.toUpperCase(), updated[idx].chainageTo);
+                        if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+```
+
+**FIND**
+```tsx
+                        updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
+                        setProgress(updated);
+```
+**REPLACE**
+```tsx
+                        updated[idx].chainageTo = e.target.value.toUpperCase();
+                        const calc = calculateLengthFromChainage(updated[idx].chainageFrom, e.target.value.toUpperCase());
+                        if (calc !== null) updated[idx].length = calc;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+```
+
+> Note: the L / W / T `onChange` handlers in SiteEdit already call
+> `updated[idx].quantity = calculateQuantity(updated[idx]);`, so the new dimension-driven
+> `calculateQuantity` (3b) makes them auto-set the UoM with no further change.
+
+### 3d. Make the UOM dropdown read-only when dimensions drive it
+
+**FIND**
+```tsx
+                  <div>
+                    <Label className="text-sm">UOM</Label>
+                    <Select
+                      value={entry.uom}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+```
+**REPLACE**
+```tsx
+                  <div>
+                    <Label className="text-sm flex items-center gap-1">
+                      UOM
+                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
+                        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+                      )}
+                    </Label>
+                    <Select
+                      value={entry.uom}
+                      disabled={!!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
+                      onValueChange={(val) => {
+                        const updated = [...progress];
+                        updated[idx].uom = val;
+                        updated[idx].quantity = calculateQuantity(updated[idx]);
+                        setProgress(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-uom-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+```
+
+---
+
+## Verify on Replit
+1. Open an existing DPR → **Edit** → an activity row with L/W/T shows the **auto** badge and a
+   disabled UOM that matches the dimensions (RMT / SQM / CUM).
+2. Change Width or Thickness → UOM + Qty update live.
+3. Clear all dimensions → UOM re-enables → choose **NOS/MT** and type qty manually.
+4. Save → reopen → unit + qty persist correctly.
+
+Both DPR forms (New + Edit) now derive UoM identically.
