@@ -92,7 +92,7 @@ function inferWorkCategory(desc: string): string | null {
   return null;
 }
 
-// ─── Scorer ───────────────────────────────────────────────────────────────────
+// ─── Scorer (IDF-weighted semantic matching) ───────────────────────────────────
 
 interface ScoredCandidate {
   snlItemId: number;
@@ -100,70 +100,51 @@ interface ScoredCandidate {
   score: number;
 }
 
-function scoreCandidate(
-  boq: { itemCode: string | null; description: string; unit: string; workCategory: string | null },
-  snl: { id: number; itemCode: string; description: string; shortLabel: string | null; unit: string; workCategory: string }
-): number {
-  let score = 0;
-
-  // ── 1. Item code / chapter match (weight 0.40) ──
-  const boqCode = (boq.itemCode ?? "").trim().toLowerCase();
-  const snlCode = snl.itemCode.trim().toLowerCase();
-
-  if (boqCode && snlCode) {
-    if (boqCode === snlCode) {
-      score += 0.40; // exact
-    } else {
-      const boqChapter = chapterOf(boq.itemCode);
-      const snlChapter = chapterOf(snl.itemCode);
-      if (boqChapter && snlChapter && boqChapter === snlChapter) {
-        score += 0.20; // same chapter
-      }
-    }
-  }
-
-  // ── 2. Work category match (weight 0.30) ──
-  // Use the BOQ's explicit category first; fall back to inference from its description.
-  const effectiveBoqCategory = boq.workCategory ?? inferWorkCategory(boq.description);
-  const categoryMatches = !!effectiveBoqCategory && effectiveBoqCategory === snl.workCategory;
-  if (categoryMatches) {
-    score += 0.30;
-  }
-
-  // ── 3. Description keyword overlap (weight 0.10, reduced to make room for shortLabel) ──
-  const boqTokens = tokenize(boq.description);
-  const snlDescTokens = tokenize(snl.description);
-  score += 0.10 * jaccard(boqTokens, snlDescTokens);
-
-  // ── 4. ShortLabel keyword coverage (weight 0.15) ──
-  // Measures what fraction of the SNL shortLabel's distinctive keywords appear in the BOQ description.
-  // More focused than full Jaccard: shortLabels are intentionally seeded with BOQ-typical vocabulary.
-  const snlLabelTokens = tokenize(snl.shortLabel ?? "");
-  let shortLabelCoverage = 0;
-  if (snlLabelTokens.size > 0) {
-    let hits = 0;
-    for (const t of snlLabelTokens) if (boqTokens.has(t)) hits++;
-    shortLabelCoverage = hits / snlLabelTokens.size;
-    score += 0.15 * shortLabelCoverage;
-  }
-
-  // ── 5. Unit match (weight 0.05) ──
-  const unitMatches = normalizeUnit(boq.unit) === normalizeUnit(snl.unit);
-  if (unitMatches) {
-    score += 0.05;
-  }
-
-  // ── 6. Trifecta bonus (+0.40) ──
-  // Fires when all three soft signals align: category, shortLabel keyword presence, and unit.
-  // This pushes items with strong non-code evidence into the confident-mapped tier (≥ 0.80)
-  // even when BOQ item codes are absent — designed specifically for earthwork-style items
-  // where MoRTH SNL language differs from typical tender BOQ language.
-  if (categoryMatches && shortLabelCoverage > 0.40 && unitMatches) {
-    score += 0.40;
-  }
-
-  return Math.min(score, 1);
+// Tokens for matching: words >2 chars, minus stop-words and pure numbers.
+function richTokens(text: string): string[] {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w));
 }
+
+// Inverse-document-frequency over the SNL corpus: generic words (high doc-freq) get a
+// near-zero weight automatically; distinctive technical terms get a high weight.
+function buildIdf(docs: string[][]): Map<string, number> {
+  const N = docs.length || 1;
+  const df = new Map<string, number>();
+  for (const d of docs) for (const w of new Set(d)) df.set(w, (df.get(w) ?? 0) + 1);
+  const idf = new Map<string, number>();
+  for (const [w, c] of df) idf.set(w, Math.log(N / (1 + c)));
+  return idf;
+}
+
+// IDF-weighted cosine similarity between two token bags.
+function weightedCosine(a: string[], b: string[], idf: Map<string, number>): number {
+  const wa = new Map<string, number>();
+  const wb = new Map<string, number>();
+  for (const t of a) { const w = idf.get(t) ?? 0; if (w > 0) wa.set(t, (wa.get(t) ?? 0) + w); }
+  for (const t of b) { const w = idf.get(t) ?? 0; if (w > 0) wb.set(t, (wb.get(t) ?? 0) + w); }
+  let dot = 0;
+  for (const [t, va] of wa) { const vb = wb.get(t); if (vb) dot += va * vb; }
+  let na = 0; for (const v of wa.values()) na += v * v;
+  let nb = 0; for (const v of wb.values()) nb += v * v;
+  const den = Math.sqrt(na) * Math.sqrt(nb);
+  return den === 0 ? 0 : dot / den;
+}
+
+function unitsCompatible(a: string, b: string): boolean {
+  return normalizeUnit(a || "") === normalizeUnit(b || "");
+}
+
+// ── Decision thresholds (calibrated on the MoRTH SDB corpus; tune after first run) ──
+const CONFIDENT_FLOOR = 0.10;       // top similarity must clear this to auto-apply a recipe
+const CONFIDENT_MARGIN = 1.30;      // …and be ≥30% ahead of the 2nd-best candidate
+const SUGGEST_FLOOR = 0.04;         // below confident but worth offering for human review
+const UNIT_MISMATCH_PENALTY = 0.30; // multiply score when units differ (near-veto)
+
+// (Legacy weighted scorer removed — replaced by IDF-weighted cosine + unit/margin gate.)
 
 // ─── Main mapper ──────────────────────────────────────────────────────────────
 
@@ -207,6 +188,12 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     return;
   }
 
+  // Precompute distinctive-token bags + IDF over the whole SNL corpus (once per run).
+  const snlTokenMap = new Map<number, string[]>(
+    snlRows.map(s => [s.id, richTokens(`${s.description ?? ""} ${s.shortLabel ?? ""}`)])
+  );
+  const idf = buildIdf([...snlTokenMap.values()]);
+
   // Preserve manual mappings: never overwrite or unmap user-confirmed items.
   // Also RESTORES their "mapped" status if a prior remap/reset cleared it.
   const manualRows = await db
@@ -225,16 +212,15 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     }
     try {
       // ── 0. Deterministic SNL-code match (highest priority) ──────────────
-      // Try the explicit SNL code first, then fall back to the BOQ item code.
-      // If the BOQ row carries an explicit SDB/SNL norm code, map straight to
-      // the SNL item with that exact item_code. No fuzzy description parsing.
-      const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase()
-        || (boqRow.itemCode ?? "").trim().toLowerCase();
+      // Only trust an EXPLICIT SNL/SDB norm code here. The BOQ item_code is a tender bill
+      // number (e.g. "5.10") that collides with unrelated MoRTH SDB codes — using it mapped
+      // a filter (Cum) item to premix surfacing (SQM). Bill numbers go to semantic scoring.
+      const explicitCode = (boqRow.snlCode ?? "").trim().toLowerCase();
       if (explicitCode) {
         const directSnl = snlRows.find(
           (s) => s.itemCode.trim().toLowerCase() === explicitCode,
         );
-        if (directSnl) {
+        if (directSnl && unitsCompatible(boqRow.unit, directSnl.unit)) {
           await db
             .insert(snlBoqMappings)
             .values({
@@ -274,75 +260,61 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         }
       }
 
-      // Determine effective category — explicit or inferred from description keywords.
-      // This lets us narrow the candidate pool even when BOQ items lack a workCategory field.
-      const effectiveCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
-
-      // Score all SNL candidates in the same work category first (faster, more relevant)
-      const sameCatCandidates = effectiveCat
-        ? snlRows.filter(s => s.workCategory === effectiveCat)
-        : snlRows;
-
-      const sameCatSorted: ScoredCandidate[] = (sameCatCandidates.length > 0 ? sameCatCandidates : snlRows)
-        .map(snl => ({
-          snlItemId: snl.id,
-          snlItemCode: snl.itemCode,
-          score: scoreCandidate(boqRow, snl),
-        }))
+      // ── Semantic scoring: IDF-weighted cosine over the FULL description, unit-gated ──
+      const boqText = richTokens(`${boqRow.description ?? ""} ${boqRow.workCategory ?? ""}`);
+      const scored: ScoredCandidate[] = snlRows
+        .map(snl => {
+          const sim = weightedCosine(boqText, snlTokenMap.get(snl.id) ?? [], idf);
+          const adj = unitsCompatible(boqRow.unit, snl.unit) ? sim : sim * UNIT_MISMATCH_PENALTY;
+          return { snlItemId: snl.id, snlItemCode: snl.itemCode, score: adj };
+        })
         .sort((a, b) => b.score - a.score);
 
-      // If the best same-category match is below 0.35, try cross-category search
-      // (e.g. SITE_CLEARANCE scarifying may match EARTHWORK SNL items on keywords)
-      let candidates = sameCatSorted;
-      if (effectiveCat && sameCatCandidates.length > 0 && (!sameCatSorted[0] || sameCatSorted[0].score < 0.35)) {
-        const crossCatCandidates = snlRows
-          .filter(s => s.workCategory !== effectiveCat)
-          .map(snl => ({
-            snlItemId: snl.id,
-            snlItemCode: snl.itemCode,
-            score: scoreCandidate(boqRow, snl) * 0.80, // penalty for category mismatch
-          }))
-          .sort((a, b) => b.score - a.score);
-        // Merge: same-cat candidates go first if any scored >= 0.30, else cross-cat may win
-        candidates = [...sameCatSorted, ...crossCatCandidates].sort((a, b) => b.score - a.score);
-      }
+      const top = scored[0];
+      const second = scored[1];
 
-      const top = candidates[0];
-
-      if (!top || top.score < 0.35) {
-        // No match
-        await db
-          .update(boqItems)
-          .set({ mappingStatus: "unmapped" })
-          .where(eq(boqItems.id, boqRow.id));
+      // No usable evidence → unmapped, and flush any stale auto recipe.
+      if (!top || top.score < SUGGEST_FLOOR) {
+        await storage.clearBoqItemRecipes(boqRow.id);
+        await db.update(boqItems).set({ mappingStatus: "unmapped" }).where(eq(boqItems.id, boqRow.id));
         continue;
       }
 
-      if (top.score >= 0.80) {
-        // Confident match — save mapping + apply recipes
-        await db
-          .insert(snlBoqMappings)
-          .values({
-            boqItemId: boqRow.id,
+      const topSnl = snlRows.find(s => s.id === top.snlItemId)!;
+      const unitOk = unitsCompatible(boqRow.unit, topSnl.unit);
+      const clearlyAhead = !second || second.score <= 0 || top.score >= second.score * CONFIDENT_MARGIN;
+      const isConfident = unitOk && top.score >= CONFIDENT_FLOOR && clearlyAhead;
+
+      const noteTxt = isConfident
+        ? `Auto-mapped (sim ${top.score.toFixed(3)})`
+        : `Suggested (sim ${top.score.toFixed(3)}) — review needed`;
+
+      // Always (re)write the mapping row pointing at the best candidate.
+      await db
+        .insert(snlBoqMappings)
+        .values({
+          boqItemId: boqRow.id,
+          snlItemId: top.snlItemId,
+          projectCategory: "MEDIUM",
+          gradingVariant: null,
+          mappedBy: "auto",
+          isAutoMapped: true,
+          confidenceScore: top.score,
+          notes: noteTxt,
+        })
+        .onConflictDoUpdate({
+          target: snlBoqMappings.boqItemId,
+          set: {
             snlItemId: top.snlItemId,
-            projectCategory: "MEDIUM",
-            gradingVariant: null,
-            mappedBy: "auto",
             isAutoMapped: true,
             confidenceScore: top.score,
-            notes: `Auto-mapped (score ${top.score.toFixed(2)})`,
-          })
-          .onConflictDoUpdate({
-            target: snlBoqMappings.boqItemId,
-            set: {
-              snlItemId: top.snlItemId,
-              isAutoMapped: true,
-              confidenceScore: top.score,
-              mappedAt: new Date(),
-              notes: `Auto-mapped (score ${top.score.toFixed(2)})`,
-            },
-          });
+            mappedAt: new Date(),
+            notes: noteTxt,
+          },
+        });
 
+      if (isConfident) {
+        // Strong, unambiguous, unit-matched → apply the recipe.
         let recipesApplied = false;
         try {
           await storage.applySnlMappingToRecipes(boqRow.id, top.snlItemId, "MEDIUM", null, "auto");
@@ -350,36 +322,14 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         } catch (recipeErr) {
           console.error(`[autoMapper] applySnlMappingToRecipes failed for boqItemId=${boqRow.id}:`, recipeErr);
         }
-
         await db
           .update(boqItems)
           .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
           .where(eq(boqItems.id, boqRow.id));
       } else {
-        // Candidate match — save as suggestion only, don't apply recipes
-        await db
-          .insert(snlBoqMappings)
-          .values({
-            boqItemId: boqRow.id,
-            snlItemId: top.snlItemId,
-            projectCategory: "MEDIUM",
-            gradingVariant: null,
-            mappedBy: "auto",
-            isAutoMapped: true,
-            confidenceScore: top.score,
-            notes: `Suggested (score ${top.score.toFixed(2)}) — review needed`,
-          })
-          .onConflictDoUpdate({
-            target: snlBoqMappings.boqItemId,
-            set: {
-              snlItemId: top.snlItemId,
-              isAutoMapped: true,
-              confidenceScore: top.score,
-              mappedAt: new Date(),
-              notes: `Suggested (score ${top.score.toFixed(2)}) — review needed`,
-            },
-          });
-
+        // Ambiguous or unit-mismatched → suggest only, DO NOT apply a recipe, and flush
+        // any stale recipe so the BOM stops showing wrong materials.
+        await storage.clearBoqItemRecipes(boqRow.id);
         await db
           .update(boqItems)
           .set({ mappingStatus: "needs_review" })

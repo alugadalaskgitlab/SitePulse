@@ -20971,11 +20971,21 @@ export class DatabaseStorage implements IStorage {
             materialName: m.materialName,
             uom: m.unit,
             qtyPerBoqUnit: m.derivedPerUnit ?? 0,
-            isAuto: false,
-            notes: m.notes ?? null,
+            isAuto: true,
+            notes: m.notes ?? `SNL ${itemFull.itemCode}`,
           }))
         );
       }
+    });
+  }
+
+  // Remove auto-applied recipe rows from a BOQ item (used when a re-map can no longer
+  // confidently map it, so stale/wrong recipes don't keep polluting the BOM).
+  async clearBoqItemRecipes(boqItemId: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
+      await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
+      await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
     });
   }
 
