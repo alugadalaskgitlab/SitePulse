@@ -1212,6 +1212,9 @@ export interface IStorage {
   createBoqMixLink(data: InsertBoqMixTemplateLink): Promise<BoqMixTemplateLink>;
   upsertBoqMixLink(projectId: number, data: { mixType: string; mixTemplateId?: number | null; mixTemplateName?: string | null }): Promise<BoqMixTemplateLink>;
   deleteBoqMixLink(id: number): Promise<void>;
+  // Clear all auto-applied recipes + snlBoqMappings rows for every non-manually-mapped
+  // BOQ item in a project (used before Re-map All so stale data doesn't pollute BOM).
+  clearAllBoqProjectRecipes(projectId: number): Promise<void>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -20986,6 +20989,44 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
       await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
       await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
+    });
+  }
+
+  // Bulk-clear all auto-applied recipes + auto snlBoqMappings rows for every
+  // non-manually-mapped BOQ item in a project.  Manual mappings are untouched.
+  // Called at the start of every Re-map All so stale recipes never pollute the BOM.
+  async clearAllBoqProjectRecipes(projectId: number): Promise<void> {
+    const allItems = await db
+      .select({ id: boqItems.id })
+      .from(boqItems)
+      .where(eq(boqItems.boqProjectId, projectId));
+    const allIds = allItems.map(r => r.id);
+    if (allIds.length === 0) return;
+
+    // Find items the user manually mapped — preserve those completely.
+    const manualRows = await db
+      .select({ boqItemId: snlBoqMappings.boqItemId })
+      .from(snlBoqMappings)
+      .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
+    const manualIds = new Set(manualRows.map(r => r.boqItemId));
+
+    const clearIds = allIds.filter(id => !manualIds.has(id));
+    if (clearIds.length === 0) return;
+
+    await db.transaction(async (tx) => {
+      // Wipe recipe rows for these items.
+      await tx.delete(boqItemEquipment).where(inArray(boqItemEquipment.boqItemId, clearIds));
+      await tx.delete(boqItemLabour).where(inArray(boqItemLabour.boqItemId, clearIds));
+      await tx.delete(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, clearIds));
+      // Remove auto snlBoqMappings rows so the mapper starts fresh.
+      await tx.delete(snlBoqMappings).where(
+        and(inArray(snlBoqMappings.boqItemId, clearIds), eq(snlBoqMappings.isAutoMapped, true))
+      );
+      // Reset mapping status to unmapped (auto items only).
+      await tx
+        .update(boqItems)
+        .set({ mappingStatus: "unmapped" })
+        .where(inArray(boqItems.id, clearIds));
     });
   }
 

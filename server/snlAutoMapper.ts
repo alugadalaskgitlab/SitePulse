@@ -394,19 +394,10 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
   const ids = rows.map(r => r.id);
   if (ids.length === 0) return { remapped: 0 };
 
-  // Reset to unmapped first — but NEVER touch manually-mapped items.
-  const manualIds = (await db
-    .select({ id: snlBoqMappings.boqItemId })
-    .from(snlBoqMappings)
-    .innerJoin(boqItems, eq(snlBoqMappings.boqItemId, boqItems.id))
-    .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(snlBoqMappings.isAutoMapped, false))))
-    .map((r) => r.id);
-  await db
-    .update(boqItems)
-    .set({ mappingStatus: "unmapped" })
-    .where(manualIds.length > 0
-      ? and(eq(boqItems.boqProjectId, boqProjectId), notInArray(boqItems.id, manualIds))
-      : eq(boqItems.boqProjectId, boqProjectId));
+  // Full cleanup before re-mapping: wipes stale recipes + auto snlBoqMappings rows +
+  // resets mapping status to "unmapped" for every non-manually-mapped item.
+  // Manual mappings are preserved untouched.
+  await storage.clearAllBoqProjectRecipes(boqProjectId);
 
   await autoMapBoqItems(ids);
   return { remapped: ids.length };
