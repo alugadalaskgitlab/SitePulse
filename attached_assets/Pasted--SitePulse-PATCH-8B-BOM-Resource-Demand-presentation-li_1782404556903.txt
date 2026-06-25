@@ -1,0 +1,322 @@
+# SitePulse — PATCH 8B: BOM / Resource Demand presentation like Road Estimator + fuel demand logic
+
+Current BOM & Demand is cleaner after Patch 7/7A, but the presentation and fuel demand logic need improvement.
+
+Target:
+Make BOM & Demand look and behave like the reference Road Estimator-style screenshots:
+
+* grouped materials
+* grouped equipment
+* grouped labour
+* formula visible
+* source BOQ item visible
+* total quantity/hours/days visible
+* monthly split retained
+* diesel/HSD and LDO/process fuel demand generated properly
+
+Do not change BOQ import, BOQ category grouping, Work Programme bars, Stock, IRN, PI, or existing manual workflows.
+
+---
+
+## 1. BOM display style
+
+Create a cleaner grouped BOM layout.
+
+### A. Materials section
+
+Group by material name.
+
+Each material group should show:
+
+* Material name
+* UOM
+* total demand quantity
+* optional average rate / amount if rate data exists
+* expandable source BOQ lines
+
+Expanded source BOQ line should show:
+
+* short BOQ item label/code
+* formula:
+  coefficient × work quantity = line quantity
+* line total
+* source type:
+  Auto / Manual / Mix Template / SNL
+
+Example display:
+
+WMM Material (MT)
+WMM BOQ item: 2.2000 × 6840 = 15048 MT
+
+Bitumen VG-30 (MT)
+BC: 0.1270 × 1064 = 135.13 MT
+
+Water (KL)
+GSB: 0.1200 × 5624 = 674.88 KL
+WMM: 0.1320 × 6840 = 902.88 KL
+
+---
+
+## 2. Direct-supply GSB/WMM
+
+If GSB/WMM is selected as direct supply in layer config:
+
+* show as one material:
+
+  * GSB Material
+  * WMM Material
+
+Do not show grading fractions like 22.4–2.36 mm, 45–22.4 mm, etc.
+
+For direct supply, the demand item should be linked to Material Master as:
+
+* GSB Material
+* WMM Material
+
+This is required for stock comparison, shortage alerts, IRN and PI suggestions.
+
+---
+
+## 3. Mix-produced GSB/WMM
+
+Only if GSB/WMM is set as plant/self-produced/mixed by contractor, show fractions:
+
+* 40mm
+* 20mm
+* 10mm
+* dust
+* water
+
+Use material names from Material Master / mix template, not free-text grading ranges, wherever possible.
+
+---
+
+## 4. DBM / BC / bituminous material fractions
+
+For DBM/BC, use linked mix template/JMF.
+
+Show grouped materials such as:
+
+* Bitumen VG-30
+* Aggregate dust
+* 6mm aggregate
+* 10mm aggregate
+* 20mm aggregate where applicable
+* filler
+* LDO / process fuel where applicable
+
+Each should show source BOQ item and formula.
+
+If mix template/JMF is missing, show warning:
+
+“Mix template required for DBM/BC material fractions.”
+
+---
+
+## 5. PCC / RCC material fractions
+
+For PCC/RCC/concrete items, use linked concrete/RMC mix design where available.
+
+Show:
+
+* cement
+* sand
+* coarse aggregate 20mm
+* coarse aggregate 10mm
+* admixture
+* water
+* reinforcement steel where applicable
+
+If concrete mix design is missing, show warning:
+
+“Concrete mix design required.”
+
+---
+
+## 6. Equipment section
+
+Create grouped Equipment section similar to reference.
+
+Each equipment group should show:
+
+* Equipment name
+* total hours
+* optional hourly rate / amount if rate exists
+* expandable source BOQ item lines
+
+Expanded line should show:
+
+* BOQ item short label
+* formula:
+  hrs per BOQ unit × work quantity = total hours
+* line total hours
+
+Example:
+
+Water Tanker 6KL
+GSB: 0.1852 × 5624 = 1041.51 hr
+WMM: 0.1852 × 6840 = 1266.70 hr
+
+Hydraulic Excavator
+Excavation: 0.0167 × 2280 = 38.01 hr
+
+Do not show fake “count = 1” as demand.
+
+Count should appear only if calculated from fixed duration/resource capacity.
+
+---
+
+## 7. Labour section
+
+Create grouped Labour section similar to reference.
+
+Each labour group should show:
+
+* Labour category/designation
+* total mandays/days
+* optional daily rate / amount if rate exists
+* expandable BOQ source lines
+
+Expanded line should show:
+
+* BOQ item short label
+* formula:
+  labour days per BOQ unit × work quantity = total mandays
+* line total mandays
+
+Example:
+
+Unskilled / Mazdoor
+GSB: 0.0444 × 5624 = 249.93 days
+WMM: 0.2000 × 6840 = 1368.00 days
+
+---
+
+## 8. Diesel / HSD demand logic
+
+Add diesel/HSD demand calculation from equipment usage.
+
+For each equipment used in BOQ recipe / Work Programme:
+
+diesel qty = equipment hours × diesel consumption per hour
+
+Diesel consumption per hour should come from Equipment Master.
+
+Required Equipment Master fields if not already present:
+
+* fuelType: Diesel / Petrol / Electric / None
+* fuelConsumptionPerHour
+* fuelUom: litre/hr
+* applicable for equipment demand
+
+BOM should show Diesel/HSD as a material demand group:
+
+Diesel / HSD (litre)
+Water Tanker: fuel ltr/hr × hours = litres
+Excavator: fuel ltr/hr × hours = litres
+Paver: fuel ltr/hr × hours = litres
+
+This diesel demand should also flow into material shortage/procurement logic if Diesel/HSD exists in Material Master.
+
+If equipment has no fuel consumption defined, show:
+
+“Fuel consumption missing in Equipment Master.”
+
+---
+
+## 9. LDO / process fuel logic
+
+LDO/process fuel should be generated separately from plant/mix process requirements.
+
+For bituminous/HMP mixes, LDO should come from:
+
+* mix template / plant production setting, or
+* standard process fuel coefficient per MT of mix
+
+Formula:
+
+LDO qty = mix quantity × LDO coefficient per MT
+
+Example:
+
+BC: 6.0278 × 1064 = 6413.56 litre
+
+Required setting if not already present:
+
+* LDO/process fuel coefficient per MT for HMP mix type
+* materialId for LDO / Process Fuel
+
+BOM should show LDO as a separate material group:
+
+LDO / Process Fuel (litre)
+
+This should not be mixed with equipment diesel.
+
+---
+
+## 10. Material Master linkage
+
+Every generated BOM material should carry materialId wherever possible.
+
+Required for:
+
+* stock comparison
+* shortage alerts
+* IRN suggestion
+* PI suggestion
+* procurement planning
+
+If no materialId is mapped, show:
+
+“Material master mapping required.”
+
+Do not rely only on free-text material names for stock/procurement matching.
+
+---
+
+## 11. Monthly view
+
+Keep existing month-wise demand.
+
+The grouped BOM should support:
+
+* Total view
+* Month-wise view
+
+For month-wise view, each material/equipment/labour group should show demand distributed based on Work Programme bars.
+
+---
+
+## 12. BOQ item display
+
+Improve source BOQ item display.
+
+Do not show only truncated text like “Providing, laying…”
+
+Show:
+
+* BOQ code if available
+* short meaningful label
+* hover/full description
+* optional expand to full description
+
+Example:
+
+4.03 — Providing and laying dense bituminous macadam…
+
+---
+
+## 13. Verification
+
+Test on NH-167:
+
+1. WMM direct supply shows WMM Material, not grading fractions.
+2. GSB direct supply shows GSB Material, not grading fractions.
+3. BC shows bitumen, aggregate dust, 6mm, 10mm, LDO/process fuel if mix template is linked.
+4. Equipment tab shows grouped equipment with formula and total hours.
+5. Labour tab shows grouped labour with formula and total mandays.
+6. Diesel/HSD appears from equipment fuel consumption.
+7. LDO/process fuel appears from HMP/mix coefficient.
+8. Material demand lines carry materialId where possible.
+9. Procurement shortage compares by materialId.
+10. Manual IRN/PI workflow remains unchanged.

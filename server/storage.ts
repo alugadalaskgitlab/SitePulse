@@ -20609,6 +20609,8 @@ export class DatabaseStorage implements IStorage {
         outputTheoretical: equipmentMaster.outputTheoretical,
         outputEfficiency: equipmentMaster.outputEfficiency,
         standardOutputs: equipmentMaster.standardOutputs,
+        consumptionNorm: equipmentMaster.consumptionNorm,
+        fuelType: equipmentMaster.fuelType,
       }).from(equipmentMaster),
       db.select({
         id: planningEquipmentTypes.id,
@@ -20632,6 +20634,8 @@ export class DatabaseStorage implements IStorage {
             outputTheoretical: master?.outputTheoretical ?? null,
             outputEfficiency: master?.outputEfficiency ?? null,
             standardOutputs: planType?.standardOutputs ?? master?.standardOutputs ?? null,
+            consumptionNorm: master?.consumptionNorm ?? null,
+            fuelType: master?.fuelType ?? null,
           };
         });
       return {

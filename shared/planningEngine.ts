@@ -419,6 +419,8 @@ export interface BomInputItem {
     qtyPerBoqUnit: number; // hours per BOQ unit
     count?: number;
     isClientSupplied?: boolean;
+    consumptionNorm?: number | null; // fuel liters per hour
+    fuelType?: string | null;        // "Diesel" | "Petrol" | "Electric" | "None"
   }>;
   labour: Array<{
     designation: string;
@@ -544,6 +546,37 @@ export function calculateBomDemand(
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
+      }
+    }
+
+    // Diesel / HSD demand from equipment fuel consumption
+    for (const e of item.equipment) {
+      if (e.isClientSupplied) continue;
+      if (!e.consumptionNorm || e.consumptionNorm <= 0) continue;
+      const ft = (e.fuelType ?? "Diesel").toLowerCase();
+      if (ft === "electric" || ft === "none") continue;
+      const cnt = e.count ?? 1;
+      const equipHours = e.qtyPerBoqUnit * workQty * cnt;
+      const liters = e.consumptionNorm * equipHours;
+      const DIESEL_KEY = "DIESEL / HSD";
+      if (!matMap.has(DIESEL_KEY)) {
+        matMap.set(DIESEL_KEY, { materialName: "Diesel / HSD", uom: "L", totalQty: 0, monthlyQty: {}, hasAutoSource: true, breakdown: [] });
+      }
+      const dieselRow = matMap.get(DIESEL_KEY)!;
+      dieselRow.totalQty += liters;
+      // Breakdown: qtyPerUnit = L/hr; workQty = equipment hours; lineQty = total liters
+      dieselRow.breakdown.push({
+        itemDescription: e.equipmentName,
+        fullDescription: e.equipmentName,
+        itemCode: null,
+        qtyPerUnit: e.consumptionNorm,
+        workQty: equipHours,
+        lineQty: liters,
+        isAuto: true,
+      });
+      for (const [month, mwq] of monthlyWork) {
+        const monthHours = e.qtyPerBoqUnit * mwq * cnt;
+        dieselRow.monthlyQty[month] = (dieselRow.monthlyQty[month] ?? 0) + e.consumptionNorm * monthHours;
       }
     }
 
@@ -825,6 +858,7 @@ export function deriveMaterialsFromLayerConfig(
   _boqUnit: string,
   mixTemplate?: {
     bitumenPercent: number | null;
+    ldoNorm?: number | null;
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
 ): DerivedMaterialRow[] {
@@ -892,6 +926,17 @@ export function deriveMaterialsFromLayerConfig(
         const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
         rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
       }
+    }
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
+    const ldoNorm = mixTemplate?.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerSqm,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
     }
     return rows;
   }

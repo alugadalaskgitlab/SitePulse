@@ -146,23 +146,25 @@ function MaterialsTable({
                         <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Qty/Unit</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
-                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Total</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-center">Source</th>
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">BOQ Item</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Formula (coeff × qty = total)</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-center w-16">Source</th>
                             </tr>
                           </thead>
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-teal-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px]" title={b.fullDescription ?? b.itemDescription}>
                                   {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
-                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 80 ? t.slice(0, 80) + "…" : t; })()}
                                 </td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.qtyPerUnit, 4)}</td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
+                                <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
+                                  <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
+                                  <span className="text-slate-400 mx-1">×</span>
+                                  <span className="text-slate-600">{fmtQty(b.workQty, 2)}</span>
+                                  <span className="text-slate-400 mx-1">=</span>
+                                  <span className="font-semibold text-teal-700">{fmtQty(b.lineQty, 1)} {row.uom}</span>
+                                </td>
                                 <td className="px-2 py-1.5 text-center">
                                   {b.isAuto ? (
                                     <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-semibold bg-teal-100 text-teal-700">
@@ -274,22 +276,24 @@ function EquipmentTable({
                         <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">hr/Unit</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
-                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Hours</th>
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">Source Item</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Formula (hr/unit × qty = total hrs)</th>
                             </tr>
                           </thead>
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px]" title={b.fullDescription ?? b.itemDescription}>
                                   {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
-                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 80 ? t.slice(0, 80) + "…" : t; })()}
                                 </td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.hrsPerUnit, 4)}</td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-blue-700">{fmtQty(b.lineHours, 1)} hr</td>
+                                <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
+                                  <span className="text-slate-500">{fmtQty(b.hrsPerUnit, 4)}</span>
+                                  <span className="text-slate-400 mx-1">×</span>
+                                  <span className="text-slate-600">{fmtQty(b.workQty, 2)}</span>
+                                  <span className="text-slate-400 mx-1">=</span>
+                                  <span className="font-semibold text-blue-700">{fmtQty(b.lineHours, 1)} hr</span>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -390,22 +394,24 @@ function LabourTable({
                         <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500">BOQ Item</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">day/Unit</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-right">Work Qty</th>
-                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Line Days</th>
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">Source Item</th>
+                              <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Formula (day/unit × qty = total days)</th>
                             </tr>
                           </thead>
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-purple-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px]" title={b.fullDescription ?? b.itemDescription}>
                                   {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
-                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 80 ? t.slice(0, 80) + "…" : t; })()}
                                 </td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.daysPerUnit, 4)}</td>
-                                <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-purple-700">{fmtQty(b.lineDays, 1)} day</td>
+                                <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
+                                  <span className="text-slate-500">{fmtQty(b.daysPerUnit, 4)}</span>
+                                  <span className="text-slate-400 mx-1">×</span>
+                                  <span className="text-slate-600">{fmtQty(b.workQty, 2)}</span>
+                                  <span className="text-slate-400 mx-1">=</span>
+                                  <span className="font-semibold text-purple-700">{fmtQty(b.lineDays, 1)} day</span>
+                                </td>
                               </tr>
                             ))}
                           </tbody>

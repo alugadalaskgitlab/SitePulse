@@ -9895,6 +9895,7 @@ export async function registerRoutes(
       // Fetch mix template data and resolve component material names in parallel
       const mixTemplateMap = new Map<number, {
         bitumenPercent: number | null;
+        ldoNorm: number | null;
         components: Array<{ materialName: string; percent: number | null }>;
       }>();
       await Promise.all([...mixTemplateIds].map(async (mtId) => {
@@ -9902,6 +9903,7 @@ export async function registerRoutes(
         if (mt) {
           mixTemplateMap.set(mtId, {
             bitumenPercent: mt.template.bitumenPercent ?? null,
+            ldoNorm: mt.template.ldoNorm ?? 6,
             components: mt.components.map(c => ({
               materialName: matNameById.get(c.materialId) ?? `Material #${c.materialId}`,
               percent: c.percent ?? null,

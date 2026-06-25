@@ -301,6 +301,7 @@ export const equipmentMaster = pgTable("equipment_master", {
   outputTheoretical: real("output_theoretical"), // raw output per hour in outputUnit
   outputEfficiency: real("output_efficiency"),   // 0–1 factor (default 0.75)
   standardOutputs: jsonb("standard_outputs"),    // [{unit: string, outputPerHr: number}] for multi-unit machines
+  fuelType: text("fuel_type"),                   // "Diesel" | "Petrol" | "Electric" | "None"
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2583,6 +2584,8 @@ export type BoqItemEquipmentWithMaster = BoqItemEquipmentRow & {
   outputTheoretical: number | null;
   outputEfficiency: number | null;
   standardOutputs: unknown;
+  consumptionNorm: number | null;
+  fuelType: string | null;
 };
 export type BoqItemWithRecipes = BoqItemWithCategory & {
   equipment: BoqItemEquipmentWithMaster[];

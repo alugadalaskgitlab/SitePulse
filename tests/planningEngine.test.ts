@@ -280,24 +280,29 @@ describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", () => {
     expect(rows[0].materialName).toMatch(/bitumen/i);
   });
 
-  it("falls back to single 'Bituminous Mix' row for unknown mix type with no template", () => {
+  it("falls back to single 'Bituminous Mix' row for unknown mix type with no template (plus LDO row)", () => {
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "CBGB" }, "SQM", undefined);
-    expect(rows.length).toBe(1);
+    // Expect mix row + LDO / Process Fuel row
+    expect(rows.length).toBe(2);
     expect(rows[0].materialName).toBe("CBGB Mix");
+    expect(rows[1].materialName).toBe("LDO / Process Fuel");
   });
 
-  it("falls back to 'Bituminous Mix' when no mixType and no template", () => {
+  it("falls back to 'Bituminous Mix' when no mixType and no template (plus LDO row)", () => {
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig }, "SQM", undefined);
-    expect(rows.length).toBe(1);
+    expect(rows.length).toBe(2);
     expect(rows[0].materialName).toBe("Bituminous Mix");
+    expect(rows[1].materialName).toBe("LDO / Process Fuel");
   });
 
-  it("component quantities sum to mtPerSqm within ±0.1% (proportions add to 100%)", () => {
+  it("mix component quantities (excluding LDO) sum to mtPerSqm within ±0.1%", () => {
     const thickness = 50;
     const density = 2.4;
     const mtPerSqm = (thickness / 1000) * density;
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
-    const total = rows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
+    // Exclude LDO row — it is in litres, not MT, and is separate from mix proportions
+    const mixRows = rows.filter(r => r.materialName !== "LDO / Process Fuel");
+    const total = mixRows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
     expect(total).toBeCloseTo(mtPerSqm, 3);
   });
 });
