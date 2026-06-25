@@ -1,0 +1,197 @@
+# SitePulse — PATCH 8: BOM material naming, direct-supply logic and stock/procurement readiness
+
+Current status:
+Patch 7/7A cleaned the polluted BOM. BOM is now better, but material demand still needs practical contractor-facing naming and stock/procurement linkage.
+
+Observed issues:
+
+1. GSB/WMM items selected as direct supply are still showing aggregate grading fractions like “22.4–2.36mm @ 40%”.
+2. For direct-supply GSB/WMM, BOM should show “GSB Material” or “WMM Material” as one demand item.
+3. BOQ item descriptions in the drill-down are too truncated and not visually useful.
+4. Layer Config still shows “Apply Norm”, which is confusing after mapping/norm application.
+5. DBM/BC/PCC/RCC fraction materials must be derived only from mix template/JMF/RMC design or SDB where applicable.
+6. Material demand must be linked to Material Master / Plant Material IDs so stock shortage, IRN/PI suggestion, and procurement alerts work reliably.
+
+## 1. Direct-supply GSB/WMM material display
+
+When layerConfig indicates granular direct supply:
+
+* `layerType = granular`
+* `granularSource != plant` or direct supply selected
+
+then BOM material demand should be collapsed as:
+
+* GSB → “GSB Material”
+* WMM → “WMM Material”
+
+Do not show aggregate grading fractions for direct-supply GSB/WMM.
+
+Example:
+If WMM is direct supply from crusher, show:
+
+* Material: WMM Material
+* Unit: CUM or MT as configured
+* Qty: planned WMM quantity
+* Source BOQ item: WMM BOQ item
+
+If GSB is direct supply from crusher, show:
+
+* Material: GSB Material
+* Unit: CUM or MT as configured
+* Qty: planned GSB quantity
+* Source BOQ item: GSB BOQ item
+
+## 2. Plant/mixed GSB/WMM material display
+
+Only when granular source is plant / self-mixing / contractor-produced, expand into aggregate fractions.
+
+Example:
+
+* 40mm
+* 20mm
+* 10mm
+* dust
+* water
+
+Do not use grading-size labels as procurement material names unless those materials exist in Material Master.
+
+## 3. DBM/BC material fractions
+
+For DBM/BC/bituminous mixes:
+
+Use project mix template / JMF where linked.
+
+BOM should show practical material master components such as:
+
+* 20mm aggregate
+* 10mm aggregate
+* 6mm aggregate
+* stone dust / crusher dust
+* filler
+* VG-30 / bitumen
+* LDO / fuel where applicable
+
+Do not show only generic “Aggregate”.
+
+If mix template/JMF is not linked, show warning:
+
+“Mix template required for material fractions.”
+
+## 4. PCC/RCC material fractions
+
+For PCC/RCC/concrete items:
+
+Use RMC mix design / concrete mix template where available.
+
+BOM should show:
+
+* cement
+* sand
+* coarse aggregate 20mm
+* coarse aggregate 10mm
+* admixture
+* water
+* reinforcement steel where applicable from SDB/manual norm
+
+If no concrete mix design is linked, show warning:
+
+“Concrete mix design required.”
+
+## 5. Material Master linkage
+
+Every BOM material line should carry a stable material reference where possible:
+
+* materialId from Plant Material / Material Master
+* canonical material name
+* display material name
+* UOM
+* demand qty
+* source BOQ item
+
+This is required for:
+
+* stock comparison
+* shortage calculation
+* IRN suggestion
+* PI suggestion
+* procurement planning
+
+Avoid relying only on free-text names like “22.4–2.36mm @ 40%”.
+
+If materialId cannot be resolved, show:
+
+“Material master mapping required”
+
+and exclude it from automatic stock shortage calculation until mapped.
+
+## 6. Procurement/stock shortage logic
+
+Shortage calculation should compare:
+
+BOM material demand by materialId
+→ current available stock by materialId
+→ shortage qty
+→ suggested IRN/PI
+
+For direct-supply WMM/GSB, shortage should compare against:
+
+* WMM Material stock
+* GSB Material stock
+
+not individual aggregate fractions.
+
+For DBM/BC, compare against individual mix components:
+
+* bitumen
+* aggregates
+* dust/filler
+* LDO/fuel where applicable
+
+## 7. Improve BOQ item display in BOM drill-down
+
+In BOM drill-down rows, do not show only truncated text like “Providing, laying…”.
+
+Improve display as:
+
+* show item code if available
+* show first meaningful 80–120 characters
+* keep full description on hover
+* optionally allow expand/collapse full BOQ description
+
+Example:
+Instead of:
+“Providing, laying…”
+
+Show:
+“4.03 — Providing and laying dense bituminous macadam…”
+
+## 8. Rename confusing “Apply Norm” action
+
+In Layer Config / Item Recipe area, rename or reposition “Apply Norm”.
+
+Suggested labels:
+
+* “Map / Review Norm”
+* “Refresh from Norm”
+* “Apply Selected Norm”
+
+If item is already mapped, show:
+
+* “Mapped to: [SNL item code/name]”
+* “Refresh from Norm” only as an advanced correction action
+
+Do not make it look like the PM must apply norm manually for every item.
+
+## 9. Verification
+
+After patch, test on current NH-167 project:
+
+1. GSB direct supply should show “GSB Material”, not grading fractions.
+2. WMM direct supply should show “WMM Material”, not grading fractions.
+3. DBM/BC should show mix-template components if template is linked.
+4. PCC/RCC should show concrete mix components if template is linked.
+5. Stock/procurement shortage should use materialId, not free-text material names.
+6. BOM drill-down should show readable BOQ item descriptions.
+7. No change to BOQ category grouping.
+8. No change to Work Programme bars.
+9. No change to IRN/PI manual workflows.

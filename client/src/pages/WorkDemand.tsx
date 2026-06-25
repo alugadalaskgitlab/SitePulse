@@ -156,7 +156,10 @@ function MaterialsTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-teal-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[300px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                  {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                </td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.qtyPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-teal-700">{fmtQty(b.lineQty, 1)}</td>
@@ -280,7 +283,10 @@ function EquipmentTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                  {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                </td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.hrsPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-blue-700">{fmtQty(b.lineHours, 1)} hr</td>
@@ -393,7 +399,10 @@ function LabourTable({
                           <tbody>
                             {row.breakdown.map((b, i) => (
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-purple-50/30">
-                                <td className="px-3 py-1.5 text-slate-700 max-w-[320px] truncate" title={b.fullDescription ?? b.itemDescription}>{b.itemDescription}</td>
+                                <td className="px-3 py-1.5 text-slate-700 max-w-[420px]" title={b.fullDescription ?? b.itemDescription}>
+                                  {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 100 ? t.slice(0, 100) + "…" : t; })()}
+                                </td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.daysPerUnit, 4)}</td>
                                 <td className="px-2 py-1.5 text-right font-mono text-slate-600">{fmtQty(b.workQty, 2)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-purple-700">{fmtQty(b.lineDays, 1)} day</td>

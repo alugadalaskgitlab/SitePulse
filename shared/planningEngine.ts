@@ -374,7 +374,7 @@ export interface BomMaterialRow {
   hasAutoSource: boolean;
   /** "direct" = quarry/site supply; "plant" = processed at HMP or RMC; undefined = manual/unknown */
   supplyType?: "direct" | "plant";
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
 }
 
 export interface BomEquipmentRow {
@@ -382,14 +382,14 @@ export interface BomEquipmentRow {
   count: number;
   totalHours: number;
   monthlyHours: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; hrsPerUnit: number; workQty: number; lineHours: number }>;
 }
 
 export interface BomLabourRow {
   designation: string;
   totalDays: number;
   monthlyDays: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; daysPerUnit: number; workQty: number; lineDays: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; daysPerUnit: number; workQty: number; lineDays: number }>;
 }
 
 export interface BomDemand {
@@ -401,6 +401,7 @@ export interface BomDemand {
 export interface BomInputItem {
   id: number;
   description: string;
+  itemCode?: string | null;
   itemName?: string | null;
   unit: string;
   currentQty: number; // total BOQ qty
@@ -520,7 +521,7 @@ export function calculateBomDemand(
         // keep the "most restrictive" supplyType: if any breakdown entry is plant, mark as plant
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }
@@ -540,7 +541,7 @@ export function calculateBomDemand(
       row.equipmentName = preferDisplayName(row.equipmentName, display);
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
       }
@@ -557,7 +558,7 @@ export function calculateBomDemand(
       const row = labMap.get(key)!;
       row.designation = preferDisplayName(row.designation, l.designation);
       row.totalDays += lineDays;
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
@@ -844,15 +845,24 @@ export function deriveMaterialsFromLayerConfig(
   }
 
   if (layerConfig.layerType === "granular") {
+    const granNorm = normaliseMixType(layerConfig.mixType ?? "");
     if (layerConfig.granularSource === "plant") {
-      return [{ materialName: "WMM (Processed)", uom: "MT", qtyPerBoqUnit: 1.0, isAuto: true }];
+      // Plant-processed: expand into mix fractions if a template is linked; else generic label.
+      if (mixTemplate?.components?.length) {
+        return mixTemplate.components
+          .filter((c) => (c.percent ?? 0) > 0)
+          .map((c) => ({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: (c.percent ?? 0) / 100, isAuto: true as const }));
+      }
+      const plantLabel = granNorm === "GSB" ? "GSB (Processed)" : granNorm === "WBM" ? "WBM (Processed)" : "WMM (Processed)";
+      return [{ materialName: plantLabel, uom: "MT", qtyPerBoqUnit: 1.0, isAuto: true }];
     }
-    if (mixTemplate?.components?.length) {
-      return mixTemplate.components
-        .filter((c) => (c.percent ?? 0) > 0)
-        .map((c) => ({ materialName: c.materialName, uom: "CUM", qtyPerBoqUnit: (c.percent ?? 0) / 100, isAuto: true as const }));
-    }
-    return [{ materialName: "Aggregate", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
+    // Direct supply (quarry/crusher): one practical procurement line — no grading fractions.
+    const directLabel =
+      granNorm === "GSB" ? "GSB Material" :
+      granNorm === "WMM" ? "WMM Material" :
+      granNorm === "WBM" ? "WBM Material" :
+      "Granular Material";
+    return [{ materialName: directLabel, uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
   }
 
   if (layerConfig.layerType === "bituminous") {

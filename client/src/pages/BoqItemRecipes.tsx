@@ -1339,7 +1339,7 @@ function MapToNormModal({ item, onClose }: { item: BoqItemWithCategory; onClose:
             data-testid="button-apply-norm"
           >
             {applyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
-            Apply Norms
+            Apply Selected Norm
           </Button>
         </DialogFooter>
       </DialogContent>
