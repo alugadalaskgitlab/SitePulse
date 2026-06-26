@@ -627,9 +627,11 @@ function SnlMappingPanel({
   });
 
   const autoMapAllMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/snl/auto-map-all`, {}),
-    onSuccess: (data: any) => {
-      const d = data as { autoMapped: number; needsReview: number; unmapped: number };
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/auto-map-all`, {});
+      return res.json() as Promise<{ autoMapped: number; needsReview: number; unmapped: number }>;
+    },
+    onSuccess: (d) => {
       toast({ title: `Auto-mapped ${d.autoMapped} items. ${d.needsReview} need review. ${d.unmapped} unmapped.` });
       onMapped();
     },
@@ -637,9 +639,11 @@ function SnlMappingPanel({
   });
 
   const confirmReviewMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/snl/confirm-review`, {}),
-    onSuccess: (data: any) => {
-      const d = data as { confirmed: number; skipped: number };
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/snl/confirm-review`, {});
+      return res.json() as Promise<{ confirmed: number; skipped: number }>;
+    },
+    onSuccess: (d) => {
       toast({ title: `Confirmed ${d.confirmed} suggestion${d.confirmed === 1 ? "" : "s"}.${d.skipped > 0 ? ` ${d.skipped} skipped (low confidence).` : ""}` });
       onMapped();
     },

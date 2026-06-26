@@ -681,7 +681,7 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
   avgConfidence: number;
   ruleMatched: number;
 }> {
-  // Map only the items that still need attention
+  // Snapshot the pending set BEFORE running so the summary reflects only what changed.
   const pending = await db
     .select({ id: boqItems.id })
     .from(boqItems)
@@ -692,30 +692,39 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
       ),
     );
 
-  if (pending.length > 0) {
-    await autoMapBoqItems(pending.map(r => r.id));
+  const pendingIds = pending.map(r => r.id);
+  const totalItems = await db
+    .select({ id: boqItems.id })
+    .from(boqItems)
+    .where(eq(boqItems.boqProjectId, boqProjectId))
+    .then(r => r.length);
+
+  if (pendingIds.length === 0) {
+    return { totalItems, autoMapped: 0, needsReview: 0, unmapped: 0, avgConfidence: 0, ruleMatched: 0 };
   }
 
-  // Propagate to duplicates across the whole project
+  await autoMapBoqItems(pendingIds);
+
+  // Propagate across the whole project (may bring in propagated gains from other already-mapped items)
   await propagateDuplicateMappings(boqProjectId);
 
-  // Read final state
-  const finalItems = await db
+  // Re-read status of the formerly-pending items to accurately report what changed.
+  const pendingAfter = await db
     .select({ id: boqItems.id, mappingStatus: boqItems.mappingStatus })
     .from(boqItems)
-    .where(eq(boqItems.boqProjectId, boqProjectId));
+    .where(inArray(boqItems.id, pendingIds));
 
-  const finalMappings = await db
+  const pendingMappings = await db
     .select({ boqItemId: snlBoqMappings.boqItemId, confidenceScore: snlBoqMappings.confidenceScore, mappedBy: snlBoqMappings.mappedBy })
     .from(snlBoqMappings)
-    .where(inArray(snlBoqMappings.boqItemId, finalItems.map(i => i.id)));
+    .where(inArray(snlBoqMappings.boqItemId, pendingIds));
 
-  const mappingMap = new Map(finalMappings.map(m => [m.boqItemId, m]));
+  const mappingMap = new Map(pendingMappings.map(m => [m.boqItemId, m]));
 
   let autoMapped = 0, needsReview = 0, unmapped = 0, ruleMatched = 0;
   let confSum = 0, confCount = 0;
 
-  for (const item of finalItems) {
+  for (const item of pendingAfter) {
     if (item.mappingStatus === "mapped") {
       autoMapped++;
       const m = mappingMap.get(item.id);
@@ -729,7 +738,7 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
   }
 
   return {
-    totalItems: finalItems.length,
+    totalItems,
     autoMapped,
     needsReview,
     unmapped,
