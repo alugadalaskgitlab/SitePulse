@@ -1,10 +1,10 @@
 import { useMemo, useState, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
-  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info,
+  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -765,6 +765,7 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
 export default function WorkDemand() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState("materials");
 
   const { data: project } = useQuery<BoqProject>({
@@ -829,11 +830,11 @@ export default function WorkDemand() {
     const driving = items.filter(it => (it.materials?.length ?? 0) > 0 || !!it.materialSetupWarning);
     const readyCount = driving.filter(it => (it.materials?.length ?? 0) > 0 && !it.materialSetupWarning).length;
     const blocked = driving.filter(it => !!it.materialSetupWarning);
-    const groups = new Map<string, { reason: string; items: { itemCode?: string | null; description: string }[] }>();
+    const groups = new Map<string, { reason: string; items: { id: number; itemCode?: string | null; description: string }[] }>();
     for (const it of blocked) {
       const reason = it.materialSetupWarning as string;
       if (!groups.has(reason)) groups.set(reason, { reason, items: [] });
-      groups.get(reason)!.items.push({ itemCode: it.itemCode, description: it.description });
+      groups.get(reason)!.items.push({ id: it.id, itemCode: it.itemCode, description: it.description });
     }
     return {
       total: driving.length,
@@ -1038,8 +1039,18 @@ export default function WorkDemand() {
                           </div>
                           <ul className="mt-1 ml-5 space-y-0.5">
                             {g.items.slice(0, 6).map((it, j) => (
-                              <li key={j} className="text-[11px] text-slate-600 truncate">
-                                {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                              <li key={j} className="flex items-center gap-2 text-[11px] text-slate-600">
+                                <span className="truncate flex-1 min-w-0">
+                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/work-program/${projectId}?recipeItem=${it.id}`)}
+                                  className="flex-shrink-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                                  data-testid={`button-configure-item-${it.id}`}
+                                >
+                                  <Settings2 className="w-3 h-3" /> Configure
+                                </button>
                               </li>
                             ))}
                             {g.items.length > 6 && (

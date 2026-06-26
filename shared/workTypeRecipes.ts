@@ -49,7 +49,7 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
 
   // ── Bituminous spray works ──────────────────────────────────────────────────
   if (/tack\s*coat/i.test(d)) return "tack_coat";
-  if (/prime\s*coat/i.test(d)) return "prime_coat";
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
 
   // ── Bituminous wearing ──────────────────────────────────────────────────────
   if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";
@@ -379,3 +379,31 @@ export function buildLabourRows(
     };
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STANDARD CONCRETE DESIGN-MIX FALLBACK (kg/m³)
+// Used ONLY when the RMC module has no user-entered mix design for the grade.
+// The user's RMC JMF always takes precedence. Values are conservative MoRTH/IS
+// nominal site-mix approximations — replace with the project JMF for accuracy.
+// ──────────────────────────────────────────────────────────────────────────────
+export interface StandardConcreteDesign {
+  grade: string;
+  cementContent: number;
+  admixtureName: string | null;
+  admixtureDosage: number | null;
+  componentProportions: { cement: number; fineAgg: number; coarseAgg20: number; coarseAgg10: number };
+}
+
+export const STANDARD_CONCRETE_DESIGNS: Record<string, StandardConcreteDesign> = {
+  M10: { grade: "M10", cementContent: 220, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 220, fineAgg: 720, coarseAgg20: 730, coarseAgg10: 490 } },
+  M15: { grade: "M15", cementContent: 320, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 320, fineAgg: 700, coarseAgg20: 760, coarseAgg10: 500 } },
+  M20: { grade: "M20", cementContent: 360, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 360, fineAgg: 680, coarseAgg20: 770, coarseAgg10: 510 } },
+  M25: { grade: "M25", cementContent: 380, admixtureName: "PCE Superplasticiser", admixtureDosage: 0.8, componentProportions: { cement: 380, fineAgg: 660, coarseAgg20: 780, coarseAgg10: 520 } },
+  M30: { grade: "M30", cementContent: 400, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 400, fineAgg: 650, coarseAgg20: 790, coarseAgg10: 520 } },
+  M35: { grade: "M35", cementContent: 420, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 420, fineAgg: 640, coarseAgg20: 800, coarseAgg10: 530 } },
+  M40: { grade: "M40", cementContent: 440, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.2, componentProportions: { cement: 440, fineAgg: 620, coarseAgg20: 810, coarseAgg10: 540 } },
+  M45: { grade: "M45", cementContent: 360, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 360, fineAgg: 690, coarseAgg20: 720, coarseAgg10: 480 } },
+  M50: { grade: "M50", cementContent: 460, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.2, componentProportions: { cement: 460, fineAgg: 600, coarseAgg20: 820, coarseAgg10: 550 } },
+  PQC: { grade: "PQC (M40)", cementContent: 400, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 400, fineAgg: 650, coarseAgg20: 760, coarseAgg10: 480 } },
+  DLC: { grade: "DLC (lean)", cementContent: 150, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 150, fineAgg: 700, coarseAgg20: 760, coarseAgg10: 700 } },
+};

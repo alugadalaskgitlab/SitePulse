@@ -20,7 +20,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
-import { classifyWorkType } from "@shared/workTypeRecipes";
+import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9962,8 +9962,18 @@ export async function registerRoutes(
       case "pcc":
       case "rcc":
       case "pqc":
-      case "dlc":
-        return { layerType: "concrete" };
+      case "dlc": {
+        // Only real volumetric concrete pours demand RMC. Count/lump-sum items
+        // (toll booths = Nos, buildings = LS/Sqm) and pipe-laying items must NOT.
+        const uNorm = unit.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const isVolumetric = /^(CUM|CUB|M3|CU)$/.test(uNorm) || /cu\.?\s*m|cubic/i.test(unit);
+        if (!isVolumetric) return null;
+        if (/\bpipe|np\d|hume|hdpe/i.test(d)) return null;
+        return {
+          layerType: "concrete",
+          mixType: wt === "dlc" ? "DLC" : wt === "pqc" ? "PQC" : null,
+        };
+      }
       case "drain_masonry":
       default:
         return null;
@@ -10013,7 +10023,8 @@ export async function registerRoutes(
       const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
       for (const d of rmcDesigns) {
         if ((d as any).isActive === 0) continue;
-        const g = String(d.grade ?? "").toUpperCase();
+        // Normalise "M 25" / "M-25" → "M25" so detected grades match the RMC entry.
+        const g = String(d.grade ?? "").toUpperCase().replace(/[\s-]/g, "");
         if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
       }
 
@@ -10091,10 +10102,14 @@ export async function registerRoutes(
             const bitLinks = mixLinks.filter(l => l.mixTemplateId);
             if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
           }
-          // Concrete/RMC — resolve the mix design from the RMC module by detected grade.
+          // Concrete/RMC — prefer the user's RMC module mix design (by grade), then
+          // fall back to the deterministic standard design so concrete demand never
+          // silently blanks out. lc.mixType carries DLC/PQC when the description has
+          // no explicit M-grade.
+          const concreteKey = String(concreteGrade ?? (lc as any).mixType ?? "").toUpperCase().replace(/[\s-]/g, "");
           const concreteDesign =
-            lc.layerType === "concrete" && concreteGrade
-              ? (gradeToDesign.get(concreteGrade.toUpperCase()) ?? null)
+            lc.layerType === "concrete" && concreteKey
+              ? (gradeToDesign.get(concreteKey) ?? STANDARD_CONCRETE_DESIGNS[concreteKey] ?? null)
               : null;
 
           // Emulsion — derive the spraying rate from the BOQ description when the layer
@@ -10166,8 +10181,13 @@ export async function registerRoutes(
           }
         }
 
-        // P3 (no layerConfig): major layer item identified by description/category
-        if (materialDriving && !simpleDirect) {
+        // P3 (no layerConfig): major layer item identified by description/category.
+        // Only quantity-driven layer/pour items warrant a warning — count/lump-sum
+        // structures (toll booths = Nos, buildings = LS/Each) are not RMC-driven.
+        const p3UNorm = String(item.unit ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const p3IsVolUnit  = /^(CUM|CUB|M3|CU)$/.test(p3UNorm);
+        const p3IsAreaUnit = /^(SQM|SM|M2|MT|TON|T)$/.test(p3UNorm);
+        if (materialDriving && !simpleDirect && (p3IsVolUnit || p3IsAreaUnit)) {
           return {
             ...item,
             materials: [],
@@ -10318,9 +10338,10 @@ export async function registerRoutes(
       const workingDays = (project as any)?.workingDaysPerMonth ?? 26;
       const totalMonths = (project as any)?.totalMonths         ?? 18;
       const roadLengthKm = (project as any)?.roadLengthKm       ?? 0;
-      const fronts =
-        Math.max(1, Math.floor(Number(req.body?.fronts) || 0)) ||
-        Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+      const requestedFronts = Math.floor(Number(req.body?.fronts) || 0);
+      const fronts = requestedFronts >= 1
+        ? requestedFronts
+        : Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
 
       const seqItems = (items as any[])
         .filter((it) => (it.currentQty ?? 0) > 0)

@@ -1,0 +1,439 @@
+# SitePulse — Patch 17
+
+Fixes three issues you reported, with exact FIND/REPLACE blocks.
+**Prerequisite:** Patch 16 must already be applied (it added the
+`synthLayerConfigFromWorkType` helper and the `classifyWorkType` import).
+
+### What this patch fixes
+1. **Concrete BOM never linked to the RMC mix designs / kept saying "mix design required".**
+   - Your RMC module designs now take precedence **and** a deterministic
+     **MoRTH/IS standard design-mix fallback** kicks in so concrete demand
+     (Cement / Sand / 20mm / 10mm / Admixture) is never blank.
+   - Fixed the classifier bug: `/prime\s*coat/` did **not** match "**primer** coat"
+     (the extra "r"), so your two primer-coat items fell through to a generic
+     "setup required". Now matched.
+   - Lump-sum / count items (Toll Booth = Nos, Admin/Maintenance Building = LS/Sqm)
+     and pipe-laying items **no longer** falsely demand an RMC mix design.
+2. **"Setup required" rows now have a "Configure" button** that jumps straight to
+   that BOQ item's Layer Config dialog.
+3. **Auto-sequence wasn't splitting into reach-wise fronts** — a boolean-OR bug
+   forced `fronts = 1`. Now it defaults to multiple fronts based on road length.
+
+---
+
+## PART A — `shared/workTypeRecipes.ts`
+
+### A1. Fix the "primer coat" classifier miss
+
+**FIND:**
+
+```ts
+  if (/prime\s*coat/i.test(d)) return "prime_coat";
+```
+
+**REPLACE WITH:**
+
+```ts
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
+```
+
+### A2. Add the deterministic standard concrete design fallback
+
+**FIND** (the very end of the file — the closing of `buildLabourRows`):
+
+```ts
+    return {
+      designation: line.designation,
+      planningLabourTypeId: master?.id ?? null,
+      qtyPerBoqUnit,
+      count: line.count,
+      sortOrder: i,
+    };
+  });
+}
+```
+
+**REPLACE WITH:**
+
+```ts
+    return {
+      designation: line.designation,
+      planningLabourTypeId: master?.id ?? null,
+      qtyPerBoqUnit,
+      count: line.count,
+      sortOrder: i,
+    };
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STANDARD CONCRETE DESIGN-MIX FALLBACK (kg/m³)
+// Used ONLY when the RMC module has no user-entered mix design for the grade.
+// The user's RMC JMF always takes precedence. Values are conservative MoRTH/IS
+// nominal site-mix approximations — replace with the project JMF for accuracy.
+// ──────────────────────────────────────────────────────────────────────────────
+export interface StandardConcreteDesign {
+  grade: string;
+  cementContent: number;            // kg/m³
+  admixtureName: string | null;
+  admixtureDosage: number | null;   // % of cement weight
+  componentProportions: { cement: number; fineAgg: number; coarseAgg20: number; coarseAgg10: number };
+}
+
+export const STANDARD_CONCRETE_DESIGNS: Record<string, StandardConcreteDesign> = {
+  M10: { grade: "M10", cementContent: 220, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 220, fineAgg: 720, coarseAgg20: 730, coarseAgg10: 490 } },
+  M15: { grade: "M15", cementContent: 320, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 320, fineAgg: 700, coarseAgg20: 760, coarseAgg10: 500 } },
+  M20: { grade: "M20", cementContent: 360, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 360, fineAgg: 680, coarseAgg20: 770, coarseAgg10: 510 } },
+  M25: { grade: "M25", cementContent: 380, admixtureName: "PCE Superplasticiser", admixtureDosage: 0.8, componentProportions: { cement: 380, fineAgg: 660, coarseAgg20: 780, coarseAgg10: 520 } },
+  M30: { grade: "M30", cementContent: 400, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 400, fineAgg: 650, coarseAgg20: 790, coarseAgg10: 520 } },
+  M35: { grade: "M35", cementContent: 420, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 420, fineAgg: 640, coarseAgg20: 800, coarseAgg10: 530 } },
+  M40: { grade: "M40", cementContent: 440, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.2, componentProportions: { cement: 440, fineAgg: 620, coarseAgg20: 810, coarseAgg10: 540 } },
+  M45: { grade: "M45", cementContent: 360, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 360, fineAgg: 690, coarseAgg20: 720, coarseAgg10: 480 } },
+  M50: { grade: "M50", cementContent: 460, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.2, componentProportions: { cement: 460, fineAgg: 600, coarseAgg20: 820, coarseAgg10: 550 } },
+  // Pavement Quality Concrete — MoRTH min cement 350-425 kg/m³
+  PQC: { grade: "PQC (M40)", cementContent: 400, admixtureName: "PCE Superplasticiser", admixtureDosage: 1.0, componentProportions: { cement: 400, fineAgg: 650, coarseAgg20: 760, coarseAgg10: 480 } },
+  // Dry Lean Concrete — lean cementitious sub-base (~150 kg/m³, no admixture)
+  DLC: { grade: "DLC (lean)", cementContent: 150, admixtureName: null, admixtureDosage: null, componentProportions: { cement: 150, fineAgg: 700, coarseAgg20: 760, coarseAgg10: 700 } },
+};
+```
+
+---
+
+## PART B — `server/routes.ts`
+
+### B1. Import the standard designs
+
+**FIND** (added by Patch 16):
+
+```ts
+import { classifyWorkType } from "@shared/workTypeRecipes";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
+```
+
+### B2. Make the synthetic concrete config skip lump-sum / pipe items
+
+**FIND** (in `synthLayerConfigFromWorkType`, added by Patch 16):
+
+```ts
+      case "pcc":
+      case "rcc":
+      case "pqc":
+      case "dlc":
+        return { layerType: "concrete" }; // grade detected from description; design from RMC module
+```
+
+**REPLACE WITH:**
+
+```ts
+      case "pcc":
+      case "rcc":
+      case "pqc":
+      case "dlc": {
+        // Only real volumetric concrete pours demand RMC. Count/lump-sum items
+        // (toll booths = Nos, buildings = LS/Sqm) and pipe-laying items must NOT.
+        const uNorm = unit.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const isVolumetric = /^(CUM|CUB|M3|CU)$/.test(uNorm) || /cu\.?\s*m|cubic/i.test(unit);
+        if (!isVolumetric) return null;
+        if (/\bpipe|np\d|hume|hdpe/i.test(d)) return null;
+        return {
+          layerType: "concrete",
+          mixType: wt === "dlc" ? "DLC" : wt === "pqc" ? "PQC" : null, // grade still detected from desc
+        };
+      }
+```
+
+### B3. Normalise RMC design grade keys (tolerate "M 25" / "M-25")
+
+**FIND:**
+
+```ts
+      const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
+      for (const d of rmcDesigns) {
+        if ((d as any).isActive === 0) continue;
+        const g = String(d.grade ?? "").toUpperCase();
+        if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
+      }
+```
+
+**REPLACE WITH:**
+
+```ts
+      const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
+      for (const d of rmcDesigns) {
+        if ((d as any).isActive === 0) continue;
+        // Normalise "M 25" / "M-25" → "M25" so detected grades match the RMC entry.
+        const g = String(d.grade ?? "").toUpperCase().replace(/[\s-]/g, "");
+        if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
+      }
+```
+
+### B4. Resolve concrete via RMC design first, then the standard fallback
+
+**FIND:**
+
+```ts
+          // Concrete/RMC — resolve the mix design from the RMC module by detected grade.
+          const concreteDesign =
+            lc.layerType === "concrete" && concreteGrade
+              ? (gradeToDesign.get(concreteGrade.toUpperCase()) ?? null)
+              : null;
+```
+
+**REPLACE WITH:**
+
+```ts
+          // Concrete/RMC — prefer the user's RMC module mix design (by grade), then
+          // fall back to the deterministic standard design so concrete demand never
+          // silently blanks out. lc.mixType carries DLC/PQC when the description has
+          // no explicit M-grade.
+          const concreteKey = String(concreteGrade ?? lc.mixType ?? "").toUpperCase().replace(/[\s-]/g, "");
+          const concreteDesign =
+            lc.layerType === "concrete" && concreteKey
+              ? (gradeToDesign.get(concreteKey) ?? STANDARD_CONCRETE_DESIGNS[concreteKey] ?? null)
+              : null;
+```
+
+### B5. Stop flagging lump-sum items as "setup required"
+
+**FIND:**
+
+```ts
+        // P3 (no layerConfig): major layer item identified by description/category
+        if (materialDriving && !simpleDirect) {
+          return {
+            ...item,
+            materials: [],
+            materialSetupWarning: isConcreteLayerOrItem(item)
+              ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+              : isBituminousLayerOrItem(item)
+              ? "Mix template/JMF required for bituminous material demand"
+              : "Layer/mix setup required for material demand",
+            isProgrammed: barItemIds.has(item.id),
+          };
+        }
+```
+
+**REPLACE WITH:**
+
+```ts
+        // P3 (no layerConfig): major layer item identified by description/category.
+        // Only quantity-driven layer/pour items warrant a warning — count/lump-sum
+        // structures (toll booths = Nos, buildings = LS/Each) are not RMC-driven.
+        const p3UNorm = String(item.unit ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const p3IsVolUnit  = /^(CUM|CUB|M3|CU)$/.test(p3UNorm);
+        const p3IsAreaUnit = /^(SQM|SM|M2|MT|TON|T)$/.test(p3UNorm);
+        if (materialDriving && !simpleDirect && (p3IsVolUnit || p3IsAreaUnit)) {
+          return {
+            ...item,
+            materials: [],
+            materialSetupWarning: isConcreteLayerOrItem(item)
+              ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+              : isBituminousLayerOrItem(item)
+              ? "Mix template/JMF required for bituminous material demand"
+              : "Layer/mix setup required for material demand",
+            isProgrammed: barItemIds.has(item.id),
+          };
+        }
+```
+
+### B6. Fix the auto-sequence "fronts = 1" bug (THE reason no reach-wise split)
+
+`Math.max(1, Math.floor(Number(req.body?.fronts) || 0))` is **always ≥ 1 (truthy)**,
+so the `|| <multi-front default>` after it never ran — every run collapsed to a
+single "Full Length" bar.
+
+**FIND:**
+
+```ts
+      const fronts =
+        Math.max(1, Math.floor(Number(req.body?.fronts) || 0)) ||
+        Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+```
+
+**REPLACE WITH:**
+
+```ts
+      const requestedFronts = Math.floor(Number(req.body?.fronts) || 0);
+      const fronts = requestedFronts >= 1
+        ? requestedFronts
+        : Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+```
+
+---
+
+## PART C — `client/src/pages/WorkDemand.tsx` ("Configure" button)
+
+### C1. Add the Settings2 icon
+
+**FIND:**
+
+```ts
+  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info,
+```
+
+**REPLACE WITH:**
+
+```ts
+  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2,
+```
+
+### C2. Add navigation
+
+**FIND:**
+
+```ts
+import { useParams, Link } from "wouter";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { useParams, Link, useLocation } from "wouter";
+```
+
+**FIND:**
+
+```ts
+  const params = useParams<{ id: string }>();
+  const projectId = parseInt(params.id);
+```
+
+**REPLACE WITH:**
+
+```ts
+  const params = useParams<{ id: string }>();
+  const projectId = parseInt(params.id);
+  const [, navigate] = useLocation();
+```
+
+### C3. Carry the item id into the readiness groups
+
+**FIND:**
+
+```ts
+    const groups = new Map<string, { reason: string; items: { itemCode?: string | null; description: string }[] }>();
+```
+
+**REPLACE WITH:**
+
+```ts
+    const groups = new Map<string, { reason: string; items: { id: number; itemCode?: string | null; description: string }[] }>();
+```
+
+**FIND:**
+
+```ts
+      groups.get(reason)!.items.push({ itemCode: it.itemCode, description: it.description });
+```
+
+**REPLACE WITH:**
+
+```ts
+      groups.get(reason)!.items.push({ id: it.id, itemCode: it.itemCode, description: it.description });
+```
+
+### C4. Render the "Configure" button on each blocked item
+
+**FIND:**
+
+```tsx
+                            {g.items.slice(0, 6).map((it, j) => (
+                              <li key={j} className="text-[11px] text-slate-600 truncate">
+                                {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                              </li>
+                            ))}
+```
+
+**REPLACE WITH:**
+
+```tsx
+                            {g.items.slice(0, 6).map((it, j) => (
+                              <li key={j} className="flex items-center gap-2 text-[11px] text-slate-600">
+                                <span className="truncate flex-1 min-w-0">
+                                  {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/work-program/${projectId}?recipeItem=${it.id}`)}
+                                  className="flex-shrink-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                                  data-testid={`button-configure-item-${it.id}`}
+                                >
+                                  <Settings2 className="w-3 h-3" /> Configure
+                                </button>
+                              </li>
+                            ))}
+```
+
+---
+
+## PART D — `client/src/pages/BoqProjectDetail.tsx` (open the dialog on deep-link)
+
+### D1. Import useEffect
+
+**FIND:**
+
+```ts
+import { useState, useMemo } from "react";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { useState, useMemo, useEffect } from "react";
+```
+
+### D2. Open the recipe dialog when `?recipeItem=<id>` is present
+
+**FIND:**
+
+```ts
+  const zeroQtyItems = items.filter(i => (i.boqQty ?? 0) <= 0);
+```
+
+**REPLACE WITH:**
+
+```ts
+  // Deep-link: open the Layer Config dialog for ?recipeItem=<id> (from BOM "Configure" buttons)
+  useEffect(() => {
+    if (!items.length) return;
+    const rid = new URLSearchParams(window.location.search).get("recipeItem");
+    if (!rid) return;
+    const target = items.find(it => String(it.id) === rid);
+    if (target) {
+      setRecipeItem(target);
+      navigate(`/work-program/${projectId}`, { replace: true });
+    }
+  }, [items]);
+
+  const zeroQtyItems = items.filter(i => (i.boqQty ?? 0) <= 0);
+```
+
+> The recipe dialog already opens on the **Layer Config** tab by default, so the
+> user lands exactly where they can set the mix/layer.
+
+---
+
+## Verify after applying (on Replit)
+
+1. `npm run check` (TypeScript), then **rebuild/restart** the app.
+2. **Work Programme → Auto-build recipes → Auto-sequence.** The Gantt should now
+   show **multiple stretch rows per item** with different chainage ranges
+   (e.g. `Ch 0–11.5`, `11.5–23`, …) and staggered start months — i.e. real
+   reach-wise fronts. The toast should read *"… across N reach-wise fronts"* with
+   N ≥ 2 (for a ~46 km road, N = 4).
+3. **BOM & Demand → Materials.** Concrete items (M25 / M35 / M45 / PQC / DLC) now
+   list **Cement / Sand / 20mm / 10mm / Admixture** — from your RMC design if it
+   exists for that grade, otherwise from the standard fallback. The two **primer**
+   items now derive **Primer (Bitumen Emulsion)**.
+4. The "Setup required" panel should drop to near-zero. Any remaining row has a
+   **Configure** button → click it to jump straight into that item's Layer Config.
+5. Toll Booth / Building / pipe items should no longer appear as "mix design required".
+
+> **Note:** The standard concrete fallback is a safe default. For exact quantities,
+> still enter your real JMF in the **RMC module** — it overrides the fallback
+> automatically (grade match is now space/dash tolerant).

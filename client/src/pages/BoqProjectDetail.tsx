@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
@@ -1330,6 +1330,18 @@ export default function BoqProjectDetail() {
     },
     enabled: !isNaN(projectId),
   });
+
+  // Deep-link: open the Layer Config dialog for ?recipeItem=<id> (from BOM "Configure" buttons)
+  useEffect(() => {
+    if (!items.length) return;
+    const rid = new URLSearchParams(window.location.search).get("recipeItem");
+    if (!rid) return;
+    const target = items.find(it => String(it.id) === rid);
+    if (target) {
+      setRecipeItem(target);
+      navigate(`/work-program/${projectId}`, { replace: true });
+    }
+  }, [items]);
 
   const zeroQtyItems = items.filter(i => (i.boqQty ?? 0) <= 0);
   const cleanupZeroQtyMutation = useMutation({
