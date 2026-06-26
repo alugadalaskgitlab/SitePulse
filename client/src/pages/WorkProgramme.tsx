@@ -1566,6 +1566,22 @@ export default function WorkProgramme() {
     onError: () => toast({ title: "Auto-generate failed", variant: "destructive" }),
   });
 
+  const autoBuildRecipesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-build-recipes`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { recipied?: number; totalItems?: number; unrecipiedCount?: number }) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "item-equipment"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Recipes built",
+        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${data?.unrecipiedCount ? ` · ${data.unrecipiedCount} need a work-type` : ""}.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+  });
+
   function handleAutoGenerate() {
     if (!effectiveProject) return;
     const programmedIds = new Set(bars.map(b => b.boqItemId));
@@ -1662,6 +1678,22 @@ export default function WorkProgramme() {
           </p>
         </div>
         <div className="flex gap-2">
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => autoBuildRecipesMutation.mutate()}
+              disabled={autoBuildRecipesMutation.isPending}
+              data-testid="button-auto-build-recipes"
+              title="Classify every BOQ item by work-type and attach equipment + labour from the planning master. Durations and the Gantt come from these."
+            >
+              {autoBuildRecipesMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Sparkles className="w-4 h-4 mr-1" />}
+              Auto-build recipes
+            </Button>
+          )}
           {items.length > 0 && (
             <Button
               variant="outline"

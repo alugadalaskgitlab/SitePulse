@@ -9892,7 +9892,8 @@ export async function registerRoutes(
 
   function detectConcreteGrade(text: string): string | null {
     const s = String(text ?? "").toUpperCase();
-    const m = s.match(/\bM\s*([0-9]{2,3})\b/);
+    // Accept "M15", "M-15", "M 15", "M -15", "GRADE M-25" etc. (dash/space tolerant)
+    const m = s.match(/\bM[\s-]*([0-9]{2,3})\b/);
     return m ? `M${m[1]}` : null;
   }
 
@@ -10235,6 +10236,61 @@ export async function registerRoutes(
       res.json(await storage.getPlanningEquipmentTypes(includeInactive));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch planning equipment types" });
+    }
+  });
+
+  // Auto-build equipment + labour recipes for every BOQ item — deterministic, no fuzzy matching.
+  app.post("/api/boq/projects/:id/auto-build-recipes", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { classifyWorkType, buildEquipmentRows, buildLabourRows } = await import("@shared/workTypeRecipes");
+
+      // Ensure the planning master is seeded with standard norms (idempotent).
+      await storage.seedPlanningMorthDefaults();
+
+      const [items, equipTypes, labourTypes] = await Promise.all([
+        storage.getBoqItems(projectId),
+        storage.getPlanningEquipmentTypes(false),
+        storage.getPlanningLabourTypes(false),
+      ]);
+
+      const equipIndex = new Map<string, { id: number; outputs: Array<{ unit: string; outputPerHr: number }> }>();
+      for (const t of equipTypes) equipIndex.set(t.name.toLowerCase(), { id: t.id, outputs: (t.standardOutputs ?? []) as Array<{ unit: string; outputPerHr: number }> });
+      const labourIndex = new Map<string, { id: number; outputs: Array<{ unit: string; outputPerDay: number }> }>();
+      for (const t of labourTypes) labourIndex.set(t.designation.toLowerCase(), { id: t.id, outputs: (t.standardOutputs ?? []) as Array<{ unit: string; outputPerDay: number }> });
+
+      let recipied = 0;
+      const unrecipied: Array<{ id: number; itemCode: string | null; description: string }> = [];
+      for (const item of items) {
+        const wt = classifyWorkType(item.description ?? "", item.unit ?? "");
+        if (!wt) {
+          unrecipied.push({ id: item.id, itemCode: (item as any).itemCode ?? null, description: item.description ?? "" });
+          continue;
+        }
+        const eqRows = buildEquipmentRows(wt, item.unit ?? "", equipIndex).map((r) => ({
+          equipmentName: r.equipmentName,
+          planningEquipmentTypeId: r.planningEquipmentTypeId,
+          qtyPerBoqUnit: r.qtyPerBoqUnit,
+          count: r.count,
+          sortOrder: r.sortOrder,
+        }));
+        const labRows = buildLabourRows(wt, item.unit ?? "", labourIndex).map((r) => ({
+          designation: r.designation,
+          planningLabourTypeId: r.planningLabourTypeId,
+          qtyPerBoqUnit: r.qtyPerBoqUnit,
+          count: r.count,
+          sortOrder: r.sortOrder,
+        }));
+        await storage.upsertBoqItemEquipment(item.id, eqRows);
+        await storage.upsertBoqItemLabour(item.id, labRows);
+        recipied++;
+      }
+
+      res.json({ success: true, totalItems: items.length, recipied, unrecipiedCount: unrecipied.length, unrecipied });
+    } catch (err) {
+      console.error("auto-build-recipes:", err);
+      res.status(500).json({ error: "Failed to auto-build recipes" });
     }
   });
 

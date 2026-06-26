@@ -1,0 +1,193 @@
+# SitePulse — Patch 14 · Auto-build recipes (the spine): equipment + labour for every item, deterministically
+
+This is the big one you asked for. **One click classifies every BOQ item by work-type and attaches
+equipment + labour from the Planning Master — no fuzzy SDB matching, no manual per-item mapping.**
+Durations, the Gantt equipment, fleet sizing and month-wise demand all flow from this.
+
+**How it works (3 layers, you author the top two once):**
+1. **Planning Master** — `planning_equipment_types` + `planning_labour_types` (already seeded by
+   `seedPlanningMorthDefaults()` with standard IRC/MoRTH outputs; edit fuel/outputs anytime).
+2. **Work-type recipe templates** — one recipe per work-type (frozen, in `shared/workTypeRecipes.ts`).
+3. **Auto-build** — deterministic classifier assigns each item its work-type → applies the template →
+   derives hours/days per unit from the master output norms. Items it can't confidently classify are
+   returned as **unrecipied** (no wrong guesses).
+
+> Labour realism: machine-executed work (earthwork/GSB/WMM/spray) gets **equipment, not volumetric
+> manual labour** — that manual norm (2 cum/day) applied to lakhs of cum is exactly what made labour
+> look insane. Concrete/bituminous/steel get their real productivity trades.
+
+**Files:** NEW `shared/workTypeRecipes.ts`; `server/routes.ts` (grade-detect fix + new endpoint);
+`client/src/pages/WorkProgramme.tsx` (button). After applying: `npm run check`.
+
+---
+
+## FILE 1 (NEW) — create `shared/workTypeRecipes.ts`
+> Copy the entire file content from the repo I prepared: **`/app/SP4/shared/workTypeRecipes.ts`**.
+> (Pure TS, no imports — classifier + recipe templates + row builders. Type-checked clean.)
+
+It exports: `classifyWorkType(description, unit)`, `WORK_TYPE_RECIPES`,
+`buildEquipmentRows(...)`, `buildLabourRows(...)`. The equipment/labour names in the templates match the
+`seedPlanningMorthDefaults()` master names exactly (Hydraulic Excavator (0.9 CUM), Hot Mix Plant (120 T/hr),
+Transit Mixer (6 CUM), Mason (Form-work / Concrete), Steel Fixer (Rebar), etc.).
+
+---
+
+## FILE 2 — `server/routes.ts`
+
+### 2.1 Fix concrete grade detection (dash/space tolerant) — also helps RMC matching
+**FIND**
+```ts
+  function detectConcreteGrade(text: string): string | null {
+    const s = String(text ?? "").toUpperCase();
+    const m = s.match(/\bM\s*([0-9]{2,3})\b/);
+    return m ? `M${m[1]}` : null;
+  }
+```
+**REPLACE WITH**
+```ts
+  function detectConcreteGrade(text: string): string | null {
+    const s = String(text ?? "").toUpperCase();
+    // Accept "M15", "M-15", "M 15", "M -15", "GRADE M-25" etc. (dash/space tolerant)
+    const m = s.match(/\bM[\s-]*([0-9]{2,3})\b/);
+    return m ? `M${m[1]}` : null;
+  }
+```
+
+### 2.2 Add the auto-build endpoint
+**INSERT** this block right after the `app.get("/api/planning/equipment-types", …)` handler (just before
+`app.post("/api/planning/equipment-types", …)`):
+```ts
+  // Auto-build equipment + labour recipes for every BOQ item — deterministic, no fuzzy matching.
+  app.post("/api/boq/projects/:id/auto-build-recipes", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { classifyWorkType, buildEquipmentRows, buildLabourRows } = await import("@shared/workTypeRecipes");
+
+      // Ensure the planning master is seeded with standard norms (idempotent).
+      await storage.seedPlanningMorthDefaults();
+
+      const [items, equipTypes, labourTypes] = await Promise.all([
+        storage.getBoqItems(projectId),
+        storage.getPlanningEquipmentTypes(false),
+        storage.getPlanningLabourTypes(false),
+      ]);
+
+      const equipIndex = new Map<string, { id: number; outputs: Array<{ unit: string; outputPerHr: number }> }>();
+      for (const t of equipTypes) equipIndex.set(t.name.toLowerCase(), { id: t.id, outputs: (t.standardOutputs ?? []) as Array<{ unit: string; outputPerHr: number }> });
+      const labourIndex = new Map<string, { id: number; outputs: Array<{ unit: string; outputPerDay: number }> }>();
+      for (const t of labourTypes) labourIndex.set(t.designation.toLowerCase(), { id: t.id, outputs: (t.standardOutputs ?? []) as Array<{ unit: string; outputPerDay: number }> });
+
+      let recipied = 0;
+      const unrecipied: Array<{ id: number; itemCode: string | null; description: string }> = [];
+      for (const item of items) {
+        const wt = classifyWorkType(item.description ?? "", item.unit ?? "");
+        if (!wt) {
+          unrecipied.push({ id: item.id, itemCode: (item as any).itemCode ?? null, description: item.description ?? "" });
+          continue;
+        }
+        const eqRows = buildEquipmentRows(wt, item.unit ?? "", equipIndex).map((r) => ({
+          equipmentName: r.equipmentName,
+          planningEquipmentTypeId: r.planningEquipmentTypeId,
+          qtyPerBoqUnit: r.qtyPerBoqUnit,
+          count: r.count,
+          sortOrder: r.sortOrder,
+        }));
+        const labRows = buildLabourRows(wt, item.unit ?? "", labourIndex).map((r) => ({
+          designation: r.designation,
+          planningLabourTypeId: r.planningLabourTypeId,
+          qtyPerBoqUnit: r.qtyPerBoqUnit,
+          count: r.count,
+          sortOrder: r.sortOrder,
+        }));
+        await storage.upsertBoqItemEquipment(item.id, eqRows);
+        await storage.upsertBoqItemLabour(item.id, labRows);
+        recipied++;
+      }
+
+      res.json({ success: true, totalItems: items.length, recipied, unrecipiedCount: unrecipied.length, unrecipied });
+    } catch (err) {
+      console.error("auto-build-recipes:", err);
+      res.status(500).json({ error: "Failed to auto-build recipes" });
+    }
+  });
+```
+
+---
+
+## FILE 3 — `client/src/pages/WorkProgramme.tsx`
+
+### 3.1 Add the mutation (right after `autoGenMutation = useMutation({ … });`)
+**INSERT**
+```tsx
+  const autoBuildRecipesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-build-recipes`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { recipied?: number; totalItems?: number; unrecipiedCount?: number }) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "item-equipment"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Recipes built",
+        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${data?.unrecipiedCount ? ` · ${data.unrecipiedCount} need a work-type` : ""}.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+  });
+```
+
+### 3.2 Add the button (immediately before the existing "Auto-generate" button)
+**FIND**
+```tsx
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={handleAutoGenerate}
+```
+**REPLACE WITH**
+```tsx
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => autoBuildRecipesMutation.mutate()}
+              disabled={autoBuildRecipesMutation.isPending}
+              data-testid="button-auto-build-recipes"
+              title="Classify every BOQ item by work-type and attach equipment + labour from the planning master. Durations and the Gantt come from these."
+            >
+              {autoBuildRecipesMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Sparkles className="w-4 h-4 mr-1" />}
+              Auto-build recipes
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={handleAutoGenerate}
+```
+
+---
+
+## How to use (order on Replit)
+1. Apply Patch 10 + 12 + 13 (material demand from RMC/Masters, classifier, labour+pipes) if not yet.
+2. Apply this Patch 14. `npm run check`.
+3. Open **Work Programme** → click **Auto-build recipes**. Every item gets equipment + labour;
+   the toast tells you how many were recipied and how many need a work-type assigned.
+4. Click **Auto-generate** → bars now compute real durations (equipment shows on every bar).
+5. Open **BOM & Demand** → equipment + labour are now realistic and month-wise.
+
+## What you can tune
+- Output & fuel norms: **Planning Masters → Equipment Types / Labour Types** (edit any number).
+- Recipe templates (which equipment per work-type): `shared/workTypeRecipes.ts` → `WORK_TYPE_RECIPES`.
+
+## Next (after this lands)
+- Add `fuelNormLtrPerHr` column to `planning_equipment_types` (currently fuel lives on the operational
+  master) and surface "units needed" per bar on the Gantt.
+- Auto-sequencing (reach-wise, dependency-aware) so bars don't all start at Month 1.
