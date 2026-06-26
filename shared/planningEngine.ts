@@ -483,6 +483,24 @@ export interface BomInputBar {
 function canonResourceKey(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, " ");
 }
+
+// Collapse the many verbose SDB labour descriptions into standard trade designations
+// so the labour demand is a clean, realistic list (not 30 "Mazdoor for ..." variants).
+function normaliseDesignation(raw: string): string {
+  const d = String(raw ?? "").toLowerCase();
+  if (/mason/.test(d)) return "Mason";
+  if (/carpenter/.test(d)) return "Carpenter";
+  if (/bar\s*bend|blacksmith|steel\s*fixer|bar[-\s]*bending/.test(d)) return "Bar Bender / Blacksmith";
+  if (/fitter|welder/.test(d)) return "Fitter / Welder";
+  if (/\bmate\b/.test(d)) return "Mate";
+  if (/supervisor|mistr|foreman/.test(d)) return "Supervisor / Mistry";
+  if (/operator/.test(d)) return "Operator";
+  if (/driver/.test(d)) return "Driver";
+  if (/skilled/.test(d) && /mazdoor|labour|labor|worker|beldar/.test(d)) return "Mazdoor (Skilled)";
+  if (/mazdoor|beldar|unskilled|coolie|cooli|helper|\blabour\b|\blabor\b|worker/.test(d)) return "Mazdoor (Unskilled)";
+  return raw.trim();
+}
+
 // Prefer a readable (not ALL-CAPS) display name when merging case-variants.
 function preferDisplayName(existing: string, candidate: string): string {
   const allCaps = (s: string) => /[A-Z]/.test(s) && s === s.toUpperCase();
@@ -585,6 +603,22 @@ function isFlyAshBoqItem(item: BomInputItem): boolean {
   return normaliseUnit(item.unit) === "CUM" && /fly\s*ash/i.test(item.description);
 }
 
+// Pipes for cross-drainage / culvert works — a key procurement material taken by BOQ qty, by size.
+function isPipeBoqItem(item: BomInputItem): boolean {
+  const d = item.description;
+  if (/dismantl|removal|removing|breaking/i.test(d)) return false;
+  return /hume\s*pipe|\bnp[2-4]\b|rcc\s*pipe|spun\s*pipe|hdpe\s*pipe|reinforced\s*concrete\s*pipe/i.test(d);
+}
+
+function pipeMaterialName(item: BomInputItem): string {
+  const d = item.description;
+  const cls = /np4/i.test(d) ? "NP4" : /np3/i.test(d) ? "NP3" : /np2/i.test(d) ? "NP2" : /hdpe/i.test(d) ? "HDPE" : "";
+  const dia = d.match(/(\d{3,4})\s*mm/);
+  const size = dia ? `${dia[1]}mm dia` : "";
+  const base = /hdpe/i.test(d) ? "HDPE Pipe" : "RCC Hume Pipe";
+  return [base, cls && `(${cls})`, size].filter(Boolean).join(" ");
+}
+
 function earthworkMaterialName(item: BomInputItem): string {
   const d = item.description.toLowerCase();
   if (/fly\s*ash/.test(d)) return "Fly Ash";
@@ -601,6 +635,10 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
 
   if (/tmt|hysd|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(raw)) {
     return "TMT / Reinforcement Steel";
+  }
+
+  if (/hume\s*pipe|hdpe\s*pipe|rcc\s*pipe|\bnp[2-4]\b|spun\s*pipe/i.test(raw)) {
+    return raw; // pipes keep their size/class label
   }
 
   if (/gsb material/i.test(raw)) return "GSB Material";
@@ -650,6 +688,19 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
   if (isFlyAshBoqItem(item)) {
     rows.push({
       materialName: "Fly Ash",
+      uom: normaliseUnit(item.unit),
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 2b. Pipes for cross-drainage / culvert works: by BOQ qty, grouped by size/class.
+  if (isPipeBoqItem(item)) {
+    rows.push({
+      materialName: pipeMaterialName(item),
       uom: normaliseUnit(item.unit),
       qtyPerBoqUnit: 1,
       wastagePct: 0,
@@ -876,12 +927,13 @@ export function calculateBomDemand(
     for (const l of item.labour) {
       if (l.isClientSupplied) continue;
       const lineDays = l.qtyPerBoqUnit * workQty;
-      const key = canonResourceKey(l.designation);
+      const designation = normaliseDesignation(l.designation);
+      const key = canonResourceKey(designation);
       if (!labMap.has(key)) {
-        labMap.set(key, { designation: l.designation, totalDays: 0, monthlyDays: {}, breakdown: [] });
+        labMap.set(key, { designation, totalDays: 0, monthlyDays: {}, breakdown: [] });
       }
       const row = labMap.get(key)!;
-      row.designation = preferDisplayName(row.designation, l.designation);
+      row.designation = preferDisplayName(row.designation, designation);
       row.totalDays += lineDays;
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       for (const [month, mwq] of monthlyWork) {
