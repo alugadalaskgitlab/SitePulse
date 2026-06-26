@@ -565,24 +565,43 @@ function isReinforcementBoqItem(item: BomInputItem): boolean {
 }
 
 function isEarthworkBoqItem(item: BomInputItem): boolean {
-  if (normaliseUnit(item.unit) !== "CUM") return false;
+  const desc = item.description.toLowerCase();
+  const unit = normaliseUnit(item.unit);
+
+  if (unit !== "CUM") return false;
+
+  if (
+    /foundation|footing|abutment|pier|wing\s*wall|return\s*wall|drain|culvert|pipe|trench|structure|back\s*filling|backfilling|behind\s*abutment|behind\s*wall|filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)
+  ) {
+    return false;
+  }
+
   return (
-    /earthwork|embankment|subgrade|shoulder|median\s*filling|borrow\s*soil|selected\s*soil|soil\s*fill|filling/i.test(item.description) &&
-    !/filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(item.description)
+    /embankment|subgrade|earthen\s*shoulder|shoulder|median\s*filling|borrow\s*soil|selected\s*soil/i.test(desc)
   );
+}
+
+function isFlyAshBoqItem(item: BomInputItem): boolean {
+  return normaliseUnit(item.unit) === "CUM" && /fly\s*ash/i.test(item.description);
 }
 
 function earthworkMaterialName(item: BomInputItem): string {
   const d = item.description.toLowerCase();
+  if (/fly\s*ash/.test(d)) return "Fly Ash";
   if (/selected\s*soil|subgrade/.test(d)) return "Selected Soil / Subgrade Material";
   if (/shoulder/.test(d)) return "Shoulder Earth / Soil";
   if (/median/.test(d)) return "Median Fill Material";
+  if (/embankment|borrow\s*soil/.test(d)) return "Earth / Borrow Soil";
   return "Earth / Borrow Soil";
 }
 
 function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
   const raw = m.materialName || "";
   const desc = item.description;
+
+  if (/tmt|hysd|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(raw)) {
+    return "TMT / Reinforcement Steel";
+  }
 
   if (/gsb material/i.test(raw)) return "GSB Material";
   if (/wmm material/i.test(raw)) return "WMM Material";
@@ -626,7 +645,21 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
     return rows;
   }
 
-  // 2. Earthwork/fill: use BOQ quantity directly.
+  // 2. Fly ash: keep separate from borrow earth.
+  if (isFlyAshBoqItem(item)) {
+    rows.push({
+      materialName: "Fly Ash",
+      uom: normaliseUnit(item.unit),
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 3. Main road earthwork/fill only: use BOQ quantity directly.
+  // Does not include foundation excavation, structural backfilling, drains, walls, abutments.
   if (isEarthworkBoqItem(item)) {
     rows.push({
       materialName: earthworkMaterialName(item),
@@ -733,22 +766,10 @@ export function calculateBomDemand(
       const lineQty = effQtyPerUnit * workQty;
       if (lineQty <= 0) continue;
 
-      const lc = item.layerConfig;
-      const norm = normaliseBomMaterial({
-        materialName: m.materialName,
-        uom: m.uom,
-        sourceType: m.isAuto ? "Derived" : "Manual",
-        itemDescription: item.description,
-        itemCode: item.itemCode,
-        workCategory: item.workCategory,
-        layerType: (lc as any)?.layerType ?? null,
-        mixType: (lc as any)?.mixType ?? null,
-        granularSource: (lc as any)?.granularSource ?? null,
-        supplyType: m.supplyType,
-        isAuto: m.isAuto,
-      });
-
-      const finalName = normaliseKeyMaterialName(item, { ...m, materialName: norm.displayMaterialName });
+      // Key material rows are already deliberately generated/allowed.
+      // Do not pass through normaliseBomMaterial() — it reads BOQ description and
+      // can wrongly rename steel as cement, earth as another category, etc.
+      const finalName = normaliseKeyMaterialName(item, m);
       const key = canonResourceKey(finalName);
 
       if (!matMap.has(key)) {
@@ -995,6 +1016,7 @@ const MATERIAL_GROUP_ORDER: readonly string[] = [
   "wmm material",
 
   "earth / borrow soil",
+  "fly ash",
   "selected soil / subgrade material",
   "shoulder earth / soil",
   "median fill material",

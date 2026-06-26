@@ -1,0 +1,304 @@
+# SitePulse — PATCH 8H-FIX1: Fix wrong Earth and Steel grouping in Key Material BOM
+
+Current issue after Patch 8H:
+Material BOM is restricted to 5 groups, but grouping is wrong.
+
+Observed wrong output:
+
+1. `Earth / Borrow Soil` includes:
+
+   * foundation excavation
+   * roadway excavation
+   * fly ash
+   * backfilling behind walls/abutments
+     These should not all be borrow earth.
+
+2. `Cement` includes all HYSD/TMT reinforcement rows.
+   Reinforcement rows must show as `TMT / Reinforcement Steel`, not Cement.
+
+Root causes:
+
+1. `isEarthworkBoqItem()` is too broad.
+2. The key material row loop calls `normaliseBomMaterial()` again, which can override generated key material names based on BOQ description.
+3. `normaliseKeyMaterialName()` does not preserve `TMT / Reinforcement Steel`.
+
+Do not change:
+
+* BOQ import
+* BOQ grouping
+* SNL mapping
+* Work Programme bars
+* Labour calculation
+* Equipment calculation
+* Stock
+* IRN/PI
+* Dashboard
+* UI layout
+
+Only edit:
+
+* `shared/planningEngine.ts`
+
+---
+
+## 1. Replace `isEarthworkBoqItem()`
+
+Find the existing function:
+
+```ts
+function isEarthworkBoqItem(item: BomInputItem): boolean {
+  const desc = item.description;
+  const unit = normaliseUnit(item.unit);
+
+  if (unit !== "CUM") return false;
+
+  return (
+    /earthwork|embankment|subgrade|shoulder|median\s*filling|borrow\s*soil|selected\s*soil|soil\s*fill|filling/i.test(desc) &&
+    !/filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)
+  );
+}
+```
+
+REPLACE with:
+
+```ts
+function isEarthworkBoqItem(item: BomInputItem): boolean {
+  const desc = item.description.toLowerCase();
+  const unit = normaliseUnit(item.unit);
+
+  if (unit !== "CUM") return false;
+
+  // Explicit exclusions: these are not borrow earth demand.
+  if (
+    /foundation|footing|abutment|pier|wing\s*wall|return\s*wall|drain|culvert|pipe|trench|structure|back\s*filling|backfilling|behind\s*abutment|behind\s*wall|filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)
+  ) {
+    return false;
+  }
+
+  // Only main road/formation earthwork should enter Material BOM V1.
+  return (
+    /embankment|subgrade|earthen\s*shoulder|shoulder|median\s*filling|borrow\s*soil|selected\s*soil/i.test(desc)
+  );
+}
+```
+
+---
+
+## 2. Add separate Fly Ash detection
+
+Add this helper immediately after `isEarthworkBoqItem()`:
+
+```ts
+function isFlyAshBoqItem(item: BomInputItem): boolean {
+  const desc = item.description.toLowerCase();
+  const unit = normaliseUnit(item.unit);
+
+  return unit === "CUM" && /fly\s*ash/i.test(desc);
+}
+```
+
+---
+
+## 3. Update `earthworkMaterialName()`
+
+Find:
+
+```ts
+function earthworkMaterialName(item: BomInputItem): string {
+  const desc = item.description.toLowerCase();
+
+  if (/selected\s*soil|subgrade/.test(desc)) return "Selected Soil / Subgrade Material";
+  if (/shoulder/.test(desc)) return "Shoulder Earth / Soil";
+  if (/median/.test(desc)) return "Median Fill Material";
+  if (/embankment/.test(desc)) return "Earth / Borrow Soil";
+
+  return "Earth / Borrow Soil";
+}
+```
+
+REPLACE with:
+
+```ts
+function earthworkMaterialName(item: BomInputItem): string {
+  const desc = item.description.toLowerCase();
+
+  if (/fly\s*ash/.test(desc)) return "Fly Ash";
+  if (/selected\s*soil|subgrade/.test(desc)) return "Selected Soil / Subgrade Material";
+  if (/shoulder/.test(desc)) return "Shoulder Earth / Soil";
+  if (/median/.test(desc)) return "Median Fill Material";
+  if (/embankment|borrow\s*soil/.test(desc)) return "Earth / Borrow Soil";
+
+  return "Earth / Borrow Soil";
+}
+```
+
+---
+
+## 4. Update `buildKeyMaterialRows()` for Fly Ash
+
+Inside `buildKeyMaterialRows(item)`, find this section:
+
+```ts
+// 2. Earthwork/fill: use BOQ quantity directly.
+if (isEarthworkBoqItem(item)) {
+  rows.push({
+    materialName: earthworkMaterialName(item),
+    uom: normaliseUnit(item.unit),
+    qtyPerBoqUnit: 1,
+    wastagePct: 0,
+    isClientSupplied: false,
+    isAuto: true,
+  });
+  return rows;
+}
+```
+
+REPLACE with:
+
+```ts
+// 2. Fly ash: keep separate from borrow earth.
+if (isFlyAshBoqItem(item)) {
+  rows.push({
+    materialName: "Fly Ash",
+    uom: normaliseUnit(item.unit),
+    qtyPerBoqUnit: 1,
+    wastagePct: 0,
+    isClientSupplied: false,
+    isAuto: true,
+  });
+  return rows;
+}
+
+// 3. Main road earthwork/fill only: use BOQ quantity directly.
+// Do not include foundation excavation, structural backfilling, drains, walls, abutments, etc.
+if (isEarthworkBoqItem(item)) {
+  rows.push({
+    materialName: earthworkMaterialName(item),
+    uom: normaliseUnit(item.unit),
+    qtyPerBoqUnit: 1,
+    wastagePct: 0,
+    isClientSupplied: false,
+    isAuto: true,
+  });
+  return rows;
+}
+```
+
+---
+
+## 5. Preserve steel name in `normaliseKeyMaterialName()`
+
+Inside `normaliseKeyMaterialName(item, m)`, add this at the very top after `raw`, `name`, and `desc` are defined:
+
+```ts
+if (/tmt|hysd|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(raw)) {
+  return "TMT / Reinforcement Steel";
+}
+```
+
+So the start should look like:
+
+```ts
+function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
+  const raw = m.materialName || "";
+  const name = raw.toLowerCase();
+  const desc = item.description.toLowerCase();
+
+  if (/tmt|hysd|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(raw)) {
+    return "TMT / Reinforcement Steel";
+  }
+
+  if (/gsb material/i.test(raw)) return "GSB Material";
+  if (/wmm material/i.test(raw)) return "WMM Material";
+```
+
+---
+
+## 6. Stop calling `normaliseBomMaterial()` inside the key material loop
+
+Inside `calculateBomDemand`, in the Materials V1 loop, find this block:
+
+```ts
+const lc = item.layerConfig;
+const norm = normaliseBomMaterial({
+  materialName: m.materialName,
+  uom: m.uom,
+  sourceType: m.isAuto ? "Derived" : "Manual",
+  itemDescription: item.description,
+  itemCode: item.itemCode,
+  workCategory: item.workCategory,
+  layerType: (lc as any)?.layerType ?? null,
+  mixType: (lc as any)?.mixType ?? null,
+  granularSource: (lc as any)?.granularSource ?? null,
+  supplyType: m.supplyType,
+  isAuto: m.isAuto,
+});
+
+const finalName = normaliseKeyMaterialName(item, {
+  ...m,
+  materialName: norm.displayMaterialName,
+});
+```
+
+REPLACE with:
+
+```ts
+// Key material rows are already deliberately generated/allowed.
+// Do not pass them through the old broad normaliseBomMaterial() again,
+// because that function may infer from BOQ description and wrongly rename steel as cement, etc.
+const finalName = normaliseKeyMaterialName(item, m);
+```
+
+This is the most important fix.
+
+---
+
+## 7. Add Fly Ash to `MATERIAL_GROUP_ORDER`
+
+Find `MATERIAL_GROUP_ORDER`.
+
+Add `"fly ash"` after `"earth / borrow soil"`.
+
+The start should become:
+
+```ts
+const MATERIAL_GROUP_ORDER = [
+  "gsb material",
+  "wmm material",
+
+  "earth / borrow soil",
+  "fly ash",
+  "selected soil / subgrade material",
+  "shoulder earth / soil",
+  "median fill material",
+```
+
+---
+
+## 8. Expected result after this fix
+
+On NH-167 Material BOM:
+
+1. HYSD/TMT rows must move from `Cement` to:
+
+   * `TMT / Reinforcement Steel`
+
+2. `Cement` should disappear unless actual concrete/RMC mix template provides cement.
+
+3. `Earth / Borrow Soil` should include only main embankment/borrow earth items.
+
+4. `Fly Ash` should show separately.
+
+5. Foundation excavation should not appear under borrow earth.
+
+6. Backfilling behind walls/abutments should not appear under borrow earth.
+
+7. Roadway excavation/removal of unsuitable soil should not appear under borrow earth unless explicitly treated as fill/borrow material.
+
+8. GSB/WMM should remain correct.
+
+9. Labour and Equipment unchanged.
+
+10. Work Programme unchanged.
+
+Run full tests after patch.
