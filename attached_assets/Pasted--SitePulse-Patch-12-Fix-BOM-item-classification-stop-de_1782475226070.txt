@@ -1,0 +1,103 @@
+# SitePulse — Patch 12 · Fix BOM item classification (stop demolition/bituminous-concrete false positives)
+
+**The bug you spotted:** the Material Readiness panel exposed a long-standing classifier defect:
+- **Demolition items** ("1.03 Dismantling structures … RCC Structures", "1.04 Dismantling of pavements … Pavement Quality Concrete") were flagged as needing an **RMC mix design** — they consume **no** concrete.
+- **"Bituminous Concrete"** ("4.04", "5.24 wearing coat … bituminous concrete") was routed to **Concrete/RMC** purely because the word "concrete" appears — it is a **bituminous** item and needs a JMF, not an RMC design.
+
+**Fix (key-materials-only, correctly classified):**
+- New `isNonConsumingItem()` guard → demolition / dismantling / removal / breaking / scarifying / milling items demand **nothing**.
+- `isConcreteLayerOrItem()` → excludes bituminous + non-consuming, requires a real concrete keyword (PCC/RCC/PQC/DLC/cement concrete/grade Mxx).
+- `isBituminousLayerOrItem()` → excludes non-consuming; correctly owns "bituminous concrete" / "wearing coat".
+- `isMaterialDrivingLayerItem()` → demolition excluded; concrete matching tightened (no bare `concrete` catch-all).
+
+**File changed:** `server/routes.ts` only (the BOM helper functions, just above `app.get("/api/boq/projects/:id/bom", …)`). Independent of Patch 10/11 — safe to apply on its own.
+
+---
+
+## CHANGE 1 — Add the non-consuming guard + tighten `isMaterialDrivingLayerItem`
+
+**FIND**
+```ts
+  // ── BOM helper functions ────────────────────────────────────────────────────
+  function isMaterialDrivingLayerItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    const cat = String(item.workCategory ?? "").toLowerCase();
+    if (lc?.layerType && lc.layerType !== "none") return true;
+    return (
+      /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|prime\s*coat|tack\s*coat|pcc|rcc|cement\s*concrete|concrete/i.test(desc) ||
+      /subbase|base|bituminous|concrete/i.test(cat)
+    );
+  }
+```
+**REPLACE WITH**
+```ts
+  // ── BOM helper functions ────────────────────────────────────────────────────
+  // Items that physically CONSUME no key material (demolition / removal / milling).
+  // These must never demand cement/RMC/bitumen/aggregate, regardless of the words
+  // (e.g. "Dismantling structures ... RCC", "Dismantling of pavements ... Concrete").
+  function isNonConsumingItem(desc: string): boolean {
+    return /\bdismantl|\bdemolit|\bdemolish|\bremoving\b|\bremoval\b|\bbreaking\b|\bscarif|\bmilling\b/i.test(desc);
+  }
+
+  function isMaterialDrivingLayerItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    const cat = String(item.workCategory ?? "").toLowerCase();
+    if (isNonConsumingItem(desc)) return false; // demolition/removal → no key material
+    if (lc?.layerType && lc.layerType !== "none") return true;
+    return (
+      /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat|prime\s*coat|tack\s*coat|\bpcc\b|\brcc\b|\bpqc\b|\bdlc\b|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|pavement\s*quality\s*concrete|dry\s*lean\s*concrete|concrete\s*of\s*grade/i.test(desc) ||
+      /subbase|base|bituminous|concrete/i.test(cat)
+    );
+  }
+```
+
+## CHANGE 2 — Tighten concrete / bituminous classifiers
+
+**FIND**
+```ts
+  function isConcreteLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    return lc?.layerType === "concrete" || /pcc|rcc|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|concrete/i.test(desc);
+  }
+
+  function isBituminousLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    return lc?.layerType === "bituminous" || /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc/i.test(desc);
+  }
+```
+**REPLACE WITH**
+```ts
+  function isConcreteLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    if (lc?.layerType === "concrete") return true;
+    if (lc?.layerType === "bituminous") return false;
+    if (isNonConsumingItem(desc)) return false;     // dismantling RCC/PQC → not a concrete pour
+    if (/bitumin/i.test(desc)) return false;          // "bituminous concrete" is bituminous, not RCC
+    return /\bpcc\b|\brcc\b|\bpqc\b|\bdlc\b|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|dry\s*lean\s*concrete|pavement\s*quality\s*concrete|cement\s*concrete|concrete\s*of\s*grade|grade\s*m\s*-?\s*\d{2}/i.test(desc);
+  }
+
+  function isBituminousLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    if (lc?.layerType === "bituminous") return true;
+    if (isNonConsumingItem(desc)) return false;     // dismantling bituminous layer → not a laying item
+    return /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat/i.test(desc);
+  }
+```
+
+---
+
+## Expected result after applying
+On **BOM & Demand → Materials → Material Readiness**:
+- "1.03 Dismantling structures … RCC", "1.04 Dismantling of pavements …" → **disappear** (consume nothing).
+- "4.04 Bituminous Concrete", "5.24 … bituminous concrete wearing coat" → **move** from *Concrete/RMC* to *Mix template/JMF required for bituminous*.
+- Real concrete pours stay under *Concrete/RMC mix design required*: 4.05 DLC, 4.06 PQC M45, 5.04 PCC M-15, etc.
+- The "needs setup" count drops to only the **genuine** key-material items.
+
+> No change to the demand math — only which items are recognised as key-material drivers.
+> The Material BOM itself already lists **only the key materials** (aggregates from JMF, bitumen by grade, emulsion by spray rate, cement + admixture from mix design, steel by BOQ qty, earth for embankment/subgrade/shoulder/median). Everything else is ignored by the allowlist — incidental materials never enter the BOM.

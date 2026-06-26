@@ -9856,13 +9856,21 @@ export async function registerRoutes(
   });
 
   // ── BOM helper functions ────────────────────────────────────────────────────
+  // Items that physically CONSUME no key material (demolition / removal / milling).
+  // These must never demand cement/RMC/bitumen/aggregate, regardless of the words
+  // (e.g. "Dismantling structures ... RCC", "Dismantling of pavements ... Concrete").
+  function isNonConsumingItem(desc: string): boolean {
+    return /\bdismantl|\bdemolit|\bdemolish|\bremoving\b|\bremoval\b|\bbreaking\b|\bscarif|\bmilling\b/i.test(desc);
+  }
+
   function isMaterialDrivingLayerItem(item: any): boolean {
     const lc = item.layerConfig as LayerConfig | null;
     const desc = String(item.description ?? "").toLowerCase();
     const cat = String(item.workCategory ?? "").toLowerCase();
+    if (isNonConsumingItem(desc)) return false; // demolition/removal → no key material
     if (lc?.layerType && lc.layerType !== "none") return true;
     return (
-      /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|prime\s*coat|tack\s*coat|pcc|rcc|cement\s*concrete|concrete/i.test(desc) ||
+      /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat|prime\s*coat|tack\s*coat|\bpcc\b|\brcc\b|\bpqc\b|\bdlc\b|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|pavement\s*quality\s*concrete|dry\s*lean\s*concrete|concrete\s*of\s*grade/i.test(desc) ||
       /subbase|base|bituminous|concrete/i.test(cat)
     );
   }
@@ -9891,13 +9899,19 @@ export async function registerRoutes(
   function isConcreteLayerOrItem(item: any): boolean {
     const lc = item.layerConfig as LayerConfig | null;
     const desc = String(item.description ?? "").toLowerCase();
-    return lc?.layerType === "concrete" || /pcc|rcc|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|concrete/i.test(desc);
+    if (lc?.layerType === "concrete") return true;
+    if (lc?.layerType === "bituminous") return false;
+    if (isNonConsumingItem(desc)) return false;     // dismantling RCC/PQC → not a concrete pour
+    if (/bitumin/i.test(desc)) return false;          // "bituminous concrete" is bituminous, not RCC
+    return /\bpcc\b|\brcc\b|\bpqc\b|\bdlc\b|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|dry\s*lean\s*concrete|pavement\s*quality\s*concrete|cement\s*concrete|concrete\s*of\s*grade|grade\s*m\s*-?\s*\d{2}/i.test(desc);
   }
 
   function isBituminousLayerOrItem(item: any): boolean {
     const lc = item.layerConfig as LayerConfig | null;
     const desc = String(item.description ?? "").toLowerCase();
-    return lc?.layerType === "bituminous" || /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc/i.test(desc);
+    if (lc?.layerType === "bituminous") return true;
+    if (isNonConsumingItem(desc)) return false;     // dismantling bituminous layer → not a laying item
+    return /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat/i.test(desc);
   }
 
   // BOM demand for the whole project
