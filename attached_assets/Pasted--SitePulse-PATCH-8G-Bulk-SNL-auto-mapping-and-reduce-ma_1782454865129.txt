@@ -1,0 +1,315 @@
+# SitePulse — PATCH 8G: Bulk SNL auto-mapping and reduce manual item-by-item confirmation
+
+Current issue:
+SNL mapping is too manual. The app shows:
+
+* 46 mapped
+* 22 review
+* 72 unmapped
+
+This is not acceptable for a standard road BOQ. User should not have to manually confirm/search/map each BOQ item.
+
+Goal:
+Make SNL mapping bulk-automatic, with manual review only for doubtful or special items.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* Work Programme bars
+* BOM material source gating
+* Stock
+* IRN/PI
+* Dashboard
+* Current Material BOM patch logic
+
+Primary files likely:
+
+* `server/snlAutoMapper.ts`
+* `server/routes.ts`
+* `shared/planningEngine.ts` only if mapping status affects BOM input
+* `client/src/pages/BOQPage.tsx` or wherever SNL Mapping modal is rendered
+
+---
+
+## 1. Change mapping philosophy
+
+Current behaviour:
+Many items are pushed into Review/Unmapped and require user confirmation.
+
+Required behaviour:
+Auto-map confidently and let user review exceptions.
+
+Mapping status rules:
+
+```ts
+if (confidence >= 0.70) {
+  status = "mapped";
+  autoConfirmed = true;
+}
+
+if (confidence >= 0.45 && confidence < 0.70) {
+  status = "review";
+}
+
+if (confidence < 0.45) {
+  status = "unmapped";
+}
+```
+
+But for strong rule-based matches, allow auto-confirm even if fuzzy score is lower.
+
+Examples:
+
+* GSB item → GSB SDB/SNL item
+* WMM item → WMM SDB/SNL item
+* DBM item → DBM SDB/SNL item
+* BC item → BC SDB/SNL item
+* Prime coat → prime coat SDB/SNL item
+* Tack coat → tack coat SDB/SNL item
+* PCC M15/M20/M25 etc. → matching concrete SDB/SNL item
+* HYSD/TMT reinforcement → steel reinforcement SDB/SNL item
+* Filter media → filter media SDB/SNL item
+* Stone pitching → stone pitching SDB/SNL item
+* Thermoplastic marking → thermoplastic road marking item
+* Kilometre stones / road furniture → road furniture/signage item
+
+---
+
+## 2. Add road BOQ rule-based matcher before fuzzy matching
+
+In `server/snlAutoMapper.ts`, add a rule layer before generic fuzzy scoring.
+
+Suggested helper:
+
+```ts
+function classifyBoqItemForSnl(description: string, itemCode?: string | null): string | null {
+  const d = String(description ?? "").toLowerCase();
+
+  if (/\bgsb\b|granular\s*sub[-\s]*base/.test(d)) return "GSB";
+  if (/\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/.test(d)) return "WMM";
+  if (/\bdbm\b|dense\s*bituminous\s*macadam/.test(d)) return "DBM";
+  if (/\bbc\b|bituminous\s*concrete/.test(d)) return "BC";
+  if (/\bbm\b|bituminous\s*macadam/.test(d)) return "BM";
+  if (/sdbc|semi\s*dense/.test(d)) return "SDBC";
+  if (/prime\s*coat/.test(d)) return "PRIME_COAT";
+  if (/tack\s*coat/.test(d)) return "TACK_COAT";
+
+  const concreteGrade = d.match(/\bm\s*([0-9]{2,3})\b/);
+  if (/pcc|plain\s*cement\s*concrete|cement\s*concrete/.test(d) && concreteGrade) {
+    return `PCC_M${concreteGrade[1]}`;
+  }
+  if (/rcc|reinforced\s*cement\s*concrete|concrete/.test(d) && concreteGrade) {
+    return `RCC_M${concreteGrade[1]}`;
+  }
+
+  if (/hysd|tmt|reinforcement|reinforcing\s*steel|steel\s*reinforcement/.test(d)) return "REINFORCEMENT_STEEL";
+  if (/binding\s*wire/.test(d)) return "BINDING_WIRE";
+
+  if (/filter\s*media/.test(d)) return "FILTER_MEDIA";
+  if (/stone\s*pitching|apron|boulder|stone\s*spalls/.test(d)) return "STONE_PITCHING";
+  if (/thermoplastic|road\s*marking/.test(d)) return "THERMOPLASTIC_MARKING";
+  if (/kilometre\s*stone|boundary\s*stone|hectometre/.test(d)) return "ROAD_STONES";
+  if (/sign\s*board|traffic\s*sign|cautionary|mandatory|informatory/.test(d)) return "SIGNAGE";
+  if (/crash\s*barrier|metal\s*beam/.test(d)) return "CRASH_BARRIER";
+  if (/expansion\s*joint|strip\s*seal|joint\s*sealant/.test(d)) return "JOINTS_SEALANTS";
+  if (/bearing|elastomeric/.test(d)) return "BEARINGS";
+  if (/pipe|culvert|np3|np4|hdpe/.test(d)) return "PIPE_CULVERT";
+
+  return null;
+}
+```
+
+Then map this classification to the best SDB/SNL row by searching SNL descriptions using keywords.
+
+Example:
+
+```ts
+GSB → SNL row containing granular sub-base / gsb
+WMM → SNL row containing wet mix macadam / wmm
+DBM → SNL row containing dense bituminous macadam / dbm
+BC → SNL row containing bituminous concrete / bc
+REINFORCEMENT_STEEL → SNL row containing hysd / tmt / reinforcement
+```
+
+If a rule-based match is found:
+
+```ts
+confidence = Math.max(confidence, 0.82)
+status = "mapped"
+mappingSource = "rule"
+```
+
+---
+
+## 3. Bulk confirm repeated descriptions
+
+Many BOQ items have the same or similar item code/description repeated.
+
+Required:
+When one BOQ item is mapped by a rule or user confirmation, automatically apply the same SNL mapping to duplicate/similar BOQ items in the same project.
+
+Duplicate key should be based on:
+
+* normalised description
+* unit
+* optionally item code prefix
+
+Helper:
+
+```ts
+function normaliseBoqDescriptionKey(desc: string, unit?: string | null): string {
+  return `${String(desc ?? "")
+    .toLowerCase()
+    .replace(/[0-9]+(\.[0-9]+)?/g, "#")
+    .replace(/\s+/g, " ")
+    .trim()}|${String(unit ?? "").toLowerCase()}`;
+}
+```
+
+If one item maps, all items with same key should map.
+
+This will reduce repetitive mapping for items like:
+
+* kilometre stones
+* road marking
+* repeated dismantling items
+* repeated concrete grades
+* repeated reinforcement rows
+
+---
+
+## 4. Add “Auto-map all” backend action
+
+Add or improve route:
+
+```http
+POST /api/boq/projects/:id/snl/auto-map-all
+```
+
+Behaviour:
+
+1. Run rule-based matcher.
+2. Run fuzzy matcher.
+3. Bulk apply duplicate-description mappings.
+4. Auto-confirm high-confidence matches.
+5. Return summary:
+
+```ts
+{
+  totalItems,
+  autoMapped,
+  needsReview,
+  unmapped,
+  avgConfidence,
+  mappings: [...]
+}
+```
+
+This route should not require clicking Confirm for every row.
+
+---
+
+## 5. Add UI action in SNL Mapping modal
+
+In the SNL Mapping modal, add button:
+
+```text
+Auto-map Remaining
+```
+
+Button action:
+
+* calls `/api/boq/projects/:id/snl/auto-map-all`
+* refreshes counts
+* shows toast:
+  `Auto-mapped 84 items. 14 need review. 8 unmapped.`
+
+Also add:
+
+```text
+Confirm All Review Suggestions
+```
+
+This should bulk-confirm all review items above a safe threshold, say confidence >= 0.55.
+
+Do not force user to open each item.
+
+---
+
+## 6. Review UI should be exception-based
+
+The modal should show:
+
+1. Auto-mapped count
+2. Review suggestions
+3. Unmapped items
+
+For review rows, allow:
+
+* Confirm this
+* Search alternative
+* Ignore for now
+
+For unmapped rows, allow:
+
+* Search
+* Mark as no SNL needed
+* Assign simple direct material/labour later
+
+---
+
+## 7. Labour mapping should auto-follow SNL mapping
+
+Once a BOQ item is mapped to SNL/SDB:
+
+* labour norms should be pulled automatically from that SNL/SDB item
+* user should not manually map labour item by item
+
+If no labour norm exists:
+
+* show warning:
+  `No labour norm found`
+* do not block BOM
+
+Labour tab should still show grouped Road Estimator-style rows.
+
+---
+
+## 8. Equipment mapping should not be forced now
+
+For now:
+
+* SNL/SDB equipment can be used as reference only.
+* Do not force manual equipment mapping for every BOQ item.
+* Equipment project-selection mechanism will be done later.
+
+---
+
+## 9. Safety rules
+
+Do not auto-map if:
+
+* two or more SNL candidates are very close in score and category differs
+* confidence < 0.45
+* item is a special bridge/structure item with no reliable rule
+* unit mismatch is severe
+
+These should remain in Review/Unmapped.
+
+---
+
+## 10. Verification on NH-167
+
+After patch, run Auto-map Remaining.
+
+Expected:
+
+1. Mapped count should substantially increase from 46.
+2. Review count should reduce.
+3. Unmapped count should reduce.
+4. Repeated items should not require repeated manual confirmation.
+5. Labour demand should improve automatically because labour follows SNL mapping.
+6. Material BOM should remain governed by Patch 8E/8F logic.
+7. Equipment tab should not break.
+8. BOQ grouping and Work Programme bars unchanged.
