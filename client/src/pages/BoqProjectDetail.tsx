@@ -3,9 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, Link } from "wouter";
 import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
-  Plus, Check, Trash2, Loader2, FileSpreadsheet, AlertCircle,
+  Plus, Check, CheckCheck, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2, BookOpen,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -626,6 +626,26 @@ function SnlMappingPanel({
     onError: () => toast({ title: "Remap failed", variant: "destructive" }),
   });
 
+  const autoMapAllMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/snl/auto-map-all`, {}),
+    onSuccess: (data: any) => {
+      const d = data as { autoMapped: number; needsReview: number; unmapped: number };
+      toast({ title: `Auto-mapped ${d.autoMapped} items. ${d.needsReview} need review. ${d.unmapped} unmapped.` });
+      onMapped();
+    },
+    onError: () => toast({ title: "Auto-map failed", variant: "destructive" }),
+  });
+
+  const confirmReviewMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/boq/projects/${projectId}/snl/confirm-review`, {}),
+    onSuccess: (data: any) => {
+      const d = data as { confirmed: number; skipped: number };
+      toast({ title: `Confirmed ${d.confirmed} suggestion${d.confirmed === 1 ? "" : "s"}.${d.skipped > 0 ? ` ${d.skipped} skipped (low confidence).` : ""}` });
+      onMapped();
+    },
+    onError: () => toast({ title: "Confirm review failed", variant: "destructive" }),
+  });
+
   const applyMutation = useMutation({
     mutationFn: ({ boqItemId, snlItemId, workCategory }: { boqItemId: number; snlItemId: number; workCategory: string }) =>
       apiRequest("POST", `/api/snl/mappings/${boqItemId}/apply`, {
@@ -674,9 +694,21 @@ function SnlMappingPanel({
         </div>
         <div className="flex items-center gap-1.5">
           <button
+            onClick={() => autoMapAllMutation.mutate()}
+            disabled={autoMapAllMutation.isPending || mapped.length === items.length}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-teal-600 hover:bg-teal-500 text-white transition-colors disabled:opacity-50"
+            title="Auto-map all remaining unmapped items"
+            data-testid="button-auto-map-all"
+          >
+            {autoMapAllMutation.isPending
+              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              : <Zap className="w-2.5 h-2.5" />}
+            Auto-map
+          </button>
+          <button
             onClick={() => remapMutation.mutate()}
             className="p-1 rounded hover:bg-teal-600 text-teal-300 hover:text-white transition-colors"
-            title="Re-run auto-mapping for all items"
+            title="Re-run full auto-mapping (resets all auto mappings)"
             disabled={remapMutation.isPending}
             data-testid="button-remap"
           >
@@ -712,9 +744,22 @@ function SnlMappingPanel({
           {/* Needs Review items */}
           {needsReview.length > 0 && (
             <div>
-              <p className="text-[12px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-                Needs Review
-              </p>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Needs Review
+                </p>
+                <button
+                  onClick={() => confirmReviewMutation.mutate()}
+                  disabled={confirmReviewMutation.isPending}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                  data-testid="button-confirm-all-review"
+                >
+                  {confirmReviewMutation.isPending
+                    ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    : <CheckCheck className="w-2.5 h-2.5" />}
+                  Confirm All
+                </button>
+              </div>
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
                 {needsReview.map(item => (
                   <div key={item.id} className="border border-amber-200 rounded-md bg-amber-50/50 p-2"

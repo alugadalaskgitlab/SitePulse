@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError } from "./storage";
-import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems } from "./snlAutoMapper";
+import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -15,7 +15,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -10424,6 +10424,70 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/boq/projects/:id/remap:", err);
       res.status(500).json({ error: "Failed to remap project" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/snl/auto-map-all", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
+      const summary = await autoMapProjectWithSummary(boqProjectId);
+      res.json(summary);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/snl/auto-map-all:", err);
+      res.status(500).json({ error: "Auto-map failed" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/snl/confirm-review", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
+      const CONFIRM_THRESHOLD = 0.55;
+
+      // Fetch all needs_review items for this project
+      const reviewItems = await db
+        .select({ id: boqItems.id })
+        .from(boqItems)
+        .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(boqItems.mappingStatus, "needs_review")));
+
+      if (reviewItems.length === 0) return res.json({ confirmed: 0, skipped: 0 });
+
+      const ids = reviewItems.map(i => i.id);
+      const mappings = await db
+        .select({
+          boqItemId: snlBoqMappings.boqItemId,
+          snlItemId: snlBoqMappings.snlItemId,
+          confidenceScore: snlBoqMappings.confidenceScore,
+        })
+        .from(snlBoqMappings)
+        .where(drizzleInArray(snlBoqMappings.boqItemId, ids));
+
+      const mappingMap = new Map(mappings.map(m => [m.boqItemId, m]));
+      const user = (req as any).user?.username ?? "auto";
+
+      let confirmed = 0, skipped = 0;
+
+      for (const item of reviewItems) {
+        const mapping = mappingMap.get(item.id);
+        if (!mapping || mapping.confidenceScore == null || mapping.confidenceScore < CONFIRM_THRESHOLD) {
+          skipped++;
+          continue;
+        }
+        try {
+          await storage.applySnlMappingToRecipes(item.id, mapping.snlItemId, "MEDIUM", null, user);
+          await storage.updateBoqItemMappingStatus(item.id, "mapped");
+          confirmed++;
+        } catch (err) {
+          console.error(`[confirm-review] failed for boqItemId=${item.id}:`, err);
+          skipped++;
+        }
+      }
+
+      res.json({ confirmed, skipped });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/snl/confirm-review:", err);
+      res.status(500).json({ error: "Confirm review failed" });
     }
   });
 

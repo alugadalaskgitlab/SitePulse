@@ -144,17 +144,133 @@ const CONFIDENT_MARGIN = 1.30;      // …and be ≥30% ahead of the 2nd-best ca
 const SUGGEST_FLOOR = 0.04;         // below confident but worth offering for human review
 const UNIT_MISMATCH_PENALTY = 0.30; // multiply score when units differ (near-veto)
 
-// Only these MAJOR, quantity-driving work categories are auto-mapped. Everything else is
-// left for the user to map manually — keeps the BOM reliable and free of obscure clutter.
+// Work categories that participate in the fuzzy-scoring auto-mapper.
+// Expanded from original 7 to include road furniture, drainage, and clearance items
+// so kerb, crash barrier, drainage, culvert items are scored — not blanket-unmapped.
 const MAJOR_AUTOMAP_CATEGORIES = new Set<string>([
   "EARTHWORK",
+  "SITE_CLEARANCE",
   "SHOULDERS_MEDIANS",
   "SUBBASE_BASE",
   "BITUMINOUS",
   "CONCRETE",
+  "ROAD_FURNITURE",
+  "DRAINAGE",
   "CROSS_DRAINAGE",
   "MAJOR_BRIDGES",
 ]);
+
+// ─── Rule-based pre-matcher ────────────────────────────────────────────────────
+
+/**
+ * Classify a BOQ item into a canonical road-BOQ tag using deterministic
+ * description patterns. Returns null when no reliable rule applies.
+ * Takes priority over fuzzy scoring for standard road-construction items.
+ */
+function classifyBoqItemForSnl(description: string): string | null {
+  const d = String(description ?? "").toLowerCase();
+
+  if (/\bgsb\b|granular\s*sub[-\s]*base/.test(d)) return "GSB";
+  if (/\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/.test(d)) return "WMM";
+  if (/\bdbm\b|dense\s*bituminous\s*macadam/.test(d)) return "DBM";
+  if (/\bsdbc\b|semi\s*dense/.test(d)) return "SDBC";
+  // BC after DBM/SDBC so "dbm" doesn't partially match "\bbc\b" patterns
+  if (/\bbc\b|bituminous\s*concrete/.test(d)) return "BC";
+  if (/\bbm\b|bituminous\s*macadam/.test(d)) return "BM";
+  if (/prime\s*coat/.test(d)) return "PRIME_COAT";
+  if (/tack\s*coat/.test(d)) return "TACK_COAT";
+
+  // Concrete — detect grade first, then bare type
+  const gradeM = d.match(/\bm\s*([0-9]{2,3})\b/);
+  if (/\bpcc\b|plain\s*cement\s*concrete/.test(d)) return gradeM ? `PCC_M${gradeM[1]}` : "PCC";
+  if (/\brcc\b|reinforced\s*cement\s*concrete/.test(d)) return gradeM ? `RCC_M${gradeM[1]}` : "RCC";
+
+  if (/\bhysd\b|\btmt\b|\breinforcement\b|reinforcing\s*steel|steel\s*reinforcement/.test(d)) return "REINFORCEMENT_STEEL";
+  if (/binding\s*wire/.test(d)) return "BINDING_WIRE";
+  if (/filter\s*media/.test(d)) return "FILTER_MEDIA";
+  if (/stone\s*pitching|stone\s*spalls|\bapron\b|\bboulder\b/.test(d)) return "STONE_PITCHING";
+  if (/thermoplastic|road\s*marking/.test(d)) return "THERMOPLASTIC_MARKING";
+  if (/kilometre\s*stone|boundary\s*stone|hectometre/.test(d)) return "ROAD_STONES";
+  if (/sign\s*board|traffic\s*sign|cautionary|mandatory|informatory/.test(d)) return "SIGNAGE";
+  if (/crash\s*barrier|metal\s*beam/.test(d)) return "CRASH_BARRIER";
+  if (/expansion\s*joint|strip\s*seal|joint\s*sealant/.test(d)) return "JOINTS_SEALANTS";
+  if (/\bbearing\b|elastomeric/.test(d)) return "BEARINGS";
+  if (/\bpipe\b|\bculvert\b|\bnp3\b|\bnp4\b|\bhdpe\b/.test(d)) return "PIPE_CULVERT";
+
+  return null;
+}
+
+// Tag → search keywords for finding the best SNL row
+const RULE_TAG_KEYWORDS: Record<string, string[]> = {
+  GSB:                  ["granular sub-base", "gsb", "granular subbase"],
+  WMM:                  ["wet mix macadam", "wmm", "wet mix"],
+  DBM:                  ["dense bituminous macadam", "dbm"],
+  SDBC:                 ["semi dense bituminous", "sdbc"],
+  BC:                   ["bituminous concrete"],
+  BM:                   ["bituminous macadam"],
+  PRIME_COAT:           ["prime coat", "priming"],
+  TACK_COAT:            ["tack coat"],
+  PCC:                  ["plain cement concrete", "pcc"],
+  RCC:                  ["reinforced cement concrete", "rcc"],
+  REINFORCEMENT_STEEL:  ["hysd", "tmt", "reinforcement", "reinforcing steel"],
+  BINDING_WIRE:         ["binding wire"],
+  FILTER_MEDIA:         ["filter media"],
+  STONE_PITCHING:       ["stone pitching", "stone spalls", "boulder pitching"],
+  THERMOPLASTIC_MARKING:["thermoplastic", "road marking"],
+  ROAD_STONES:          ["kilometre stone", "boundary stone", "hectometre stone"],
+  SIGNAGE:              ["sign board", "traffic sign"],
+  CRASH_BARRIER:        ["crash barrier", "metal beam"],
+  JOINTS_SEALANTS:      ["expansion joint", "joint sealant"],
+  BEARINGS:             ["elastomeric bearing", "bearing"],
+  PIPE_CULVERT:         ["hume pipe", "pipe culvert", "np3", "np4", "hdpe pipe"],
+};
+
+/**
+ * Find the best SNL row for a rule-classification tag by keyword search.
+ * Grade-specific tags (PCC_M20, RCC_M25) get an extra grade match score.
+ * Returns snlItemId + confidence=0.82 or null if no keyword match in corpus.
+ */
+function ruleMatchSnl(
+  tag: string,
+  snlRows: Array<{ id: number; description: string; shortLabel: string | null; unit: string }>,
+): { snlItemId: number; confidence: number } | null {
+  const baseTag = tag.replace(/_M\d+$/, "");
+  const keywords = RULE_TAG_KEYWORDS[baseTag] ?? RULE_TAG_KEYWORDS[tag];
+  if (!keywords || keywords.length === 0) return null;
+
+  const gradeMatch = tag.match(/_M(\d+)$/);
+  const grade = gradeMatch ? `m${gradeMatch[1]}` : null;
+
+  let bestId: number | null = null;
+  let bestScore = 0;
+
+  for (const snl of snlRows) {
+    const haystack = `${snl.description ?? ""} ${snl.shortLabel ?? ""}`.toLowerCase();
+    let score = 0;
+    for (const kw of keywords) {
+      if (haystack.includes(kw)) score += 1;
+    }
+    if (score === 0) continue;
+    if (grade && haystack.includes(grade)) score += 2;
+    else if (grade) score -= 0.5; // mild penalty for wrong grade match
+
+    if (score > bestScore) { bestScore = score; bestId = snl.id; }
+  }
+
+  return bestId === null ? null : { snlItemId: bestId, confidence: 0.82 };
+}
+
+/**
+ * Normalise a BOQ description to a stable deduplication key.
+ * Strips numbers, collapses whitespace, appends unit.
+ */
+function normaliseBoqDescriptionKey(desc: string, unit?: string | null): string {
+  return `${String(desc ?? "")
+    .toLowerCase()
+    .replace(/[0-9]+(\.[0-9]+)?/g, "#")
+    .replace(/\s+/g, " ")
+    .trim()}|${String(unit ?? "").toLowerCase()}`;
+}
 
 // (Legacy weighted scorer removed — replaced by IDF-weighted cosine + unit/margin gate.)
 
@@ -223,11 +339,16 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       continue;
     }
     try {
-      // ── Scope guard: only auto-map MAJOR work categories ─────────────────
-      // Non-major items are left for the user to map manually. We also clear any stale
-      // recipe so leftover (previously mis-mapped) materials stop polluting the BOM.
+      // ── Rule classification (used by both scope guard and rule-match) ─────
+      const ruleTag = classifyBoqItemForSnl(boqRow.description);
+
+      // ── Scope guard ───────────────────────────────────────────────────────
+      // Items outside known major categories are skipped UNLESS the rule-based
+      // pre-matcher found a confident tag for them — this covers road furniture,
+      // filter media, pipes, barriers, etc. that don't have workCategory set.
       const guardCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
-      if (!guardCat || !MAJOR_AUTOMAP_CATEGORIES.has(guardCat)) {
+      const inMajorCat = !!(guardCat && MAJOR_AUTOMAP_CATEGORIES.has(guardCat));
+      if (!ruleTag && !inMajorCat) {
         await storage.clearBoqItemRecipes(boqRow.id);
         await db
           .update(boqItems)
@@ -285,7 +406,51 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
         }
       }
 
-      // ── Semantic scoring: IDF-weighted cosine over the FULL description, unit-gated ──
+      // ── 1. Rule-based pre-match (after explicit SNL-code, before fuzzy) ───
+      if (ruleTag) {
+        const ruleResult = ruleMatchSnl(ruleTag, snlRows);
+        if (ruleResult) {
+          await db
+            .insert(snlBoqMappings)
+            .values({
+              boqItemId: boqRow.id,
+              snlItemId: ruleResult.snlItemId,
+              projectCategory: "MEDIUM",
+              gradingVariant: null,
+              mappedBy: "rule",
+              isAutoMapped: true,
+              confidenceScore: ruleResult.confidence,
+              notes: `Rule-matched tag: ${ruleTag}`,
+            })
+            .onConflictDoUpdate({
+              target: snlBoqMappings.boqItemId,
+              set: {
+                snlItemId: ruleResult.snlItemId,
+                isAutoMapped: true,
+                confidenceScore: ruleResult.confidence,
+                mappedBy: "rule",
+                mappedAt: new Date(),
+                notes: `Rule-matched tag: ${ruleTag}`,
+              },
+            });
+
+          let recipesApplied = false;
+          try {
+            await storage.applySnlMappingToRecipes(boqRow.id, ruleResult.snlItemId, "MEDIUM", null, "rule");
+            recipesApplied = true;
+          } catch (recipeErr) {
+            console.error(`[autoMapper] rule-match recipes failed for boqItemId=${boqRow.id}:`, recipeErr);
+          }
+
+          await db
+            .update(boqItems)
+            .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
+            .where(eq(boqItems.id, boqRow.id));
+          continue; // done — skip fuzzy scoring for this row
+        }
+      }
+
+      // ── 2. Semantic scoring: IDF-weighted cosine over the FULL description, unit-gated ──
       const boqText = richTokens(`${boqRow.description ?? ""} ${boqRow.workCategory ?? ""}`);
       const scored: ScoredCandidate[] = snlRows
         .map(snl => {
@@ -401,4 +566,174 @@ export async function remapBoqProject(boqProjectId: number): Promise<{ remapped:
 
   await autoMapBoqItems(ids);
   return { remapped: ids.length };
+}
+
+// ─── Duplicate-key propagation ────────────────────────────────────────────────
+
+/**
+ * After auto-mapping, propagate a confident mapping to all other BOQ items in the
+ * same project that share the same normalised description+unit key.
+ * Prevents repeated confirmation clicks for identical rows (e.g. repeated
+ * reinforcement tiers, repeated concrete grades, repeated kilometre-stone rows).
+ */
+async function propagateDuplicateMappings(boqProjectId: number): Promise<{ propagated: number }> {
+  const allItems = await db
+    .select({
+      id: boqItems.id,
+      description: boqItems.description,
+      unit: boqItems.unit,
+      mappingStatus: boqItems.mappingStatus,
+    })
+    .from(boqItems)
+    .where(eq(boqItems.boqProjectId, boqProjectId));
+
+  if (allItems.length === 0) return { propagated: 0 };
+
+  const allMappings = await db
+    .select({
+      boqItemId: snlBoqMappings.boqItemId,
+      snlItemId: snlBoqMappings.snlItemId,
+      confidenceScore: snlBoqMappings.confidenceScore,
+    })
+    .from(snlBoqMappings)
+    .where(inArray(snlBoqMappings.boqItemId, allItems.map(i => i.id)));
+
+  const mappingByItemId = new Map(allMappings.map(m => [m.boqItemId, m]));
+
+  // Group by stable key
+  const groups = new Map<string, typeof allItems>();
+  for (const item of allItems) {
+    const key = normaliseBoqDescriptionKey(item.description, item.unit);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+
+  let propagated = 0;
+
+  for (const [, group] of groups) {
+    if (group.length < 2) continue;
+    // Find a mapped source item for this group
+    const source = group.find(i => i.mappingStatus === "mapped" && mappingByItemId.has(i.id));
+    if (!source) continue;
+    const srcMapping = mappingByItemId.get(source.id)!;
+
+    for (const item of group) {
+      if (item.id === source.id) continue;
+      if (item.mappingStatus === "mapped") continue;
+      try {
+        await db
+          .insert(snlBoqMappings)
+          .values({
+            boqItemId: item.id,
+            snlItemId: srcMapping.snlItemId,
+            projectCategory: "MEDIUM",
+            gradingVariant: null,
+            mappedBy: "auto-propagated",
+            isAutoMapped: true,
+            confidenceScore: srcMapping.confidenceScore,
+            notes: `Propagated from duplicate item #${source.id}`,
+          })
+          .onConflictDoUpdate({
+            target: snlBoqMappings.boqItemId,
+            set: {
+              snlItemId: srcMapping.snlItemId,
+              isAutoMapped: true,
+              confidenceScore: srcMapping.confidenceScore,
+              mappedBy: "auto-propagated",
+              mappedAt: new Date(),
+              notes: `Propagated from duplicate item #${source.id}`,
+            },
+          });
+
+        let recipesApplied = false;
+        try {
+          await storage.applySnlMappingToRecipes(item.id, srcMapping.snlItemId, "MEDIUM", null, "auto-propagated");
+          recipesApplied = true;
+        } catch {
+          // non-fatal — still mark mapped if mapping row was written
+        }
+        await db
+          .update(boqItems)
+          .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
+          .where(eq(boqItems.id, item.id));
+        propagated++;
+      } catch (err) {
+        console.error(`[autoMapper] propagation failed for boqItemId=${item.id}:`, err);
+      }
+    }
+  }
+
+  return { propagated };
+}
+
+// ─── Summary mapper (used by the "Auto-map Remaining" API) ───────────────────
+
+/**
+ * Auto-map all unmapped / needs_review items in a project, then run duplicate
+ * propagation. Returns a summary suitable for a user-facing toast message.
+ * Does NOT reset already-mapped items or manual mappings.
+ */
+export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
+  totalItems: number;
+  autoMapped: number;
+  needsReview: number;
+  unmapped: number;
+  avgConfidence: number;
+  ruleMatched: number;
+}> {
+  // Map only the items that still need attention
+  const pending = await db
+    .select({ id: boqItems.id })
+    .from(boqItems)
+    .where(
+      and(
+        eq(boqItems.boqProjectId, boqProjectId),
+        inArray(boqItems.mappingStatus, ["unmapped", "needs_review"]),
+      ),
+    );
+
+  if (pending.length > 0) {
+    await autoMapBoqItems(pending.map(r => r.id));
+  }
+
+  // Propagate to duplicates across the whole project
+  await propagateDuplicateMappings(boqProjectId);
+
+  // Read final state
+  const finalItems = await db
+    .select({ id: boqItems.id, mappingStatus: boqItems.mappingStatus })
+    .from(boqItems)
+    .where(eq(boqItems.boqProjectId, boqProjectId));
+
+  const finalMappings = await db
+    .select({ boqItemId: snlBoqMappings.boqItemId, confidenceScore: snlBoqMappings.confidenceScore, mappedBy: snlBoqMappings.mappedBy })
+    .from(snlBoqMappings)
+    .where(inArray(snlBoqMappings.boqItemId, finalItems.map(i => i.id)));
+
+  const mappingMap = new Map(finalMappings.map(m => [m.boqItemId, m]));
+
+  let autoMapped = 0, needsReview = 0, unmapped = 0, ruleMatched = 0;
+  let confSum = 0, confCount = 0;
+
+  for (const item of finalItems) {
+    if (item.mappingStatus === "mapped") {
+      autoMapped++;
+      const m = mappingMap.get(item.id);
+      if (m?.mappedBy === "rule" || m?.mappedBy === "auto-propagated") ruleMatched++;
+      if (m?.confidenceScore != null) { confSum += m.confidenceScore; confCount++; }
+    } else if (item.mappingStatus === "needs_review") {
+      needsReview++;
+    } else {
+      unmapped++;
+    }
+  }
+
+  return {
+    totalItems: finalItems.length,
+    autoMapped,
+    needsReview,
+    unmapped,
+    avgConfidence: confCount > 0 ? confSum / confCount : 0,
+    ruleMatched,
+  };
 }
