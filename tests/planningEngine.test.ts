@@ -4,6 +4,7 @@ import {
   calculateTipperFleet,
   getEffectiveOutputPerHrConverted,
   normaliseMixType,
+  normaliseBomMaterial,
   deriveMaterialsFromLayerConfig,
 } from "@shared/planningEngine";
 
@@ -304,5 +305,74 @@ describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", () => {
     const mixRows = rows.filter(r => r.materialName !== "LDO / Process Fuel");
     const total = mixRows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
     expect(total).toBeCloseTo(mtPerSqm, 3);
+  });
+});
+
+// ─── normaliseBomMaterial ─────────────────────────────────────────────────────
+
+describe("normaliseBomMaterial", () => {
+  it("collapses WMM direct-supply 'Granular Material' to 'WMM Material'", () => {
+    expect(normaliseBomMaterial({
+      materialName: "Granular Material",
+      uom: "CUM",
+      itemDescription: "Providing, laying, spreading and compacting Wet Mix Macadam",
+      layerType: "granular",
+      mixType: "WMM",
+      granularSource: "quarry",
+      supplyType: "direct",
+    }).displayMaterialName).toBe("WMM Material");
+  });
+
+  it("collapses GSB direct-supply 'Granular Material' to 'GSB Material'", () => {
+    expect(normaliseBomMaterial({
+      materialName: "Granular Material",
+      uom: "CUM",
+      itemDescription: "Construction of Granular Sub-Base by providing coarse graded material",
+      layerType: "granular",
+      mixType: "GSB",
+      granularSource: "quarry",
+      supplyType: "direct",
+    }).displayMaterialName).toBe("GSB Material");
+  });
+
+  it("normalises HYSD reinforcement description to 'TMT / Reinforcement Steel'", () => {
+    expect(normaliseBomMaterial({
+      materialName: "HYSD bars including 5 percent overlaps and wastage",
+      uom: "MT",
+    }).displayMaterialName).toBe("TMT / Reinforcement Steel");
+  });
+
+  it("normalises '25mm and 12.5mm' aggregate description to '40mm Aggregate'", () => {
+    expect(normaliseBomMaterial({
+      materialName: "Crushed stone coarse aggregates of 25mm and 12.5mm nominal size",
+      uom: "CUM",
+    }).displayMaterialName).toBe("40mm Aggregate");
+  });
+
+  it("passes through 'GSB Material' unchanged (already practical)", () => {
+    expect(normaliseBomMaterial({
+      materialName: "GSB Material",
+      uom: "CUM",
+    }).displayMaterialName).toBe("GSB Material");
+  });
+
+  it("passes through 'Bitumen VG-30' unchanged (already practical)", () => {
+    expect(normaliseBomMaterial({
+      materialName: "Bitumen VG-30",
+      uom: "MT",
+    }).displayMaterialName).toBe("Bitumen VG-30");
+  });
+
+  it("passes through '10mm Aggregate' unchanged (already practical)", () => {
+    expect(normaliseBomMaterial({
+      materialName: "10mm Aggregate",
+      uom: "CUM",
+    }).displayMaterialName).toBe("10mm Aggregate");
+  });
+
+  it("flags unknown material for review", () => {
+    const result = normaliseBomMaterial({ materialName: "Exotic Material XYZ", uom: "CUM" });
+    expect(result.reviewNeeded).toBe(true);
+    expect(result.displayMaterialName).toBe("Exotic Material XYZ");
   });
 });

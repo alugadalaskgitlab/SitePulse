@@ -393,6 +393,8 @@ export interface MaterialNormalisationInput {
   layerType?: LayerConfig["layerType"] | null;
   mixType?: string | null;
   granularSource?: LayerConfig["granularSource"] | null;
+  supplyType?: "direct" | "plant";
+  isAuto?: boolean | null;
 }
 
 export interface MaterialNormalisationResult {
@@ -551,6 +553,8 @@ export function calculateBomDemand(
         layerType: lc?.layerType ?? null,
         mixType: lc?.mixType ?? null,
         granularSource: lc?.granularSource ?? null,
+        supplyType: m.supplyType,
+        isAuto: m.isAuto,
       });
       const key = canonResourceKey(norm.displayMaterialName);
       if (!matMap.has(key)) {
@@ -866,34 +870,70 @@ export function normaliseMixType(mixType: string): string {
 }
 
 // Patterns indicating a name is already a practical procurement name — skip normalisation.
+// NOTE: /\bMaterial$/i is intentionally excluded here because "Granular Material" must go
+// through the direct-supply collapse logic before being passed through unchanged.
 const ALREADY_PRACTICAL_PATTERNS: RegExp[] = [
-  /\bMaterial$/i,                   // GSB Material, WMM Material, Granular Material
   /\(Processed\)$/i,                // GSB (Processed), WMM (Processed)
+  /^(GSB|WMM|WBM)\s+Material$/i,    // Only known-correct finished-material names pass through
   /\bmm\s+Aggregate$/i,             // 10mm Aggregate, 20mm Aggregate, 40mm Aggregate
+  /^13mm\s+Aggregate$/i,
   /^Bitumen\s+VG-\d+/i,             // Bitumen VG-30, VG-40
   /^Bitumen\s+Emulsion\s+[RC]S-/i,  // RS-1, SS-1 already specified
   /^LDO\s*\/\s*Process/i,           // LDO / Process Fuel
   /^Diesel\s*\/\s*HSD/i,            // Diesel / HSD
-  /^(Cement|Sand|Water|Soil\s*\/\s*Earth|TMT\s*\/\s*Reinforcement)$/i,
+  /^(Cement|Sand|Water)$/i,
+  /^TMT\s*\/\s*Reinforcement/i,
   /^Stone\s+Dust$/i,
   /^Filler(\s+\(.+\))?$/i,          // Filler, Filler (Lime)
-  /^13mm\s+Aggregate$/i,
   /^Bituminous\s+Mix$/i,
   /^Soil\s*\/\s*Earth$/i,
 ];
 
+function isWmmContext(desc: string, mix: string, raw: string): boolean {
+  return (
+    mix === "WMM" ||
+    /\bwmm\b|wet\s*mix|wet\s*mix\s*macadam/i.test(desc) ||
+    /\bwmm\b|wet\s*mix|wet\s*mix\s*macadam/i.test(raw)
+  );
+}
+
+function isGsbContext(desc: string, mix: string, raw: string): boolean {
+  return (
+    mix === "GSB" ||
+    /\bgsb\b|granular\s*sub[-\s]*base|sub[-\s]*base/i.test(desc) ||
+    /\bgsb\b|granular\s*sub[-\s]*base/i.test(raw)
+  );
+}
+
+function isDirectGranularContext(input: MaterialNormalisationInput): boolean {
+  return (
+    (input.layerType === "granular" &&
+      (input.granularSource == null || input.granularSource !== "plant")) ||
+    input.supplyType === "direct"
+  );
+}
+
 /**
  * Converts SDB/SNL technical material names to practical procurement names.
  * Pure function — no DB access. Called inside calculateBomDemand before keying.
- * Names that already look like practical procurement names pass through unchanged.
+ *
+ * Rule priority order (most specific first):
+ *   1. Direct-supply granular GSB/WMM collapse  ← MUST fire before ALREADY_PRACTICAL_PATTERNS
+ *   2. ALREADY_PRACTICAL_PATTERNS pass-through
+ *   3. Fuel (Diesel/HSD, LDO)
+ *   4. Emulsion / spray coat
+ *   5. Bitumen (generic)
+ *   6. Steel / reinforcement
+ *   7. Cement / Sand / Water
+ *   8. Aggregate gradation ranges
+ *   9. Fallback (reviewNeeded = true)
  */
 export function normaliseBomMaterial(input: MaterialNormalisationInput): MaterialNormalisationResult {
   const raw = input.materialName || "";
   const s = raw.toLowerCase().trim();
   const desc = (input.itemDescription || "").toLowerCase();
   const mix = normaliseMixType(input.mixType || "");
-  const layerType = input.layerType;
-  const granularSource = input.granularSource;
+  const directGranular = isDirectGranularContext(input);
 
   const identity = (): MaterialNormalisationResult => ({
     originalNormMaterialName: raw,
@@ -905,20 +945,22 @@ export function normaliseBomMaterial(input: MaterialNormalisationInput): Materia
     normalisationReason: "Already a practical procurement name",
   });
 
-  // Pass through names that are already practical.
-  if (ALREADY_PRACTICAL_PATTERNS.some((p) => p.test(raw))) return identity();
-
-  // Direct-supply GSB/WMM must collapse to a single finished-material line.
-  if (layerType === "granular" && granularSource !== "plant") {
-    if (mix === "WMM" || /wet\s*mix|\bwmm\b/i.test(desc)) {
+  // 1. Direct-supply GSB/WMM collapse BEFORE the practical-patterns check.
+  //    Without this ordering, "Granular Material" matches /\bMaterial$/i and
+  //    passes through before the correct "WMM Material"/"GSB Material" can be set.
+  if (directGranular) {
+    if (isWmmContext(desc, mix, raw)) {
       return { originalNormMaterialName: raw, displayMaterialName: "WMM Material", materialGroup: "WMM Material", suggestedMaterialMasterName: "WMM Material", confidence: 0.98, reviewNeeded: false, normalisationReason: "Direct-supply WMM collapsed to finished procurement material" };
     }
-    if (mix === "GSB" || /granular\s*sub|sub-?base|\bgsb\b/i.test(desc)) {
+    if (isGsbContext(desc, mix, raw)) {
       return { originalNormMaterialName: raw, displayMaterialName: "GSB Material", materialGroup: "GSB Material", suggestedMaterialMasterName: "GSB Material", confidence: 0.98, reviewNeeded: false, normalisationReason: "Direct-supply GSB collapsed to finished procurement material" };
     }
   }
 
-  // Fuel — keep practical names.
+  // 2. Pass through names that are already practical.
+  if (ALREADY_PRACTICAL_PATTERNS.some((p) => p.test(raw))) return identity();
+
+  // 3. Fuel — keep practical names.
   if (/diesel|hsd/i.test(raw)) {
     return { originalNormMaterialName: raw, displayMaterialName: "Diesel / HSD", materialGroup: "Diesel / HSD", suggestedMaterialMasterName: "Diesel / HSD", confidence: 0.99, reviewNeeded: false, normalisationReason: "Fuel demand from equipment consumption" };
   }
@@ -926,42 +968,49 @@ export function normaliseBomMaterial(input: MaterialNormalisationInput): Materia
     return { originalNormMaterialName: raw, displayMaterialName: "LDO / Process Fuel", materialGroup: "LDO / Process Fuel", suggestedMaterialMasterName: "LDO / Process Fuel", confidence: 0.99, reviewNeeded: false, normalisationReason: "HMP process fuel demand" };
   }
 
-  // Emulsion / spray coat.
+  // 4. Emulsion / spray coat.
   if (/emulsion/i.test(raw)) {
     const label = /prime/i.test(desc) ? "Bitumen Emulsion SS-1" : /tack/i.test(desc) ? "Bitumen Emulsion RS-1" : "Bitumen Emulsion";
     return { originalNormMaterialName: raw, displayMaterialName: label, materialGroup: label, suggestedMaterialMasterName: label, confidence: 0.85, reviewNeeded: false, normalisationReason: "Emulsion normalised from spray coat context" };
   }
 
-  // Bitumen (generic — no emulsion).
+  // 5. Bitumen (generic — no emulsion).
   if (/bitumen/i.test(raw)) {
     return { originalNormMaterialName: raw, displayMaterialName: "Bitumen VG-30", materialGroup: "Bitumen VG-30", suggestedMaterialMasterName: "Bitumen VG-30", confidence: 0.80, reviewNeeded: false, normalisationReason: "Bitumen normalised to default project grade VG-30" };
   }
 
-  // Aggregate gradation/range mapping — SDB technical names only.
+  // 6. Steel / reinforcement — must be before aggregate (avoids "mm" catch on bar diameters).
+  if (/hysd|tmt|reinforcement|rebar|steel/i.test(raw)) {
+    return { originalNormMaterialName: raw, displayMaterialName: "TMT / Reinforcement Steel", materialGroup: "TMT / Reinforcement Steel", suggestedMaterialMasterName: "TMT / Reinforcement Steel", confidence: 0.85, reviewNeeded: false, normalisationReason: "Steel/reinforcement normalisation" };
+  }
+
+  // 7. Common materials.
+  if (/cement/i.test(raw))   return { originalNormMaterialName: raw, displayMaterialName: "Cement",  materialGroup: "Cement",  suggestedMaterialMasterName: "Cement",  confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+  if (/\bsand\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Sand",    materialGroup: "Sand",    suggestedMaterialMasterName: "Sand",    confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+  if (/\bwater\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Water",  materialGroup: "Water",   suggestedMaterialMasterName: "Water",   confidence: 0.95, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+
+  // 8. Aggregate gradation/range mapping — SDB technical names only.
   if (/aggregate|stone|chips|mm|micron|dust|filler/i.test(raw)) {
     let label: string | null = null;
-    if (/75\s*micron|filler/.test(s))                                               label = "Filler";
-    else if (/below\s*2\.?36|2\.?36.*below|0\.075|dust|stone\s+dust|crusher\s+dust/.test(s)) label = "Stone Dust";
-    else if (/4\.?75.*0\.?075|2\.?36.*0\.?075|below\s*4\.?75/.test(s))             label = "Stone Dust";
-    else if (/13\.?2.*5\.?6|9\.?5.*2\.?36|10.*5|6\s*mm/.test(s))                  label = "6mm Aggregate";
-    else if (/19.*9\.?5|22\.?4.*11\.?2|25.*10|10\s*mm|12\s*mm/.test(s))           label = "10mm Aggregate";
-    else if (/13\s*mm/.test(s))                                                     label = "13mm Aggregate";
-    else if (/26\.?5.*19|25.*19|20\s*mm/.test(s))                                  label = "20mm Aggregate";
-    else if (/53.*22\.?4|45.*22\.?4|37\.?5.*25|40\s*mm/.test(s))                  label = "40mm Aggregate";
-    else if (/63.*45|60\s*mm|65\s*mm/.test(s))                                     label = "60mm Aggregate";
+    // Check from filler/dust up through largest aggregates first so composite-size
+    // descriptions (e.g. "25mm and 12.5mm") hit the correct larger bucket before the
+    // generic smaller-size patterns can fire.
+    if (/75\s*micron|filler/.test(s))                                                                    label = "Filler";
+    else if (/below\s*2\.?36|2\.?36.*below|0\.075|dust|stone\s*dust|crusher\s*dust/.test(s))            label = "Stone Dust";
+    else if (/4\.?75.*0\.?075|2\.?36.*0\.?075|below\s*4\.?75|4\.?75\s*mm\s*and\s*below/.test(s))       label = "Stone Dust";
+    else if (/63.*45|60\s*mm|65\s*mm/.test(s))                                                          label = "60mm Aggregate";
+    else if (/53.*22\.?4|45.*22\.?4|37\.?5.*25|40\s*mm|25\s*mm.*12\.?5\s*mm/.test(s))                  label = "40mm Aggregate";
+    else if (/26\.?5.*19|25.*19|20\s*mm/.test(s))                                                       label = "20mm Aggregate";
+    else if (/13\s*mm/.test(s))                                                                          label = "13mm Aggregate";
+    else if (/19.*9\.?5|22\.?4.*11\.?2|25.*10|10\s*mm|12\s*mm|12\.?5\s*mm/.test(s))                    label = "10mm Aggregate";
+    else if (/13\.?2.*5\.?6|9\.?5.*2\.?36|10.*5|6\s*mm/.test(s))                                       label = "6mm Aggregate";
 
     if (label) {
       return { originalNormMaterialName: raw, displayMaterialName: label, materialGroup: label, suggestedMaterialMasterName: label, confidence: 0.75, reviewNeeded: false, normalisationReason: `SDB gradation "${raw}" normalised to market name "${label}"` };
     }
   }
 
-  // Common materials.
-  if (/cement/i.test(raw))  return { originalNormMaterialName: raw, displayMaterialName: "Cement", materialGroup: "Cement", suggestedMaterialMasterName: "Cement", confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
-  if (/\bsand\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Sand", materialGroup: "Sand", suggestedMaterialMasterName: "Sand", confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
-  if (/hysd|tmt|reinforcement|rebar|steel/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "TMT / Reinforcement Steel", materialGroup: "TMT / Reinforcement Steel", suggestedMaterialMasterName: "TMT / Reinforcement Steel", confidence: 0.85, reviewNeeded: false, normalisationReason: "Steel/reinforcement normalisation" };
-  if (/\bwater\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Water", materialGroup: "Water", suggestedMaterialMasterName: "Water", confidence: 0.95, reviewNeeded: false, normalisationReason: "Common material normalisation" };
-
-  // Fallback — keep original but flag for review.
+  // 9. Fallback — keep original but flag for review.
   return { originalNormMaterialName: raw, displayMaterialName: raw, materialGroup: raw, suggestedMaterialMasterName: raw, confidence: 0.40, reviewNeeded: true, normalisationReason: "No confident normalisation rule matched" };
 }
 

@@ -1,0 +1,397 @@
+# SitePulse — PATCH 8D-1: Fix BOM material normalisation order and prevent wrong grouping
+
+Current issue:
+BOM material normalisation exists, but it is still allowing wrong groupings.
+
+Observed:
+
+1. GSB/WMM direct-supply items still appear along with raw aggregate/fraction rows.
+2. “Granular Material” is grouping multiple unrelated BOQ items.
+3. Aggregate/stone rules can catch names before steel/common material rules.
+4. The final BOM is still not clean enough for stock/procurement.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* SNL auto-mapping
+* Work Programme bars
+* Stock
+* IRN
+* PI
+* Dashboard
+* WorkDemand UI in this patch
+
+Only edit:
+
+* `shared/planningEngine.ts`
+
+Reference model only:
+
+* `road-estimator/frontend/src/pages/BillOfMaterials.js`
+* Use its grouped BOM idea, not its code.
+
+---
+
+## 1. Update `MaterialNormalisationInput`
+
+In `shared/planningEngine.ts`, extend `MaterialNormalisationInput`.
+
+FIND the interface:
+
+```ts
+export interface MaterialNormalisationInput {
+  materialName: string;
+  uom: string;
+  sourceType?: "SDB" | "Mix Template" | "Manual" | "Derived" | "Fuel";
+  itemDescription?: string;
+  itemCode?: string | null;
+  workCategory?: string | null;
+  layerType?: LayerConfig["layerType"] | null;
+  mixType?: string | null;
+  granularSource?: LayerConfig["granularSource"] | null;
+}
+```
+
+REPLACE with:
+
+```ts
+export interface MaterialNormalisationInput {
+  materialName: string;
+  uom: string;
+  sourceType?: "SDB" | "Mix Template" | "Manual" | "Derived" | "Fuel";
+  itemDescription?: string;
+  itemCode?: string | null;
+  workCategory?: string | null;
+  layerType?: LayerConfig["layerType"] | null;
+  mixType?: string | null;
+  granularSource?: LayerConfig["granularSource"] | null;
+  supplyType?: "direct" | "plant";
+  isAuto?: boolean | null;
+}
+```
+
+---
+
+## 2. Add helper functions above `normaliseBomMaterial`
+
+ADD these helpers immediately before `export function normaliseBomMaterial(...)`:
+
+```ts
+function isWmmContext(desc: string, mix: string, raw: string): boolean {
+  return (
+    mix === "WMM" ||
+    /\bwmm\b|wet\s*mix|wet\s*mix\s*macadam/i.test(desc) ||
+    /\bwmm\b|wet\s*mix|wet\s*mix\s*macadam/i.test(raw)
+  );
+}
+
+function isGsbContext(desc: string, mix: string, raw: string): boolean {
+  return (
+    mix === "GSB" ||
+    /\bgsb\b|granular\s*sub[-\s]*base|sub[-\s]*base/i.test(desc) ||
+    /\bgsb\b|granular\s*sub[-\s]*base/i.test(raw)
+  );
+}
+
+function isDirectGranularContext(input: MaterialNormalisationInput): boolean {
+  return (
+    input.layerType === "granular" &&
+    (input.granularSource == null || input.granularSource !== "plant")
+  ) || input.supplyType === "direct";
+}
+```
+
+---
+
+## 3. Reorder `normaliseBomMaterial`
+
+In `normaliseBomMaterial`, the current code checks `ALREADY_PRACTICAL_PATTERNS` too early.
+
+That is wrong because names like `Granular Material` can pass through before the app gets a chance to collapse GSB/WMM direct-supply rows.
+
+Inside `normaliseBomMaterial`, after the variables:
+
+```ts
+const raw = input.materialName || "";
+const s = raw.toLowerCase().trim();
+const desc = (input.itemDescription || "").toLowerCase();
+const mix = normaliseMixType(input.mixType || "");
+const layerType = input.layerType;
+const granularSource = input.granularSource;
+```
+
+ADD:
+
+```ts
+const directGranular = isDirectGranularContext(input);
+```
+
+Then move the direct-supply collapse block ABOVE the `ALREADY_PRACTICAL_PATTERNS` check.
+
+The top of `normaliseBomMaterial` should become:
+
+```ts
+export function normaliseBomMaterial(input: MaterialNormalisationInput): MaterialNormalisationResult {
+  const raw = input.materialName || "";
+  const s = raw.toLowerCase().trim();
+  const desc = (input.itemDescription || "").toLowerCase();
+  const mix = normaliseMixType(input.mixType || "");
+  const layerType = input.layerType;
+  const granularSource = input.granularSource;
+  const directGranular = isDirectGranularContext(input);
+
+  const identity = (): MaterialNormalisationResult => ({
+    originalNormMaterialName: raw,
+    displayMaterialName: raw,
+    materialGroup: raw,
+    suggestedMaterialMasterName: raw,
+    confidence: 0.99,
+    reviewNeeded: false,
+    normalisationReason: "Already a practical procurement name",
+  });
+
+  // Direct-supply GSB/WMM must collapse before the "already practical" check.
+  // Otherwise "Granular Material" passes through and wrongly groups several BOQ items.
+  if (directGranular) {
+    if (isWmmContext(desc, mix, raw)) {
+      return {
+        originalNormMaterialName: raw,
+        displayMaterialName: "WMM Material",
+        materialGroup: "WMM Material",
+        suggestedMaterialMasterName: "WMM Material",
+        confidence: 0.98,
+        reviewNeeded: false,
+        normalisationReason: "Direct-supply WMM collapsed to finished procurement material",
+      };
+    }
+
+    if (isGsbContext(desc, mix, raw)) {
+      return {
+        originalNormMaterialName: raw,
+        displayMaterialName: "GSB Material",
+        materialGroup: "GSB Material",
+        suggestedMaterialMasterName: "GSB Material",
+        confidence: 0.98,
+        reviewNeeded: false,
+        normalisationReason: "Direct-supply GSB collapsed to finished procurement material",
+      };
+    }
+  }
+
+  // Pass through names that are already practical only after direct-supply handling.
+  if (ALREADY_PRACTICAL_PATTERNS.some((p) => p.test(raw))) return identity();
+```
+
+Then REMOVE or avoid duplicating the old later block:
+
+```ts
+if (layerType === "granular" && granularSource !== "plant") {
+  ...
+}
+```
+
+There should be only one direct-supply GSB/WMM collapse block.
+
+---
+
+## 4. Move common material rules before aggregate rules
+
+Inside `normaliseBomMaterial`, common materials must be detected before the broad aggregate/stone/mm rule.
+
+So the order after fuel/bitumen/emulsion should be:
+
+1. fuel
+2. LDO
+3. emulsion
+4. bitumen
+5. steel
+6. cement
+7. sand
+8. water
+9. aggregate gradation fallback
+10. fallback review
+
+Specifically, move these checks ABOVE the aggregate gradation block:
+
+```ts
+if (/hysd|tmt|reinforcement|rebar|steel/i.test(raw)) {
+  return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "TMT / Reinforcement Steel",
+    materialGroup: "TMT / Reinforcement Steel",
+    suggestedMaterialMasterName: "TMT / Reinforcement Steel",
+    confidence: 0.85,
+    reviewNeeded: false,
+    normalisationReason: "Steel/reinforcement normalisation",
+  };
+}
+
+if (/cement/i.test(raw)) {
+  return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Cement",
+    materialGroup: "Cement",
+    suggestedMaterialMasterName: "Cement",
+    confidence: 0.90,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+}
+
+if (/\bsand\b/i.test(raw)) {
+  return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Sand",
+    materialGroup: "Sand",
+    suggestedMaterialMasterName: "Sand",
+    confidence: 0.90,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+}
+
+if (/\bwater\b/i.test(raw)) {
+  return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Water",
+    materialGroup: "Water",
+    suggestedMaterialMasterName: "Water",
+    confidence: 0.95,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+}
+```
+
+Then keep the aggregate/gradation block below these.
+
+---
+
+## 5. Strengthen aggregate range fallback
+
+In the aggregate range fallback block, add support for more common SDB text patterns.
+
+Inside:
+
+```ts
+if (/aggregate|stone|chips|mm|micron|dust|filler/i.test(raw)) {
+  let label: string | null = null;
+```
+
+Use this decision order:
+
+```ts
+if (/75\s*micron|filler/.test(s)) label = "Filler";
+else if (/below\s*2\.?36|2\.?36.*below|0\.075|dust|stone\s*dust|crusher\s*dust/.test(s)) label = "Stone Dust";
+else if (/4\.?75.*0\.?075|2\.?36.*0\.?075|below\s*4\.?75|4\.?75\s*mm\s*and\s*below/.test(s)) label = "Stone Dust";
+else if (/13\.?2.*5\.?6|9\.?5.*2\.?36|10.*5|6\s*mm/.test(s)) label = "6mm Aggregate";
+else if (/19.*9\.?5|22\.?4.*11\.?2|25.*10|10\s*mm|12\s*mm|12\.?5\s*mm/.test(s)) label = "10mm Aggregate";
+else if (/13\s*mm/.test(s)) label = "13mm Aggregate";
+else if (/26\.?5.*19|25.*19|20\s*mm/.test(s)) label = "20mm Aggregate";
+else if (/53.*22\.?4|45.*22\.?4|37\.?5.*25|40\s*mm|25\s*mm.*12\.?5\s*mm/.test(s)) label = "40mm Aggregate";
+else if (/63.*45|60\s*mm|65\s*mm/.test(s)) label = "60mm Aggregate";
+```
+
+This will also catch names like:
+
+* `Crushed stone coarse aggregates of 25mm and 12.5mm nominal size`
+* `4.75 mm and below`
+* `12.5 mm`
+
+---
+
+## 6. Pass supplyType and isAuto into normalisation call
+
+In `calculateBomDemand`, find the call to `normaliseBomMaterial`.
+
+It currently looks like:
+
+```ts
+const norm = normaliseBomMaterial({
+  materialName: m.materialName,
+  uom: m.uom,
+  sourceType: m.isAuto ? "SDB" : "Manual",
+  itemDescription: item.description,
+  itemCode: item.itemCode,
+  workCategory: item.workCategory,
+  layerType: lc?.layerType ?? null,
+  mixType: lc?.mixType ?? null,
+  granularSource: lc?.granularSource ?? null,
+});
+```
+
+REPLACE with:
+
+```ts
+const norm = normaliseBomMaterial({
+  materialName: m.materialName,
+  uom: m.uom,
+  sourceType: m.isAuto ? "SDB" : "Manual",
+  itemDescription: item.description,
+  itemCode: item.itemCode,
+  workCategory: item.workCategory,
+  layerType: lc?.layerType ?? null,
+  mixType: lc?.mixType ?? null,
+  granularSource: lc?.granularSource ?? null,
+  supplyType: m.supplyType,
+  isAuto: m.isAuto,
+});
+```
+
+---
+
+## 7. Add focused tests
+
+Add/adjust tests in the existing planning engine test file.
+
+Required test cases:
+
+```ts
+expect(normaliseBomMaterial({
+  materialName: "Granular Material",
+  uom: "CUM",
+  itemDescription: "Providing, laying, spreading and compacting Wet Mix Macadam",
+  layerType: "granular",
+  mixType: "WMM",
+  granularSource: "quarry",
+  supplyType: "direct",
+}).displayMaterialName).toBe("WMM Material");
+
+expect(normaliseBomMaterial({
+  materialName: "Granular Material",
+  uom: "CUM",
+  itemDescription: "Construction of Granular Sub-Base by providing coarse graded material",
+  layerType: "granular",
+  mixType: "GSB",
+  granularSource: "quarry",
+  supplyType: "direct",
+}).displayMaterialName).toBe("GSB Material");
+
+expect(normaliseBomMaterial({
+  materialName: "HYSD bars including 5 percent overlaps and wastage",
+  uom: "MT",
+}).displayMaterialName).toBe("TMT / Reinforcement Steel");
+
+expect(normaliseBomMaterial({
+  materialName: "Crushed stone coarse aggregates of 25mm and 12.5mm nominal size",
+  uom: "CUM",
+}).displayMaterialName).toBe("40mm Aggregate");
+```
+
+Run full tests after patch.
+
+---
+
+## 8. Verification on NH-167
+
+After patch and restart:
+
+1. WMM direct supply should group as `WMM Material`.
+2. GSB direct supply should group as `GSB Material`.
+3. `Granular Material` should not group WMM/GSB/structure items together.
+4. HYSD/TMT/reinforcement rows should group under `TMT / Reinforcement Steel`.
+5. Raw aggregate fraction names should reduce substantially.
+6. Diesel/HSD and LDO logic should remain unchanged.
+7. Work Programme bars should remain unchanged.
+8. BOQ grouping should remain unchanged.

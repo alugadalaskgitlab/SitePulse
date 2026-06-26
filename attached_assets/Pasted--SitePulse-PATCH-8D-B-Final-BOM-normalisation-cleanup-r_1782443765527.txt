@@ -1,0 +1,301 @@
+# SitePulse — PATCH 8D-B: Final BOM normalisation cleanup + remove misleading drill-down layout
+
+Current status:
+BOM is loading and some direct-supply rows are appearing, but the output is still not clean enough.
+
+Observed issues:
+
+1. GSB/WMM direct supply appears, but old/SDB aggregate fractions still also appear.
+2. Aggregate fractions are still shown as final BOM material names.
+3. Some aggregate/fraction rows appear against unrelated BOQ source rows such as HYSD/steel.
+4. Expanded material drill-down still shows repeated `BOQ Item` sub-heading.
+5. BOM should look closer to Road Estimator: material group header, then simple source rows with formula.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* Work Programme bars
+* SNL mapping confidence logic
+* Stock
+* IRN
+* PI
+* Dashboard
+
+Primary files:
+
+* `shared/planningEngine.ts`
+* `client/src/pages/WorkDemand.tsx`
+
+---
+
+## 1. Confirm current direct-supply logic is not enough
+
+`deriveMaterialsFromLayerConfig()` already returns `GSB Material` / `WMM Material` for direct granular source.
+
+But `calculateBomDemand()` still groups by raw `m.materialName`.
+
+So if SNL/recipe rows still contain raw aggregate fractions, they still appear in BOM.
+
+Required:
+Add a final BOM normalisation pass inside `calculateBomDemand()` before material grouping.
+
+---
+
+## 2. Add `normaliseBomMaterial()` in `shared/planningEngine.ts`
+
+Add a pure helper near the BOM calculation section.
+
+Purpose:
+Convert raw SDB/SNL/mix/manual material names into practical BOM/procurement names.
+
+Function signature:
+
+```ts
+export function normaliseBomMaterial(input: {
+  materialName: string;
+  uom: string;
+  itemDescription?: string;
+  itemCode?: string | null;
+  layerConfig?: LayerConfig | null;
+  supplyType?: "direct" | "plant";
+  isAuto?: boolean | null;
+}): {
+  displayMaterialName: string;
+  suggestedMaterialMasterName: string;
+  originalNormMaterialName: string;
+  materialGroup: string;
+  reviewNeeded: boolean;
+  normalisationReason: string;
+}
+```
+
+Rules:
+
+### A. Direct-supply GSB/WMM collapse
+
+If material/BOQ/layer indicates direct GSB/WMM:
+
+* WMM → `WMM Material`
+* GSB → `GSB Material`
+
+Detect using:
+
+* `layerConfig.layerType === "granular"`
+* `layerConfig.granularSource !== "plant"`
+* OR `supplyType === "direct"`
+* AND item description / mixType contains WMM/GSB/granular sub-base/wet mix
+
+Do not allow gradation fraction names to remain for direct-supply GSB/WMM.
+
+### B. Bituminous practical names
+
+Preserve already practical names:
+
+* Bitumen VG-30
+* Bitumen VG-40
+* Aggregate Dust
+* Stone Dust
+* 6mm Aggregate
+* 10mm Aggregate
+* 20mm Aggregate
+* 40mm Aggregate
+* Filler
+* LDO / Process Fuel
+
+### C. SDB aggregate gradation fallback
+
+If raw name contains aggregate gradation ranges, normalise to practical market names:
+
+* 63–45 mm → `60mm Aggregate`
+* 53–22.4 mm → `40mm Aggregate`
+* 45–22.4 mm → `40mm Aggregate`
+* 37.5–25 mm → `40mm Aggregate`
+* 26.5–19 mm → `20mm Aggregate`
+* 25–10 mm → `20mm Aggregate`
+* 22.4–11.2 mm → `20mm Aggregate`
+* 19–9.5 mm → `10mm Aggregate`
+* 13.2–5.6 mm → `6mm Aggregate`
+* 9.5–2.36 mm → `6mm Aggregate`
+* 4.75 mm and below → `Stone Dust`
+* below 2.36 mm → `Stone Dust`
+* 75 micron / filler → `Filler`
+
+This is internal logic. Do not ask user to add aliases in Material Master.
+
+### D. Common material names
+
+Normalise:
+
+* HYSD / TMT / reinforcement / steel → `TMT / Reinforcement Steel`
+* cement → `Cement`
+* sand → `Sand`
+* water → `Water`
+* emulsion + prime → `Bitumen Emulsion SS-1`
+* emulsion + tack → `Bitumen Emulsion RS-1`
+* diesel / HSD → `Diesel / HSD`
+* LDO / process fuel → `LDO / Process Fuel`
+
+Fallback:
+If no rule matches, keep raw material name but set `reviewNeeded = true`.
+
+---
+
+## 3. Apply normalisation inside `calculateBomDemand()`
+
+In the material loop, before creating the map key:
+
+Current behaviour:
+
+```ts
+const key = canonResourceKey(m.materialName);
+```
+
+Change to:
+
+```ts
+const norm = normaliseBomMaterial({
+  materialName: m.materialName,
+  uom: m.uom,
+  itemDescription: item.description,
+  itemCode: item.itemCode,
+  layerConfig: item.layerConfig ?? null,
+  supplyType: m.supplyType,
+  isAuto: m.isAuto,
+});
+
+const key = canonResourceKey(norm.displayMaterialName);
+```
+
+Use `norm.displayMaterialName` as the final `materialName`.
+
+Extend `BomMaterialRow` and breakdown row safely with optional fields:
+
+```ts
+originalNormMaterialName?: string;
+suggestedMaterialMasterName?: string;
+materialGroup?: string;
+reviewNeeded?: boolean;
+normalisationReason?: string;
+```
+
+Do not remove existing fields.
+
+---
+
+## 4. Extend `BomInputItem`
+
+Add optional fields:
+
+```ts
+layerConfig?: LayerConfig | null;
+workCategory?: string | null;
+```
+
+Ensure the BOM endpoint passes these from BOQ items into `calculateBomDemand()`.
+
+---
+
+## 5. Remove duplicate fraction rows for direct-supply GSB/WMM
+
+After normalisation, direct-supply GSB/WMM must group only as:
+
+* `GSB Material`
+* `WMM Material`
+
+If any raw aggregate fraction belongs to a direct-supply GSB/WMM item, it should be grouped into the finished material, not displayed separately.
+
+Example:
+For WMM direct supply:
+
+* do not show `53mm to 9.5mm @ 50 percent`
+* show `WMM Material`
+
+For GSB direct supply:
+
+* do not show `Granular material`, `Stone Dust`, or grading ranges separately
+* show `GSB Material`
+
+---
+
+## 6. Prevent wrong source grouping appearance
+
+If a material group contains source BOQ rows unrelated to the material after normalisation, add a debug warning:
+
+```ts
+console.warn("[BOM normalisation check]", {
+  displayMaterialName,
+  originalNormMaterialName,
+  itemCode,
+  itemDescription,
+});
+```
+
+Specifically verify:
+
+* Aggregate rows should not appear as sourced from HYSD/steel BOQ items.
+* HYSD/steel BOQ rows should group under `TMT / Reinforcement Steel`.
+
+---
+
+## 7. Clean WorkDemand material drill-down UI
+
+In `client/src/pages/WorkDemand.tsx`, remove the repeated sub-heading row:
+
+Current:
+`BOQ Item | Formula (coeff × qty = total) | Source`
+
+Preferred:
+Each expanded row should directly show:
+
+* item code
+* short BOQ description
+* formula
+* source badge
+
+Suggested compact layout:
+
+```text
+[10.06] Providing, laying, spreading and compacting WMM…
+2.2000 × 6840 = 15048 MT
+Auto
+```
+
+Do not create a separate boxed “BOQ Item” heading for every material.
+
+Keep full BOQ description on hover/title.
+
+---
+
+## 8. Fuel visibility check
+
+After this patch, verify fuel rows:
+
+* `Diesel / HSD` should appear if equipment rows have `consumptionNorm > 0` and `fuelType` is Diesel or blank/default.
+* `LDO / Process Fuel` should appear for bituminous layer demand.
+
+If fuel still does not show, add diagnostic output:
+
+* equipment rows count
+* rows with consumptionNorm > 0
+* generated Diesel/HSD qty
+* bituminous item count
+* generated LDO qty
+
+---
+
+## 9. Verification on NH-167
+
+After patch:
+
+1. WMM direct supply shows only `WMM Material`.
+2. GSB direct supply shows only `GSB Material`.
+3. Raw aggregate gradation ranges are not final material group names.
+4. Aggregate fractions do not appear under HYSD/steel source items.
+5. HYSD/steel rows group under `TMT / Reinforcement Steel`.
+6. Expanded material drill-down no longer has repeated `BOQ Item` header blocks.
+7. Diesel/HSD appears where equipment fuel norms exist.
+8. LDO / Process Fuel appears for bituminous demand.
+9. Work Programme bars remain unchanged.
+10. BOQ grouping remains unchanged.
+11. IRN/PI workflows remain unchanged.
