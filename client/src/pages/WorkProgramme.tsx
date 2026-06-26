@@ -1579,7 +1579,12 @@ export default function WorkProgramme() {
         description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${data?.unrecipiedCount ? ` · ${data.unrecipiedCount} need a work-type` : ""}.`,
       });
     },
-    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Auto-build recipes failed",
+        description: String(err?.message ?? err ?? "Unknown error"),
+        variant: "destructive",
+      }),
   });
 
   const autoSequenceMutation = useMutation({
@@ -1594,7 +1599,12 @@ export default function WorkProgramme() {
         description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
       });
     },
-    onError: () => toast({ title: "Auto-sequence failed", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Auto-sequence failed",
+        description: String(err?.message ?? err ?? "Unknown error"),
+        variant: "destructive",
+      }),
   });
 
   function handleAutoGenerate() {

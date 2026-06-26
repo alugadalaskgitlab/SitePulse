@@ -20,6 +20,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
+import { classifyWorkType } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9915,6 +9916,60 @@ export async function registerRoutes(
     return /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat/i.test(desc);
   }
 
+  // Synthesize a LayerConfig from the deterministic work-type classifier (Patch 14)
+  // when an item has no manually-saved layerConfig. This unlocks the existing P2
+  // derivation so concrete hits the RMC mix designs and bituminous hits the Master
+  // mix templates automatically — instead of falling straight to "setup required".
+  function synthLayerConfigFromWorkType(item: any): LayerConfig | null {
+    const desc = String(item.description ?? "");
+    const unit = String(item.unit ?? "");
+    if (isNonConsumingItem(desc.toLowerCase())) return null;
+
+    const wt = classifyWorkType(desc, unit);
+    if (!wt) return null;
+
+    const d = desc.toLowerCase();
+    const thM = desc.match(/([0-9]+(?:\.[0-9]+)?)\s*mm/i);
+    const detectedThk = thM ? parseFloat(thM[1]) : null;
+    const srM = desc.match(/([0-9]+(?:\.[0-9]+)?)\s*kg\s*(?:per|\/)?\s*(?:sqm|sq\.?\s*m|m2|m²)/i);
+    const detectedRate = srM ? parseFloat(srM[1]) : null;
+
+    switch (wt) {
+      case "earthwork":
+        return { layerType: "earthwork" };
+      case "gsb":
+        return { layerType: "granular", mixType: "GSB", granularSource: "quarry" };
+      case "wmm":
+        return { layerType: "granular", mixType: "WMM", granularSource: "quarry" };
+      case "prime_coat":
+        return { layerType: "spray_coat", mixType: "PRIME", coverageRateKgPerSqm: detectedRate ?? 1.0, coverageMaterialName: "Primer (Bitumen Emulsion)" };
+      case "tack_coat":
+        return { layerType: "spray_coat", mixType: "TACK", coverageRateKgPerSqm: detectedRate ?? 0.3, coverageMaterialName: "Tack Coat (Bitumen Emulsion)" };
+      case "bituminous_base":
+        return {
+          layerType: "bituminous",
+          mixType: /\bbm\b|bituminous\s*macadam/i.test(d) && !/dense/i.test(d) ? "BM" : "DBM",
+          thicknessMm: detectedThk ?? 75,
+          densityTPerCum: 2.35,
+        };
+      case "bituminous_wearing":
+        return {
+          layerType: "bituminous",
+          mixType: /sdbc|semi[-\s]*dense/i.test(d) ? "SDBC" : "BC",
+          thicknessMm: detectedThk ?? 40,
+          densityTPerCum: 2.4,
+        };
+      case "pcc":
+      case "rcc":
+      case "pqc":
+      case "dlc":
+        return { layerType: "concrete" };
+      case "drain_masonry":
+      default:
+        return null;
+    }
+  }
+
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
@@ -9998,7 +10053,12 @@ export async function registerRoutes(
       //   P3 — setup warning if major layer item has no usable template
       //   P4 — cleaned SDB rows for simple direct-material items
       const expandedItems = items.map(item => {
-        const lc = (item as any).layerConfig as LayerConfig | null;
+        const savedLc = (item as any).layerConfig as LayerConfig | null;
+        // Trust a manually-saved layer config; otherwise synthesize from the work-type classifier.
+        const lc: LayerConfig | null =
+          savedLc && savedLc.layerType && savedLc.layerType !== "none"
+            ? savedLc
+            : synthLayerConfigFromWorkType(item);
         const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
         const materialDriving = isMaterialDrivingLayerItem(item);
         const simpleDirect = isSimpleDirectMaterialItem(item);
