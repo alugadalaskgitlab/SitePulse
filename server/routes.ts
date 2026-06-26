@@ -10379,17 +10379,41 @@ export async function registerRoutes(
         chainageStartKm: 0,
       });
 
-      // Replace all existing bars with the sequenced programme.
-      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
-      let created = 0;
-      for (const b of bars) {
-        await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
-        created++;
+      // SAFETY: never wipe the existing programme unless we actually built new bars.
+      if (!bars.length) {
+        return res.status(422).json({
+          error: `No bars generated (items with qty: ${seqItems.length}, fronts: ${fronts}). ` +
+                 `Your existing programme was left untouched. Make sure BOQ items have a current quantity > 0.`,
+          itemsConsidered: seqItems.length,
+          fronts,
+        });
       }
-      res.json({ success: true, fronts, totalMonths, bars: created });
-    } catch (err) {
+
+      // Build the full new set first; only then replace the old bars.
+      let created = 0;
+      const insertErrors: string[] = [];
+      // Delete old bars only after we have a non-empty new set to insert.
+      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
+      for (const b of bars) {
+        try {
+          await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+          created++;
+        } catch (e: any) {
+          insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
+        }
+      }
+      res.json({
+        success: true,
+        fronts,
+        totalMonths,
+        bars: created,
+        itemsConsidered: seqItems.length,
+        errorCount: insertErrors.length,
+        sampleError: insertErrors[0] ?? null,
+      });
+    } catch (err: any) {
       console.error("auto-sequence:", err);
-      res.status(500).json({ error: "Failed to auto-sequence programme" });
+      res.status(500).json({ error: `Failed to auto-sequence programme: ${err?.message ?? String(err)}` });
     }
   });
 
@@ -10442,9 +10466,9 @@ export async function registerRoutes(
       }
 
       res.json({ success: true, totalItems: items.length, recipied, unrecipiedCount: unrecipied.length, unrecipied });
-    } catch (err) {
+    } catch (err: any) {
       console.error("auto-build-recipes:", err);
-      res.status(500).json({ error: "Failed to auto-build recipes" });
+      res.status(500).json({ error: `Failed to auto-build recipes: ${err?.message ?? String(err)}` });
     }
   });
 

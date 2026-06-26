@@ -1,0 +1,134 @@
+# SitePulse — Patch 18: Non-destructive Auto-sequence + real error messages
+
+## Why
+Your last run wiped the programme ("140 items not yet programmed") and Auto-build
+left every item with "no equipment". That means the **server endpoints threw an
+error** — Auto-sequence deleted the old bars *before* inserting, so when the insert
+failed the programme was left empty. This patch:
+
+1. **Never deletes your existing bars unless it successfully built a new set** — so a
+   failure can no longer wipe your programme.
+2. **Returns the real error message** (and logs it), so the toast/Network tab tells us
+   exactly what broke.
+3. Adds the same diagnostics to Auto-build recipes.
+
+> Apply **Patch 16 first** (it adds the error toast on the buttons). With 16 + 18 in,
+> the next click will show a clear red toast with the actual reason instead of silence.
+
+---
+
+## PART A — `server/routes.ts` (Auto-sequence: safe + diagnostic)
+
+**FIND:**
+
+```ts
+      const bars = generateSequencedProgramme(seqItems, {
+        fronts,
+        totalMonths,
+        roadLengthKm,
+        chainageStartKm: 0,
+      });
+
+      // Replace all existing bars with the sequenced programme.
+      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
+      let created = 0;
+      for (const b of bars) {
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+        created++;
+      }
+      res.json({ success: true, fronts, totalMonths, bars: created });
+    } catch (err) {
+      console.error("auto-sequence:", err);
+      res.status(500).json({ error: "Failed to auto-sequence programme" });
+    }
+```
+
+**REPLACE WITH:**
+
+```ts
+      const bars = generateSequencedProgramme(seqItems, {
+        fronts,
+        totalMonths,
+        roadLengthKm,
+        chainageStartKm: 0,
+      });
+
+      // SAFETY: never wipe the existing programme unless we actually built new bars.
+      if (!bars.length) {
+        return res.status(422).json({
+          error: `No bars generated (items with qty: ${seqItems.length}, fronts: ${fronts}). ` +
+                 `Your existing programme was left untouched. Make sure BOQ items have a current quantity > 0.`,
+          itemsConsidered: seqItems.length,
+          fronts,
+        });
+      }
+
+      // Build the full new set first; only then replace the old bars.
+      let created = 0;
+      const insertErrors: string[] = [];
+      // Delete old bars only after we have a non-empty new set to insert.
+      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
+      for (const b of bars) {
+        try {
+          await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+          created++;
+        } catch (e: any) {
+          insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
+        }
+      }
+      res.json({
+        success: true,
+        fronts,
+        totalMonths,
+        bars: created,
+        itemsConsidered: seqItems.length,
+        errorCount: insertErrors.length,
+        sampleError: insertErrors[0] ?? null,
+      });
+    } catch (err: any) {
+      console.error("auto-sequence:", err);
+      res.status(500).json({ error: `Failed to auto-sequence programme: ${err?.message ?? String(err)}` });
+    }
+```
+
+---
+
+## PART B — `server/routes.ts` (Auto-build recipes: surface the real error)
+
+**FIND:**
+
+```ts
+    } catch (err) {
+      console.error("auto-build-recipes:", err);
+      res.status(500).json({ error: "Failed to auto-build recipes" });
+    }
+```
+
+**REPLACE WITH:**
+
+```ts
+    } catch (err: any) {
+      console.error("auto-build-recipes:", err);
+      res.status(500).json({ error: `Failed to auto-build recipes: ${err?.message ?? String(err)}` });
+    }
+```
+
+---
+
+## After applying (do exactly this)
+
+1. `npm run check`, then **rebuild/restart** the Replit app.
+2. First, **restore your bars** if you want them back now: click **Auto-generate**
+   (this re-creates one bar per item). Optional — Auto-sequence will replace them anyway.
+3. Click **Auto-build recipes**. Read the toast:
+   - Success → "Recipes built — N of 140 …". If N is low, tell me the number.
+   - Red error toast → **copy the exact text** and send it to me.
+4. Click **Auto-sequence**. Read the toast:
+   - Success → "… N bars across M fronts". 
+   - Red error toast or the "No bars generated …" message → **copy the exact text**.
+5. If you still see nothing on the toasts, open the browser **DevTools → Network**,
+   click the button, click the failed `auto-build-recipes` / `auto-sequence` request,
+   and copy the **Response** text. (Or paste the Replit console line starting with
+   `auto-sequence:` / `auto-build-recipes:`.)
+
+That message will tell us the exact failure so I can fix the root cause.
