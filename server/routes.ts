@@ -9855,6 +9855,51 @@ export async function registerRoutes(
     }
   });
 
+  // ── BOM helper functions ────────────────────────────────────────────────────
+  function isMaterialDrivingLayerItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    const cat = String(item.workCategory ?? "").toLowerCase();
+    if (lc?.layerType && lc.layerType !== "none") return true;
+    return (
+      /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|prime\s*coat|tack\s*coat|pcc|rcc|cement\s*concrete|concrete/i.test(desc) ||
+      /subbase|base|bituminous|concrete/i.test(cat)
+    );
+  }
+
+  function isSimpleDirectMaterialItem(item: any): boolean {
+    const desc = String(item.description ?? "").toLowerCase();
+    return /filter\s*media|stone\s*spalls|stone\s*pitching|boulder|pipe|np3|np4|hdpe|bearing|expansion\s*joint|joint\s*sealant|sealant|dowel|plastic\s*sheath|geotextile|separation\s*membrane|sign\s*board|stud|marker|reflector|kerb|railing|crash\s*barrier|anchor|anchorage/i.test(desc);
+  }
+
+  function isRawSdbAggregateName(name: string): boolean {
+    const s = String(name ?? "").toLowerCase();
+    return (
+      /\d+(\.\d+)?\s*mm.*\d+(\.\d+)?\s*mm/.test(s) ||
+      /below\s*\d+(\.\d+)?\s*mm/.test(s) ||
+      /\d+(\.\d+)?\s*mm\s*and\s*below/.test(s) ||
+      /percent|per\s*cent|gradation|graded\s*aggregate|coarse\s*graded|fine\s*graded/i.test(s)
+    );
+  }
+
+  function detectConcreteGrade(text: string): string | null {
+    const s = String(text ?? "").toUpperCase();
+    const m = s.match(/\bM\s*([0-9]{2,3})\b/);
+    return m ? `M${m[1]}` : null;
+  }
+
+  function isConcreteLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    return lc?.layerType === "concrete" || /pcc|rcc|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|concrete/i.test(desc);
+  }
+
+  function isBituminousLayerOrItem(item: any): boolean {
+    const lc = item.layerConfig as LayerConfig | null;
+    const desc = String(item.description ?? "").toLowerCase();
+    return lc?.layerType === "bituminous" || /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc/i.test(desc);
+  }
+
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
@@ -9914,29 +9959,28 @@ export async function registerRoutes(
 
       const barItemIds = new Set(bars.map(b => b.boqItemId));
 
-      // For each item, resolve the best possible material list:
-      //   Priority 1 — manual (non-auto) recipe rows entered by user
-      //   Priority 2 — layerConfig derivation (gives detailed fractions e.g. bitumen%, 20mm, 10mm, dust)
-      //   Priority 3 — existing auto rows as-is (from SNL mappings or earlier auto-derivation)
+      // For each item resolve the best possible material list using source priority:
+      //   P1 — manual (non-auto) rows for non-layer items
+      //   P2 — layerConfig derivation (bituminous JMF / granular / spray coat / concrete mix design)
+      //   P3 — setup warning if major layer item has no usable template
+      //   P4 — cleaned SDB rows for simple direct-material items
       const expandedItems = items.map(item => {
         const lc = (item as any).layerConfig as LayerConfig | null;
         const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
+        const materialDriving = isMaterialDrivingLayerItem(item);
+        const simpleDirect = isSimpleDirectMaterialItem(item);
+        const concreteGrade = detectConcreteGrade((item as any).description ?? "");
 
-        if (manualMaterials.length > 0) {
-          // User has manually specified materials — trust those
-          return { ...item, materials: manualMaterials, isProgrammed: barItemIds.has(item.id) };
+        // P1: manual materials trusted only when not a major material-driving layer item
+        if (manualMaterials.length > 0 && !materialDriving) {
+          return { ...item, materials: manualMaterials, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
         }
 
-        // Try layerConfig expansion for richer component breakdown
+        // P2: layerConfig derivation
         if (lc && lc.layerType && lc.layerType !== "none") {
-          // Resolve mix template priority:
-          // 1. explicit layerConfig.mixTemplateId
-          // 2. lc.mixType mapped via project mix-links (e.g. "BC", "DBM", "WMM")
-          // 3. item.workCategory mapped via project mix-links (same key space)
-          // 4. single-link generic fallback when project has exactly one bituminous link
           let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
+
           if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
-            // Try exact upper-case first, then normalised form (handles "Bituminous Concrete" → "BC")
             resolvedMixTemplateId =
               mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ??
               mixTypeToTemplateId.get(normaliseMixType(lc.mixType)) ??
@@ -9950,36 +9994,36 @@ export async function registerRoutes(
               null;
           }
           if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
-            // Generic fallback: if there is exactly one bituminous mix-link for this project use it
+            // Generic fallback: single bituminous mix-link for this project
             const bitLinks = mixLinks.filter(l => l.mixTemplateId);
             if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
           }
+          // Concrete/RMC — reuse existing mix template by detected grade (M15, M20, M25…)
+          if (!resolvedMixTemplateId && lc.layerType === "concrete" && concreteGrade) {
+            resolvedMixTemplateId =
+              mixTypeToTemplateId.get(concreteGrade.toUpperCase()) ??
+              mixTypeToTemplateId.get(normaliseMixType(concreteGrade)) ??
+              null;
+          }
+
           const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
           const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
-          // Determine supply type for derived materials:
-          // granular-quarry = direct supply; granular-plant / bituminous = plant-processed
+
           const derivedSupplyType: "direct" | "plant" | undefined =
             lc.layerType === "granular" && lc.granularSource !== "plant" ? "direct"
             : lc.layerType === "granular" && lc.granularSource === "plant" ? "plant"
             : lc.layerType === "bituminous" ? "plant"
             : lc.layerType === "spray_coat" ? "direct"
+            : lc.layerType === "concrete" ? "plant"
             : undefined;
+
           if (derived.length > 0) {
-            // Qualify a generic "Aggregate" with its layer's mix type so GSB and WMM
-            // aggregates show as separate, clearly-labelled lines in BOM & Procurement.
-            const desc = String((item as any).description ?? "");
-            const aggTag =
-              (lc.mixType && lc.mixType.trim()) ||
-              (/wet\s*mix|\bwmm\b/i.test(desc) ? "WMM" :
-               /granular\s*sub-?base|\bgsb\b/i.test(desc) ? "GSB" : null);
             return {
               ...item,
               materials: derived.map(dm => ({
                 id: 0,
                 boqItemId: item.id,
-                materialName: (aggTag && /^aggregate$/i.test(dm.materialName.trim()))
-                  ? `Aggregate (${aggTag})`
-                  : dm.materialName,
+                materialName: dm.materialName,
                 uom: dm.uom,
                 qtyPerBoqUnit: dm.qtyPerBoqUnit,
                 wastagePct: 0,
@@ -9989,13 +10033,48 @@ export async function registerRoutes(
                 createdAt: null,
                 supplyType: derivedSupplyType,
               })),
+              materialSetupWarning: null,
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+
+          // P3: layer exists but no usable template — emit warning, no raw SDB fractions
+          if (materialDriving) {
+            return {
+              ...item,
+              materials: [],
+              materialSetupWarning:
+                lc.layerType === "bituminous"
+                  ? "Mix template/JMF required for bituminous material demand"
+                  : lc.layerType === "concrete"
+                  ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+                  : "Material setup required for this layer item",
               isProgrammed: barItemIds.has(item.id),
             };
           }
         }
 
-        // Fallback: keep existing auto rows unchanged
-        return { ...item, isProgrammed: barItemIds.has(item.id) };
+        // P3 (no layerConfig): major layer item identified by description/category
+        if (materialDriving && !simpleDirect) {
+          return {
+            ...item,
+            materials: [],
+            materialSetupWarning: isConcreteLayerOrItem(item)
+              ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+              : isBituminousLayerOrItem(item)
+              ? "Mix template/JMF required for bituminous material demand"
+              : "Layer/mix setup required for material demand",
+            isProgrammed: barItemIds.has(item.id),
+          };
+        }
+
+        // P4: simple direct-material or non-layer items — strip raw SDB gradation rows
+        const cleanedRows = item.materials.filter((m: any) => {
+          if (!m.materialName) return false;
+          if (isRawSdbAggregateName(m.materialName) && !simpleDirect) return false;
+          return true;
+        });
+        return { ...item, materials: cleanedRows, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
       });
 
       const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);

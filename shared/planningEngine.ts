@@ -664,9 +664,8 @@ export function calculateBomDemand(
     console.log(`[BOM Engine] equipment rows with consumptionNorm: ${eqWithNorm.length} | Diesel/HSD total: ${dieselRow?.totalQty?.toFixed(0) ?? 0} L | LDO total: ${ldoRow?.totalQty?.toFixed(0) ?? 0} L`);
   }
 
-  // Sort by total (largest first); filter out zero-demand rows that can appear from
-  // items with recipes but no scheduled work qty (e.g. equipment on unprogrammed items)
-  const materials = [...matMap.values()].filter(r => r.totalQty > 0).sort((a, b) => b.totalQty - a.totalQty);
+  // Apply contractor-friendly group sort order
+  const materials = sortBomMaterials([...matMap.values()].filter(r => r.totalQty > 0));
   const equipment = [...eqMap.values()].filter(r => r.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
   const labour = [...labMap.values()].filter(r => r.totalDays > 0).sort((a, b) => b.totalDays - a.totalDays);
 
@@ -817,6 +816,56 @@ export function calculateTipperFleet(input: TipperFleetInput): TipperFleetResult
   const tippersNeeded = deliveryPerTipper > 0 ? Math.ceil(plantOutputMTperHr / deliveryPerTipper) : 0;
   const deliveryRateMTperHr = deliveryPerTipper * tippersNeeded;
   return { cycleTimeMins, tippersNeeded, deliveryRateMTperHr, isAdequate: deliveryRateMTperHr >= plantOutputMTperHr };
+}
+
+// ─── Material Group Sort Order ────────────────────────────────────────────────
+
+/** Contractor-friendly procurement order for the BOM materials table. */
+const MATERIAL_GROUP_ORDER: readonly string[] = [
+  "gsb material",
+  "wmm material",
+  "wbm material",
+  "bitumen vg-10",
+  "bitumen vg-30",
+  "bitumen vg-40",
+  "bitumen emulsion ss-1",
+  "bitumen emulsion rs-1",
+  "bitumen emulsion",
+  "aggregate dust",
+  "stone dust",
+  "6mm aggregate",
+  "10mm aggregate",
+  "13mm aggregate",
+  "20mm aggregate",
+  "40mm aggregate",
+  "60mm aggregate",
+  "filler (lime)",
+  "filler",
+  "ldo / process fuel",
+  "diesel / hsd",
+  "water",
+  "cement",
+  "sand",
+  "admixture",
+  "tmt / reinforcement steel",
+  "binding wire",
+  "pipes",
+  "filter media",
+];
+
+/**
+ * Sorts BOM material rows in contractor-friendly procurement order.
+ * Known group names appear in the fixed order above; unknown names sort
+ * by total quantity descending after all known names.
+ */
+export function sortBomMaterials(materials: BomMaterialRow[]): BomMaterialRow[] {
+  const orderMap = new Map(MATERIAL_GROUP_ORDER.map((n, i) => [n, i]));
+  return [...materials].sort((a, b) => {
+    const ai = orderMap.get(a.materialName.toLowerCase()) ?? 9999;
+    const bi = orderMap.get(b.materialName.toLowerCase()) ?? 9999;
+    if (ai !== bi) return ai - bi;
+    return b.totalQty - a.totalQty;
+  });
 }
 
 // ─── Material Derivation from Layer Config ────────────────────────────────────

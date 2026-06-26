@@ -1,0 +1,524 @@
+# SitePulse — PATCH 8E: Material BOM source priority + RMC mix design reuse + Road Estimator-style Materials/Labour display
+
+Current status:
+BOM has improved, but it is still not behaving like the intended contractor-friendly BOM.
+
+Observed issues:
+
+1. GSB/WMM direct supply is shown, but the same BOQ items still also appear under aggregate fractions.
+2. Raw SDB aggregate gradation names are still leaking into final Material BOM.
+3. Material rows are not sorted/grouped in a practical contractor/procurement order.
+4. Expanded rows still show unnecessary “Source / BOQ Item” header style.
+5. Material BOM should come from project execution decisions and mix templates/JMF/designs, not raw SDB material rows for major mix/layer items.
+6. Concrete/RMC mix designs already exist in RMC Operations / mix templates and must be reused.
+7. Labour demand should remain SDB/SNL-based, but display should be Road Estimator-style grouped formula rows.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* SNL mapping status/confidence logic
+* Work Programme bars
+* Stock logic
+* IRN/PI manual workflows
+* Dashboard
+* Equipment calculation logic in this patch
+
+Primary files:
+
+* `server/routes.ts`
+* `shared/planningEngine.ts`
+* `client/src/pages/WorkDemand.tsx`
+
+Reference model only:
+
+* `road-estimator/frontend/src/pages/BillOfMaterials.js`
+* Use its grouped BOM display pattern, not its code.
+
+---
+
+## 1. Material BOM source priority
+
+For MATERIAL BOM only, apply this priority:
+
+1. Project direct-supply decision
+
+   * GSB direct supply → `GSB Material`
+   * WMM direct supply → `WMM Material`
+
+2. Project mix template / JMF / mix design
+
+   * DBM / BC / BM / SDBC → HMP mix template / JMF
+   * Concrete / PCC / RCC → existing RMC Operations mix design / concrete mix template
+
+3. BOQ quantity as direct material
+
+   * filter media
+   * stone
+   * pipe
+   * bearing
+   * expansion joint
+   * sealant
+   * dowel bars / plastic sheath
+   * sign boards / reflectors / studs
+   * other direct material items
+
+4. SDB/SNL material rows only for simple non-mix items where no mix template/direct-supply decision is required.
+
+5. If project setup/mix template is missing, show a setup warning. Do not fall back to raw SDB aggregate fractions as final procurement materials for major mix/layer items.
+
+Important:
+SDB/SNL can continue to supply labour norms and equipment reference norms. This patch changes only material BOM source selection and display.
+
+---
+
+## 2. Add helper functions in `server/routes.ts`
+
+Near the BOM endpoint helper functions, add:
+
+```ts
+function isMaterialDrivingLayerItem(item: any): boolean {
+  const lc = item.layerConfig as LayerConfig | null;
+  const desc = String(item.description ?? "").toLowerCase();
+  const cat = String(item.workCategory ?? "").toLowerCase();
+
+  if (lc?.layerType && lc.layerType !== "none") return true;
+
+  return (
+    /\bgsb\b|granular\s*sub[-\s]*base|wet\s*mix|\bwmm\b|dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|prime\s*coat|tack\s*coat|pcc|rcc|cement\s*concrete|concrete/i.test(desc) ||
+    /subbase|base|bituminous|concrete/i.test(cat)
+  );
+}
+
+function isSimpleDirectMaterialItem(item: any): boolean {
+  const desc = String(item.description ?? "").toLowerCase();
+
+  return (
+    /filter\s*media|stone\s*spalls|stone\s*pitching|boulder|pipe|np3|np4|hdpe|bearing|expansion\s*joint|joint\s*sealant|sealant|dowel|plastic\s*sheath|geotextile|separation\s*membrane|sign\s*board|stud|marker|reflector|kerb|railing|crash\s*barrier|anchor|anchorage/i.test(desc)
+  );
+}
+
+function isRawSdbAggregateName(name: string): boolean {
+  const s = String(name ?? "").toLowerCase();
+
+  return (
+    /\d+(\.\d+)?\s*mm.*\d+(\.\d+)?\s*mm/.test(s) ||
+    /below\s*\d+(\.\d+)?\s*mm/.test(s) ||
+    /\d+(\.\d+)?\s*mm\s*and\s*below/.test(s) ||
+    /percent|per\s*cent|gradation|graded\s*aggregate|coarse\s*graded|fine\s*graded/i.test(s)
+  );
+}
+
+function detectConcreteGrade(text: string): string | null {
+  const s = String(text ?? "").toUpperCase();
+  const m = s.match(/\bM\s*([0-9]{2,3})\b/);
+  return m ? `M${m[1]}` : null;
+}
+
+function isConcreteLayerOrItem(item: any): boolean {
+  const lc = item.layerConfig as LayerConfig | null;
+  const desc = String(item.description ?? "").toLowerCase();
+  return lc?.layerType === "concrete" || /pcc|rcc|cement\s*concrete|plain\s*cement\s*concrete|reinforced\s*cement\s*concrete|concrete/i.test(desc);
+}
+
+function isBituminousLayerOrItem(item: any): boolean {
+  const lc = item.layerConfig as LayerConfig | null;
+  const desc = String(item.description ?? "").toLowerCase();
+  return lc?.layerType === "bituminous" || /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc/i.test(desc);
+}
+```
+
+---
+
+## 3. Reuse existing RMC Operations concrete mix designs
+
+Important:
+Concrete mix designs already exist in the RMC Operations / mix-template system. Do not create a new concrete mix-design master.
+
+For PCC/RCC/concrete BOQ items:
+
+1. Detect grade from BOQ description:
+
+   * M10
+   * M15
+   * M20
+   * M25
+   * M30
+   * M35
+   * M40
+   * M45
+   * etc.
+
+2. Search existing `mixTemplates` / `mixTemplateComponents` for matching RMC/concrete template.
+
+3. If concrete/RMC template exists:
+   derive material demand from its components:
+
+   * cement
+   * sand
+   * 20mm aggregate
+   * 10mm aggregate
+   * admixture
+   * water
+   * any other component in the template
+
+4. If no concrete/RMC mix design exists:
+   do not fall back to raw SDB aggregate gradation ranges.
+   return material setup warning:
+   `Concrete mix design required for Mxx grade`
+
+5. Keep SDB/SNL labour and equipment norms for concrete items.
+
+6. Do not duplicate the RMC mix design system in Masters.
+
+---
+
+## 4. Modify BOM material resolution in `server/routes.ts`
+
+Inside:
+
+```ts
+app.get("/api/boq/projects/:id/bom", async (req, res) => {
+```
+
+inside the `expandedItems = items.map(item => { ... })` block, adjust material selection logic.
+
+Required logic:
+
+```ts
+const lc = (item as any).layerConfig as LayerConfig | null;
+const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
+const materialDriving = isMaterialDrivingLayerItem(item);
+const simpleDirect = isSimpleDirectMaterialItem(item);
+const concreteGrade = detectConcreteGrade((item as any).description ?? "");
+
+if (manualMaterials.length > 0 && !materialDriving) {
+  return {
+    ...item,
+    materials: manualMaterials,
+    isProgrammed: barItemIds.has(item.id),
+  };
+}
+
+if (lc && lc.layerType && lc.layerType !== "none") {
+  let resolvedMixTemplateId: number | null = lc.mixTemplateId ?? null;
+
+  if (!resolvedMixTemplateId && lc.layerType === "bituminous" && lc.mixType) {
+    resolvedMixTemplateId =
+      mixTypeToTemplateId.get(lc.mixType.toUpperCase()) ??
+      mixTypeToTemplateId.get(normaliseMixType(lc.mixType)) ??
+      null;
+  }
+
+  if (!resolvedMixTemplateId && lc.layerType === "bituminous" && (item as any).workCategory) {
+    const cat = (item as any).workCategory as string;
+    resolvedMixTemplateId =
+      mixTypeToTemplateId.get(cat.toUpperCase()) ??
+      mixTypeToTemplateId.get(normaliseMixType(cat)) ??
+      null;
+  }
+
+  // Concrete/RMC template resolution should reuse existing mix template records.
+  // Match by detected grade such as M15/M20/M25/M30 where possible.
+  if (!resolvedMixTemplateId && lc.layerType === "concrete" && concreteGrade) {
+    resolvedMixTemplateId =
+      mixTypeToTemplateId.get(concreteGrade.toUpperCase()) ??
+      mixTypeToTemplateId.get(normaliseMixType(concreteGrade)) ??
+      null;
+  }
+
+  const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
+
+  const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
+
+  const derivedSupplyType: "direct" | "plant" | undefined =
+    lc.layerType === "granular" && lc.granularSource !== "plant" ? "direct"
+    : lc.layerType === "granular" && lc.granularSource === "plant" ? "plant"
+    : lc.layerType === "bituminous" ? "plant"
+    : lc.layerType === "spray_coat" ? "direct"
+    : lc.layerType === "concrete" ? "plant"
+    : undefined;
+
+  if (derived.length > 0) {
+    return {
+      ...item,
+      materials: derived.map(dm => ({
+        id: 0,
+        boqItemId: item.id,
+        materialName: dm.materialName,
+        uom: dm.uom,
+        qtyPerBoqUnit: dm.qtyPerBoqUnit,
+        wastagePct: 0,
+        isClientSupplied: false,
+        isAuto: true as const,
+        sortOrder: 0,
+        createdAt: null,
+        supplyType: derivedSupplyType,
+      })),
+      materialSetupWarning: null,
+      isProgrammed: barItemIds.has(item.id),
+    };
+  }
+
+  if (materialDriving) {
+    return {
+      ...item,
+      materials: [],
+      materialSetupWarning:
+        lc.layerType === "bituminous"
+          ? "Mix template/JMF required for bituminous material demand"
+          : lc.layerType === "concrete"
+          ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+          : "Material setup required for this layer item",
+      isProgrammed: barItemIds.has(item.id),
+    };
+  }
+}
+
+// If item is clearly a major material-driving layer item but no usable layer/template exists,
+// do not allow raw SDB aggregate gradation rows into Material BOM.
+if (materialDriving && !simpleDirect) {
+  return {
+    ...item,
+    materials: [],
+    materialSetupWarning:
+      isConcreteLayerOrItem(item)
+        ? `Concrete/RMC mix design required${concreteGrade ? ` for ${concreteGrade}` : ""}`
+        : isBituminousLayerOrItem(item)
+        ? "Mix template/JMF required for bituminous material demand"
+        : "Layer/mix setup required for material demand",
+    isProgrammed: barItemIds.has(item.id),
+  };
+}
+
+// Simple direct material items can use existing rows.
+// For non-simple/non-layer items, remove raw SDB aggregate gradation rows.
+const cleanedExistingRows = item.materials.filter((m: any) => {
+  if (!m.materialName) return false;
+  if (isRawSdbAggregateName(m.materialName) && !simpleDirect) return false;
+  return true;
+});
+
+return {
+  ...item,
+  materials: cleanedExistingRows,
+  materialSetupWarning: null,
+  isProgrammed: barItemIds.has(item.id),
+};
+```
+
+Adjust exact field names if local schema differs.
+
+Key point:
+For major layer/mix items, do not merge old SDB/SNL material rows into material BOM after deriving from layerConfig/mix template.
+
+---
+
+## 5. Direct-supply GSB/WMM behaviour
+
+If GSB is direct supply:
+
+* BOM should show only `GSB Material`.
+
+If WMM is direct supply:
+
+* BOM should show only `WMM Material`.
+
+Do not show the same GSB/WMM BOQ item under:
+
+* 6mm aggregate
+* 10mm aggregate
+* 20mm aggregate
+* 40mm aggregate
+* stone dust
+* raw gradation ranges
+
+---
+
+## 6. Bituminous behaviour
+
+For DBM/BC/BM/SDBC:
+
+* use HMP mix template/JMF components.
+* show practical materials from the template:
+
+  * Bitumen VG-30/VG-40
+  * Aggregate Dust / Stone Dust
+  * 6mm Aggregate
+  * 10mm Aggregate
+  * 20mm / 40mm Aggregate if in template
+  * Filler
+  * LDO / Process Fuel
+
+If mix template/JMF is missing:
+
+* show warning
+* do not show raw SDB aggregate fractions.
+
+---
+
+## 7. Concrete/RMC behaviour
+
+For PCC/RCC/concrete:
+
+* use existing RMC Operations concrete mix design / mix template.
+* derive materials from template components.
+* if missing, show `Concrete/RMC mix design required for Mxx`.
+* do not create another concrete master.
+* do not fallback to raw SDB aggregate gradation ranges.
+
+Reinforcement steel, binding wire and direct reinforcement items can still come from SDB/simple material rows or BOQ direct material rows where applicable.
+
+---
+
+## 8. Material group sorting
+
+In `shared/planningEngine.ts` or `client/src/pages/WorkDemand.tsx`, sort material groups in this contractor-friendly order:
+
+1. GSB Material
+2. WMM Material
+3. Bitumen VG-30
+4. Bitumen VG-40
+5. Bitumen Emulsion SS-1
+6. Bitumen Emulsion RS-1
+7. Aggregate Dust
+8. Stone Dust
+9. 6mm Aggregate
+10. 10mm Aggregate
+11. 20mm Aggregate
+12. 40mm Aggregate
+13. Filler
+14. LDO / Process Fuel
+15. Diesel / HSD
+16. Water
+17. Cement
+18. Sand
+19. Admixture
+20. TMT / Reinforcement Steel
+21. Binding Wire
+22. Pipes
+23. Filter Media
+24. Stone / pitching materials
+25. Bearings / joints / sealants
+26. Road furniture / reflectors / studs
+27. Other materials
+
+Within each material group, sort source rows by:
+
+* BOQ category order if available
+* BOQ item code / item order
+* then month/chainage if applicable
+
+---
+
+## 9. Clean Material BOM expanded row display
+
+In `client/src/pages/WorkDemand.tsx`, clean the expanded material drill-down.
+
+Remove repeated sub-heading style like:
+`Source | Formula | Type`
+
+Each expanded source row should directly show:
+
+* BOQ item code
+* short BOQ description
+* formula only:
+  `coefficient × quantity = total`
+* source badge:
+  Auto / Manual / Mix Template / SDB
+
+Example:
+
+`[3.02] Providing, laying, spreading and compacting WMM — 2.2000 × 6,840 = 15,048 MT — Auto`
+
+Do not show unnecessary repeated:
+
+* BOQ Item heading
+* BOQ qty heading
+* work qty heading
+* line total heading
+  inside every expanded material.
+
+Keep full BOQ description on hover/title.
+
+---
+
+## 10. Labour display should follow Road Estimator style
+
+Do not change labour calculation in this patch.
+
+Only improve display in `WorkDemand.tsx`.
+
+Labour tab should group by labour category/designation.
+
+Each labour group header should show:
+
+* labour category/designation
+* total mandays/days
+* month-wise mandays/days
+
+Expanded rows should show:
+
+* BOQ item code + short description
+* formula:
+  `labour days per BOQ unit × work quantity = total mandays`
+* source badge
+
+Example:
+
+`[3.02] WMM — 0.2000 × 6,840 = 1,368 days — SDB`
+
+Do not show cluttered repeated sub-headings for every labour group.
+
+---
+
+## 11. Do not change equipment display now
+
+Equipment mechanism will be handled later.
+
+In this patch:
+
+* do not change equipment calculation logic
+* do not change equipment selection mechanism
+* do not change equipment master logic
+
+Only ensure existing equipment tab does not break.
+
+---
+
+## 12. Setup warnings
+
+If material setup is missing, return warning fields from backend.
+
+Frontend can show a small warning card/list later.
+
+Examples:
+
+* `Mix template/JMF required for bituminous material demand`
+* `Concrete/RMC mix design required for M25`
+* `Layer/mix setup required for material demand`
+
+Do not block BOM calculation for other items.
+
+---
+
+## 13. Tests / verification
+
+Run full tests.
+
+Then verify NH-167:
+
+1. GSB direct supply shows only `GSB Material`.
+2. WMM direct supply shows only `WMM Material`.
+3. GSB/WMM source rows do not also appear under aggregate fractions.
+4. DBM/BC uses linked HMP mix template/JMF materials.
+5. If bituminous template missing, warning appears and raw SDB fractions do not appear.
+6. PCC/RCC/concrete uses existing RMC Operations mix design where available.
+7. If concrete template missing, warning appears and raw SDB fractions do not appear.
+8. Material groups are sorted in contractor-friendly order.
+9. Expanded material rows show only source item + formula + source badge.
+10. Labour tab shows grouped formula rows like Road Estimator.
+11. Work Programme bars unchanged.
+12. BOQ grouping unchanged.
+13. Stock/IRN/PI unchanged.
+14. Equipment tab not broken.
