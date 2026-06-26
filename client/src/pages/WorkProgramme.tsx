@@ -1582,6 +1582,21 @@ export default function WorkProgramme() {
     onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
   });
 
+  const autoSequenceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { bars?: number; fronts?: number }) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Programme sequenced",
+        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-sequence failed", variant: "destructive" }),
+  });
+
   function handleAutoGenerate() {
     if (!effectiveProject) return;
     const programmedIds = new Set(bars.map(b => b.boqItemId));
@@ -1692,6 +1707,22 @@ export default function WorkProgramme() {
                 ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                 : <Sparkles className="w-4 h-4 mr-1" />}
               Auto-build recipes
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-purple-300 text-purple-700 hover:bg-purple-50"
+              onClick={() => autoSequenceMutation.mutate()}
+              disabled={autoSequenceMutation.isPending}
+              data-testid="button-auto-sequence"
+              title="Sequence the whole programme reach-wise: multiple parallel fronts, each running earthwork → GSB → WMM → prime → bituminous in dependency order, scaled to the project duration."
+            >
+              {autoSequenceMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <ArrowLeftRight className="w-4 h-4 mr-1" />}
+              Auto-sequence
             </Button>
           )}
           {items.length > 0 && (

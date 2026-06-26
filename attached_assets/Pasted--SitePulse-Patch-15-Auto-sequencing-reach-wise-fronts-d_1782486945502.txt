@@ -1,0 +1,295 @@
+# SitePulse — Patch 15 · Auto-sequencing (reach-wise fronts + dependencies)
+
+Turns the flat "everything in Month 1" stack into a real NH-167 programme: the road is split into
+**N parallel reaches (fronts)**; each reach runs the crust sequence **in dependency order**
+(earthwork → GSB → WMM → prime → bituminous; PQC as rigid alt), structures run on a parallel track;
+the **critical chain is scaled to fit the project duration**. Demand (material/labour/equipment) then
+spreads realistically across the months instead of spiking in Month 1.
+
+**Prerequisite:** run **Auto-build recipes** (Patch 14) first — durations come from each item's
+equipment output norms. Without recipes, every item defaults to 1 month.
+
+**Files:** NEW `shared/programmeSequencer.ts`; `server/routes.ts` (new endpoint);
+`client/src/pages/WorkProgramme.tsx` (button + mutation). `npm run check` after.
+
+---
+
+## FILE 1 (NEW) — create `shared/programmeSequencer.ts`
+Create this file with the exact content below:
+
+```ts
+// Deterministic reach-wise auto-sequencer with dependencies + multiple fronts.
+// Pure TypeScript (only imports the pure classifier). Produces Work Programme bars
+// where each reach (front) runs the crust sequence in dependency order, reaches run
+// in parallel (staggered), and the critical chain is scaled to fit the project duration.
+
+import { classifyWorkType, type WorkType } from "./workTypeRecipes";
+
+type Track = "pavement" | "structure" | "other";
+
+const STAGE: Record<WorkType, { stage: number; track: Track }> = {
+  earthwork: { stage: 1, track: "pavement" },
+  gsb: { stage: 2, track: "pavement" },
+  wmm: { stage: 3, track: "pavement" },
+  spray_coat: { stage: 4, track: "pavement" },
+  concrete_pqc: { stage: 5, track: "pavement" },
+  bituminous_layer: { stage: 5, track: "pavement" },
+  concrete_rcc: { stage: 1, track: "structure" },
+  reinforcement: { stage: 2, track: "structure" },
+};
+
+export interface SeqInputItem {
+  boqItemId: number;
+  description: string;
+  unit: string;
+  totalQty: number;
+  fullDurationMonths: number; // duration for totalQty at a single front (from productivity engine)
+}
+
+export interface SeqOptions {
+  fronts: number;
+  totalMonths: number;
+  roadLengthKm: number;
+  chainageStartKm?: number;
+  staggerMonths?: number; // mobilisation offset between successive reaches
+  lagMonths?: number;     // gap between dependent stages within a reach
+}
+
+export interface SeqBar {
+  boqItemId: number;
+  reachLabel: string;
+  chainageFrom: number;
+  chainageTo: number;
+  startMonth: number;
+  endMonth: number;
+  plannedQty: number;
+  isQtyOverride: boolean;
+  isDurationOverride: boolean;
+}
+
+export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptions): SeqBar[] {
+  const fronts = Math.max(1, Math.floor(opts.fronts || 1));
+  const lag = opts.lagMonths ?? 0.25;
+  const stagger = opts.staggerMonths ?? 1;
+  const startCh = opts.chainageStartKm ?? 0;
+  const reachLen = opts.roadLengthKm > 0 ? opts.roadLengthKm / fronts : 0;
+
+  const classified = items.map((it) => {
+    const wt = classifyWorkType(it.description, it.unit);
+    const meta = wt ? STAGE[wt] : null;
+    return { it, stage: meta?.stage ?? 99, track: (meta?.track ?? "other") as Track };
+  });
+  const pav = classified.filter((c) => c.track === "pavement").sort((a, b) => a.stage - b.stage);
+  const str = classified.filter((c) => c.track === "structure").sort((a, b) => a.stage - b.stage);
+  const oth = classified.filter((c) => c.track === "other");
+
+  const bars: SeqBar[] = [];
+  const mk = (it: SeqInputItem, label: string, chF: number, chT: number, start: number, end: number, qty: number): SeqBar => ({
+    boqItemId: it.boqItemId,
+    reachLabel: label,
+    chainageFrom: +chF.toFixed(3),
+    chainageTo: +chT.toFixed(3),
+    startMonth: start,
+    endMonth: end,
+    plannedQty: +qty.toFixed(3),
+    isQtyOverride: true,
+    isDurationOverride: false,
+  });
+
+  for (let r = 0; r < fronts; r++) {
+    const chFrom = startCh + r * reachLen;
+    const chTo = startCh + (r + 1) * reachLen;
+    const label = `Reach ${r + 1}`;
+    const offset = r * stagger;
+    let pavCursor = offset;
+    let structCursor = offset;
+    let otherCursor = offset;
+
+    for (const c of pav) {
+      const qty = c.it.totalQty / fronts;
+      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+      const start = pavCursor;
+      const end = start + dur;
+      bars.push(mk(c.it, label, chFrom, chTo, start, end, qty));
+      pavCursor = end + lag;
+    }
+    for (const c of str) {
+      const qty = c.it.totalQty / fronts;
+      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+      const start = structCursor;
+      const end = start + dur;
+      bars.push(mk(c.it, label, chFrom, chTo, start, end, qty));
+      structCursor = end + lag;
+    }
+    for (const c of oth) {
+      const qty = c.it.totalQty / fronts;
+      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+      const start = otherCursor;
+      const end = start + dur;
+      bars.push(mk(c.it, label, chFrom, chTo, start, end, qty));
+      otherCursor = end + lag;
+    }
+  }
+
+  // Scale the critical chain to fit the project duration, then shift to 1-indexed months.
+  const maxEnd = bars.reduce((m, b) => Math.max(m, b.endMonth), 0);
+  const fit = opts.totalMonths > 1 ? opts.totalMonths - 1 : opts.totalMonths;
+  const scale = maxEnd > fit && fit > 0 ? fit / maxEnd : 1;
+  for (const b of bars) {
+    b.startMonth = +(1 + b.startMonth * scale).toFixed(2);
+    b.endMonth = +(1 + b.endMonth * scale).toFixed(2);
+    if (opts.totalMonths > 0 && b.endMonth > opts.totalMonths) b.endMonth = opts.totalMonths;
+    if (b.endMonth <= b.startMonth) b.endMonth = +(b.startMonth + 0.1).toFixed(2);
+  }
+  return bars;
+}
+```
+
+---
+
+## FILE 2 — `server/routes.ts` · add the endpoint
+**INSERT** right after the `auto-build-recipes` endpoint (after its closing `});`):
+```ts
+  // Auto-sequence the Work Programme reach-wise with dependencies + multiple fronts.
+  app.post("/api/boq/projects/:id/auto-sequence", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { generateSequencedProgramme } = await import("@shared/programmeSequencer");
+      const { calculateAutoDurationFull } = await import("@shared/planningEngine");
+
+      const [items, project, , existingBars] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getBoqProject(projectId),
+        storage.getBoqProgramSettings(projectId),
+        storage.getWorkProgramBars(projectId),
+      ]);
+
+      const workingHrs = (project as any)?.workingHoursPerDay ?? 8;
+      const workingDays = (project as any)?.workingDaysPerMonth ?? 26;
+      const totalMonths = (project as any)?.durationMonths ?? 18;
+      const roadLengthKm = (project as any)?.roadLengthKm ?? 0;
+      const fronts =
+        Math.max(1, Math.floor(Number(req.body?.fronts) || 0)) ||
+        Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+
+      const seqItems = items
+        .filter((it: any) => (it.currentQty ?? 0) > 0)
+        .map((it: any) => {
+          const equipment = (it.equipment ?? []).map((e: any) => ({
+            name: e.equipmentName,
+            outputUnit: e.outputUnit ?? null,
+            outputTheoretical: e.outputTheoretical ?? null,
+            outputEfficiency: e.outputEfficiency ?? null,
+            standardOutputs: e.standardOutputs ?? null,
+          }));
+          const dur = calculateAutoDurationFull(it.currentQty ?? 0, it.unit ?? "", equipment, workingHrs, workingDays, null, null);
+          return {
+            boqItemId: it.id,
+            description: it.description ?? "",
+            unit: it.unit ?? "",
+            totalQty: it.currentQty ?? 0,
+            fullDurationMonths: dur.months > 0 ? dur.months : 1,
+          };
+        });
+
+      const bars = generateSequencedProgramme(seqItems, {
+        fronts,
+        totalMonths,
+        roadLengthKm,
+        chainageStartKm: (project as any)?.chainageStartKm ?? 0,
+      });
+
+      // Replace existing bars with the sequenced programme.
+      for (const b of existingBars) await storage.deleteWorkProgramBar(b.id);
+      let created = 0;
+      for (const b of bars) {
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+        created++;
+      }
+      res.json({ success: true, fronts, totalMonths, bars: created });
+    } catch (err) {
+      console.error("auto-sequence:", err);
+      res.status(500).json({ error: "Failed to auto-sequence programme" });
+    }
+  });
+```
+
+---
+
+## FILE 3 — `client/src/pages/WorkProgramme.tsx`
+
+### 3.1 Add the mutation (right after `autoBuildRecipesMutation = useMutation({ … });`)
+**FIND**
+```tsx
+    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+  });
+```
+**REPLACE WITH**
+```tsx
+    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+  });
+
+  const autoSequenceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, {});
+      return res.json();
+    },
+    onSuccess: async (data: { bars?: number; fronts?: number }) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Programme sequenced",
+        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
+      });
+    },
+    onError: () => toast({ title: "Auto-sequence failed", variant: "destructive" }),
+  });
+```
+
+### 3.2 Add the button (right after the "Auto-build recipes" button)
+**FIND**
+```tsx
+              Auto-build recipes
+            </Button>
+          )}
+```
+**REPLACE WITH**
+```tsx
+              Auto-build recipes
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-purple-300 text-purple-700 hover:bg-purple-50"
+              onClick={() => autoSequenceMutation.mutate()}
+              disabled={autoSequenceMutation.isPending}
+              data-testid="button-auto-sequence"
+              title="Sequence the whole programme reach-wise: multiple parallel fronts, each running earthwork → GSB → WMM → prime → bituminous in dependency order, scaled to the project duration."
+            >
+              {autoSequenceMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <ArrowLeftRight className="w-4 h-4 mr-1" />}
+              Auto-sequence
+            </Button>
+          )}
+```
+
+---
+
+## How to use
+1. **Auto-build recipes** (Patch 14) → every item gets equipment + duration.
+2. **Auto-sequence** (this patch) → the programme is split into reach-wise fronts and dependency-ordered.
+3. Open **BOM & Demand** → materials/labour/equipment now spread across the months (no Month-1 spike).
+
+## Tunables
+- **Fronts:** auto = 1 per ~12 km (clamped 2–5). Pass `{ "fronts": 4 }` in the POST body to force a number.
+- **Sequence/stages & tracks:** `shared/programmeSequencer.ts` → `STAGE` map.
+- **Stagger / inter-stage lag:** `SeqOptions.staggerMonths` / `lagMonths`.
+- Uses `boq_projects.roadLengthKm`, `durationMonths`, `workingDaysPerMonth`, `workingHoursPerDay` (set these on the project for accurate spread).
+
+## Notes / honest scope
+- Bars are written with `isQtyOverride` (qty split per reach) and 1-indexed months. You can drag/adjust any bar afterwards.
+- This replaces ALL existing bars for the project (it's a full re-sequence). Re-run anytime.
+- Multiple fronts = reaches run in parallel (staggered by `staggerMonths`); dependencies are enforced **within** each reach. Cross-reach resource leveling (capacity caps) is a later enhancement.

@@ -10239,6 +10239,79 @@ export async function registerRoutes(
     }
   });
 
+  // Auto-sequence the Work Programme reach-wise with dependencies + multiple fronts.
+  app.post("/api/boq/projects/:id/auto-sequence", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { generateSequencedProgramme } = await import("@shared/programmeSequencer");
+      const { calculateAutoDurationFull } = await import("@shared/planningEngine");
+
+      const [items, project, , existingBars] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getBoqProject(projectId),
+        storage.getBoqProgramSettings(projectId),
+        storage.getWorkProgramBars(projectId),
+      ]);
+
+      const workingHrs  = (project as any)?.workingHoursPerDay  ?? 8;
+      const workingDays = (project as any)?.workingDaysPerMonth ?? 26;
+      const totalMonths = (project as any)?.totalMonths         ?? 18;
+      const roadLengthKm = (project as any)?.roadLengthKm       ?? 0;
+      const fronts =
+        Math.max(1, Math.floor(Number(req.body?.fronts) || 0)) ||
+        Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+
+      const seqItems = (items as any[])
+        .filter((it) => (it.currentQty ?? 0) > 0)
+        .map((it) => {
+          const equipment = ((it.equipment ?? []) as any[]).map((e) => ({
+            name: e.equipmentName,
+            outputUnit: e.outputUnit ?? null,
+            outputTheoretical: e.outputTheoretical ?? null,
+            outputEfficiency: e.outputEfficiency ?? null,
+            standardOutputs: e.standardOutputs ?? null,
+            count: e.count ?? 1,
+          }));
+          const dur = calculateAutoDurationFull(
+            it.currentQty ?? 0,
+            it.unit ?? "",
+            equipment,
+            workingHrs,
+            workingDays,
+            null,
+            null,
+          );
+          return {
+            boqItemId: it.id,
+            description: it.description ?? "",
+            unit: it.unit ?? "",
+            totalQty: it.currentQty ?? 0,
+            fullDurationMonths: dur.months > 0 ? dur.months : 1,
+          };
+        });
+
+      const bars = generateSequencedProgramme(seqItems, {
+        fronts,
+        totalMonths,
+        roadLengthKm,
+        chainageStartKm: 0,
+      });
+
+      // Replace all existing bars with the sequenced programme.
+      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
+      let created = 0;
+      for (const b of bars) {
+        await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+        created++;
+      }
+      res.json({ success: true, fronts, totalMonths, bars: created });
+    } catch (err) {
+      console.error("auto-sequence:", err);
+      res.status(500).json({ error: "Failed to auto-sequence programme" });
+    }
+  });
+
   // Auto-build equipment + labour recipes for every BOQ item — deterministic, no fuzzy matching.
   app.post("/api/boq/projects/:id/auto-build-recipes", async (req, res) => {
     try {
