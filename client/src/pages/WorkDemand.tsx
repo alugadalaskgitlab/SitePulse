@@ -824,14 +824,23 @@ export default function WorkDemand() {
     return descs;
   }, [bomData]);
 
-  const setupWarnings = useMemo((): string[] => {
-    if (!bomData?.items) return [];
-    const seen = new Set<string>();
-    for (const item of bomData.items) {
-      const w = item.materialSetupWarning;
-      if (w) seen.add(w);
+  const materialReadiness = useMemo(() => {
+    const items = bomData?.items ?? [];
+    const driving = items.filter(it => (it.materials?.length ?? 0) > 0 || !!it.materialSetupWarning);
+    const readyCount = driving.filter(it => (it.materials?.length ?? 0) > 0 && !it.materialSetupWarning).length;
+    const blocked = driving.filter(it => !!it.materialSetupWarning);
+    const groups = new Map<string, { reason: string; items: { itemCode?: string | null; description: string }[] }>();
+    for (const it of blocked) {
+      const reason = it.materialSetupWarning as string;
+      if (!groups.has(reason)) groups.set(reason, { reason, items: [] });
+      groups.get(reason)!.items.push({ itemCode: it.itemCode, description: it.description });
     }
-    return [...seen];
+    return {
+      total: driving.length,
+      readyCount,
+      blockedCount: blocked.length,
+      groups: [...groups.values()],
+    };
   }, [bomData]);
 
   const shortageAlertCount = shortageData?.rows.filter(r => r.shortfall > 0).length ?? 0;
@@ -997,14 +1006,50 @@ export default function WorkDemand() {
 
             <TabsContent value="materials" className="mt-3">
               <SectionHeader icon={Package} title="Material Demand by Month" badge={demand.materials.length} />
-              {setupWarnings.length > 0 && (
-                <div className="space-y-1.5 mb-3">
-                  {setupWarnings.map((w, i) => (
-                    <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <span>{w}</span>
+              {materialReadiness.total > 0 && (
+                <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3" data-testid="material-readiness-panel">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      {materialReadiness.blockedCount === 0 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      )}
+                      Material Readiness
                     </div>
-                  ))}
+                    <span className="text-xs text-slate-500" data-testid="material-readiness-count">
+                      {materialReadiness.readyCount}/{materialReadiness.total} items ready
+                      {materialReadiness.blockedCount > 0 && ` · ${materialReadiness.blockedCount} need setup`}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full ${materialReadiness.blockedCount === 0 ? "bg-emerald-500" : "bg-amber-400"}`}
+                      style={{ width: `${materialReadiness.total ? Math.round((materialReadiness.readyCount / materialReadiness.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                  {materialReadiness.groups.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {materialReadiness.groups.map((g, i) => (
+                        <div key={i} className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2" data-testid={`readiness-group-${i}`}>
+                          <div className="flex items-start gap-2 text-xs font-medium text-amber-800">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <span>{g.reason} <span className="font-normal text-amber-700">({g.items.length} item{g.items.length > 1 ? "s" : ""})</span></span>
+                          </div>
+                          <ul className="mt-1 ml-5 space-y-0.5">
+                            {g.items.slice(0, 6).map((it, j) => (
+                              <li key={j} className="text-[11px] text-slate-600 truncate">
+                                {it.itemCode ? <span className="font-mono text-slate-500">{it.itemCode} </span> : null}{it.description}
+                              </li>
+                            ))}
+                            {g.items.length > 6 && (
+                              <li className="text-[11px] text-slate-400">+{g.items.length - 6} more…</li>
+                            )}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <MaterialsTable demand={demand} project={project} />
