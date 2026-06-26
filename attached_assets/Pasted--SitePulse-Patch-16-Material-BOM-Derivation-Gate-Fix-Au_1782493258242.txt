@@ -1,0 +1,233 @@
+# SitePulse — Patch 16: Material BOM Derivation Gate Fix (+ Auto-build/Sequence toast diagnostics)
+
+## Why this patch
+Even though Patches 10–15 are merged, the **Material Demand (BOM)** tab still shows
+*"Mix design required / Setup required"* for almost every item.
+
+**Root cause (confirmed in `server/routes.ts`):**
+The material derivation (P2 block) only runs when an item has a **manually-saved
+`layerConfig`** with `layerType !== "none"`:
+
+```ts
+// P2: layerConfig derivation
+if (lc && lc.layerType && lc.layerType !== "none") {  // <-- gate
+```
+
+Most BOQ items **never get a `layerConfig` saved** (the user never opens each item and
+sets it manually). So they skip the RMC / Masters template lookup entirely and fall
+straight through to the **P3 warning** ("setup required").
+
+**The fix:** when an item has no saved `layerConfig`, **synthesize one** from the
+deterministic `classifyWorkType()` engine introduced in Patch 14. That synthetic layer
+config feeds the *existing* derivation logic, which then queries:
+- `rmc_mix_designs` for concrete (PCC/RCC/PQC/DLC) by detected grade (M20, M30, …)
+- `mix_templates` (Masters/HMP) for bituminous (BC/DBM/SDBC/BM) by mix type
+
+No fuzzy matching. No new derivation logic. We only **unlock** the path that already exists.
+
+---
+
+## PART A — Backend: `server/routes.ts`
+
+### A1. Add the classifier import
+
+**FIND** (top of file, the existing planningEngine import — around line 22):
+
+```ts
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
+import { classifyWorkType } from "@shared/workTypeRecipes";
+```
+
+---
+
+### A2. Add the synthetic-layerConfig helper
+
+**FIND** (the closing of `isBituminousLayerOrItem`, around line 9915-9917):
+
+```ts
+    return /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat/i.test(desc);
+  }
+
+  // BOM demand for the whole project
+```
+
+**REPLACE WITH:**
+
+```ts
+    return /dbm|dense\s*bituminous|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|sdbc|wearing\s*coat/i.test(desc);
+  }
+
+  // Synthesize a LayerConfig from the deterministic work-type classifier (Patch 14)
+  // when an item has no manually-saved layerConfig. This unlocks the existing P2
+  // derivation so concrete hits the RMC mix designs and bituminous hits the Master
+  // mix templates automatically — instead of falling straight to "setup required".
+  function synthLayerConfigFromWorkType(item: any): LayerConfig | null {
+    const desc = String(item.description ?? "");
+    const unit = String(item.unit ?? "");
+    if (isNonConsumingItem(desc.toLowerCase())) return null; // demolition/removal → no key material
+
+    const wt = classifyWorkType(desc, unit);
+    if (!wt) return null;
+
+    const d = desc.toLowerCase();
+    // Layer thickness (mm) e.g. "50 mm", "40mm thick"
+    const thM = desc.match(/([0-9]+(?:\.[0-9]+)?)\s*mm/i);
+    const detectedThk = thM ? parseFloat(thM[1]) : null;
+    // Spray rate (kg/sqm) e.g. "0.30 kg/sqm"
+    const srM = desc.match(/([0-9]+(?:\.[0-9]+)?)\s*kg\s*(?:per|\/)?\s*(?:sqm|sq\.?\s*m|m2|m²)/i);
+    const detectedRate = srM ? parseFloat(srM[1]) : null;
+
+    switch (wt) {
+      case "earthwork":
+        return { layerType: "earthwork" };
+      case "gsb":
+        return { layerType: "granular", mixType: "GSB", granularSource: "quarry" };
+      case "wmm":
+        return { layerType: "granular", mixType: "WMM", granularSource: "quarry" };
+      case "prime_coat":
+        return { layerType: "spray_coat", mixType: "PRIME", coverageRateKgPerSqm: detectedRate ?? 1.0, coverageMaterialName: "Primer (Bitumen Emulsion)" };
+      case "tack_coat":
+        return { layerType: "spray_coat", mixType: "TACK", coverageRateKgPerSqm: detectedRate ?? 0.3, coverageMaterialName: "Tack Coat (Bitumen Emulsion)" };
+      case "bituminous_base":
+        return {
+          layerType: "bituminous",
+          mixType: /\bbm\b|bituminous\s*macadam/i.test(d) && !/dense/i.test(d) ? "BM" : "DBM",
+          thicknessMm: detectedThk ?? 75,
+          densityTPerCum: 2.35,
+        };
+      case "bituminous_wearing":
+        return {
+          layerType: "bituminous",
+          mixType: /sdbc|semi[-\s]*dense/i.test(d) ? "SDBC" : "BC",
+          thicknessMm: detectedThk ?? 40,
+          densityTPerCum: 2.4,
+        };
+      case "pcc":
+      case "rcc":
+      case "pqc":
+      case "dlc":
+        return { layerType: "concrete" }; // grade detected from description; design from RMC module
+      case "drain_masonry":
+      default:
+        return null; // minor civil → no auto key-material derivation
+    }
+  }
+
+  // BOM demand for the whole project
+```
+
+---
+
+### A3. Use the synthetic layerConfig in the BOM expansion
+
+**FIND** (inside `app.get("/api/boq/projects/:id/bom", ...)`, the start of the
+`expandedItems` map — around line 10000-10004):
+
+```ts
+      const expandedItems = items.map(item => {
+        const lc = (item as any).layerConfig as LayerConfig | null;
+        const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
+        const materialDriving = isMaterialDrivingLayerItem(item);
+```
+
+**REPLACE WITH:**
+
+```ts
+      const expandedItems = items.map(item => {
+        const savedLc = (item as any).layerConfig as LayerConfig | null;
+        // Trust a manually-saved layer config; otherwise synthesize from the work-type classifier.
+        const lc: LayerConfig | null =
+          savedLc && savedLc.layerType && savedLc.layerType !== "none"
+            ? savedLc
+            : synthLayerConfigFromWorkType(item);
+        const manualMaterials = item.materials.filter((m: any) => !m.isAuto);
+        const materialDriving = isMaterialDrivingLayerItem(item);
+```
+
+> **Note:** Nothing else in the P2/P3/P4 blocks changes. They already read `lc`,
+> `concreteGrade` (from description), `mixTypeToTemplateId`, and `gradeToDesign`.
+> The synthetic `lc` simply lets those branches run for items that previously had none.
+
+---
+
+## PART B — Frontend: surface why a toast might not appear
+
+The auto-build / auto-sequence handlers in `client/src/pages/WorkProgramme.tsx` are
+already correct (they call `apiRequest`, parse JSON, and fire a success/error toast).
+If you saw **no toast at all**, it is almost always one of:
+
+1. **Stale build** — the Replit dev server wasn't rebuilt/restarted after the patch push.
+   → Stop and re-run the app so the new `/api/.../auto-build-recipes` and
+   `/api/.../auto-sequence` routes are live.
+2. The request errored silently — the change below makes the **error toast show the
+   actual server message** so failures are never silent again.
+
+### B1. Auto-build recipes — show server error in toast
+
+**FIND:**
+
+```ts
+    onError: () => toast({ title: "Auto-build recipes failed", variant: "destructive" }),
+```
+
+**REPLACE WITH:**
+
+```ts
+    onError: (err: any) =>
+      toast({
+        title: "Auto-build recipes failed",
+        description: String(err?.message ?? err ?? "Unknown error"),
+        variant: "destructive",
+      }),
+```
+
+### B2. Auto-sequence — show server error in toast
+
+**FIND:**
+
+```ts
+    onError: () => toast({ title: "Auto-sequence failed", variant: "destructive" }),
+```
+
+**REPLACE WITH:**
+
+```ts
+    onError: (err: any) =>
+      toast({
+        title: "Auto-sequence failed",
+        description: String(err?.message ?? err ?? "Unknown error"),
+        variant: "destructive",
+      }),
+```
+
+---
+
+## How to verify after applying (on Replit)
+
+1. **Rebuild/restart** the Replit app (important — the routes are server-side).
+2. Open the project → **Work Programme**.
+3. Click **Auto-build recipes**. You should now see a toast like
+   *"Recipes built — 78 of 91 items got equipment & labour …"*.
+   (If you still see no toast, open the browser **DevTools → Network** tab and click
+   the button: confirm the POST to `/api/boq/projects/<id>/auto-build-recipes` returns
+   `200`. If it returns `404`, the build is stale — restart the server.)
+4. Click **Auto-sequence** → toast *"Programme sequenced — N bars across M fronts …"*.
+5. Open the **Material Demand (BOM)** tab:
+   - Concrete items (PCC/RCC/PQC/DLC with a grade like M30) should now list
+     **Cement / Sand / 20mm / 10mm Aggregate / Admixture** pulled from the RMC mix design.
+   - Bituminous items (BC/DBM/SDBC) should list **Bitumen VG-30 + aggregate fractions +
+     LDO/Process Fuel** from the Master mix template.
+   - "Setup required" should now appear **only** for items that genuinely have no matching
+     RMC grade or mix template in Masters (a real, actionable gap — not a false positive).
+
+## Expected residual warnings (these are correct, not bugs)
+- A concrete item whose grade (e.g. **M40**) has **no design in the RMC module** →
+  *"Concrete/RMC mix design required for M40"*. Add that grade in RMC to clear it.
+- A bituminous item whose mix type (e.g. **SDBC**) has **no template in Masters** →
+  *"Mix template/JMF required …"*. Add the SDBC template in Masters to clear it.
