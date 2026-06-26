@@ -1,0 +1,420 @@
+# SitePulse — PATCH 8D-A: Practical Material Normalisation Engine for BOM
+
+Current issue:
+BOM is loading, formulas are showing, and fuel logic exists. But material names are still SDB/SNL technical names such as aggregate gradation ranges. This is not suitable for stock/procurement/IRN/PI.
+
+Goal:
+Convert SDB/SNL technical material names into practical procurement material names internally, without forcing the user to create aliases manually in Material Master.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* SNL mapping status logic
+* Work Programme bars
+* Stock logic
+* IRN/PI workflows
+* Dashboard
+
+Primary file:
+
+* `shared/planningEngine.ts`
+
+Secondary file for display only:
+
+* `client/src/pages/WorkDemand.tsx`
+
+---
+
+## 1. Add normalisation types in `shared/planningEngine.ts`
+
+Near the BOM material interfaces, add types similar to:
+
+```ts
+export interface MaterialNormalisationInput {
+  materialName: string;
+  uom: string;
+  sourceType?: "SDB" | "Mix Template" | "Manual" | "Derived" | "Fuel";
+  itemDescription?: string;
+  itemCode?: string | null;
+  workCategory?: string | null;
+  layerType?: LayerConfig["layerType"] | null;
+  mixType?: string | null;
+  granularSource?: LayerConfig["granularSource"] | null;
+}
+
+export interface MaterialNormalisationResult {
+  originalNormMaterialName: string;
+  displayMaterialName: string;
+  materialGroup: string;
+  suggestedMaterialMasterName: string;
+  confidence: number;
+  reviewNeeded: boolean;
+  normalisationReason: string;
+}
+```
+
+Extend `BomMaterialRow` and its breakdown rows to optionally carry:
+
+```ts
+originalNormMaterialName?: string;
+displayMaterialName?: string;
+suggestedMaterialMasterName?: string;
+materialGroup?: string;
+reviewNeeded?: boolean;
+normalisationReason?: string;
+sourceType?: string;
+```
+
+Do not remove existing fields.
+
+---
+
+## 2. Add helper: `normaliseBomMaterial(input)`
+
+In `shared/planningEngine.ts`, add a pure helper:
+
+```ts
+export function normaliseBomMaterial(input: MaterialNormalisationInput): MaterialNormalisationResult {
+  const raw = input.materialName || "";
+  const name = raw.toLowerCase();
+  const desc = (input.itemDescription || "").toLowerCase();
+  const mix = normaliseMixType(input.mixType || "");
+  const layerType = input.layerType;
+  const granularSource = input.granularSource;
+
+  // Direct-supply GSB/WMM must collapse to finished material.
+  if (layerType === "granular" && granularSource !== "plant") {
+    if (mix === "WMM" || /wet\s*mix|\bwmm\b/i.test(desc)) {
+      return {
+        originalNormMaterialName: raw,
+        displayMaterialName: "WMM Material",
+        materialGroup: "WMM Material",
+        suggestedMaterialMasterName: "WMM Material",
+        confidence: 0.98,
+        reviewNeeded: false,
+        normalisationReason: "Direct-supply WMM collapsed to finished procurement material",
+      };
+    }
+
+    if (mix === "GSB" || /granular\s*sub|sub-?base|\bgsb\b/i.test(desc)) {
+      return {
+        originalNormMaterialName: raw,
+        displayMaterialName: "GSB Material",
+        materialGroup: "GSB Material",
+        suggestedMaterialMasterName: "GSB Material",
+        confidence: 0.98,
+        reviewNeeded: false,
+        normalisationReason: "Direct-supply GSB collapsed to finished procurement material",
+      };
+    }
+  }
+
+  // Fuel names should remain practical.
+  if (/diesel|hsd/i.test(raw)) {
+    return {
+      originalNormMaterialName: raw,
+      displayMaterialName: "Diesel / HSD",
+      materialGroup: "Diesel / HSD",
+      suggestedMaterialMasterName: "Diesel / HSD",
+      confidence: 0.99,
+      reviewNeeded: false,
+      normalisationReason: "Fuel demand from equipment consumption",
+    };
+  }
+
+  if (/ldo|process fuel/i.test(raw)) {
+    return {
+      originalNormMaterialName: raw,
+      displayMaterialName: "LDO / Process Fuel",
+      materialGroup: "LDO / Process Fuel",
+      suggestedMaterialMasterName: "LDO / Process Fuel",
+      confidence: 0.99,
+      reviewNeeded: false,
+      normalisationReason: "HMP process fuel demand",
+    };
+  }
+
+  // Bitumen/emulsion practical names.
+  if (/emulsion/i.test(raw) || /prime coat|tack coat/i.test(desc)) {
+    const label = /prime/i.test(desc) ? "Bitumen Emulsion SS-1" :
+                  /tack/i.test(desc) ? "Bitumen Emulsion RS-1" :
+                  "Bitumen Emulsion";
+    return {
+      originalNormMaterialName: raw,
+      displayMaterialName: label,
+      materialGroup: label,
+      suggestedMaterialMasterName: label,
+      confidence: 0.85,
+      reviewNeeded: false,
+      normalisationReason: "Emulsion normalised from spray coat context",
+    };
+  }
+
+  if (/bitumen/i.test(raw)) {
+    return {
+      originalNormMaterialName: raw,
+      displayMaterialName: "Bitumen VG-30",
+      materialGroup: "Bitumen VG-30",
+      suggestedMaterialMasterName: "Bitumen VG-30",
+      confidence: 0.80,
+      reviewNeeded: false,
+      normalisationReason: "Bitumen normalised to default project grade VG-30",
+    };
+  }
+
+  // Aggregate gradation/range mapping fallback.
+  // This is only fallback when mix template/direct-supply collapse has not already handled it.
+  if (/aggregate|stone|chips|mm|micron|dust|filler/i.test(raw)) {
+    const s = raw.toLowerCase();
+
+    let label: string | null = null;
+
+    if (/75\s*micron|filler/.test(s)) label = "Filler";
+    else if (/below\s*2\.?36|2\.?36\s*mm\s*below|0\.075|75\s*micron|dust|crusher dust|stone dust/.test(s)) label = "Stone Dust";
+    else if (/4\.?75.*0\.?075|2\.?36.*0\.?075|below\s*4\.?75/.test(s)) label = "Stone Dust";
+    else if (/13\.?2.*5\.?6|9\.?5.*2\.?36|10.*5|6\s*mm/.test(s)) label = "6mm Aggregate";
+    else if (/19.*9\.?5|22\.?4.*11\.?2|25.*10|10\s*mm|12\s*mm/.test(s)) label = "10mm Aggregate";
+    else if (/26\.?5.*19|25.*19|20\s*mm/.test(s)) label = "20mm Aggregate";
+    else if (/53.*22\.?4|45.*22\.?4|37\.?5.*25|40\s*mm/.test(s)) label = "40mm Aggregate";
+    else if (/63.*45|60\s*mm|65\s*mm/.test(s)) label = "60mm Aggregate";
+
+    if (label) {
+      return {
+        originalNormMaterialName: raw,
+        displayMaterialName: label,
+        materialGroup: label,
+        suggestedMaterialMasterName: label,
+        confidence: 0.75,
+        reviewNeeded: false,
+        normalisationReason: `SDB gradation "${raw}" normalised to market material "${label}"`,
+      };
+    }
+  }
+
+  // Cement/sand/steel/water common materials.
+  if (/cement/i.test(raw)) return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Cement",
+    materialGroup: "Cement",
+    suggestedMaterialMasterName: "Cement",
+    confidence: 0.90,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+
+  if (/sand/i.test(raw)) return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Sand",
+    materialGroup: "Sand",
+    suggestedMaterialMasterName: "Sand",
+    confidence: 0.90,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+
+  if (/hysd|tmt|reinforcement|steel/i.test(raw)) return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "TMT / Reinforcement Steel",
+    materialGroup: "TMT / Reinforcement Steel",
+    suggestedMaterialMasterName: "TMT / Reinforcement Steel",
+    confidence: 0.85,
+    reviewNeeded: false,
+    normalisationReason: "Steel/reinforcement normalisation",
+  };
+
+  if (/water/i.test(raw)) return {
+    originalNormMaterialName: raw,
+    displayMaterialName: "Water",
+    materialGroup: "Water",
+    suggestedMaterialMasterName: "Water",
+    confidence: 0.95,
+    reviewNeeded: false,
+    normalisationReason: "Common material normalisation",
+  };
+
+  // Fallback: keep original but mark for review.
+  return {
+    originalNormMaterialName: raw,
+    displayMaterialName: raw,
+    materialGroup: raw,
+    suggestedMaterialMasterName: raw,
+    confidence: 0.40,
+    reviewNeeded: true,
+    normalisationReason: "No confident internal normalisation rule matched",
+  };
+}
+```
+
+This should be internal/system logic. Do not ask users to enter aliases manually in Material Master.
+
+---
+
+## 3. Apply normalisation inside `calculateBomDemand`
+
+In `calculateBomDemand`, inside the Materials loop, before creating the material map key, call `normaliseBomMaterial`.
+
+Use available context:
+
+```ts
+const norm = normaliseBomMaterial({
+  materialName: m.materialName,
+  uom: m.uom,
+  sourceType: m.isAuto ? "SDB" : "Manual",
+  itemDescription: item.description,
+  itemCode: item.itemCode,
+  layerType: (item as any).layerConfig?.layerType ?? null,
+  mixType: (item as any).layerConfig?.mixType ?? null,
+  granularSource: (item as any).layerConfig?.granularSource ?? null,
+});
+```
+
+If `BomInputItem` currently does not include `layerConfig`, extend it safely with optional:
+
+```ts
+layerConfig?: LayerConfig | null;
+workCategory?: string | null;
+```
+
+Then group by `norm.displayMaterialName`, not raw `m.materialName`.
+
+Required:
+
+```ts
+const key = canonResourceKey(norm.displayMaterialName);
+```
+
+Set row fields:
+
+```ts
+materialName: norm.displayMaterialName,
+originalNormMaterialName: norm.originalNormMaterialName,
+displayMaterialName: norm.displayMaterialName,
+suggestedMaterialMasterName: norm.suggestedMaterialMasterName,
+materialGroup: norm.materialGroup,
+reviewNeeded: norm.reviewNeeded,
+normalisationReason: norm.normalisationReason,
+```
+
+In breakdown, also carry original and display material names.
+
+---
+
+## 4. Pass `layerConfig` from BOM endpoint
+
+In `server/routes.ts`, when building items for the BOM response, ensure each item passed to `calculateBomDemand` includes:
+
+```ts
+layerConfig
+workCategory
+```
+
+Do not change any BOQ grouping or Work Programme logic.
+
+---
+
+## 5. Keep mix template/JMF priority
+
+For bituminous items, if a mix template/JMF is linked, the practical material names from that template should be preferred.
+
+The normalisation engine should not override good mix-template names like:
+
+* Bitumen VG-30
+* Aggregate Dust
+* 6mm Aggregate
+* 10mm Aggregate
+* 20mm Aggregate
+* Filler
+* LDO / Process Fuel
+
+It should only clean raw SDB/gradation names or generic names.
+
+---
+
+## 6. Fix direct-supply GSB/WMM before fraction expansion if possible
+
+In `deriveMaterialsFromLayerConfig`, for granular direct supply:
+
+If:
+
+```ts
+layerType === "granular" && granularSource !== "plant"
+```
+
+return one row only:
+
+```ts
+WMM Material
+```
+
+or
+
+```ts
+GSB Material
+```
+
+based on mixType / item description.
+
+Do not emit aggregate fractions for direct supply.
+
+This is more important than only normalising later.
+
+---
+
+## 7. WorkDemand display cleanup
+
+In `client/src/pages/WorkDemand.tsx`:
+
+* Remove repeated sub-header text `BOQ Item` in each expanded material group.
+* Expanded rows should directly show:
+
+  * item code
+  * short BOQ description
+  * formula
+  * source tag
+* Keep full description on hover/title.
+* Header can be:
+
+  * `Source`
+  * `Formula`
+  * `Type`
+
+Do not add another nested “BOQ Item” box for every material.
+
+Display should look closer to Road Estimator:
+
+```text
+WMM Material (MT)
+  10.06 — Providing, laying, spreading and compacting WMM | 2.2000 × 6840 = 15048 MT | Auto
+```
+
+---
+
+## 8. Fuel diagnostics
+
+Keep existing Diesel/HSD and LDO logic, but add temporary console/backend diagnostic logs in BOM calculation or endpoint:
+
+* total equipment rows
+* equipment rows with consumptionNorm > 0
+* Diesel/HSD total generated
+* bituminous rows with ldoNorm
+* LDO total generated
+
+This will show why fuel is not visible if it is still missing.
+
+---
+
+## 9. Verification
+
+After patch, test NH-167:
+
+1. GSB direct supply shows `GSB Material`, not SDB gradation ranges.
+2. WMM direct supply shows `WMM Material`, not SDB gradation ranges.
+3. Raw gradation ranges are not used as final material group names.
+4. DBM/BC use practical mix-template material names where template exists.
+5. Diesel/HSD appears if equipment has consumptionNorm.
+6. LDO / Process Fuel appears for bituminous/HMP mix demand.
+7. Expanded BOM rows show one-line formula, without repeated BOQ Item sub-heading.
+8. Work Programme bars remain unchanged.
+9. BOQ grouping remains unchanged.
+10. IRN/PI manual flows remain unchanged.

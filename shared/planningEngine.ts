@@ -374,7 +374,35 @@ export interface BomMaterialRow {
   hasAutoSource: boolean;
   /** "direct" = quarry/site supply; "plant" = processed at HMP or RMC; undefined = manual/unknown */
   supplyType?: "direct" | "plant";
+  originalNormMaterialName?: string;
+  displayMaterialName?: string;
+  suggestedMaterialMasterName?: string;
+  materialGroup?: string;
+  reviewNeeded?: boolean;
+  normalisationReason?: string;
   breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+}
+
+export interface MaterialNormalisationInput {
+  materialName: string;
+  uom: string;
+  sourceType?: "SDB" | "Mix Template" | "Manual" | "Derived" | "Fuel";
+  itemDescription?: string;
+  itemCode?: string | null;
+  workCategory?: string | null;
+  layerType?: LayerConfig["layerType"] | null;
+  mixType?: string | null;
+  granularSource?: LayerConfig["granularSource"] | null;
+}
+
+export interface MaterialNormalisationResult {
+  originalNormMaterialName: string;
+  displayMaterialName: string;
+  materialGroup: string;
+  suggestedMaterialMasterName: string;
+  confidence: number;
+  reviewNeeded: boolean;
+  normalisationReason: string;
 }
 
 export interface BomEquipmentRow {
@@ -405,6 +433,8 @@ export interface BomInputItem {
   itemName?: string | null;
   unit: string;
   currentQty: number; // total BOQ qty
+  layerConfig?: LayerConfig | null;
+  workCategory?: string | null;
   materials: Array<{
     materialName: string;
     uom: string;
@@ -510,17 +540,41 @@ export function calculateBomDemand(
       if (m.isClientSupplied) continue;
       const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
       const lineQty = effQtyPerUnit * workQty;
-      const key = canonResourceKey(m.materialName);
+      const lc = item.layerConfig;
+      const norm = normaliseBomMaterial({
+        materialName: m.materialName,
+        uom: m.uom,
+        sourceType: m.isAuto ? "SDB" : "Manual",
+        itemDescription: item.description,
+        itemCode: item.itemCode,
+        workCategory: item.workCategory,
+        layerType: lc?.layerType ?? null,
+        mixType: lc?.mixType ?? null,
+        granularSource: lc?.granularSource ?? null,
+      });
+      const key = canonResourceKey(norm.displayMaterialName);
       if (!matMap.has(key)) {
-        matMap.set(key, { materialName: m.materialName, uom: m.uom, totalQty: 0, monthlyQty: {}, hasAutoSource: false, breakdown: [] });
+        matMap.set(key, {
+          materialName: norm.displayMaterialName,
+          uom: m.uom,
+          totalQty: 0,
+          monthlyQty: {},
+          hasAutoSource: false,
+          breakdown: [],
+          originalNormMaterialName: norm.originalNormMaterialName,
+          displayMaterialName: norm.displayMaterialName,
+          suggestedMaterialMasterName: norm.suggestedMaterialMasterName,
+          materialGroup: norm.materialGroup,
+          reviewNeeded: norm.reviewNeeded,
+          normalisationReason: norm.normalisationReason,
+        });
       }
       const row = matMap.get(key)!;
-      row.materialName = preferDisplayName(row.materialName, m.materialName);
+      row.materialName = preferDisplayName(row.materialName, norm.displayMaterialName);
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
       if (m.supplyType) {
-        // keep the "most restrictive" supplyType: if any breakdown entry is plant, mark as plant
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
       row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
@@ -596,6 +650,14 @@ export function calculateBomDemand(
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
     }
+  }
+
+  // Fuel diagnostics
+  const eqWithNorm = items.flatMap(it => it.equipment).filter(e => (e.consumptionNorm ?? 0) > 0);
+  const dieselRow = matMap.get("DIESEL / HSD");
+  const ldoRow = matMap.get("LDO / PROCESS FUEL");
+  if (typeof console !== "undefined") {
+    console.log(`[BOM Engine] equipment rows with consumptionNorm: ${eqWithNorm.length} | Diesel/HSD total: ${dieselRow?.totalQty?.toFixed(0) ?? 0} L | LDO total: ${ldoRow?.totalQty?.toFixed(0) ?? 0} L`);
   }
 
   // Sort by total (largest first); filter out zero-demand rows that can appear from
@@ -801,6 +863,106 @@ const MIX_TYPE_ALIASES: Record<string, string> = {
 export function normaliseMixType(mixType: string): string {
   const key = mixType.trim().toUpperCase();
   return MIX_TYPE_ALIASES[key] ?? key;
+}
+
+// Patterns indicating a name is already a practical procurement name — skip normalisation.
+const ALREADY_PRACTICAL_PATTERNS: RegExp[] = [
+  /\bMaterial$/i,                   // GSB Material, WMM Material, Granular Material
+  /\(Processed\)$/i,                // GSB (Processed), WMM (Processed)
+  /\bmm\s+Aggregate$/i,             // 10mm Aggregate, 20mm Aggregate, 40mm Aggregate
+  /^Bitumen\s+VG-\d+/i,             // Bitumen VG-30, VG-40
+  /^Bitumen\s+Emulsion\s+[RC]S-/i,  // RS-1, SS-1 already specified
+  /^LDO\s*\/\s*Process/i,           // LDO / Process Fuel
+  /^Diesel\s*\/\s*HSD/i,            // Diesel / HSD
+  /^(Cement|Sand|Water|Soil\s*\/\s*Earth|TMT\s*\/\s*Reinforcement)$/i,
+  /^Stone\s+Dust$/i,
+  /^Filler(\s+\(.+\))?$/i,          // Filler, Filler (Lime)
+  /^13mm\s+Aggregate$/i,
+  /^Bituminous\s+Mix$/i,
+  /^Soil\s*\/\s*Earth$/i,
+];
+
+/**
+ * Converts SDB/SNL technical material names to practical procurement names.
+ * Pure function — no DB access. Called inside calculateBomDemand before keying.
+ * Names that already look like practical procurement names pass through unchanged.
+ */
+export function normaliseBomMaterial(input: MaterialNormalisationInput): MaterialNormalisationResult {
+  const raw = input.materialName || "";
+  const s = raw.toLowerCase().trim();
+  const desc = (input.itemDescription || "").toLowerCase();
+  const mix = normaliseMixType(input.mixType || "");
+  const layerType = input.layerType;
+  const granularSource = input.granularSource;
+
+  const identity = (): MaterialNormalisationResult => ({
+    originalNormMaterialName: raw,
+    displayMaterialName: raw,
+    materialGroup: raw,
+    suggestedMaterialMasterName: raw,
+    confidence: 0.99,
+    reviewNeeded: false,
+    normalisationReason: "Already a practical procurement name",
+  });
+
+  // Pass through names that are already practical.
+  if (ALREADY_PRACTICAL_PATTERNS.some((p) => p.test(raw))) return identity();
+
+  // Direct-supply GSB/WMM must collapse to a single finished-material line.
+  if (layerType === "granular" && granularSource !== "plant") {
+    if (mix === "WMM" || /wet\s*mix|\bwmm\b/i.test(desc)) {
+      return { originalNormMaterialName: raw, displayMaterialName: "WMM Material", materialGroup: "WMM Material", suggestedMaterialMasterName: "WMM Material", confidence: 0.98, reviewNeeded: false, normalisationReason: "Direct-supply WMM collapsed to finished procurement material" };
+    }
+    if (mix === "GSB" || /granular\s*sub|sub-?base|\bgsb\b/i.test(desc)) {
+      return { originalNormMaterialName: raw, displayMaterialName: "GSB Material", materialGroup: "GSB Material", suggestedMaterialMasterName: "GSB Material", confidence: 0.98, reviewNeeded: false, normalisationReason: "Direct-supply GSB collapsed to finished procurement material" };
+    }
+  }
+
+  // Fuel — keep practical names.
+  if (/diesel|hsd/i.test(raw)) {
+    return { originalNormMaterialName: raw, displayMaterialName: "Diesel / HSD", materialGroup: "Diesel / HSD", suggestedMaterialMasterName: "Diesel / HSD", confidence: 0.99, reviewNeeded: false, normalisationReason: "Fuel demand from equipment consumption" };
+  }
+  if (/ldo|process\s*fuel/i.test(raw)) {
+    return { originalNormMaterialName: raw, displayMaterialName: "LDO / Process Fuel", materialGroup: "LDO / Process Fuel", suggestedMaterialMasterName: "LDO / Process Fuel", confidence: 0.99, reviewNeeded: false, normalisationReason: "HMP process fuel demand" };
+  }
+
+  // Emulsion / spray coat.
+  if (/emulsion/i.test(raw)) {
+    const label = /prime/i.test(desc) ? "Bitumen Emulsion SS-1" : /tack/i.test(desc) ? "Bitumen Emulsion RS-1" : "Bitumen Emulsion";
+    return { originalNormMaterialName: raw, displayMaterialName: label, materialGroup: label, suggestedMaterialMasterName: label, confidence: 0.85, reviewNeeded: false, normalisationReason: "Emulsion normalised from spray coat context" };
+  }
+
+  // Bitumen (generic — no emulsion).
+  if (/bitumen/i.test(raw)) {
+    return { originalNormMaterialName: raw, displayMaterialName: "Bitumen VG-30", materialGroup: "Bitumen VG-30", suggestedMaterialMasterName: "Bitumen VG-30", confidence: 0.80, reviewNeeded: false, normalisationReason: "Bitumen normalised to default project grade VG-30" };
+  }
+
+  // Aggregate gradation/range mapping — SDB technical names only.
+  if (/aggregate|stone|chips|mm|micron|dust|filler/i.test(raw)) {
+    let label: string | null = null;
+    if (/75\s*micron|filler/.test(s))                                               label = "Filler";
+    else if (/below\s*2\.?36|2\.?36.*below|0\.075|dust|stone\s+dust|crusher\s+dust/.test(s)) label = "Stone Dust";
+    else if (/4\.?75.*0\.?075|2\.?36.*0\.?075|below\s*4\.?75/.test(s))             label = "Stone Dust";
+    else if (/13\.?2.*5\.?6|9\.?5.*2\.?36|10.*5|6\s*mm/.test(s))                  label = "6mm Aggregate";
+    else if (/19.*9\.?5|22\.?4.*11\.?2|25.*10|10\s*mm|12\s*mm/.test(s))           label = "10mm Aggregate";
+    else if (/13\s*mm/.test(s))                                                     label = "13mm Aggregate";
+    else if (/26\.?5.*19|25.*19|20\s*mm/.test(s))                                  label = "20mm Aggregate";
+    else if (/53.*22\.?4|45.*22\.?4|37\.?5.*25|40\s*mm/.test(s))                  label = "40mm Aggregate";
+    else if (/63.*45|60\s*mm|65\s*mm/.test(s))                                     label = "60mm Aggregate";
+
+    if (label) {
+      return { originalNormMaterialName: raw, displayMaterialName: label, materialGroup: label, suggestedMaterialMasterName: label, confidence: 0.75, reviewNeeded: false, normalisationReason: `SDB gradation "${raw}" normalised to market name "${label}"` };
+    }
+  }
+
+  // Common materials.
+  if (/cement/i.test(raw))  return { originalNormMaterialName: raw, displayMaterialName: "Cement", materialGroup: "Cement", suggestedMaterialMasterName: "Cement", confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+  if (/\bsand\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Sand", materialGroup: "Sand", suggestedMaterialMasterName: "Sand", confidence: 0.90, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+  if (/hysd|tmt|reinforcement|rebar|steel/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "TMT / Reinforcement Steel", materialGroup: "TMT / Reinforcement Steel", suggestedMaterialMasterName: "TMT / Reinforcement Steel", confidence: 0.85, reviewNeeded: false, normalisationReason: "Steel/reinforcement normalisation" };
+  if (/\bwater\b/i.test(raw)) return { originalNormMaterialName: raw, displayMaterialName: "Water", materialGroup: "Water", suggestedMaterialMasterName: "Water", confidence: 0.95, reviewNeeded: false, normalisationReason: "Common material normalisation" };
+
+  // Fallback — keep original but flag for review.
+  return { originalNormMaterialName: raw, displayMaterialName: raw, materialGroup: raw, suggestedMaterialMasterName: raw, confidence: 0.40, reviewNeeded: true, normalisationReason: "No confident normalisation rule matched" };
 }
 
 /**

@@ -146,9 +146,9 @@ function MaterialsTable({
                         <table className="text-xs w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
-                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">BOQ Item</th>
+                              <th className="text-left px-3 py-1.5 font-semibold text-slate-500 w-[40%]">Source</th>
                               <th className="px-3 py-1.5 font-semibold text-slate-500 text-right">Formula (coeff × qty = total)</th>
-                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-center w-16">Source</th>
+                              <th className="px-2 py-1.5 font-semibold text-slate-500 text-center w-16">Type</th>
                             </tr>
                           </thead>
                           <tbody>
