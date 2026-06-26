@@ -499,6 +499,177 @@ function canonEquipmentKey(name: string): string {
   return equipmentBaseName(name).toUpperCase().replace(/\s+/g, " ");
 }
 
+// ─── Key-Material BOM V1 helpers ──────────────────────────────────────────────
+// Material BOM V1 is NOT a full rate-analysis material explosion.
+// Only these procurement-critical material categories are included.
+
+type KeyBomMaterialInputRow = {
+  materialName: string;
+  uom: string;
+  qtyPerBoqUnit: number;
+  wastagePct: number;
+  isClientSupplied: boolean;
+  isAuto?: boolean | null;
+  supplyType?: "direct" | "plant";
+};
+
+function textOf(value: unknown): string {
+  return String(value ?? "").toLowerCase();
+}
+
+function getLayerType(item: BomInputItem): string {
+  return textOf((item.layerConfig as any)?.layerType);
+}
+
+function isDirectGranularSupplyMaterial(m: KeyBomMaterialInputRow): boolean {
+  const name = textOf(m.materialName);
+  return (
+    m.supplyType === "direct" &&
+    (name.includes("gsb material") || name.includes("wmm material"))
+  );
+}
+
+function isPlantMixTemplateMaterial(item: BomInputItem, m: KeyBomMaterialInputRow): boolean {
+  const layerType = getLayerType(item);
+  const isMixLayer =
+    layerType === "bituminous" ||
+    layerType === "granular" ||
+    layerType === "concrete" ||
+    /dbm|bituminous concrete|\bbc\b|bituminous macadam|\bbm\b|sdbc|wet mix|wmm|pcc|rcc|concrete/i.test(item.description);
+
+  if (!isMixLayer) return false;
+  if (m.supplyType !== "plant") return false;
+
+  return (
+    /aggregate|stone dust|aggregate dust|dust|filler/i.test(m.materialName) ||
+    /bitumen|vg-30|vg-40|crmb|pmb/i.test(m.materialName) ||
+    /cement/i.test(m.materialName) ||
+    /admixture|plasticizer|super\s*plasticizer/i.test(m.materialName)
+  );
+}
+
+function isSprayCoatEmulsionMaterial(item: BomInputItem, m: KeyBomMaterialInputRow): boolean {
+  const layerType = getLayerType(item);
+  return (
+    (layerType === "spray_coat" || /prime\s*coat|tack\s*coat/i.test(item.description)) &&
+    /emulsion|bitumen/i.test(m.materialName)
+  );
+}
+
+function isReinforcementBoqItem(item: BomInputItem): boolean {
+  const unit = normaliseUnit(item.unit);
+  return (
+    unit === "MT" &&
+    /hysd|tmt|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(item.description)
+  );
+}
+
+function isEarthworkBoqItem(item: BomInputItem): boolean {
+  if (normaliseUnit(item.unit) !== "CUM") return false;
+  return (
+    /earthwork|embankment|subgrade|shoulder|median\s*filling|borrow\s*soil|selected\s*soil|soil\s*fill|filling/i.test(item.description) &&
+    !/filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(item.description)
+  );
+}
+
+function earthworkMaterialName(item: BomInputItem): string {
+  const d = item.description.toLowerCase();
+  if (/selected\s*soil|subgrade/.test(d)) return "Selected Soil / Subgrade Material";
+  if (/shoulder/.test(d)) return "Shoulder Earth / Soil";
+  if (/median/.test(d)) return "Median Fill Material";
+  return "Earth / Borrow Soil";
+}
+
+function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
+  const raw = m.materialName || "";
+  const desc = item.description;
+
+  if (/gsb material/i.test(raw)) return "GSB Material";
+  if (/wmm material/i.test(raw)) return "WMM Material";
+
+  if (/emulsion/i.test(raw) || /prime\s*coat|tack\s*coat/i.test(desc)) {
+    if (/prime\s*coat/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack\s*coat/i.test(desc)) return "Bitumen Emulsion RS-1";
+    return "Bitumen Emulsion";
+  }
+
+  if (/vg\s*-?\s*40|vg40/i.test(raw) || /vg\s*-?\s*40|vg40/i.test(desc)) return "Bitumen VG-40";
+  if (/bitumen|vg\s*-?\s*30|vg30/i.test(raw) || /bitumen|vg\s*-?\s*30|vg30/i.test(desc)) return "Bitumen VG-30";
+
+  if (/cement/i.test(raw)) return "Cement";
+  if (/admixture|plasticizer|super\s*plasticizer/i.test(raw)) return "Admixture";
+
+  if (/filler/i.test(raw)) return "Filler";
+  if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
+  if (/6\s*mm/i.test(raw)) return "6mm Aggregate";
+  if (/10\s*mm|12\.?5\s*mm/i.test(raw)) return "10mm Aggregate";
+  if (/20\s*mm/i.test(raw)) return "20mm Aggregate";
+  if (/40\s*mm|37\.?5\s*mm|53\s*mm|45\s*mm/i.test(raw)) return "40mm Aggregate";
+  if (/aggregate/i.test(raw)) return "Aggregate";
+
+  return raw;
+}
+
+function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
+  const rows: KeyBomMaterialInputRow[] = [];
+
+  // 1. Steel/rebars: use BOQ quantity directly — do not rely on SDB material rows.
+  if (isReinforcementBoqItem(item)) {
+    rows.push({
+      materialName: "TMT / Reinforcement Steel",
+      uom: "MT",
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 2. Earthwork/fill: use BOQ quantity directly.
+  if (isEarthworkBoqItem(item)) {
+    rows.push({
+      materialName: earthworkMaterialName(item),
+      uom: normaliseUnit(item.unit),
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 3. Accept material rows only if they pass the strict key-material allowlist.
+  for (const m of item.materials) {
+    if (m.isClientSupplied) continue;
+
+    const row: KeyBomMaterialInputRow = {
+      materialName: m.materialName,
+      uom: m.uom,
+      qtyPerBoqUnit: m.qtyPerBoqUnit,
+      wastagePct: m.wastagePct,
+      isClientSupplied: m.isClientSupplied,
+      isAuto: m.isAuto,
+      supplyType: m.supplyType,
+    };
+
+    if (isDirectGranularSupplyMaterial(row)) {
+      rows.push({ ...row, materialName: normaliseKeyMaterialName(item, row) });
+      continue;
+    }
+    if (isPlantMixTemplateMaterial(item, row)) {
+      rows.push({ ...row, materialName: normaliseKeyMaterialName(item, row) });
+      continue;
+    }
+    if (isSprayCoatEmulsionMaterial(item, row)) {
+      rows.push({ ...row, materialName: normaliseKeyMaterialName(item, row) });
+      continue;
+    }
+  }
+
+  return rows;
+}
+
 export function calculateBomDemand(
   items: BomInputItem[],
   bars: BomInputBar[],
@@ -537,51 +708,84 @@ export function calculateBomDemand(
     }
     if (workQty <= 0) continue;
 
-    // Materials
-    for (const m of item.materials) {
+    // Materials — V1 KEY MATERIALS ONLY.
+    // Do not explode all SDB/SNL rate-analysis material rows into procurement BOM.
+    // Accepted sources:
+    // - GSB/WMM direct-supply rows
+    // - HMP/RMC/JMF/mix-template components (aggregates, bitumen, cement, admixture)
+    // - prime/tack coat emulsion rows
+    // - reinforcement BOQ quantity as steel (quantity-based, no SDB dependency)
+    // - earthwork/fill BOQ quantity as soil/earth (quantity-based)
+    const keyMaterialRows = buildKeyMaterialRows(item);
+
+    if (item.materials.length > 0 && keyMaterialRows.length === 0 && typeof console !== "undefined") {
+      console.debug("[BOM V1 ignored non-key material rows]", {
+        itemCode: item.itemCode,
+        description: item.description,
+        ignoredMaterialCount: item.materials.length,
+      });
+    }
+
+    for (const m of keyMaterialRows) {
       if (m.isClientSupplied) continue;
+
       const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
       const lineQty = effQtyPerUnit * workQty;
+      if (lineQty <= 0) continue;
+
       const lc = item.layerConfig;
       const norm = normaliseBomMaterial({
         materialName: m.materialName,
         uom: m.uom,
-        sourceType: m.isAuto ? "SDB" : "Manual",
+        sourceType: m.isAuto ? "Derived" : "Manual",
         itemDescription: item.description,
         itemCode: item.itemCode,
         workCategory: item.workCategory,
-        layerType: lc?.layerType ?? null,
-        mixType: lc?.mixType ?? null,
-        granularSource: lc?.granularSource ?? null,
+        layerType: (lc as any)?.layerType ?? null,
+        mixType: (lc as any)?.mixType ?? null,
+        granularSource: (lc as any)?.granularSource ?? null,
         supplyType: m.supplyType,
         isAuto: m.isAuto,
       });
-      const key = canonResourceKey(norm.displayMaterialName);
+
+      const finalName = normaliseKeyMaterialName(item, { ...m, materialName: norm.displayMaterialName });
+      const key = canonResourceKey(finalName);
+
       if (!matMap.has(key)) {
         matMap.set(key, {
-          materialName: norm.displayMaterialName,
+          materialName: finalName,
           uom: m.uom,
           totalQty: 0,
           monthlyQty: {},
           hasAutoSource: false,
           breakdown: [],
-          originalNormMaterialName: norm.originalNormMaterialName,
-          displayMaterialName: norm.displayMaterialName,
-          suggestedMaterialMasterName: norm.suggestedMaterialMasterName,
-          materialGroup: norm.materialGroup,
-          reviewNeeded: norm.reviewNeeded,
-          normalisationReason: norm.normalisationReason,
+          originalNormMaterialName: m.materialName,
+          displayMaterialName: finalName,
+          suggestedMaterialMasterName: finalName,
+          materialGroup: finalName,
+          reviewNeeded: false,
+          normalisationReason: "Material BOM V1 key-material allowlist",
+          supplyType: m.supplyType,
         });
       }
+
       const row = matMap.get(key)!;
-      row.materialName = preferDisplayName(row.materialName, norm.displayMaterialName);
+      row.materialName = preferDisplayName(row.materialName, finalName);
       row.totalQty += lineQty;
       row.uom = m.uom;
       if (m.isAuto) row.hasAutoSource = true;
       if (m.supplyType) {
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, qtyPerUnit: effQtyPerUnit, workQty, lineQty, isAuto: m.isAuto ?? false });
+      row.breakdown.push({
+        itemDescription: item.itemName || item.description,
+        fullDescription: item.description,
+        itemCode: item.itemCode,
+        qtyPerUnit: effQtyPerUnit,
+        workQty,
+        lineQty,
+        isAuto: m.isAuto ?? true,
+      });
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }
@@ -607,36 +811,9 @@ export function calculateBomDemand(
       }
     }
 
-    // Diesel / HSD demand from equipment fuel consumption
-    for (const e of item.equipment) {
-      if (e.isClientSupplied) continue;
-      if (!e.consumptionNorm || e.consumptionNorm <= 0) continue;
-      const ft = (e.fuelType ?? "Diesel").toLowerCase();
-      if (ft === "electric" || ft === "none") continue;
-      const cnt = e.count ?? 1;
-      const equipHours = e.qtyPerBoqUnit * workQty * cnt;
-      const liters = e.consumptionNorm * equipHours;
-      const DIESEL_KEY = "DIESEL / HSD";
-      if (!matMap.has(DIESEL_KEY)) {
-        matMap.set(DIESEL_KEY, { materialName: "Diesel / HSD", uom: "L", totalQty: 0, monthlyQty: {}, hasAutoSource: true, breakdown: [] });
-      }
-      const dieselRow = matMap.get(DIESEL_KEY)!;
-      dieselRow.totalQty += liters;
-      // Breakdown: qtyPerUnit = L/hr; workQty = equipment hours; lineQty = total liters
-      dieselRow.breakdown.push({
-        itemDescription: e.equipmentName,
-        fullDescription: e.equipmentName,
-        itemCode: null,
-        qtyPerUnit: e.consumptionNorm,
-        workQty: equipHours,
-        lineQty: liters,
-        isAuto: true,
-      });
-      for (const [month, mwq] of monthlyWork) {
-        const monthHours = e.qtyPerBoqUnit * mwq * cnt;
-        dieselRow.monthlyQty[month] = (dieselRow.monthlyQty[month] ?? 0) + e.consumptionNorm * monthHours;
-      }
-    }
+    // Diesel / HSD is intentionally excluded from Material BOM V1.
+    // Fuel planning will be handled later as a separate Plant/Equipment consumption view.
+    // Do not add equipment fuel as procurement material here.
 
     // Labour
     for (const l of item.labour) {
@@ -654,14 +831,6 @@ export function calculateBomDemand(
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
     }
-  }
-
-  // Fuel diagnostics
-  const eqWithNorm = items.flatMap(it => it.equipment).filter(e => (e.consumptionNorm ?? 0) > 0);
-  const dieselRow = matMap.get("DIESEL / HSD");
-  const ldoRow = matMap.get("LDO / PROCESS FUEL");
-  if (typeof console !== "undefined") {
-    console.log(`[BOM Engine] equipment rows with consumptionNorm: ${eqWithNorm.length} | Diesel/HSD total: ${dieselRow?.totalQty?.toFixed(0) ?? 0} L | LDO total: ${ldoRow?.totalQty?.toFixed(0) ?? 0} L`);
   }
 
   // Apply contractor-friendly group sort order
@@ -820,37 +989,35 @@ export function calculateTipperFleet(input: TipperFleetInput): TipperFleetResult
 
 // ─── Material Group Sort Order ────────────────────────────────────────────────
 
-/** Contractor-friendly procurement order for the BOM materials table. */
+/** V1 key-material procurement order for the BOM materials table. */
 const MATERIAL_GROUP_ORDER: readonly string[] = [
   "gsb material",
   "wmm material",
-  "wbm material",
-  "bitumen vg-10",
+
+  "earth / borrow soil",
+  "selected soil / subgrade material",
+  "shoulder earth / soil",
+  "median fill material",
+
   "bitumen vg-30",
   "bitumen vg-40",
   "bitumen emulsion ss-1",
   "bitumen emulsion rs-1",
   "bitumen emulsion",
-  "aggregate dust",
+
   "stone dust",
+  "aggregate dust",
   "6mm aggregate",
   "10mm aggregate",
-  "13mm aggregate",
   "20mm aggregate",
   "40mm aggregate",
-  "60mm aggregate",
-  "filler (lime)",
+  "aggregate",
   "filler",
-  "ldo / process fuel",
-  "diesel / hsd",
-  "water",
+
   "cement",
-  "sand",
   "admixture",
+
   "tmt / reinforcement steel",
-  "binding wire",
-  "pipes",
-  "filter media",
 ];
 
 /**

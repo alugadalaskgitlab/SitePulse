@@ -1,0 +1,564 @@
+# SitePulse — PATCH 8H: Restrict Material BOM to Key Materials Only
+
+Current issue:
+Material BOM is trying to calculate every SDB/SNL/rate-analysis material component. This is creating absurd and unwanted material groups such as posts, spacers, cross bits, extension rods, compensation, collars, paint, nuts/bolts, etc.
+
+New product rule:
+Material BOM V1 is NOT a full rate-analysis material explosion.
+
+Material BOM V1 should show only key execution/procurement materials:
+
+1. GSB Material — only when GSB is direct supply
+2. WMM Material — only when WMM is direct supply
+3. Aggregates — only from mix templates / JMF / RMC mix design
+4. Bitumen — from JMF/mix template or bitumen grade context
+5. Emulsion — from prime/tack coat spray rate
+6. Cement — only from concrete/RMC mix design
+7. Admixture — only from concrete/RMC mix design
+8. Steel/rebars — direct from BOQ reinforcement item quantity
+9. Earth/soil/fill — direct from BOQ earthwork/embankment/subgrade/shoulder/median items
+
+Ignore every other material row for now, even if SDB/SNL contains it.
+
+Do not change:
+
+* BOQ import
+* BOQ grouping
+* SNL auto-mapping
+* Work Programme bars
+* Labour calculation
+* Equipment calculation
+* Stock
+* IRN/PI
+* Dashboard
+* RMC/HMP master structures
+* Mix template structures
+
+Primary file:
+
+* `shared/planningEngine.ts`
+
+Optional file only if TypeScript import/export requires it:
+
+* none preferred
+
+---
+
+## 1. Add key-material helper types and functions
+
+In `shared/planningEngine.ts`, add the following code just before:
+
+```ts
+export function calculateBomDemand(
+```
+
+ADD:
+
+```ts
+type KeyBomMaterialInputRow = {
+  materialName: string;
+  uom: string;
+  qtyPerBoqUnit: number;
+  wastagePct: number;
+  isClientSupplied: boolean;
+  isAuto?: boolean | null;
+  supplyType?: "direct" | "plant";
+};
+
+function textOf(value: unknown): string {
+  return String(value ?? "").toLowerCase();
+}
+
+function getLayerType(item: BomInputItem): string {
+  return textOf((item.layerConfig as any)?.layerType);
+}
+
+function getMixType(item: BomInputItem): string {
+  return String((item.layerConfig as any)?.mixType ?? "").toUpperCase();
+}
+
+function isDirectGranularSupplyMaterial(m: KeyBomMaterialInputRow): boolean {
+  const name = textOf(m.materialName);
+  return (
+    m.supplyType === "direct" &&
+    (
+      name.includes("gsb material") ||
+      name.includes("wmm material")
+    )
+  );
+}
+
+function isPlantMixTemplateMaterial(item: BomInputItem, m: KeyBomMaterialInputRow): boolean {
+  const layerType = getLayerType(item);
+  const name = textOf(m.materialName);
+
+  // Only accept plant/template materials for mix-driven layers.
+  // This prevents SDB material rows from PCC/RCC/DBM/BC/WMM from leaking into BOM.
+  const isMixLayer =
+    layerType === "bituminous" ||
+    layerType === "granular" ||
+    layerType === "concrete" ||
+    /dbm|bituminous concrete|\bbc\b|bituminous macadam|\bbm\b|sdbc|wet mix|wmm|pcc|rcc|concrete/i.test(item.description);
+
+  if (!isMixLayer) return false;
+  if (m.supplyType !== "plant") return false;
+
+  // Accept only key mix-template / JMF / RMC components.
+  return (
+    /aggregate|stone dust|aggregate dust|dust|filler/i.test(m.materialName) ||
+    /bitumen|vg-30|vg-40|crmb|pmb/i.test(m.materialName) ||
+    /cement/i.test(m.materialName) ||
+    /admixture|plasticizer|super\s*plasticizer/i.test(m.materialName)
+  );
+}
+
+function isSprayCoatEmulsionMaterial(item: BomInputItem, m: KeyBomMaterialInputRow): boolean {
+  const desc = item.description;
+  const layerType = getLayerType(item);
+  return (
+    (
+      layerType === "spray_coat" ||
+      /prime\s*coat|tack\s*coat/i.test(desc)
+    ) &&
+    /emulsion|bitumen/i.test(m.materialName)
+  );
+}
+
+function isReinforcementBoqItem(item: BomInputItem): boolean {
+  const desc = item.description;
+  const unit = normaliseUnit(item.unit);
+  return (
+    unit === "MT" &&
+    /hysd|tmt|reinforcement|reinforcing\s*steel|steel\s*reinforcement|rebar/i.test(desc)
+  );
+}
+
+function isEarthworkBoqItem(item: BomInputItem): boolean {
+  const desc = item.description;
+  const unit = normaliseUnit(item.unit);
+
+  if (unit !== "CUM") return false;
+
+  return (
+    /earthwork|embankment|subgrade|shoulder|median\s*filling|borrow\s*soil|selected\s*soil|soil\s*fill|filling/i.test(desc) &&
+    !/filter\s*media|stone\s*pitching|pcc|rcc|concrete|gsb|wmm|granular\s*sub[-\s]*base|wet\s*mix/i.test(desc)
+  );
+}
+
+function earthworkMaterialName(item: BomInputItem): string {
+  const desc = item.description.toLowerCase();
+
+  if (/selected\s*soil|subgrade/.test(desc)) return "Selected Soil / Subgrade Material";
+  if (/shoulder/.test(desc)) return "Shoulder Earth / Soil";
+  if (/median/.test(desc)) return "Median Fill Material";
+  if (/embankment/.test(desc)) return "Earth / Borrow Soil";
+
+  return "Earth / Borrow Soil";
+}
+
+function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow): string {
+  const raw = m.materialName || "";
+  const name = raw.toLowerCase();
+  const desc = item.description.toLowerCase();
+
+  if (/gsb material/i.test(raw)) return "GSB Material";
+  if (/wmm material/i.test(raw)) return "WMM Material";
+
+  if (/emulsion/i.test(raw) || /prime\s*coat|tack\s*coat/i.test(desc)) {
+    if (/prime\s*coat/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack\s*coat/i.test(desc)) return "Bitumen Emulsion RS-1";
+    return "Bitumen Emulsion";
+  }
+
+  if (/vg\s*-?\s*40|vg40/i.test(raw) || /vg\s*-?\s*40|vg40/i.test(desc)) return "Bitumen VG-40";
+  if (/bitumen|vg\s*-?\s*30|vg30/i.test(raw) || /bitumen|vg\s*-?\s*30|vg30/i.test(desc)) return "Bitumen VG-30";
+
+  if (/cement/i.test(raw)) return "Cement";
+  if (/admixture|plasticizer|super\s*plasticizer/i.test(raw)) return "Admixture";
+
+  if (/filler/i.test(raw)) return "Filler";
+  if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
+  if (/6\s*mm/i.test(raw)) return "6mm Aggregate";
+  if (/10\s*mm|12\.?5\s*mm/i.test(raw)) return "10mm Aggregate";
+  if (/20\s*mm/i.test(raw)) return "20mm Aggregate";
+  if (/40\s*mm|37\.?5\s*mm|53\s*mm|45\s*mm/i.test(raw)) return "40mm Aggregate";
+
+  // For aggregate template rows with generic aggregate names, preserve but simplify.
+  if (/aggregate/i.test(raw)) return "Aggregate";
+
+  return raw;
+}
+
+function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
+  const rows: KeyBomMaterialInputRow[] = [];
+
+  // 1. Steel/rebars: use BOQ quantity directly.
+  // Do not depend on SDB material rows for reinforcement.
+  if (isReinforcementBoqItem(item)) {
+    rows.push({
+      materialName: "TMT / Reinforcement Steel",
+      uom: "MT",
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 2. Earthwork/fill: use BOQ quantity directly.
+  if (isEarthworkBoqItem(item)) {
+    rows.push({
+      materialName: earthworkMaterialName(item),
+      uom: normaliseUnit(item.unit),
+      qtyPerBoqUnit: 1,
+      wastagePct: 0,
+      isClientSupplied: false,
+      isAuto: true,
+    });
+    return rows;
+  }
+
+  // 3. Existing material rows are accepted only if they match the strict key-material allowlist.
+  for (const m of item.materials) {
+    if (m.isClientSupplied) continue;
+
+    const row: KeyBomMaterialInputRow = {
+      materialName: m.materialName,
+      uom: m.uom,
+      qtyPerBoqUnit: m.qtyPerBoqUnit,
+      wastagePct: m.wastagePct,
+      isClientSupplied: m.isClientSupplied,
+      isAuto: m.isAuto,
+      supplyType: m.supplyType,
+    };
+
+    if (isDirectGranularSupplyMaterial(row)) {
+      rows.push({
+        ...row,
+        materialName: normaliseKeyMaterialName(item, row),
+      });
+      continue;
+    }
+
+    if (isPlantMixTemplateMaterial(item, row)) {
+      rows.push({
+        ...row,
+        materialName: normaliseKeyMaterialName(item, row),
+      });
+      continue;
+    }
+
+    if (isSprayCoatEmulsionMaterial(item, row)) {
+      rows.push({
+        ...row,
+        materialName: normaliseKeyMaterialName(item, row),
+      });
+      continue;
+    }
+  }
+
+  return rows;
+}
+```
+
+---
+
+## 2. Replace the Materials loop inside `calculateBomDemand`
+
+Inside `calculateBomDemand`, find this block:
+
+```ts
+// Materials
+for (const m of item.materials) {
+  if (m.isClientSupplied) continue;
+  const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
+  const lineQty = effQtyPerUnit * workQty;
+  const lc = item.layerConfig;
+  const norm = normaliseBomMaterial({
+    materialName: m.materialName,
+    uom: m.uom,
+    sourceType: m.isAuto ? "SDB" : "Manual",
+    itemDescription: item.description,
+    itemCode: item.itemCode,
+    workCategory: item.workCategory,
+    layerType: lc?.layerType ?? null,
+    mixType: lc?.mixType ?? null,
+    granularSource: lc?.granularSource ?? null,
+    supplyType: m.supplyType,
+    isAuto: m.isAuto,
+  });
+  const key = canonResourceKey(norm.displayMaterialName);
+  if (!matMap.has(key)) {
+    matMap.set(key, {
+      materialName: norm.displayMaterialName,
+      uom: m.uom,
+      totalQty: 0,
+      monthlyQty: {},
+      hasAutoSource: false,
+      breakdown: [],
+      originalNormMaterialName: norm.originalNormMaterialName,
+      displayMaterialName: norm.displayMaterialName,
+      suggestedMaterialMasterName: norm.suggestedMaterialMasterName,
+      materialGroup: norm.materialGroup,
+      reviewNeeded: norm.reviewNeeded,
+      normalisationReason: norm.normalisationReason,
+    });
+  }
+  const row = matMap.get(key)!;
+  row.materialName = preferDisplayName(row.materialName, norm.displayMaterialName);
+  row.totalQty += lineQty;
+  row.uom = m.uom;
+  if (m.isAuto) row.hasAutoSource = true;
+  if (m.supplyType) {
+    if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
+  }
+  row.breakdown.push({
+    itemDescription: item.itemName || item.description,
+    fullDescription: item.description,
+    itemCode: item.itemCode,
+    qtyPerUnit: effQtyPerUnit,
+    workQty,
+    lineQty,
+    isAuto: m.isAuto ?? false
+  });
+  for (const [month, mwq] of monthlyWork) {
+    row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
+  }
+}
+```
+
+REPLACE the full block with:
+
+```ts
+// Materials — V1 KEY MATERIALS ONLY.
+// Do not explode all SDB/SNL rate-analysis material rows into procurement BOM.
+// Accepted sources:
+// - GSB/WMM direct-supply rows
+// - HMP/RMC/JMF/mix-template components
+// - prime/tack coat emulsion rows
+// - reinforcement BOQ quantity as steel
+// - earthwork/fill BOQ quantity as soil/earth
+const keyMaterialRows = buildKeyMaterialRows(item);
+
+for (const m of keyMaterialRows) {
+  if (m.isClientSupplied) continue;
+
+  const effQtyPerUnit = m.qtyPerBoqUnit * (1 + (m.wastagePct || 0) / 100);
+  const lineQty = effQtyPerUnit * workQty;
+  if (lineQty <= 0) continue;
+
+  const lc = item.layerConfig;
+  const norm = normaliseBomMaterial({
+    materialName: m.materialName,
+    uom: m.uom,
+    sourceType: m.isAuto ? "Derived" : "Manual",
+    itemDescription: item.description,
+    itemCode: item.itemCode,
+    workCategory: item.workCategory,
+    layerType: (lc as any)?.layerType ?? null,
+    mixType: (lc as any)?.mixType ?? null,
+    granularSource: (lc as any)?.granularSource ?? null,
+    supplyType: m.supplyType,
+    isAuto: m.isAuto,
+  });
+
+  const finalName = normaliseKeyMaterialName(item, {
+    ...m,
+    materialName: norm.displayMaterialName,
+  });
+
+  const key = canonResourceKey(finalName);
+
+  if (!matMap.has(key)) {
+    matMap.set(key, {
+      materialName: finalName,
+      uom: m.uom,
+      totalQty: 0,
+      monthlyQty: {},
+      hasAutoSource: false,
+      breakdown: [],
+      originalNormMaterialName: m.materialName,
+      displayMaterialName: finalName,
+      suggestedMaterialMasterName: finalName,
+      materialGroup: finalName,
+      reviewNeeded: false,
+      normalisationReason: "Material BOM V1 key-material allowlist",
+      supplyType: m.supplyType,
+    });
+  }
+
+  const row = matMap.get(key)!;
+  row.materialName = preferDisplayName(row.materialName, finalName);
+  row.totalQty += lineQty;
+  row.uom = m.uom;
+
+  if (m.isAuto) row.hasAutoSource = true;
+
+  if (m.supplyType) {
+    if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
+  }
+
+  row.breakdown.push({
+    itemDescription: item.itemName || item.description,
+    fullDescription: item.description,
+    itemCode: item.itemCode,
+    qtyPerUnit: effQtyPerUnit,
+    workQty,
+    lineQty,
+    isAuto: m.isAuto ?? true,
+  });
+
+  for (const [month, mwq] of monthlyWork) {
+    row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
+  }
+}
+```
+
+---
+
+## 3. Disable Diesel/HSD material generation for Material BOM V1
+
+Inside `calculateBomDemand`, find the block beginning:
+
+```ts
+// Diesel / HSD demand from equipment fuel consumption
+for (const e of item.equipment) {
+```
+
+and ending immediately before:
+
+```ts
+// Labour
+for (const l of item.labour) {
+```
+
+REPLACE that entire Diesel/HSD block with:
+
+```ts
+// Diesel / HSD is intentionally excluded from Material BOM V1.
+// Fuel planning will be handled later as a separate Plant/Equipment consumption view.
+// Do not add equipment fuel as procurement material here.
+```
+
+Important:
+Do not remove equipment hour calculation. Only remove/disable Diesel/HSD as a material row.
+
+---
+
+## 4. Replace material sort order with Key Materials order
+
+Find `MATERIAL_GROUP_ORDER`.
+
+REPLACE the current list with this strict V1 order:
+
+```ts
+const MATERIAL_GROUP_ORDER = [
+  "gsb material",
+  "wmm material",
+
+  "earth / borrow soil",
+  "selected soil / subgrade material",
+  "shoulder earth / soil",
+  "median fill material",
+
+  "bitumen vg-30",
+  "bitumen vg-40",
+  "bitumen emulsion ss-1",
+  "bitumen emulsion rs-1",
+  "bitumen emulsion",
+
+  "stone dust",
+  "aggregate dust",
+  "6mm aggregate",
+  "10mm aggregate",
+  "20mm aggregate",
+  "40mm aggregate",
+  "aggregate",
+  "filler",
+
+  "cement",
+  "admixture",
+
+  "tmt / reinforcement steel",
+];
+```
+
+---
+
+## 5. Optional: add a debug count for ignored material rows
+
+Inside `calculateBomDemand`, just after:
+
+```ts
+const keyMaterialRows = buildKeyMaterialRows(item);
+```
+
+ADD optional diagnostic:
+
+```ts
+if (item.materials.length > 0 && keyMaterialRows.length === 0 && typeof console !== "undefined") {
+  console.debug("[BOM V1 ignored non-key material rows]", {
+    itemCode: item.itemCode,
+    description: item.description,
+    ignoredMaterialCount: item.materials.length,
+  });
+}
+```
+
+This is only for debugging and can remain harmless.
+
+---
+
+## 6. Expected result on NH-167
+
+After this patch:
+
+Materials tab should no longer show:
+
+* Channel posts
+* Spacer channels
+* Nuts and bolts
+* Cross bits
+* Extension rods
+* Compensation
+* Paint
+* Collars
+* Tool/use-rate materials
+* Random signage components
+* Random SDB/rate-analysis materials
+* Generic granular material
+
+Materials tab should show only:
+
+* GSB Material
+* WMM Material
+* Earth / Borrow Soil or related fill materials where BOQ has earthwork/subgrade/shoulder/median
+* Bitumen VG-30/VG-40 if JMF/template or item context provides it
+* Bitumen Emulsion SS-1/RS-1 for prime/tack coat
+* Aggregates only from JMF/RMC/mix template
+* Cement and admixture only from RMC/concrete mix design
+* TMT / Reinforcement Steel from reinforcement BOQ items
+
+Concrete/HMP warnings may still remain until template lookup is fixed. That is okay.
+
+Labour and equipment should remain unchanged.
+
+---
+
+## 7. Verification
+
+Run full tests.
+
+Then verify:
+
+1. Material count reduces from 44 to a clean key-material list.
+2. GSB direct supply remains.
+3. WMM direct supply remains.
+4. Reinforcement steel appears as BOQ quantity-based steel.
+5. Earthwork/fill appears only for relevant earth/subgrade/shoulder/median BOQ items.
+6. SDB incidental materials disappear.
+7. Labour tab unchanged.
+8. Equipment tab unchanged.
+9. Work Programme unchanged.
+10. BOQ grouping unchanged.
