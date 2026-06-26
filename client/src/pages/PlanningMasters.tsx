@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout } from "lucide-react";
+import { Link } from "wouter";
+import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,10 @@ function EquipTypeDialog({
   const { toast } = useToast();
   const [name, setName] = useState(item?.name ?? "");
   const [category, setCategory] = useState(item?.category ?? "General");
+  const [fuelType, setFuelType] = useState<string>((item as any)?.fuelType ?? "Diesel");
+  const [fuelNorm, setFuelNorm] = useState<string>(
+    (item as any)?.consumptionNorm != null ? String((item as any).consumptionNorm) : ""
+  );
   const [outputMap, setOutputMap] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     if (item?.standardOutputs) {
@@ -43,7 +48,14 @@ function EquipTypeDialog({
       const standardOutputs = CANONICAL_UNITS
         .filter((u) => outputMap[u] && parseFloat(outputMap[u]) > 0)
         .map((u) => ({ unit: u, outputPerHr: parseFloat(outputMap[u]) }));
-      const payload = { name: name.trim(), category, standardOutputs, isActive: true };
+      const payload = {
+        name: name.trim(),
+        category,
+        standardOutputs,
+        fuelType: fuelType || null,
+        consumptionNorm: fuelNorm.trim() ? parseFloat(fuelNorm) : null,
+        isActive: true,
+      };
       if (item) {
         await apiRequest("PATCH", `/api/planning/equipment-types/${item.id}`, payload);
       } else {
@@ -92,6 +104,33 @@ function EquipTypeDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-sm">Fuel Type</Label>
+              <Select value={fuelType} onValueChange={setFuelType}>
+                <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-equip-fuel-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Diesel", "LDO", "Petrol", "Electric", "None"].map((f) => (
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm">Fuel Norm (L/hr)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-sm mt-1"
+                value={fuelNorm}
+                onChange={(e) => setFuelNorm(e.target.value)}
+                placeholder="e.g. 16"
+                data-testid="input-equip-fuel-norm"
+              />
             </div>
           </div>
 
@@ -572,6 +611,11 @@ export default function PlanningMasters() {
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
+      <Link href="/work-program">
+        <a className="inline-flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-900 mb-3" data-testid="link-back-work-program">
+          <ArrowLeft className="w-4 h-4" /> Back to Work Programme
+        </a>
+      </Link>
       <div className="flex items-center gap-3 mb-5">
         <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-900/20">
           <Settings className="w-5 h-5 text-teal-600" />

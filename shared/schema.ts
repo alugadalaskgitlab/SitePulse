@@ -2296,6 +2296,8 @@ export const planningEquipmentTypes = pgTable("planning_equipment_types", {
   name: text("name").notNull(),
   category: text("category").notNull().default("General"),
   standardOutputs: jsonb("standard_outputs").$type<Array<{ unit: string; outputPerHr: number }>>(),
+  consumptionNorm: real("consumption_norm"), // fuel liters per hour
+  fuelType: text("fuel_type"),               // "Diesel" | "LDO" | "Petrol" | "Electric" | "None"
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),

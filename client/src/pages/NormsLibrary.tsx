@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  BookOpen, ChevronRight, Search, Loader2, RefreshCw,
+  BookOpen, ChevronRight, Search, Loader2, RefreshCw, ArrowLeft,
   Wrench, Users, Package, BarChart3, ChevronDown, ChevronUp,
   Database, AlertCircle, Upload, Download, Filter,
 } from "lucide-react";
@@ -512,6 +513,11 @@ export default function NormsLibrary() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
+      <Link href="/work-program">
+        <a className="inline-flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-900" data-testid="link-back-work-program">
+          <ArrowLeft className="w-4 h-4" /> Back to Work Programme
+        </a>
+      </Link>
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>

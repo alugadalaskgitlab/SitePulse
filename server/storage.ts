@@ -20618,6 +20618,8 @@ export class DatabaseStorage implements IStorage {
       db.select({
         id: planningEquipmentTypes.id,
         standardOutputs: planningEquipmentTypes.standardOutputs,
+        consumptionNorm: planningEquipmentTypes.consumptionNorm,
+        fuelType: planningEquipmentTypes.fuelType,
       }).from(planningEquipmentTypes),
     ]);
 
@@ -20637,8 +20639,8 @@ export class DatabaseStorage implements IStorage {
             outputTheoretical: master?.outputTheoretical ?? null,
             outputEfficiency: master?.outputEfficiency ?? null,
             standardOutputs: planType?.standardOutputs ?? master?.standardOutputs ?? null,
-            consumptionNorm: master?.consumptionNorm ?? null,
-            fuelType: master?.fuelType ?? null,
+            consumptionNorm: (planType as any)?.consumptionNorm ?? master?.consumptionNorm ?? null,
+            fuelType: (planType as any)?.fuelType ?? master?.fuelType ?? null,
           };
         });
       return {
@@ -20699,7 +20701,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async seedPlanningMorthDefaults(): Promise<{ equipmentInserted: number; labourInserted: number }> {
-    const { MORTH_EQUIPMENT_SEED, MORTH_LABOUR_SEED } = await import("@shared/morthSeedData");
+    const { MORTH_EQUIPMENT_SEED, MORTH_LABOUR_SEED, MORTH_EQUIPMENT_FUEL_NORMS } = await import("@shared/morthSeedData");
 
     // Fetch existing names so we can skip duplicates (idempotent)
     const existingEquip = await db.select({ name: planningEquipmentTypes.name }).from(planningEquipmentTypes);
@@ -20709,12 +20711,23 @@ export class DatabaseStorage implements IStorage {
 
     let equipmentInserted = 0;
     for (const seed of MORTH_EQUIPMENT_SEED) {
-      if (equipNames.has(seed.name.toLowerCase())) continue;
+      const fuel = MORTH_EQUIPMENT_FUEL_NORMS[seed.name];
+      if (equipNames.has(seed.name.toLowerCase())) {
+        // Backfill fuel norms onto an already-seeded equipment type (idempotent).
+        if (fuel) {
+          await db.update(planningEquipmentTypes)
+            .set({ consumptionNorm: fuel.ltrPerHr, fuelType: fuel.fuelType })
+            .where(eq(planningEquipmentTypes.name, seed.name));
+        }
+        continue;
+      }
       await db.insert(planningEquipmentTypes).values({
         name: seed.name,
         category: seed.category,
         sortOrder: seed.sortOrder,
         standardOutputs: seed.standardOutputs,
+        consumptionNorm: fuel?.ltrPerHr ?? null,
+        fuelType: fuel?.fuelType ?? null,
         isActive: true,
       });
       equipmentInserted++;

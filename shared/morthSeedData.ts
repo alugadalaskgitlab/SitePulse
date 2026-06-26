@@ -152,3 +152,28 @@ export const MORTH_LABOUR_SEED: MorthLabourSeed[] = [
   { designation: "Site Engineer", skillTier: "Supervisory", sortOrder: 110 },
   { designation: "General Helper / Coolie", skillTier: "Unskilled", sortOrder: 120 },
 ];
+
+// Standard diesel/LDO consumption norms (liters per hour) keyed by equipment name.
+// Used by seedPlanningMorthDefaults to populate planning_equipment_types fuel fields.
+// HMP burner fuel is LDO and is captured separately via the mix template ldoNorm;
+// the value here is the plant's diesel genset/loader consumption.
+export const MORTH_EQUIPMENT_FUEL_NORMS: Record<string, { fuelType: string; ltrPerHr: number }> = {
+  "Hydraulic Excavator (0.9 CUM)":      { fuelType: "Diesel", ltrPerHr: 16 },
+  "Tractor Dozer (D6)":                 { fuelType: "Diesel", ltrPerHr: 20 },
+  "Motor Grader (180 HP)":              { fuelType: "Diesel", ltrPerHr: 18 },
+  "Water Tanker (6000 L)":              { fuelType: "Diesel", ltrPerHr: 6 },
+  "Vibratory Roller (10T)":             { fuelType: "Diesel", ltrPerHr: 10 },
+  "Pneumatic Tyre Roller":              { fuelType: "Diesel", ltrPerHr: 9 },
+  "Sheep Foot / Pad Foot Roller":       { fuelType: "Diesel", ltrPerHr: 12 },
+  "WMM Plant (100 T/hr)":               { fuelType: "Diesel", ltrPerHr: 25 },
+  "Pulvi-mixer (tractor-mounted)":      { fuelType: "Diesel", ltrPerHr: 14 },
+  "Hot Mix Plant (120 T/hr)":           { fuelType: "Diesel", ltrPerHr: 30 },
+  "Paver Finisher (sensor)":            { fuelType: "Diesel", ltrPerHr: 12 },
+  "Bitumen Pressure Distributor":       { fuelType: "Diesel", ltrPerHr: 8 },
+  "Chip Spreader":                      { fuelType: "Diesel", ltrPerHr: 8 },
+  "Concrete Paver (slip-form)":         { fuelType: "Diesel", ltrPerHr: 25 },
+  "Transit Mixer (6 CUM)":              { fuelType: "Diesel", ltrPerHr: 10 },
+  "Concrete Pump":                      { fuelType: "Diesel", ltrPerHr: 12 },
+  "Survey Equipment (total station)":   { fuelType: "None",   ltrPerHr: 0 },
+  "Crane (50T mobile)":                 { fuelType: "Diesel", ltrPerHr: 15 },
+};

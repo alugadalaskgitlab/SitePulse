@@ -1,0 +1,393 @@
+# SitePulse — Patch 20: Diesel/LDO fuel capture, fuel fields in Planning Masters, back-navigation
+
+Depends on Patches 16, 17, 19. **This patch adds DB columns — you must run `npm run db:push` after applying.**
+
+## What this fixes
+1. **Diesel not captured.** `planning_equipment_types` had only output fields. The demand
+   engine computes "Diesel / HSD" from each equipment's `fuelType` + fuel norm (L/hr), but
+   those didn't exist on the planning master, so diesel was always blank. This patch adds
+   `consumptionNorm` (L/hr) + `fuelType`, seeds standard diesel norms, reads them into the
+   BOM, and exposes the fields in the Planning Masters equipment dialog.
+   (LDO for HMP already flows from the mix template `ldoNorm` once Patch 19 is in.)
+2. **Back navigation missing** on Planning Masters and Norms Library — added "← Back to
+   Work Programme" links.
+3. **Bitumen shown twice per item** — already fixed by **Patch 19** (single binder row).
+
+---
+
+## PART A — `shared/schema.ts` (add fuel columns)
+
+**FIND:**
+
+```ts
+export const planningEquipmentTypes = pgTable("planning_equipment_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("General"),
+  standardOutputs: jsonb("standard_outputs").$type<Array<{ unit: string; outputPerHr: number }>>(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+```
+
+**REPLACE WITH:**
+
+```ts
+export const planningEquipmentTypes = pgTable("planning_equipment_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("General"),
+  standardOutputs: jsonb("standard_outputs").$type<Array<{ unit: string; outputPerHr: number }>>(),
+  consumptionNorm: real("consumption_norm"), // fuel liters per hour
+  fuelType: text("fuel_type"),               // "Diesel" | "LDO" | "Petrol" | "Electric" | "None"
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+```
+
+> After applying the whole patch, run **`npm run db:push`** to create the two columns.
+
+---
+
+## PART B — `shared/morthSeedData.ts` (standard fuel norms)
+
+**ADD this to the very END of the file:**
+
+```ts
+// Standard diesel/LDO consumption norms (liters per hour) keyed by equipment name.
+// Used by seedPlanningMorthDefaults to populate planning_equipment_types fuel fields.
+// HMP burner fuel is LDO and is captured separately via the mix template ldoNorm;
+// the value here is the plant's diesel genset/loader consumption.
+export const MORTH_EQUIPMENT_FUEL_NORMS: Record<string, { fuelType: string; ltrPerHr: number }> = {
+  "Hydraulic Excavator (0.9 CUM)": { fuelType: "Diesel", ltrPerHr: 16 },
+  "Tractor Dozer (D6)":            { fuelType: "Diesel", ltrPerHr: 20 },
+  "Motor Grader (180 HP)":         { fuelType: "Diesel", ltrPerHr: 18 },
+  "Water Tanker (6000 L)":         { fuelType: "Diesel", ltrPerHr: 6 },
+  "Vibratory Roller (10T)":        { fuelType: "Diesel", ltrPerHr: 10 },
+  "Pneumatic Tyre Roller":         { fuelType: "Diesel", ltrPerHr: 9 },
+  "Sheep Foot / Pad Foot Roller":  { fuelType: "Diesel", ltrPerHr: 12 },
+  "WMM Plant (100 T/hr)":          { fuelType: "Diesel", ltrPerHr: 25 },
+  "Pulvi-mixer (tractor-mounted)": { fuelType: "Diesel", ltrPerHr: 14 },
+  "Hot Mix Plant (120 T/hr)":      { fuelType: "Diesel", ltrPerHr: 30 },
+  "Paver Finisher (sensor)":       { fuelType: "Diesel", ltrPerHr: 12 },
+  "Bitumen Pressure Distributor":  { fuelType: "Diesel", ltrPerHr: 8 },
+  "Chip Spreader":                 { fuelType: "Diesel", ltrPerHr: 8 },
+  "Concrete Paver (slip-form)":    { fuelType: "Diesel", ltrPerHr: 25 },
+  "Transit Mixer (6 CUM)":         { fuelType: "Diesel", ltrPerHr: 10 },
+  "Concrete Pump":                 { fuelType: "Diesel", ltrPerHr: 12 },
+  "Survey Equipment (total station)": { fuelType: "None", ltrPerHr: 0 },
+  "Crane (50T mobile)":            { fuelType: "Diesel", ltrPerHr: 15 },
+};
+```
+
+---
+
+## PART C — `server/storage.ts` (seed + read the fuel norms)
+
+### C1. Import the fuel map
+
+**FIND:**
+
+```ts
+    const { MORTH_EQUIPMENT_SEED, MORTH_LABOUR_SEED } = await import("@shared/morthSeedData");
+```
+
+**REPLACE WITH:**
+
+```ts
+    const { MORTH_EQUIPMENT_SEED, MORTH_LABOUR_SEED, MORTH_EQUIPMENT_FUEL_NORMS } = await import("@shared/morthSeedData");
+```
+
+### C2. Seed + backfill the fuel norms (so existing rows get them too)
+
+**FIND:**
+
+```ts
+    let equipmentInserted = 0;
+    for (const seed of MORTH_EQUIPMENT_SEED) {
+      if (equipNames.has(seed.name.toLowerCase())) continue;
+      await db.insert(planningEquipmentTypes).values({
+        name: seed.name,
+        category: seed.category,
+        sortOrder: seed.sortOrder,
+        standardOutputs: seed.standardOutputs,
+        isActive: true,
+      });
+      equipmentInserted++;
+    }
+```
+
+**REPLACE WITH:**
+
+```ts
+    let equipmentInserted = 0;
+    for (const seed of MORTH_EQUIPMENT_SEED) {
+      const fuel = MORTH_EQUIPMENT_FUEL_NORMS[seed.name];
+      if (equipNames.has(seed.name.toLowerCase())) {
+        // Backfill fuel norms onto an already-seeded equipment type (idempotent).
+        if (fuel) {
+          await db.update(planningEquipmentTypes)
+            .set({ consumptionNorm: fuel.ltrPerHr, fuelType: fuel.fuelType })
+            .where(eq(planningEquipmentTypes.name, seed.name));
+        }
+        continue;
+      }
+      await db.insert(planningEquipmentTypes).values({
+        name: seed.name,
+        category: seed.category,
+        sortOrder: seed.sortOrder,
+        standardOutputs: seed.standardOutputs,
+        consumptionNorm: fuel?.ltrPerHr ?? null,
+        fuelType: fuel?.fuelType ?? null,
+        isActive: true,
+      });
+      equipmentInserted++;
+    }
+```
+
+### C3. Feed the planning fuel norms into the BOM (getBoqItemsWithRecipes)
+
+**FIND:**
+
+```ts
+      db.select({
+        id: planningEquipmentTypes.id,
+        standardOutputs: planningEquipmentTypes.standardOutputs,
+      }).from(planningEquipmentTypes),
+```
+
+**REPLACE WITH:**
+
+```ts
+      db.select({
+        id: planningEquipmentTypes.id,
+        standardOutputs: planningEquipmentTypes.standardOutputs,
+        consumptionNorm: planningEquipmentTypes.consumptionNorm,
+        fuelType: planningEquipmentTypes.fuelType,
+      }).from(planningEquipmentTypes),
+```
+
+**FIND:**
+
+```ts
+            standardOutputs: planType?.standardOutputs ?? master?.standardOutputs ?? null,
+            consumptionNorm: master?.consumptionNorm ?? null,
+            fuelType: master?.fuelType ?? null,
+```
+
+**REPLACE WITH:**
+
+```ts
+            standardOutputs: planType?.standardOutputs ?? master?.standardOutputs ?? null,
+            consumptionNorm: (planType as any)?.consumptionNorm ?? master?.consumptionNorm ?? null,
+            fuelType: (planType as any)?.fuelType ?? master?.fuelType ?? null,
+```
+
+---
+
+## PART D — `client/src/pages/PlanningMasters.tsx` (fuel fields in the dialog + back link)
+
+### D1. Imports
+
+**FIND:**
+
+```ts
+import { useState } from "react";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { useState } from "react";
+import { Link } from "wouter";
+```
+
+**FIND:**
+
+```ts
+import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout } from "lucide-react";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { Plus, Pencil, Trash2, Loader2, Settings, Wrench, Users, ChevronDown, ChevronUp, Sprout, ArrowLeft } from "lucide-react";
+```
+
+### D2. Equipment dialog state
+
+**FIND:**
+
+```ts
+  const [name, setName] = useState(item?.name ?? "");
+  const [category, setCategory] = useState(item?.category ?? "General");
+```
+
+**REPLACE WITH:**
+
+```ts
+  const [name, setName] = useState(item?.name ?? "");
+  const [category, setCategory] = useState(item?.category ?? "General");
+  const [fuelType, setFuelType] = useState<string>((item as any)?.fuelType ?? "Diesel");
+  const [fuelNorm, setFuelNorm] = useState<string>(
+    (item as any)?.consumptionNorm != null ? String((item as any).consumptionNorm) : ""
+  );
+```
+
+### D3. Include fuel in the save payload
+
+**FIND:**
+
+```ts
+      const payload = { name: name.trim(), category, standardOutputs, isActive: true };
+```
+
+**REPLACE WITH:**
+
+```ts
+      const payload = {
+        name: name.trim(),
+        category,
+        standardOutputs,
+        fuelType: fuelType || null,
+        consumptionNorm: fuelNorm.trim() ? parseFloat(fuelNorm) : null,
+        isActive: true,
+      };
+```
+
+### D4. Render the fuel inputs (above Standard Outputs)
+
+**FIND:**
+
+```tsx
+          </div>
+
+          <div>
+            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Standard Outputs (per hour)</Label>
+```
+
+**REPLACE WITH:**
+
+```tsx
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-sm">Fuel Type</Label>
+              <Select value={fuelType} onValueChange={setFuelType}>
+                <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-equip-fuel-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Diesel", "LDO", "Petrol", "Electric", "None"].map((f) => (
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm">Fuel Norm (L/hr)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-sm mt-1"
+                value={fuelNorm}
+                onChange={(e) => setFuelNorm(e.target.value)}
+                placeholder="e.g. 16"
+                data-testid="input-equip-fuel-norm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Standard Outputs (per hour)</Label>
+```
+
+### D5. Back link in the page header
+
+**FIND:**
+
+```tsx
+    <div className="p-4 max-w-3xl mx-auto">
+      <div className="flex items-center gap-3 mb-5">
+```
+
+**REPLACE WITH:**
+
+```tsx
+    <div className="p-4 max-w-3xl mx-auto">
+      <Link href="/work-program">
+        <a className="inline-flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-900 mb-3" data-testid="link-back-work-program">
+          <ArrowLeft className="w-4 h-4" /> Back to Work Programme
+        </a>
+      </Link>
+      <div className="flex items-center gap-3 mb-5">
+```
+
+---
+
+## PART E — `client/src/pages/NormsLibrary.tsx` (back link)
+
+**FIND:**
+
+```ts
+import { useState, useRef } from "react";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { useState, useRef } from "react";
+import { Link } from "wouter";
+```
+
+**FIND:**
+
+```ts
+  BookOpen, ChevronRight, Search, Loader2, RefreshCw,
+```
+
+**REPLACE WITH:**
+
+```ts
+  BookOpen, ChevronRight, Search, Loader2, RefreshCw, ArrowLeft,
+```
+
+**FIND:**
+
+```tsx
+    <div className="p-6 max-w-7xl mx-auto space-y-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+```
+
+**REPLACE WITH:**
+
+```tsx
+    <div className="p-6 max-w-7xl mx-auto space-y-5">
+      <Link href="/work-program">
+        <a className="inline-flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-900" data-testid="link-back-work-program">
+          <ArrowLeft className="w-4 h-4" /> Back to Work Programme
+        </a>
+      </Link>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+```
+
+---
+
+## After applying (order matters)
+1. Apply Patches 16, 17, 19, then 20.
+2. **`npm run db:push`** (creates `consumption_norm` + `fuel_type` columns). Type `yes` if it asks.
+3. `npm run check`, rebuild.
+4. **Planning Masters → Seed MoRTH Defaults** (re-click — it now backfills fuel norms onto your existing equipment).
+5. Work Programme → **Auto-build recipes** (re-run, so items pick up the equipment with fuel norms).
+6. **BOM → Materials:** you should now see **"Diesel / HSD" (L)** with monthly demand, and
+   **"LDO / Process Fuel"** for the HMP bituminous items.
+7. Open **Planning Masters → edit any equipment**: the **Fuel Type** + **Fuel Norm (L/hr)**
+   fields are now editable.
+8. Planning Masters & Norms Library now show a **← Back to Work Programme** link.
+
+> Diesel norms above are typical MoRTH/site values — adjust any per your fleet in
+> Planning Masters and re-run Auto-build recipes.
