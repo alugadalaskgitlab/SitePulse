@@ -830,11 +830,46 @@ export function calculateBomDemand(
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
       }
-    }
 
-    // Diesel / HSD is intentionally excluded from Material BOM V1.
-    // Fuel planning will be handled later as a separate Plant/Equipment consumption view.
-    // Do not add equipment fuel as procurement material here.
+      // FROZEN RULE 7 — Diesel / HSD fuel: the ONLY fuel source for the BOM is
+      // equipment/plant running hours × consumption norm (liters/hour). Wired month-wise.
+      const norm = e.consumptionNorm ?? 0;
+      const isDiesel = /diesel|hsd/i.test(textOf(e.fuelType));
+      if (norm > 0 && isDiesel) {
+        const fuelPerBoqUnit = e.qtyPerBoqUnit * cnt * norm; // liters per BOQ unit
+        const fuelKey = canonResourceKey("Diesel / HSD");
+        if (!matMap.has(fuelKey)) {
+          matMap.set(fuelKey, {
+            materialName: "Diesel / HSD",
+            uom: "L",
+            totalQty: 0,
+            monthlyQty: {},
+            hasAutoSource: true,
+            breakdown: [],
+            originalNormMaterialName: "Diesel / HSD",
+            displayMaterialName: "Diesel / HSD",
+            suggestedMaterialMasterName: "Diesel / HSD",
+            materialGroup: "Diesel / HSD",
+            reviewNeeded: false,
+            normalisationReason: "Fuel demand from equipment consumption norm × running hours",
+          });
+        }
+        const fuelRow = matMap.get(fuelKey)!;
+        fuelRow.totalQty += fuelPerBoqUnit * workQty;
+        fuelRow.breakdown.push({
+          itemDescription: `${display} — fuel`,
+          fullDescription: `${item.description} (${display} @ ${norm} L/hr)`,
+          itemCode: item.itemCode,
+          qtyPerUnit: fuelPerBoqUnit,
+          workQty,
+          lineQty: fuelPerBoqUnit * workQty,
+          isAuto: true,
+        });
+        for (const [month, mwq] of monthlyWork) {
+          fuelRow.monthlyQty[month] = (fuelRow.monthlyQty[month] ?? 0) + fuelPerBoqUnit * mwq;
+        }
+      }
+    }
 
     // Labour
     for (const l of item.labour) {
