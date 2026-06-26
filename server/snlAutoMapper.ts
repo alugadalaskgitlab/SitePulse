@@ -287,6 +287,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
   const boqRows = await db
     .select({
       id: boqItems.id,
+      boqProjectId: boqItems.boqProjectId,
       itemCode: boqItems.itemCode,
       snlCode: boqItems.snlCode,
       description: boqItems.description,
@@ -342,20 +343,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // ── Rule classification (used by both scope guard and rule-match) ─────
       const ruleTag = classifyBoqItemForSnl(boqRow.description);
 
-      // ── Scope guard ───────────────────────────────────────────────────────
-      // Items outside known major categories are skipped UNLESS the rule-based
-      // pre-matcher found a confident tag for them — this covers road furniture,
-      // filter media, pipes, barriers, etc. that don't have workCategory set.
-      const guardCat = boqRow.workCategory ?? inferWorkCategory(boqRow.description);
-      const inMajorCat = !!(guardCat && MAJOR_AUTOMAP_CATEGORIES.has(guardCat));
-      if (!ruleTag && !inMajorCat) {
-        await storage.clearBoqItemRecipes(boqRow.id);
-        await db
-          .update(boqItems)
-          .set({ mappingStatus: "unmapped" })
-          .where(eq(boqItems.id, boqRow.id));
-        continue;
-      }
+      // No hard scope guard: items that don't match a rule tag still proceed to
+      // fuzzy scoring. Only if BOTH rule and fuzzy produce nothing will the item
+      // fall through to the "no usable evidence → unmapped" path in the fuzzy block.
 
       // ── 0. Deterministic SNL-code match (highest priority) ──────────────
       // Only trust an EXPLICIT SNL/SDB norm code here. The BOQ item_code is a tender bill
@@ -410,6 +400,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       if (ruleTag) {
         const ruleResult = ruleMatchSnl(ruleTag, snlRows);
         if (ruleResult) {
+          const ruleSnl = snlRows.find(s => s.id === ruleResult.snlItemId)!;
+          const ruleUnitOk = unitsCompatible(boqRow.unit, ruleSnl.unit);
+
           await db
             .insert(snlBoqMappings)
             .values({
@@ -419,33 +412,45 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
               gradingVariant: null,
               mappedBy: "rule",
               isAutoMapped: true,
-              confidenceScore: ruleResult.confidence,
-              notes: `Rule-matched tag: ${ruleTag}`,
+              confidenceScore: ruleUnitOk ? ruleResult.confidence : ruleResult.confidence * UNIT_MISMATCH_PENALTY,
+              notes: ruleUnitOk
+                ? `Rule-matched tag: ${ruleTag}`
+                : `Rule-matched tag: ${ruleTag} (unit mismatch — review)`,
             })
             .onConflictDoUpdate({
               target: snlBoqMappings.boqItemId,
               set: {
                 snlItemId: ruleResult.snlItemId,
                 isAutoMapped: true,
-                confidenceScore: ruleResult.confidence,
+                confidenceScore: ruleUnitOk ? ruleResult.confidence : ruleResult.confidence * UNIT_MISMATCH_PENALTY,
                 mappedBy: "rule",
                 mappedAt: new Date(),
-                notes: `Rule-matched tag: ${ruleTag}`,
+                notes: ruleUnitOk
+                  ? `Rule-matched tag: ${ruleTag}`
+                  : `Rule-matched tag: ${ruleTag} (unit mismatch — review)`,
               },
             });
 
-          let recipesApplied = false;
-          try {
-            await storage.applySnlMappingToRecipes(boqRow.id, ruleResult.snlItemId, "MEDIUM", null, "rule");
-            recipesApplied = true;
-          } catch (recipeErr) {
-            console.error(`[autoMapper] rule-match recipes failed for boqItemId=${boqRow.id}:`, recipeErr);
+          if (ruleUnitOk) {
+            let recipesApplied = false;
+            try {
+              await storage.applySnlMappingToRecipes(boqRow.id, ruleResult.snlItemId, "MEDIUM", null, "rule");
+              recipesApplied = true;
+            } catch (recipeErr) {
+              console.error(`[autoMapper] rule-match recipes failed for boqItemId=${boqRow.id}:`, recipeErr);
+            }
+            await db
+              .update(boqItems)
+              .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
+              .where(eq(boqItems.id, boqRow.id));
+          } else {
+            // Unit mismatch on rule match — save suggestion but don't apply recipes
+            await storage.clearBoqItemRecipes(boqRow.id);
+            await db
+              .update(boqItems)
+              .set({ mappingStatus: "needs_review" })
+              .where(eq(boqItems.id, boqRow.id));
           }
-
-          await db
-            .update(boqItems)
-            .set({ mappingStatus: recipesApplied ? "mapped" : "needs_review" })
-            .where(eq(boqItems.id, boqRow.id));
           continue; // done — skip fuzzy scoring for this row
         }
       }
@@ -528,6 +533,13 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
     } catch (err) {
       console.error(`[autoMapper] Failed for boqItemId=${boqRow.id}:`, err);
     }
+  }
+
+  // After all items are scored, propagate mappings to duplicate-description siblings
+  // within each project. This runs for every automap entry point (startup, remap, bulk).
+  const uniqueProjectIds = new Set(boqRows.map(r => r.boqProjectId).filter((id): id is number => id != null));
+  for (const pid of uniqueProjectIds) {
+    await propagateDuplicateMappings(pid);
   }
 }
 
@@ -703,10 +715,8 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
     return { totalItems, autoMapped: 0, needsReview: 0, unmapped: 0, avgConfidence: 0, ruleMatched: 0 };
   }
 
+  // autoMapBoqItems already calls propagateDuplicateMappings internally.
   await autoMapBoqItems(pendingIds);
-
-  // Propagate across the whole project (may bring in propagated gains from other already-mapped items)
-  await propagateDuplicateMappings(boqProjectId);
 
   // Re-read status of the formerly-pending items to accurately report what changed.
   const pendingAfter = await db
