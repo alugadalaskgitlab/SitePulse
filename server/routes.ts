@@ -9904,11 +9904,13 @@ export async function registerRoutes(
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
-      const [items, bars, project, allMaterials] = await Promise.all([
+      const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
         storage.getBoqItemsWithRecipes(projectId),
         storage.getWorkProgramBars(projectId),
         storage.getBoqProject(projectId),
         storage.getPlantMaterials(), // for mix template component name resolution
+        storage.getRmcMixDesigns(), // concrete materials source (RMC module)
+        storage.getMixTemplates(),  // bituminous standard templates (Masters/HMP)
       ]);
 
       // Build materialId → name map for resolving mix template component names
@@ -9936,6 +9938,22 @@ export async function registerRoutes(
       }
       // Also add link template IDs to the fetch set
       for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
+
+      // Concrete: index RMC mix designs by grade (active only) for concrete material derivation.
+      const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
+      for (const d of rmcDesigns) {
+        if ((d as any).isActive === 0) continue;
+        const g = String(d.grade ?? "").toUpperCase();
+        if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
+      }
+
+      // Bituminous: fall back to STANDARD mix templates in Masters/HMP when no project link exists.
+      for (const t of allMixTemplates) {
+        const raw = String(t.mixType ?? "").toUpperCase();
+        const normalised = normaliseMixType(t.mixType ?? "");
+        if (raw && !mixTypeToTemplateId.has(raw)) { mixTypeToTemplateId.set(raw, t.id); mixTemplateIds.add(t.id); }
+        if (normalised && normalised !== raw && !mixTypeToTemplateId.has(normalised)) { mixTypeToTemplateId.set(normalised, t.id); mixTemplateIds.add(t.id); }
+      }
 
       // Fetch mix template data and resolve component material names in parallel
       const mixTemplateMap = new Map<number, {
@@ -9998,16 +10016,35 @@ export async function registerRoutes(
             const bitLinks = mixLinks.filter(l => l.mixTemplateId);
             if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
           }
-          // Concrete/RMC — reuse existing mix template by detected grade (M15, M20, M25…)
-          if (!resolvedMixTemplateId && lc.layerType === "concrete" && concreteGrade) {
-            resolvedMixTemplateId =
-              mixTypeToTemplateId.get(concreteGrade.toUpperCase()) ??
-              mixTypeToTemplateId.get(normaliseMixType(concreteGrade)) ??
-              null;
+          // Concrete/RMC — resolve the mix design from the RMC module by detected grade.
+          const concreteDesign =
+            lc.layerType === "concrete" && concreteGrade
+              ? (gradeToDesign.get(concreteGrade.toUpperCase()) ?? null)
+              : null;
+
+          // Emulsion — derive the spraying rate from the BOQ description when the layer
+          // config has no explicit coverage rate (emulsion demand = rate kg/sqm × area).
+          let effLc = lc;
+          if (lc.layerType === "spray_coat" && !(lc.coverageRateKgPerSqm && lc.coverageRateKgPerSqm > 0)) {
+            const rm = String((item as any).description ?? "").match(/([0-9]+(?:\.[0-9]+)?)\s*kg\s*(?:per|\/)?\s*(?:sqm|sq\.?\s*m|m2|m²|square\s*met)/i);
+            if (rm) effLc = { ...lc, coverageRateKgPerSqm: parseFloat(rm[1]) };
           }
 
           const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
-          const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
+          const derived = deriveMaterialsFromLayerConfig(
+            effLc,
+            item.unit,
+            mixTemplate ?? undefined,
+            concreteDesign
+              ? {
+                  grade: concreteDesign.grade,
+                  cementContent: concreteDesign.cementContent,
+                  admixtureName: concreteDesign.admixtureName,
+                  admixtureDosage: concreteDesign.admixtureDosage,
+                  componentProportions: concreteDesign.componentProportions as any,
+                }
+              : null,
+          );
 
           const derivedSupplyType: "direct" | "plant" | undefined =
             lc.layerType === "granular" && lc.granularSource !== "plant" ? "direct"

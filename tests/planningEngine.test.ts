@@ -250,61 +250,70 @@ describe("normaliseMixType", () => {
   });
 });
 
-// ─── deriveMaterialsFromLayerConfig — bituminous fallback ─────────────────────
+// ─── deriveMaterialsFromLayerConfig — bituminous (template-only) ──────────────
 
-describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", () => {
+describe("deriveMaterialsFromLayerConfig — bituminous from mix template", () => {
   const baseLayerConfig = {
     layerType: "bituminous" as const,
     thicknessMm: 50,
     densityTPerCum: 2.4,
   };
+  const bcTemplate = {
+    bitumenPercent: 5.5,
+    ldoNorm: 6,
+    components: [
+      { materialName: "20mm Aggregate", percent: 32 },
+      { materialName: "10mm Aggregate", percent: 25 },
+      { materialName: "Stone Dust", percent: 35 },
+      { materialName: "Filler", percent: 2.5 },
+    ],
+  };
 
-  it("returns multiple component rows for BC when no mix template is provided", () => {
+  it("returns bitumen + aggregate rows from the mix template (plus LDO)", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", bcTemplate);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.find(r => r.materialName.toLowerCase().includes("bitumen"))).toBeDefined();
+    expect(rows.find(r => r.materialName.toLowerCase().includes("aggregate"))).toBeDefined();
+    expect(rows.find(r => r.materialName === "LDO / Process Fuel")).toBeDefined();
+  });
+
+  it("returns [] (no guessing) when no mix template is provided", () => {
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
-    expect(rows.length).toBeGreaterThan(1);
-    const bitumenRow = rows.find(r => r.materialName.toLowerCase().includes("bitumen"));
-    expect(bitumenRow).toBeDefined();
-    const aggRow = rows.find(r => r.materialName.toLowerCase().includes("aggregate"));
-    expect(aggRow).toBeDefined();
-  });
-
-  it("returns multiple component rows for DBM when no mix template is provided", () => {
-    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "DBM" }, "SQM", undefined);
-    expect(rows.length).toBeGreaterThan(1);
-    const bitumenRow = rows.find(r => r.materialName.toLowerCase().includes("bitumen"));
-    expect(bitumenRow).toBeDefined();
-  });
-
-  it("uses IRC defaults when mixType is the full name 'Bituminous Concrete'", () => {
-    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "Bituminous Concrete" }, "SQM", undefined);
-    expect(rows.length).toBeGreaterThan(1);
-    expect(rows[0].materialName).toMatch(/bitumen/i);
-  });
-
-  it("falls back to single 'Bituminous Mix' row for unknown mix type with no template (plus LDO row)", () => {
-    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "CBGB" }, "SQM", undefined);
-    // Expect mix row + LDO / Process Fuel row
-    expect(rows.length).toBe(2);
-    expect(rows[0].materialName).toBe("CBGB Mix");
-    expect(rows[1].materialName).toBe("LDO / Process Fuel");
-  });
-
-  it("falls back to 'Bituminous Mix' when no mixType and no template (plus LDO row)", () => {
-    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig }, "SQM", undefined);
-    expect(rows.length).toBe(2);
-    expect(rows[0].materialName).toBe("Bituminous Mix");
-    expect(rows[1].materialName).toBe("LDO / Process Fuel");
+    expect(rows.length).toBe(0);
   });
 
   it("mix component quantities (excluding LDO) sum to mtPerSqm within ±0.1%", () => {
-    const thickness = 50;
-    const density = 2.4;
-    const mtPerSqm = (thickness / 1000) * density;
-    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
-    // Exclude LDO row — it is in litres, not MT, and is separate from mix proportions
+    const mtPerSqm = (50 / 1000) * 2.4;
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", bcTemplate);
     const mixRows = rows.filter(r => r.materialName !== "LDO / Process Fuel");
     const total = mixRows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
     expect(total).toBeCloseTo(mtPerSqm, 3);
+  });
+});
+
+describe("deriveMaterialsFromLayerConfig — concrete from RMC mix design", () => {
+  const lc = { layerType: "concrete" as const };
+  const design = {
+    grade: "M30",
+    cementContent: 360,
+    admixtureName: "PCE",
+    admixtureDosage: 0.8,
+    componentProportions: { cement: 360, fineAgg: 720, coarseAgg20: 700, coarseAgg10: 480 },
+  };
+
+  it("derives cement, sand, aggregates and admixture per CUM", () => {
+    const rows = deriveMaterialsFromLayerConfig(lc, "CUM", undefined, design);
+    const cement = rows.find(r => r.materialName === "Cement");
+    expect(cement?.uom).toBe("MT");
+    expect(cement?.qtyPerBoqUnit).toBeCloseTo(0.36, 3);
+    expect(rows.find(r => r.materialName === "Sand")?.qtyPerBoqUnit).toBeCloseTo(720 / 1600, 3);
+    expect(rows.find(r => r.materialName === "20mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(700 / 1450, 3);
+    expect(rows.find(r => r.materialName === "10mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(480 / 1450, 3);
+    expect(rows.find(r => r.materialName.startsWith("Admixture"))?.qtyPerBoqUnit).toBeCloseTo((360 * 0.8) / 100, 3);
+  });
+
+  it("returns [] when no mix design is provided", () => {
+    expect(deriveMaterialsFromLayerConfig(lc, "CUM", undefined, null).length).toBe(0);
   });
 });
 

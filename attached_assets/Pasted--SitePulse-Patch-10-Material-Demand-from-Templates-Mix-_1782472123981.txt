@@ -1,0 +1,443 @@
+# SitePulse — Patch 10 · Material Demand from Templates / Mix Designs (key stock materials)
+
+**Goal:** Pull the major key materials from the **actual** templates/designs already in your masters —
+no guessing, no defaults:
+- **Concrete** (RCC/PCC, M15–M50) → **RMC module** mix design → Cement, Sand, 20mm, 10mm, Admixture
+- **Bituminous** (BC/DBM/SDBC/BM) → **Mix Templates in Masters / HMP** → Bitumen + aggregate fractions + LDO
+- **Emulsion** → spraying rate parsed from the **BOQ description** (rate kg/sqm × area)
+- **Steel** → BOQ qty (already working) · **Diesel/HSD** → equipment hours × norm (Patch 8H Fuel)
+
+**Why nothing showed before:** the BOM route never queried `rmc_mix_designs`, the engine had **no concrete branch at all**, and bituminous only checked per-project links (not the standard templates in Masters). This patch wires all three.
+
+**Files changed:** `shared/planningEngine.ts`, `server/routes.ts`, `tests/planningEngine.test.ts`.
+Type-checked clean (`tsc`). After applying, run `npm run check` and `npm run test`.
+
+Units: Cement/Bitumen → **MT**, Sand & Aggregate → **CUM** (converted from kg/m³ using bulk densities sand 1.6 T/m³, coarse agg 1.45 T/m³), Admixture → **kg**, Emulsion → **MT**.
+
+---
+
+## FILE 1 — `shared/planningEngine.ts`
+
+### 1.1 Add `"concrete"` to the LayerConfig layer-type union
+**FIND**
+```ts
+  layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "none";
+```
+**REPLACE**
+```ts
+  layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "concrete" | "none";
+```
+
+### 1.2 Add bulk-density constants + concrete mix-design type (right after the `DerivedMaterialRow` interface)
+**FIND**
+```ts
+export interface DerivedMaterialRow {
+  materialName: string;
+  uom: string;
+  qtyPerBoqUnit: number;
+  isAuto: true;
+  applicationNote?: string;
+}
+```
+**REPLACE**
+```ts
+export interface DerivedMaterialRow {
+  materialName: string;
+  uom: string;
+  qtyPerBoqUnit: number;
+  isAuto: true;
+  applicationNote?: string;
+}
+
+/** Standard bulk densities for converting mix-design kg/m³ → procurement CUM. */
+export const SAND_BULK_DENSITY_T_PER_CUM = 1.6;        // fine aggregate / sand
+export const COARSE_AGG_BULK_DENSITY_T_PER_CUM = 1.45;  // coarse aggregate (10mm/20mm)
+
+/** Concrete mix design pulled from the RMC module (rmc_mix_designs). */
+export interface ConcreteMixDesignInput {
+  grade: string;
+  cementContent?: number | null;        // kg/m³
+  admixtureName?: string | null;
+  admixtureDosage?: number | null;       // % of cement weight
+  componentProportions?: {
+    cement?: number | null;
+    fineAgg?: number | null;
+    coarseAgg10?: number | null;
+    coarseAgg20?: number | null;
+  } | null;
+}
+```
+
+### 1.3 Add `concreteDesign` param to `deriveMaterialsFromLayerConfig`
+**FIND**
+```ts
+  mixTemplate?: {
+    bitumenPercent: number | null;
+    ldoNorm?: number | null;
+    components: Array<{ materialName: string; percent: number | null }>;
+  } | null,
+): DerivedMaterialRow[] {
+```
+**REPLACE**
+```ts
+  mixTemplate?: {
+    bitumenPercent: number | null;
+    ldoNorm?: number | null;
+    components: Array<{ materialName: string; percent: number | null }>;
+  } | null,
+  concreteDesign?: ConcreteMixDesignInput | null,
+): DerivedMaterialRow[] {
+```
+
+### 1.4 Add the concrete branch (insert immediately before the `bituminous` branch)
+**FIND**
+```ts
+  if (layerConfig.layerType === "bituminous") {
+    const thickness = layerConfig.thicknessMm ?? 0;
+```
+**REPLACE**
+```ts
+  if (layerConfig.layerType === "concrete") {
+    // Concrete materials come ONLY from the RMC module mix design (no guessing).
+    if (!concreteDesign) return [];
+    const rows: DerivedMaterialRow[] = [];
+    const cp = concreteDesign.componentProportions;
+    const cementKg = (cp?.cement ?? concreteDesign.cementContent ?? 0); // kg/m³
+    if (cementKg > 0) {
+      rows.push({ materialName: "Cement", uom: "MT", qtyPerBoqUnit: cementKg / 1000, isAuto: true, applicationNote: `${concreteDesign.grade} @ ${cementKg} kg/m³` });
+      const dosage = concreteDesign.admixtureDosage ?? 0;
+      if (dosage > 0) {
+        rows.push({
+          materialName: concreteDesign.admixtureName ? `Admixture (${concreteDesign.admixtureName})` : "Admixture",
+          uom: "kg",
+          qtyPerBoqUnit: (cementKg * dosage) / 100,
+          isAuto: true,
+        });
+      }
+    }
+    const sandKg = cp?.fineAgg ?? 0;
+    if (sandKg > 0) rows.push({ materialName: "Sand", uom: "CUM", qtyPerBoqUnit: sandKg / (SAND_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    const agg20 = cp?.coarseAgg20 ?? 0;
+    if (agg20 > 0) rows.push({ materialName: "20mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg20 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    const agg10 = cp?.coarseAgg10 ?? 0;
+    if (agg10 > 0) rows.push({ materialName: "10mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg10 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    return rows;
+  }
+
+  if (layerConfig.layerType === "bituminous") {
+    const thickness = layerConfig.thicknessMm ?? 0;
+```
+
+### 1.5 Bituminous = template-only (remove the IRC "guess" fallback)
+**FIND**
+```ts
+    const mtPerSqm = (thickness / 1000) * density;
+    const rows: DerivedMaterialRow[] = [];
+    if (mixTemplate) {
+      const bitPct = mixTemplate.bitumenPercent ?? 0;
+      if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+      for (const c of mixTemplate.components) {
+        if ((c.percent ?? 0) > 0) {
+          rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
+        }
+      }
+    } else {
+      // Use IRC standard proportions when no mix template is configured.
+      // This gives component-level rows (bitumen + aggregates) rather than a single synthetic line.
+      const ircDefaults = BITUMINOUS_IRC_DEFAULTS[normaliseMixType(layerConfig.mixType ?? "")];
+      if (ircDefaults) {
+        rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (ircDefaults.bitumenPct / 100) * mtPerSqm, isAuto: true });
+        for (const agg of ircDefaults.aggregates) {
+          rows.push({ materialName: agg.name, uom: "MT", qtyPerBoqUnit: (agg.pct / 100) * mtPerSqm, isAuto: true });
+        }
+      } else {
+        const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
+        rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+      }
+    }
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
+    const ldoNorm = mixTemplate?.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerSqm,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+```
+**REPLACE**
+```ts
+    const mtPerSqm = (thickness / 1000) * density;
+    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
+    if (!mixTemplate) return [];
+    const rows: DerivedMaterialRow[] = [];
+    const bitPct = mixTemplate.bitumenPercent ?? 0;
+    if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+    for (const c of mixTemplate.components) {
+      if ((c.percent ?? 0) > 0) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
+      }
+    }
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
+    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerSqm,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+```
+> Note: `BITUMINOUS_IRC_DEFAULTS` is now unused — you may leave it or delete the const; both compile.
+
+### 1.6 Accept "Sand" in the key-material allowlist (`isPlantMixTemplateMaterial`)
+**FIND**
+```ts
+    /aggregate|stone dust|aggregate dust|dust|filler/i.test(m.materialName) ||
+```
+**REPLACE**
+```ts
+    /aggregate|stone dust|aggregate dust|dust|filler|\bsand\b|fine\s*agg/i.test(m.materialName) ||
+```
+
+### 1.7 Normalise "Sand" name (`normaliseKeyMaterialName`)
+**FIND**
+```ts
+  if (/filler/i.test(raw)) return "Filler";
+  if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
+```
+**REPLACE**
+```ts
+  if (/\bsand\b|fine\s*agg/i.test(raw)) return "Sand";
+  if (/filler/i.test(raw)) return "Filler";
+  if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
+```
+
+### 1.8 Add "sand" to the BOM group sort order (`MATERIAL_GROUP_ORDER`)
+**FIND**
+```ts
+  "aggregate",
+  "filler",
+
+  "cement",
+  "admixture",
+```
+**REPLACE**
+```ts
+  "aggregate",
+  "filler",
+
+  "sand",
+  "cement",
+  "admixture",
+```
+
+---
+
+## FILE 2 — `server/routes.ts`  (inside `GET /api/boq/projects/:id/bom`)
+
+### 2.1 Fetch RMC mix designs + Masters mix templates
+**FIND**
+```ts
+      const [items, bars, project, allMaterials] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getWorkProgramBars(projectId),
+        storage.getBoqProject(projectId),
+        storage.getPlantMaterials(), // for mix template component name resolution
+      ]);
+```
+**REPLACE**
+```ts
+      const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getWorkProgramBars(projectId),
+        storage.getBoqProject(projectId),
+        storage.getPlantMaterials(), // for mix template component name resolution
+        storage.getRmcMixDesigns(), // concrete materials source (RMC module)
+        storage.getMixTemplates(),  // bituminous standard templates (Masters/HMP)
+      ]);
+```
+
+### 2.2 Build grade→RMC-design map + Masters template fallback
+**FIND**
+```ts
+      // Also add link template IDs to the fetch set
+      for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
+
+      // Fetch mix template data and resolve component material names in parallel
+```
+**REPLACE**
+```ts
+      // Also add link template IDs to the fetch set
+      for (const tmplId of mixTypeToTemplateId.values()) mixTemplateIds.add(tmplId);
+
+      // Concrete: index RMC mix designs by grade (active only) for concrete material derivation.
+      const gradeToDesign = new Map<string, typeof rmcDesigns[number]>();
+      for (const d of rmcDesigns) {
+        if ((d as any).isActive === 0) continue;
+        const g = String(d.grade ?? "").toUpperCase();
+        if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
+      }
+
+      // Bituminous: fall back to STANDARD mix templates in Masters/HMP when no project link exists.
+      for (const t of allMixTemplates) {
+        const raw = String(t.mixType ?? "").toUpperCase();
+        const normalised = normaliseMixType(t.mixType ?? "");
+        if (raw && !mixTypeToTemplateId.has(raw)) { mixTypeToTemplateId.set(raw, t.id); mixTemplateIds.add(t.id); }
+        if (normalised && normalised !== raw && !mixTypeToTemplateId.has(normalised)) { mixTypeToTemplateId.set(normalised, t.id); mixTemplateIds.add(t.id); }
+      }
+
+      // Fetch mix template data and resolve component material names in parallel
+```
+
+### 2.3 Resolve concrete RMC design + emulsion rate + pass to derivation
+**FIND**
+```ts
+          // Concrete/RMC — reuse existing mix template by detected grade (M15, M20, M25…)
+          if (!resolvedMixTemplateId && lc.layerType === "concrete" && concreteGrade) {
+            resolvedMixTemplateId =
+              mixTypeToTemplateId.get(concreteGrade.toUpperCase()) ??
+              mixTypeToTemplateId.get(normaliseMixType(concreteGrade)) ??
+              null;
+          }
+
+          const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
+          const derived = deriveMaterialsFromLayerConfig(lc, item.unit, mixTemplate ?? undefined);
+```
+**REPLACE**
+```ts
+          // Concrete/RMC — resolve the mix design from the RMC module by detected grade.
+          const concreteDesign =
+            lc.layerType === "concrete" && concreteGrade
+              ? (gradeToDesign.get(concreteGrade.toUpperCase()) ?? null)
+              : null;
+
+          // Emulsion — derive the spraying rate from the BOQ description when the layer
+          // config has no explicit coverage rate (emulsion demand = rate kg/sqm × area).
+          let effLc = lc;
+          if (lc.layerType === "spray_coat" && !(lc.coverageRateKgPerSqm && lc.coverageRateKgPerSqm > 0)) {
+            const rm = String((item as any).description ?? "").match(/([0-9]+(?:\.[0-9]+)?)\s*kg\s*(?:per|\/)?\s*(?:sqm|sq\.?\s*m|m2|m²|square\s*met)/i);
+            if (rm) effLc = { ...lc, coverageRateKgPerSqm: parseFloat(rm[1]) };
+          }
+
+          const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
+          const derived = deriveMaterialsFromLayerConfig(
+            effLc,
+            item.unit,
+            mixTemplate ?? undefined,
+            concreteDesign
+              ? {
+                  grade: concreteDesign.grade,
+                  cementContent: concreteDesign.cementContent,
+                  admixtureName: concreteDesign.admixtureName,
+                  admixtureDosage: concreteDesign.admixtureDosage,
+                  componentProportions: concreteDesign.componentProportions as any,
+                }
+              : null,
+          );
+```
+
+---
+
+## FILE 3 — `tests/planningEngine.test.ts`  (replace the now-obsolete IRC-fallback block)
+
+**FIND** (the whole `describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", …)` block)
+```ts
+// ─── deriveMaterialsFromLayerConfig — bituminous fallback ─────────────────────
+
+describe("deriveMaterialsFromLayerConfig — bituminous IRC fallback", () => {
+```
+…through its closing `});` (the block that asserts IRC defaults / "Bituminous Mix" fallback).
+
+**REPLACE WITH**
+```ts
+// ─── deriveMaterialsFromLayerConfig — bituminous (template-only) ──────────────
+
+describe("deriveMaterialsFromLayerConfig — bituminous from mix template", () => {
+  const baseLayerConfig = {
+    layerType: "bituminous" as const,
+    thicknessMm: 50,
+    densityTPerCum: 2.4,
+  };
+  const bcTemplate = {
+    bitumenPercent: 5.5,
+    ldoNorm: 6,
+    components: [
+      { materialName: "20mm Aggregate", percent: 32 },
+      { materialName: "10mm Aggregate", percent: 25 },
+      { materialName: "Stone Dust", percent: 35 },
+      { materialName: "Filler", percent: 2.5 },
+    ],
+  };
+
+  it("returns bitumen + aggregate rows from the mix template (plus LDO)", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", bcTemplate);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.find(r => r.materialName.toLowerCase().includes("bitumen"))).toBeDefined();
+    expect(rows.find(r => r.materialName.toLowerCase().includes("aggregate"))).toBeDefined();
+    expect(rows.find(r => r.materialName === "LDO / Process Fuel")).toBeDefined();
+  });
+
+  it("returns [] (no guessing) when no mix template is provided", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
+    expect(rows.length).toBe(0);
+  });
+
+  it("mix component quantities (excluding LDO) sum to mtPerSqm within ±0.1%", () => {
+    const mtPerSqm = (50 / 1000) * 2.4;
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", bcTemplate);
+    const mixRows = rows.filter(r => r.materialName !== "LDO / Process Fuel");
+    const total = mixRows.reduce((sum, r) => sum + r.qtyPerBoqUnit, 0);
+    expect(total).toBeCloseTo(mtPerSqm, 3);
+  });
+});
+
+describe("deriveMaterialsFromLayerConfig — concrete from RMC mix design", () => {
+  const lc = { layerType: "concrete" as const };
+  const design = {
+    grade: "M30",
+    cementContent: 360,
+    admixtureName: "PCE",
+    admixtureDosage: 0.8,
+    componentProportions: { cement: 360, fineAgg: 720, coarseAgg20: 700, coarseAgg10: 480 },
+  };
+
+  it("derives cement, sand, aggregates and admixture per CUM", () => {
+    const rows = deriveMaterialsFromLayerConfig(lc, "CUM", undefined, design);
+    const cement = rows.find(r => r.materialName === "Cement");
+    expect(cement?.uom).toBe("MT");
+    expect(cement?.qtyPerBoqUnit).toBeCloseTo(0.36, 3);
+    expect(rows.find(r => r.materialName === "Sand")?.qtyPerBoqUnit).toBeCloseTo(720 / 1600, 3);
+    expect(rows.find(r => r.materialName === "20mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(700 / 1450, 3);
+    expect(rows.find(r => r.materialName === "10mm Aggregate")?.qtyPerBoqUnit).toBeCloseTo(480 / 1450, 3);
+    expect(rows.find(r => r.materialName.startsWith("Admixture"))?.qtyPerBoqUnit).toBeCloseTo((360 * 0.8) / 100, 3);
+  });
+
+  it("returns [] when no mix design is provided", () => {
+    expect(deriveMaterialsFromLayerConfig(lc, "CUM", undefined, null).length).toBe(0);
+  });
+});
+```
+
+---
+
+## After applying
+1. `npm run check`  (TypeScript) — should pass.
+2. `npm run test`   (vitest) — should pass.
+3. Open **BOM & Demand → Materials**. You should now see, in addition to Earth/Fly Ash/Steel:
+   - **Concrete items** → Cement (MT), Sand (CUM), 20mm/10mm Aggregate (CUM), Admixture (kg) — pulled from your RMC mix designs by grade.
+   - **Bituminous items** → Bitumen VG-30 (MT) + aggregate fractions + LDO — pulled from your Masters/HMP templates.
+   - **Prime/Tack** → Bitumen Emulsion (MT) from the BOQ description rate.
+
+## Prerequisites for data to appear
+- **Concrete**: the grade in the BOQ description (M25/M35…) must have a matching **RMC mix design** with `componentProportions` filled (cement / fineAgg / coarseAgg20 / coarseAgg10 in kg/m³). If only `cementContent` is filled, you'll get Cement + Admixture only.
+- **Bituminous**: a **standard mix template** for that mix type (BC/DBM…) must exist in Masters with `bitumenPercent` + component %; the item's layer must have thickness + density set.
+- **Emulsion**: the BOQ description must contain a rate like "0.25 kg/sqm" (or set the layer coverage rate).

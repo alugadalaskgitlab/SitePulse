@@ -541,7 +541,7 @@ function isPlantMixTemplateMaterial(item: BomInputItem, m: KeyBomMaterialInputRo
   if (m.supplyType !== "plant") return false;
 
   return (
-    /aggregate|stone dust|aggregate dust|dust|filler/i.test(m.materialName) ||
+    /aggregate|stone dust|aggregate dust|dust|filler|\bsand\b|fine\s*agg/i.test(m.materialName) ||
     /bitumen|vg-30|vg-40|crmb|pmb/i.test(m.materialName) ||
     /cement/i.test(m.materialName) ||
     /admixture|plasticizer|super\s*plasticizer/i.test(m.materialName)
@@ -618,6 +618,7 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
   if (/cement/i.test(raw)) return "Cement";
   if (/admixture|plasticizer|super\s*plasticizer/i.test(raw)) return "Admixture";
 
+  if (/\bsand\b|fine\s*agg/i.test(raw)) return "Sand";
   if (/filler/i.test(raw)) return "Filler";
   if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
   if (/6\s*mm/i.test(raw)) return "6mm Aggregate";
@@ -910,7 +911,7 @@ export const LAYER_DENSITY_DEFAULTS: Record<string, number> = {
 
 /** Layer config stored as JSONB on boq_items */
 export interface LayerConfig {
-  layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "none";
+  layerType: "bituminous" | "granular" | "spray_coat" | "earthwork" | "concrete" | "none";
   // Specific mix/grade type resolved from the linked plant template (e.g. "BC", "DBM", "WMM", "M20").
   // Used by the planning engine to resolve the correct productivity override key rather than
   // falling back to a generic layerType alias (which would collapse all bituminous → "BC").
@@ -1071,6 +1072,7 @@ const MATERIAL_GROUP_ORDER: readonly string[] = [
   "aggregate",
   "filler",
 
+  "sand",
   "cement",
   "admixture",
 
@@ -1100,6 +1102,24 @@ export interface DerivedMaterialRow {
   qtyPerBoqUnit: number;
   isAuto: true;
   applicationNote?: string;
+}
+
+/** Standard bulk densities for converting mix-design kg/m³ → procurement CUM. */
+export const SAND_BULK_DENSITY_T_PER_CUM = 1.6;        // fine aggregate / sand
+export const COARSE_AGG_BULK_DENSITY_T_PER_CUM = 1.45;  // coarse aggregate (10mm/20mm)
+
+/** Concrete mix design pulled from the RMC module (rmc_mix_designs). */
+export interface ConcreteMixDesignInput {
+  grade: string;
+  cementContent?: number | null;        // kg/m³
+  admixtureName?: string | null;
+  admixtureDosage?: number | null;       // % of cement weight
+  componentProportions?: {
+    cement?: number | null;
+    fineAgg?: number | null;
+    coarseAgg10?: number | null;
+    coarseAgg20?: number | null;
+  } | null;
 }
 
 /** Standard spray coat application rates (kg/SQM) per IRC SP-20 guidelines */
@@ -1345,6 +1365,7 @@ export function deriveMaterialsFromLayerConfig(
     ldoNorm?: number | null;
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
+  concreteDesign?: ConcreteMixDesignInput | null,
 ): DerivedMaterialRow[] {
   if (layerConfig.layerType === "earthwork") {
     return [{ materialName: "Soil / Earth", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
@@ -1383,36 +1404,50 @@ export function deriveMaterialsFromLayerConfig(
     return [{ materialName: directLabel, uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
   }
 
+  if (layerConfig.layerType === "concrete") {
+    // Concrete materials come ONLY from the RMC module mix design (no guessing).
+    if (!concreteDesign) return [];
+    const rows: DerivedMaterialRow[] = [];
+    const cp = concreteDesign.componentProportions;
+    const cementKg = (cp?.cement ?? concreteDesign.cementContent ?? 0); // kg/m³
+    if (cementKg > 0) {
+      rows.push({ materialName: "Cement", uom: "MT", qtyPerBoqUnit: cementKg / 1000, isAuto: true, applicationNote: `${concreteDesign.grade} @ ${cementKg} kg/m³` });
+      const dosage = concreteDesign.admixtureDosage ?? 0;
+      if (dosage > 0) {
+        rows.push({
+          materialName: concreteDesign.admixtureName ? `Admixture (${concreteDesign.admixtureName})` : "Admixture",
+          uom: "kg",
+          qtyPerBoqUnit: (cementKg * dosage) / 100,
+          isAuto: true,
+        });
+      }
+    }
+    const sandKg = cp?.fineAgg ?? 0;
+    if (sandKg > 0) rows.push({ materialName: "Sand", uom: "CUM", qtyPerBoqUnit: sandKg / (SAND_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    const agg20 = cp?.coarseAgg20 ?? 0;
+    if (agg20 > 0) rows.push({ materialName: "20mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg20 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    const agg10 = cp?.coarseAgg10 ?? 0;
+    if (agg10 > 0) rows.push({ materialName: "10mm Aggregate", uom: "CUM", qtyPerBoqUnit: agg10 / (COARSE_AGG_BULK_DENSITY_T_PER_CUM * 1000), isAuto: true });
+    return rows;
+  }
+
   if (layerConfig.layerType === "bituminous") {
     const thickness = layerConfig.thicknessMm ?? 0;
     const density = layerConfig.densityTPerCum ?? 2.35;
     if (thickness <= 0) return [];
     const mtPerSqm = (thickness / 1000) * density;
+    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
+    if (!mixTemplate) return [];
     const rows: DerivedMaterialRow[] = [];
-    if (mixTemplate) {
-      const bitPct = mixTemplate.bitumenPercent ?? 0;
-      if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
-      for (const c of mixTemplate.components) {
-        if ((c.percent ?? 0) > 0) {
-          rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
-        }
-      }
-    } else {
-      // Use IRC standard proportions when no mix template is configured.
-      // This gives component-level rows (bitumen + aggregates) rather than a single synthetic line.
-      const ircDefaults = BITUMINOUS_IRC_DEFAULTS[normaliseMixType(layerConfig.mixType ?? "")];
-      if (ircDefaults) {
-        rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (ircDefaults.bitumenPct / 100) * mtPerSqm, isAuto: true });
-        for (const agg of ircDefaults.aggregates) {
-          rows.push({ materialName: agg.name, uom: "MT", qtyPerBoqUnit: (agg.pct / 100) * mtPerSqm, isAuto: true });
-        }
-      } else {
-        const mixLabel = layerConfig.mixType ? `${layerConfig.mixType} Mix` : "Bituminous Mix";
-        rows.push({ materialName: mixLabel, uom: "MT", qtyPerBoqUnit: mtPerSqm, isAuto: true });
+    const bitPct = mixTemplate.bitumenPercent ?? 0;
+    if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+    for (const c of mixTemplate.components) {
+      if ((c.percent ?? 0) > 0) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
       }
     }
     // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
-    const ldoNorm = mixTemplate?.ldoNorm ?? 6; // liters/MT default = 6
+    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
     if (ldoNorm > 0) {
       rows.push({
         materialName: "LDO / Process Fuel",
