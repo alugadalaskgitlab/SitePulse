@@ -264,6 +264,7 @@ export const mixTemplates = pgTable("mix_templates", {
   name: text("name").notNull(),
   mixType: text("mix_type").notNull(), // BC, DBM, etc.
   bitumenPercent: real("bitumen_percent"), // Approved/theoretical bitumen %
+  binderGrade: text("binder_grade"), // VG-10 / VG-30 / VG-40 / CRMB / PMB / Emulsion
   ldoNorm: real("ldo_norm").default(6), // Liters per ton (default 6 L/ton)
   isStandard: integer("is_standard").default(1), // 1 = Standard, 0 = Job-specific
   partyId: integer("party_id"), // Only for job-specific templates

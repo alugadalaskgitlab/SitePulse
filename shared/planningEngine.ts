@@ -459,6 +459,17 @@ export interface BomInputItem {
     qtyPerBoqUnit: number; // days per BOQ unit
     isClientSupplied?: boolean;
   }>;
+  // Set by the BOM endpoint after resolving the RMC design / mix template / JMF.
+  // When present, these rows DRIVE the demand directly (bypassing the legacy SDB rows).
+  derivedKeyMaterials?: Array<{
+    materialName: string;
+    uom: string;
+    qtyPerBoqUnit: number;
+    wastagePct?: number;
+    isClientSupplied?: boolean;
+    isAuto?: boolean | null;
+    supplyType?: "direct" | "plant";
+  }>;
 }
 
 export interface BomInputBar {
@@ -722,6 +733,20 @@ function buildKeyMaterialRows(item: BomInputItem): KeyBomMaterialInputRow[] {
       isAuto: true,
     });
     return rows;
+  }
+
+  // 2c. Template-derived materials (RMC design / mix-template JMF / granular / spray)
+  // take precedence — links the BOM to the actual templates instead of legacy SDB rows.
+  if (item.derivedKeyMaterials && item.derivedKeyMaterials.length > 0) {
+    return item.derivedKeyMaterials.map(m => ({
+      materialName: m.materialName,
+      uom: m.uom,
+      qtyPerBoqUnit: m.qtyPerBoqUnit,
+      wastagePct: m.wastagePct ?? 0,
+      isClientSupplied: m.isClientSupplied ?? false,
+      isAuto: m.isAuto ?? true,
+      supplyType: m.supplyType,
+    }));
   }
 
   // 3. Accept material rows only if they pass the strict key-material allowlist.
@@ -1419,6 +1444,7 @@ export function deriveMaterialsFromLayerConfig(
   mixTemplate?: {
     bitumenPercent: number | null;
     ldoNorm?: number | null;
+    binderGrade?: string | null;
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
   concreteDesign?: ConcreteMixDesignInput | null,
@@ -1514,7 +1540,10 @@ export function deriveMaterialsFromLayerConfig(
     const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
     const binderComp = mixTemplate.components.find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
     const bitPct = binderComp?.percent ?? mixTemplate.bitumenPercent ?? 0;
-    const binderName = binderComp?.materialName?.trim() || "Bitumen VG-30";
+    const grade = (mixTemplate.binderGrade ?? "").trim();
+    const binderName = grade
+      ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
+      : (binderComp?.materialName?.trim() || "Bitumen VG-30");
     if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
 
     // Aggregate fractions — skip the binder component (already counted).

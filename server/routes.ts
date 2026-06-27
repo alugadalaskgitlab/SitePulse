@@ -10046,6 +10046,7 @@ export async function registerRoutes(
       const mixTemplateMap = new Map<number, {
         bitumenPercent: number | null;
         ldoNorm: number | null;
+        binderGrade: string | null;
         components: Array<{ materialName: string; percent: number | null }>;
       }>();
       await Promise.all([...mixTemplateIds].map(async (mtId) => {
@@ -10054,6 +10055,7 @@ export async function registerRoutes(
           mixTemplateMap.set(mtId, {
             bitumenPercent: mt.template.bitumenPercent ?? null,
             ldoNorm: mt.template.ldoNorm ?? 6,
+            binderGrade: (mt.template as any).binderGrade ?? null,
             components: mt.components.map(c => ({
               materialName: matNameById.get(c.materialId) ?? `Material #${c.materialId}`,
               percent: c.percent ?? null,
@@ -10156,21 +10158,25 @@ export async function registerRoutes(
             : undefined;
 
           if (derived.length > 0) {
+            const derivedRows = derived.map(dm => ({
+              materialName: dm.materialName,
+              uom: dm.uom,
+              qtyPerBoqUnit: dm.qtyPerBoqUnit,
+              wastagePct: 0,
+              isClientSupplied: false,
+              isAuto: true as const,
+              supplyType: derivedSupplyType,
+            }));
             return {
               ...item,
-              materials: derived.map(dm => ({
+              materials: derivedRows.map(dm => ({
                 id: 0,
                 boqItemId: item.id,
-                materialName: dm.materialName,
-                uom: dm.uom,
-                qtyPerBoqUnit: dm.qtyPerBoqUnit,
-                wastagePct: 0,
-                isClientSupplied: false,
-                isAuto: true as const,
+                ...dm,
                 sortOrder: 0,
                 createdAt: null,
-                supplyType: derivedSupplyType,
               })),
+              derivedKeyMaterials: derivedRows,
               materialSetupWarning: null,
               isProgrammed: barItemIds.has(item.id),
             };
@@ -10265,9 +10271,10 @@ export async function registerRoutes(
         }
       }
 
-      // Compute demand server-side
-      const demand = items.length && bars.length
-        ? calculateBomDemand(items, bars, project.totalMonths ?? 12)
+      // Compute demand from the RESOLVED items (template/RMC-derived materials drive
+      // the numbers, not the legacy saved SDB rows).
+      const demand = expandedItems.length && bars.length
+        ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
         : { materials: [], equipment: [], labour: [] };
 
       // Build shortage rows

@@ -1,0 +1,409 @@
+# SitePulse — Patch 23 (FINAL): Link mix templates to BOM + Bitumen Grade on templates
+
+Verified against your live repo (commit `93d00f3`). Apply all blocks, then run
+**`npm run db:push`** (adds the `binder_grade` column) and rebuild.
+
+## What & why
+- **Your configured mix template wasn't reaching the BOM** because the demand engine
+  (`buildKeyMaterialRows`) builds numbers from the **legacy saved SDB rows** and never
+  consulted the resolved template. **Section 1** makes the template-derived rows drive
+  the demand (this also kills the VG-30 + VG-40 duplicate).
+- **Mix templates had no bitumen-grade field.** **Section 2** adds a **Bitumen Grade**
+  dropdown (VG-10 / VG-30 / VG-40 / CRMB / PMB / Emulsion) and uses it as the binder name
+  in the BOM.
+
+═══════════════════════════════════════════════════════════════════════════════
+# SECTION 1 — Link templates / RMC designs to the BOM demand
+═══════════════════════════════════════════════════════════════════════════════
+
+## 1A — `shared/planningEngine.ts` — add `derivedKeyMaterials` to the item type
+
+**FIND:**
+
+```ts
+  labour: Array<{
+    designation: string;
+    qtyPerBoqUnit: number; // days per BOQ unit
+    isClientSupplied?: boolean;
+  }>;
+}
+```
+
+**REPLACE WITH:**
+
+```ts
+  labour: Array<{
+    designation: string;
+    qtyPerBoqUnit: number; // days per BOQ unit
+    isClientSupplied?: boolean;
+  }>;
+  // Set by the BOM endpoint after resolving the RMC design / mix template / JMF.
+  // When present, these rows DRIVE the demand directly (bypassing the legacy SDB rows).
+  derivedKeyMaterials?: Array<{
+    materialName: string;
+    uom: string;
+    qtyPerBoqUnit: number;
+    wastagePct?: number;
+    isClientSupplied?: boolean;
+    isAuto?: boolean | null;
+    supplyType?: "direct" | "plant";
+  }>;
+}
+```
+
+## 1B — `shared/planningEngine.ts` — make `buildKeyMaterialRows` prefer them
+
+**FIND:**
+
+```ts
+  // 3. Accept material rows only if they pass the strict key-material allowlist.
+  for (const m of item.materials) {
+```
+
+**REPLACE WITH:**
+
+```ts
+  // 2c. Template-derived materials (RMC design / mix-template JMF / granular / spray)
+  // take precedence — links the BOM to the actual templates instead of legacy SDB rows.
+  if (item.derivedKeyMaterials && item.derivedKeyMaterials.length > 0) {
+    return item.derivedKeyMaterials.map(m => ({
+      materialName: m.materialName,
+      uom: m.uom,
+      qtyPerBoqUnit: m.qtyPerBoqUnit,
+      wastagePct: m.wastagePct ?? 0,
+      isClientSupplied: m.isClientSupplied ?? false,
+      isAuto: m.isAuto ?? true,
+      supplyType: m.supplyType,
+    }));
+  }
+
+  // 3. Accept material rows only if they pass the strict key-material allowlist.
+  for (const m of item.materials) {
+```
+
+## 1C — `server/routes.ts` — attach derived rows to the expanded item (P2 return)
+
+**FIND:**
+
+```ts
+          if (derived.length > 0) {
+            return {
+              ...item,
+              materials: derived.map(dm => ({
+                id: 0,
+                boqItemId: item.id,
+                materialName: dm.materialName,
+                uom: dm.uom,
+                qtyPerBoqUnit: dm.qtyPerBoqUnit,
+                wastagePct: 0,
+                isClientSupplied: false,
+                isAuto: true as const,
+                sortOrder: 0,
+                createdAt: null,
+                supplyType: derivedSupplyType,
+              })),
+              materialSetupWarning: null,
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+```
+
+**REPLACE WITH:**
+
+```ts
+          if (derived.length > 0) {
+            const derivedRows = derived.map(dm => ({
+              materialName: dm.materialName,
+              uom: dm.uom,
+              qtyPerBoqUnit: dm.qtyPerBoqUnit,
+              wastagePct: 0,
+              isClientSupplied: false,
+              isAuto: true as const,
+              supplyType: derivedSupplyType,
+            }));
+            return {
+              ...item,
+              materials: derivedRows.map(dm => ({
+                id: 0,
+                boqItemId: item.id,
+                ...dm,
+                sortOrder: 0,
+                createdAt: null,
+              })),
+              derivedKeyMaterials: derivedRows,
+              materialSetupWarning: null,
+              isProgrammed: barItemIds.has(item.id),
+            };
+          }
+```
+
+## 1D — `server/routes.ts` — compute demand from the resolved items
+
+**FIND:**
+
+```ts
+      // Compute demand server-side
+      const demand = items.length && bars.length
+        ? calculateBomDemand(items, bars, project.totalMonths ?? 12)
+        : { materials: [], equipment: [], labour: [] };
+```
+
+**REPLACE WITH:**
+
+```ts
+      // Compute demand from the RESOLVED items (template/RMC-derived materials drive
+      // the numbers, not the legacy saved SDB rows).
+      const demand = expandedItems.length && bars.length
+        ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
+        : { materials: [], equipment: [], labour: [] };
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — Bitumen Grade on mix templates
+═══════════════════════════════════════════════════════════════════════════════
+
+## 2A — `shared/schema.ts` — add the column
+
+**FIND:**
+
+```ts
+  bitumenPercent: real("bitumen_percent"), // Approved/theoretical bitumen %
+  ldoNorm: real("ldo_norm").default(6), // Liters per ton (default 6 L/ton)
+```
+
+**REPLACE WITH:**
+
+```ts
+  bitumenPercent: real("bitumen_percent"), // Approved/theoretical bitumen %
+  binderGrade: text("binder_grade"), // VG-10 / VG-30 / VG-40 / CRMB / PMB / Emulsion
+  ldoNorm: real("ldo_norm").default(6), // Liters per ton (default 6 L/ton)
+```
+
+## 2B — `shared/planningEngine.ts` — accept binderGrade + use it as the binder name
+
+**FIND:**
+
+```ts
+  mixTemplate?: {
+    bitumenPercent: number | null;
+    ldoNorm?: number | null;
+    components: Array<{ materialName: string; percent: number | null }>;
+  } | null,
+```
+
+**REPLACE WITH:**
+
+```ts
+  mixTemplate?: {
+    bitumenPercent: number | null;
+    ldoNorm?: number | null;
+    binderGrade?: string | null;
+    components: Array<{ materialName: string; percent: number | null }>;
+  } | null,
+```
+
+**FIND:**
+
+```ts
+    const binderName = binderComp?.materialName?.trim() || "Bitumen VG-30";
+```
+
+**REPLACE WITH:**
+
+```ts
+    const grade = (mixTemplate.binderGrade ?? "").trim();
+    const binderName = grade
+      ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
+      : (binderComp?.materialName?.trim() || "Bitumen VG-30");
+```
+
+## 2C — `server/routes.ts` — carry binderGrade into the BOM template map
+
+**FIND:**
+
+```ts
+      const mixTemplateMap = new Map<number, {
+        bitumenPercent: number | null;
+        ldoNorm: number | null;
+        components: Array<{ materialName: string; percent: number | null }>;
+      }>();
+      await Promise.all([...mixTemplateIds].map(async (mtId) => {
+        const mt = await storage.getMixTemplateWithComponents(mtId);
+        if (mt) {
+          mixTemplateMap.set(mtId, {
+            bitumenPercent: mt.template.bitumenPercent ?? null,
+            ldoNorm: mt.template.ldoNorm ?? 6,
+            components: mt.components.map(c => ({
+```
+
+**REPLACE WITH:**
+
+```ts
+      const mixTemplateMap = new Map<number, {
+        bitumenPercent: number | null;
+        ldoNorm: number | null;
+        binderGrade: string | null;
+        components: Array<{ materialName: string; percent: number | null }>;
+      }>();
+      await Promise.all([...mixTemplateIds].map(async (mtId) => {
+        const mt = await storage.getMixTemplateWithComponents(mtId);
+        if (mt) {
+          mixTemplateMap.set(mtId, {
+            bitumenPercent: mt.template.bitumenPercent ?? null,
+            ldoNorm: mt.template.ldoNorm ?? 6,
+            binderGrade: (mt.template as any).binderGrade ?? null,
+            components: mt.components.map(c => ({
+```
+
+## 2D — `client/src/pages/Plant.tsx` — Bitumen Grade dropdown in the template form
+
+### State
+
+**FIND:**
+
+```ts
+  const [bitumenPercent, setBitumenPercent] = useState("");
+  const [ldoNorm, setLdoNorm] = useState("6");
+```
+
+**REPLACE WITH:**
+
+```ts
+  const [bitumenPercent, setBitumenPercent] = useState("");
+  const [ldoNorm, setLdoNorm] = useState("6");
+  const [binderGrade, setBinderGrade] = useState("VG-30");
+```
+
+### Reset
+
+**FIND:**
+
+```ts
+    setBitumenPercent("");
+    setLdoNorm("6");
+```
+
+**REPLACE WITH:**
+
+```ts
+    setBitumenPercent("");
+    setLdoNorm("6");
+    setBinderGrade("VG-30");
+```
+
+### Load on edit
+
+**FIND:**
+
+```ts
+    setBitumenPercent(template.bitumenPercent?.toString() || "");
+    setLdoNorm(template.ldoNorm?.toString() || "6");
+```
+
+**REPLACE WITH:**
+
+```ts
+    setBitumenPercent(template.bitumenPercent?.toString() || "");
+    setLdoNorm(template.ldoNorm?.toString() || "6");
+    setBinderGrade((template as any).binderGrade || "VG-30");
+```
+
+### Save payload
+
+**FIND:**
+
+```ts
+      bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
+      ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
+```
+
+**REPLACE WITH:**
+
+```ts
+      bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
+      binderGrade: binderGrade || undefined,
+      ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
+```
+
+### Create-mutation type
+
+**FIND:**
+
+```ts
+      mixType: string; 
+      bitumenPercent?: number; 
+      ldoNorm?: number;
+```
+
+**REPLACE WITH:**
+
+```ts
+      mixType: string; 
+      bitumenPercent?: number; 
+      binderGrade?: string;
+      ldoNorm?: number;
+```
+
+### Update-mutation type
+
+**FIND:**
+
+```ts
+      mixType?: string; 
+      bitumenPercent?: number; 
+      ldoNorm?: number;
+```
+
+**REPLACE WITH:**
+
+```ts
+      mixType?: string; 
+      bitumenPercent?: number; 
+      binderGrade?: string;
+      ldoNorm?: number;
+```
+
+### Form field (dropdown)
+
+**FIND:**
+
+```tsx
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="bitumen-percent">Bitumen %</Label>
+```
+
+**REPLACE WITH:**
+
+```tsx
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="binder-grade">Bitumen Grade</Label>
+                  <Select value={binderGrade} onValueChange={setBinderGrade}>
+                    <SelectTrigger id="binder-grade" data-testid="select-binder-grade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["VG-10", "VG-30", "VG-40", "CRMB-55", "CRMB-60", "PMB-40", "Bitumen Emulsion"].map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="bitumen-percent">Bitumen %</Label>
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+# Apply & verify
+═══════════════════════════════════════════════════════════════════════════════
+1. Apply all blocks → **`npm run db:push`** (creates `binder_grade`; type `yes` if prompted).
+2. `npm run check`, rebuild/restart.
+3. **Masters → edit a mix template:** set **Bitumen Grade** (e.g. VG-40 for DBM, VG-30 for BC), Save.
+4. **Item recipe → Layer Config:** select the mix template — it now flows to the BOM.
+5. **BOM → Materials / By Item:** bituminous items show **one** binder row in the chosen
+   grade + your template's aggregate fractions + LDO. The VG-30/VG-40/Stone Dust combo is gone.
+
+> If the saved Bitumen Grade doesn't persist, check that `storage.updateMixTemplate` /
+> `createMixTemplate` write the whole `template` object (they spread `...template`, so the
+> new column saves automatically once it exists).

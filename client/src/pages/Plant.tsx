@@ -3222,6 +3222,7 @@ export function MixTemplateMaster() {
   const [mixType, setMixType] = useState("");
   const [bitumenPercent, setBitumenPercent] = useState("");
   const [ldoNorm, setLdoNorm] = useState("6");
+  const [binderGrade, setBinderGrade] = useState("VG-30");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
   const [aggregateMoistureContent, setAggregateMoistureContent] = useState<Record<number, string>>({});
@@ -3294,6 +3295,7 @@ export function MixTemplateMaster() {
       name: string; 
       mixType: string; 
       bitumenPercent?: number; 
+      binderGrade?: string;
       ldoNorm?: number;
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
@@ -3319,6 +3321,7 @@ export function MixTemplateMaster() {
       name?: string; 
       mixType?: string; 
       bitumenPercent?: number; 
+      binderGrade?: string;
       ldoNorm?: number;
       notes?: string;
       components?: { materialId: number; percent: number; uom: string }[];
@@ -3393,6 +3396,7 @@ export function MixTemplateMaster() {
     setMixType("");
     setBitumenPercent("");
     setLdoNorm("6");
+    setBinderGrade("VG-30");
     setNotes("");
     setSelectedPartyId("");
     setAggregateProportions({});
@@ -3406,6 +3410,7 @@ export function MixTemplateMaster() {
     setMixType(template.mixType);
     setBitumenPercent(template.bitumenPercent?.toString() || "");
     setLdoNorm(template.ldoNorm?.toString() || "6");
+    setBinderGrade((template as any).binderGrade || "VG-30");
     setNotes(template.notes || "");
     setSelectedPartyId(template.partyId != null ? String(template.partyId) : "");
     // Load components for this template
@@ -3462,6 +3467,7 @@ export function MixTemplateMaster() {
       name,
       mixType,
       bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
+      binderGrade: binderGrade || undefined,
       ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
       notes,
       partyId: selectedPartyId ? parseInt(selectedPartyId) : null,
@@ -3555,6 +3561,19 @@ export function MixTemplateMaster() {
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="binder-grade">Bitumen Grade</Label>
+                  <Select value={binderGrade} onValueChange={setBinderGrade}>
+                    <SelectTrigger id="binder-grade" data-testid="select-binder-grade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["VG-10", "VG-30", "VG-40", "CRMB-55", "CRMB-60", "PMB-40", "Bitumen Emulsion"].map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <Label htmlFor="bitumen-percent">Bitumen %</Label>
                   <Input
