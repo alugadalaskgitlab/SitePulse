@@ -18,6 +18,7 @@ import {
   type BomInputItem,
   type BomInputBar,
 } from "@shared/planningEngine";
+import { shortItemName } from "@/lib/itemName";
 import type { BoqProject } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ function MaterialsTable({
                           <div key={i} className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50/30 text-xs">
                             <span className="flex-1 min-w-0 truncate text-slate-700" title={b.fullDescription ?? b.itemDescription}>
                               {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1">[{b.itemCode}]</span>}
-                              {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 60 ? t.slice(0, 60) + "…" : t; })()}
+                              {shortItemName(b.fullDescription ?? b.itemDescription)}
                             </span>
                             <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
                               <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
@@ -274,7 +275,7 @@ function EquipmentTable({
                               <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-blue-50/30">
                                 <td className="px-3 py-1.5 text-slate-700 max-w-[320px]" title={b.fullDescription ?? b.itemDescription}>
                                   {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1.5">[{b.itemCode}]</span>}
-                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 80 ? t.slice(0, 80) + "…" : t; })()}
+                                  {shortItemName(b.fullDescription ?? b.itemDescription)}
                                 </td>
                                 <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
                                   <span className="text-slate-500">{fmtQty(b.hrsPerUnit, 4)}</span>
@@ -384,7 +385,7 @@ function LabourTable({
                           <div key={i} className="flex items-center gap-2 px-3 py-1.5 hover:bg-purple-50/30 text-xs">
                             <span className="flex-1 min-w-0 truncate text-slate-700" title={b.fullDescription ?? b.itemDescription}>
                               {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1">[{b.itemCode}]</span>}
-                              {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 60 ? t.slice(0, 60) + "…" : t; })()}
+                              {shortItemName(b.fullDescription ?? b.itemDescription)}
                             </span>
                             <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
                               <span className="text-slate-500">{fmtQty(b.daysPerUnit, 4)}</span>
@@ -498,7 +499,7 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
           <div className="flex-1 min-w-0">
             <span className="text-sm font-semibold text-slate-700 truncate">
               {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
-              {row.description}
+              {shortItemName(row.description)}
             </span>
           </div>
           <span className="text-xs font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">

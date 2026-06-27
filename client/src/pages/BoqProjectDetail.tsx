@@ -305,7 +305,7 @@ function CategorySection({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Code</th>
+                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-20">Item No.</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Description</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-12">Unit</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">BOQ Qty</th>
@@ -330,7 +330,7 @@ function CategorySection({
                       {item.itemCode ?? "—"}
                     </td>
                     <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
-                      <span className="block whitespace-normal leading-snug">{item.description}</span>
+                      <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
                     </td>
                     <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">
@@ -516,7 +516,7 @@ function NewRevisionDialog({
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 sticky top-0">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-14">Code</th>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Item No.</th>
                       <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Description</th>
                       <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-12">Unit</th>
                       <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Curr Qty</th>
@@ -535,7 +535,7 @@ function NewRevisionDialog({
                         >
                           <td className="px-3 py-1.5 font-mono text-slate-500">{item.itemCode ?? "—"}</td>
                           <td className="px-3 py-1.5 text-slate-700 max-w-[400px]" title={item.description}>
-                            <span className="block whitespace-normal leading-snug">{item.description}</span>
+                            <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
                           </td>
                           <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                           <td className="px-3 py-1.5 text-right text-slate-700 font-medium">
