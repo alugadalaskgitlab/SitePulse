@@ -244,20 +244,64 @@ export default function SiteEntry() {
   });
 
   // Structure BOQ-item helpers — link each structure DPR row to the right BOQ line.
-  const STRUCTURE_KW = /culvert|bridge|\brcc\b|\bpsc\b|\brob\b|\bvup\b|\blup\b|girder|abutment|\bpier\b|\bdeck\b|\bbox\b|\bslab\b|\bpile\b|retaining|breast\s*wall|\bdrain\b|\bcd\b\s*work|head\s*wall|wing\s*wall|parapet|foundation|footing|protection\s*work/i;
+  const STRUCTURE_KW = /culvert|bridge|\brcc\b|\bpsc\b|\brob\b|\bvup\b|\blup\b|girder|abutment|\bpier\b|\bdeck\b|\bbox\b|\bslab\b|\bpile\b|retaining|breast\s*wall|\bdrain\b|\bcd\b\s*work|head\s*wall|wing\s*wall|parapet|foundation|footing|protection\s*work|excavation|back\s*fill/i;
   const isStructureBoqItem = (bi: any) =>
     STRUCTURE_KW.test(`${bi.categoryName ?? ""} ${bi.itemName ?? ""} ${bi.description ?? ""}`);
-  const structureBoqItemsFor = (itemOfWork: string) => {
-    const matched = siteBoqItems.filter(isStructureBoqItem);
-    const base = matched.length ? matched : siteBoqItems; // fall back to all if none classified
-    const kw = (itemOfWork || "").toLowerCase().trim();
-    if (!kw || kw === "other") return base;
-    const tokens = kw.split(/\s+/).filter(t => t.length > 2);
+
+  // Map DPR structure vocabulary -> likely BOQ wording so e.g. "RCC M25" matches "M25",
+  // "Excavation" matches "earthwork in excavation", "Pier-Abutment" matches "pier"/"column".
+  const STRUCT_SYNONYMS: Record<string, string[]> = {
+    excavation: ["excavation", "earthwork", "earth work", "excavating"],
+    pcc: ["pcc", "plain cement concrete", "lean concrete", "levelling course", "leveling course"],
+    rcc: ["rcc", "reinforced cement concrete", "cement concrete", "reinforced concrete"],
+    "rcc m20": ["m20", "m 20", "m-20"], "rcc m25": ["m25", "m 25", "m-25"],
+    "rcc m30": ["m30", "m 30", "m-30"], "rcc m35": ["m35", "m 35", "m-35"],
+    shuttering: ["shuttering", "formwork", "form work", "centering", "staging"],
+    "de-shuttering": ["shuttering", "formwork"],
+    backfilling: ["backfill", "back fill", "filling", "granular fill"],
+    foundation: ["foundation", "footing", "open foundation", "raft", "pile cap"],
+    "pier-abutment": ["pier", "abutment", "column", "substructure", "sub-structure"],
+    "pier cap": ["pier cap", "cap", "bed block"],
+    girder: ["girder", "beam", "psc", "prestressed"],
+    "deck slab": ["deck", "slab"],
+    "wearing coat": ["wearing coat", "wearing course"],
+    culvert: ["culvert", "hume pipe", "rcc pipe", "np3", "np4", "box cell", "box culvert", "slab culvert"],
+    bridge: ["bridge", "viaduct", "rob", "vup", "lup"],
+    drain: ["drain", "chute", "catch water", "lined drain", "kerb"],
+    "retaining wall": ["retaining wall", "breast wall", "reinforced earth", "re wall"],
+    "cd work": ["culvert", "cross drainage", "cd work", "pipe"],
+  };
+  const expandTokens = (phrase: string): string[] => {
+    const p = (phrase || "").toLowerCase().trim();
+    if (!p || p === "other") return [];
+    const out = new Set<string>();
+    if (STRUCT_SYNONYMS[p]) STRUCT_SYNONYMS[p].forEach((s) => out.add(s));
+    p.split(/\s+/).forEach((t) => { if (t.length > 2) out.add(t); });
+    return [...out];
+  };
+
+  // Rank BOQ items by relevance to the WHOLE structure context. Never returns empty,
+  // and always keeps the already-selected item in the list.
+  const structureBoqItemsFor = (row: any) => {
+    const structOnly = siteBoqItems.filter(isStructureBoqItem);
+    const base = structOnly.length ? structOnly : siteBoqItems;
     const score = (bi: any) => {
-      const hay = `${bi.itemName ?? ""} ${bi.description ?? ""}`.toLowerCase();
-      return tokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+      const hay = `${bi.itemCode ?? ""} ${bi.itemName ?? ""} ${bi.description ?? ""} ${(bi as any).categoryName ?? ""}`.toLowerCase();
+      let s = 0;
+      expandTokens(row.itemOfWork).forEach((t) => { if (hay.includes(t)) s += 5; });
+      expandTokens(row.stage).forEach((t) => { if (hay.includes(t)) s += 3; });
+      expandTokens(row.structureSubType).forEach((t) => { if (hay.includes(t)) s += 2; });
+      expandTokens(row.structureType).forEach((t) => { if (hay.includes(t)) s += 2; });
+      return s;
     };
-    return [...base].sort((a, b) => score(b) - score(a));
+    const scored = base.map((bi) => ({ bi, s: score(bi) }));
+    const relevant = scored.filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.bi);
+    let result = relevant.length ? relevant : base;
+    if (row.boqItemId != null && !result.some((bi: any) => bi.id === row.boqItemId)) {
+      const sel = siteBoqItems.find((bi) => bi.id === row.boqItemId);
+      if (sel) result = [sel, ...result];
+    }
+    return result;
   };
 
   const { data: personnelList } = useQuery<Personnel[]>({
@@ -757,7 +801,7 @@ export default function SiteEntry() {
                       <SelectTrigger><SelectValue placeholder="Link to a structure BOQ item…" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">— Not linked —</SelectItem>
-                        {structureBoqItemsFor(item.itemOfWork).map((bi: any) => (
+                        {structureBoqItemsFor(item).map((bi: any) => (
                           <SelectItem key={bi.id} value={String(bi.id)}>
                             {bi.itemCode ? `${bi.itemCode} · ` : ""}{bi.itemName || bi.description}
                             {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
