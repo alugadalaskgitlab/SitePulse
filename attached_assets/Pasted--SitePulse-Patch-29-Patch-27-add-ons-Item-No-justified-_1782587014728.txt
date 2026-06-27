@@ -1,0 +1,308 @@
+# SitePulse — Patch 29 (Patch 27 add-ons): "Item No." + justified text + smart short names in Gantt & BOM
+
+Verified against your live repo (commit `6ed56b66`). Three things you asked for:
+1. **BOQ page:** rename the **Code** column → **Item No.**, and **justify** the description text.
+2. **Gantt & BOM:** show a smart **short name** that names the item ("Cutting of trees - Girth
+   600-900mm", "Roadway excavation - All types of soil", "Construction of embankment - borrow
+   area", "Dismantling structures - PCC Structures", "Wet Mix Macadam"…). Full text stays on hover.
+
+> Assumes Patch 27 is applied (you said the BOQ page reads nicely now). The new short-name logic
+> lives in one shared file so Gantt, BOM (and later anywhere) use the same rule.
+
+Tested outputs (sub-items are stored as "Parent — Sub", which the helper splits on):
+| Stored description | Short name |
+|---|---|
+| Cutting of trees, … — iii) Girth size above 600mm upto 900mm | **Cutting of trees - Girth size above 600mm upto 900mm** |
+| Dismantling structures … — i) PCC Structures | **Dismantling structures - PCC Structures** |
+| Roadway excavation … — i) All types of soil | **Roadway excavation - All types of soil** |
+| Construction of embankment … with approved material from borrow areas | **Construction of embankment - borrow area** |
+| Construction of Granular Sub-Base … Grading-I | **Granular Sub-Base (Grading-I)** |
+| Providing, laying … Wet Mix Macadam … | **Wet Mix Macadam** |
+
+═══════════════════════════════════════════════════════════════════
+## PART A — NEW FILE: `client/src/lib/itemName.ts`
+═══════════════════════════════════════════════════════════════════
+Create this file with exactly this content:
+
+```ts
+// Shared helper: turn a verbose BOQ description into a short, still-identifiable label.
+// Produces "Action gist - distinguishing qualifier" — keeps the work name, grade (M20/M25),
+// material (PCC/RCC/WMM/GSB) and the location/sub-item, while dropping boilerplate.
+// Sub-items are stored as "Parent — Sub" (em-dash), so we split on that to surface the qualifier.
+
+const MATERIAL_KW = [
+  "Wet Mix Macadam", "Granular Sub-Base", "Granular Sub Base", "Dense Bituminous Macadam",
+  "Bituminous Concrete", "Dense Graded Bituminous", "Prime Coat", "Tack Coat",
+  "Stone Matrix Asphalt", "Crusher Run Macadam", "Water Bound Macadam",
+];
+
+const GENERIC_PREFIXES = [
+  /^providing,?\s*laying,?\s*spreading\s*(&|and)?\s*compacting\s*(of\s*)?/i,
+  /^providing,?\s*laying\s*(in\s*position)?\s*(,?\s*spreading)?\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
+  /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
+  /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
+  /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking|spreading)?\s*(of\s*)?/i,
+  /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
+  /^provision\s*of\s*/i,
+  /^providing\s*(of\s*)?/i,
+];
+
+function gist(headRaw: string): string {
+  let h = headRaw.replace(/\s+/g, " ").trim();
+  for (const kw of MATERIAL_KW) {
+    if (h.toLowerCase().includes(kw.toLowerCase())) {
+      const grade = h.match(/grading[\s-]*(i{1,3}|iv|v|\d)/i);
+      return grade ? `${kw} (${grade[0].replace(/grading/i, "Grading").trim()})` : kw;
+    }
+  }
+  for (const re of GENERIC_PREFIXES) { const n = h.replace(re, ""); if (n !== h) { h = n.trim(); break; } }
+  h = h.split(/,| including| complete\b| conforming| as per| in accordance| by providing| by mixing| i\.e\b| with motor| using /i)[0].trim();
+  return h.replace(/[\s.;:,-]+$/, "").trim();
+}
+
+function deriveQualifierFromHead(headRaw: string): string {
+  if (/borrow area/i.test(headRaw)) return "borrow area";
+  const grade = headRaw.match(/\bM[\s-]?(10|15|20|25|30|35|40|45|50)\b/i);
+  if (grade) return grade[0].toUpperCase().replace(/[\s-]/g, "");
+  const grading = headRaw.match(/grading[\s-]*(i{1,3}|iv|v|\d)/i);
+  if (grading) return grading[0].replace(/grading/i, "Grading").trim();
+  return "";
+}
+
+function cleanQualifier(tailRaw: string): string {
+  if (!tailRaw) return "";
+  let t = tailRaw.replace(/\s+/g, " ").trim();
+  t = t.replace(/^\(?\s*(x{0,3}(ix|iv|v?i{0,3})|[a-z]|\d{1,2})\s*[).\-:]\s*/i, "").trim();
+  t = t.split(/ complete\b| as per| including| conforming| i\.e\b/i)[0].trim();
+  t = t.replace(/[\s.;:,-]+$/, "").trim();
+  if (t.length > 48) t = t.slice(0, 48).replace(/\s+\S*$/, "") + "…";
+  return t;
+}
+
+export function shortItemName(full?: string | null): string {
+  if (!full) return "";
+  const s = String(full).replace(/\s+/g, " ").trim();
+  let head = s, tail = "";
+  const dash = s.indexOf(" — ");
+  if (dash >= 0) { head = s.slice(0, dash); tail = s.slice(dash + 3); }
+  const headShort = gist(head) || s.slice(0, 40);
+  let tailShort = cleanQualifier(tail);
+  if (!tailShort) tailShort = deriveQualifierFromHead(head);
+  if (tailShort && headShort.toLowerCase().includes(tailShort.toLowerCase())) tailShort = "";
+  let out = tailShort ? `${headShort} - ${tailShort}` : headShort;
+  if (out.length > 80) out = out.slice(0, 80).replace(/\s+\S*$/, "") + "…";
+  return out;
+}
+```
+
+═══════════════════════════════════════════════════════════════════
+## PART B — `client/src/pages/BoqProjectDetail.tsx` — "Item No." + justified text
+═══════════════════════════════════════════════════════════════════
+
+### B1. Rename both "Code" headers → "Item No." (there are 2 — apply to both)
+
+**FIND (occurrence 1):**
+
+```tsx
+                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Code</th>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-20">Item No.</th>
+```
+
+**FIND (occurrence 2):**
+
+```tsx
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-14">Code</th>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-16">Item No.</th>
+```
+
+### B2. Justify the description text (both tables — same string appears twice; replace both)
+
+**FIND:**
+
+```tsx
+                      <span className="block whitespace-normal leading-snug">{item.description}</span>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                      <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+```
+
+**FIND:**
+
+```tsx
+                            <span className="block whitespace-normal leading-snug">{item.description}</span>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                            <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
+```
+
+═══════════════════════════════════════════════════════════════════
+## PART C — `client/src/pages/WorkProgramme.tsx` (Gantt) — short names
+═══════════════════════════════════════════════════════════════════
+
+### C1. Add the import (after the planningEngine import block, near line 31)
+
+**FIND:**
+
+```ts
+} from "@shared/planningEngine";
+import type {
+```
+
+**REPLACE WITH:**
+
+```ts
+} from "@shared/planningEngine";
+import { shortItemName } from "@/lib/itemName";
+import type {
+```
+
+### C2. Gantt item label (the left sticky panel)
+
+**FIND:**
+
+```tsx
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                                  {(item as any).itemName || item.description}
+                                </span>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
+                                  {shortItemName(item.description)}
+                                </span>
+```
+
+### C3. Monthly Plan view item label
+
+**FIND:**
+
+```tsx
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).itemName || item.description}
+```
+
+**REPLACE WITH:**
+
+```tsx
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{shortItemName(item.description)}
+```
+
+> The full description still shows in the hover card below each label — unchanged.
+
+═══════════════════════════════════════════════════════════════════
+## PART D — `client/src/pages/WorkDemand.tsx` (BOM) — short names
+═══════════════════════════════════════════════════════════════════
+
+### D1. Add the import (after the planningEngine import block, near line 21)
+
+**FIND:**
+
+```ts
+} from "@shared/planningEngine";
+import type { BoqProject } from "@shared/schema";
+```
+
+**REPLACE WITH:**
+
+```ts
+} from "@shared/planningEngine";
+import { shortItemName } from "@/lib/itemName";
+import type { BoqProject } from "@shared/schema";
+```
+
+### D2. Materials breakdown row
+
+**FIND:**
+
+```tsx
+                              {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 60 ? t.slice(0, 60) + "…" : t; })()}
+                            </span>
+                            <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
+                              <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                              {shortItemName(b.fullDescription ?? b.itemDescription)}
+                            </span>
+                            <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
+                              <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
+```
+
+### D3. Equipment breakdown row
+
+**FIND:**
+
+```tsx
+                                  {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 80 ? t.slice(0, 80) + "…" : t; })()}
+```
+
+**REPLACE WITH:**
+
+```tsx
+                                  {shortItemName(b.fullDescription ?? b.itemDescription)}
+```
+
+### D4. Labour breakdown row
+
+**FIND:**
+
+```tsx
+                              {(() => { const t = b.fullDescription ?? b.itemDescription; return t.length > 60 ? t.slice(0, 60) + "…" : t; })()}
+                            </span>
+                            <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
+                              <span className="text-slate-500">{fmtQty(b.daysPerUnit, 4)}</span>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                              {shortItemName(b.fullDescription ?? b.itemDescription)}
+                            </span>
+                            <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
+                              <span className="text-slate-500">{fmtQty(b.daysPerUnit, 4)}</span>
+```
+
+### D5. "By Item" row label
+
+**FIND:**
+
+```tsx
+              {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
+              {row.description}
+```
+
+**REPLACE WITH:**
+
+```tsx
+              {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
+              {shortItemName(row.description)}
+```
+
+═══════════════════════════════════════════════════════════════════
+## Verify
+═══════════════════════════════════════════════════════════════════
+1. Apply A–D. `npm run check`, rebuild/restart. No DB change.
+2. **BOQ page:** header reads **Item No.**; description text is justified.
+3. **Gantt (Work Programme):** each item shows a short name (e.g. "Roadway excavation - All
+   types of soil"); hover shows the full description.
+4. **BOM & Demand:** Materials / Equipment / Labour drill-downs and the **By Item** tab show the
+   same clean short names; hover (title) still has the full text.

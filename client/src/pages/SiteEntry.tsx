@@ -24,6 +24,7 @@ import SitePreview from "@/pages/SitePreview";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
+import { BillItemPicker } from "@/components/BillItemPicker";
 
 interface ProgressEntry {
   activity: string;
@@ -110,7 +111,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null };
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
@@ -387,7 +388,11 @@ export default function SiteEntry() {
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
-  const [workType, setWorkType] = useState<string>("road");
+  const lockedWorkType = useMemo(() => {
+    const t = new URLSearchParams(window.location.search).get("type");
+    return t === "structure" ? "structure" : t === "road" ? "road" : null;
+  }, []);
+  const [workType, setWorkType] = useState<string>(lockedWorkType ?? "road");
   const [structureItems, setStructureItems] = useState<StructureItem[]>([
     { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
   ]);
@@ -722,23 +727,29 @@ export default function SiteEntry() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <CardTitle>Activity Progress</CardTitle>
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-              <Button
-                size="sm"
-                variant={workType === "road" ? "default" : "ghost"}
-                className="h-7 px-3 text-sm"
-                onClick={() => setWorkType("road")}
-                data-testid="button-work-type-road"
-              >Road</Button>
-              <Button
-                size="sm"
-                variant={workType === "structure" ? "default" : "ghost"}
-                className="h-7 px-3 text-sm"
-                onClick={() => setWorkType("structure")}
-                data-testid="button-work-type-structure"
-              >Structure</Button>
-            </div>
+            <CardTitle>{workType === "structure" ? "Structure Progress" : "Road Works Progress"}</CardTitle>
+            {!lockedWorkType ? (
+              <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                <Button
+                  size="sm"
+                  variant={workType === "road" ? "default" : "ghost"}
+                  className="h-7 px-3 text-sm"
+                  onClick={() => setWorkType("road")}
+                  data-testid="button-work-type-road"
+                >Road</Button>
+                <Button
+                  size="sm"
+                  variant={workType === "structure" ? "default" : "ghost"}
+                  className="h-7 px-3 text-sm"
+                  onClick={() => setWorkType("structure")}
+                  data-testid="button-work-type-structure"
+                >Structure</Button>
+              </div>
+            ) : (
+              <Badge variant="outline" className="text-sm" data-testid="badge-work-mode">
+                {workType === "structure" ? "Structures" : "Road Works"}
+              </Badge>
+            )}
           </div>
           {workType === "road" ? (
             <Button size="sm" variant="outline" onClick={() => addRow('progress')} data-testid="button-add-progress">
@@ -832,47 +843,20 @@ export default function SiteEntry() {
                   {siteBoqItems.length > 0 && (
                   <div className="sm:col-span-2 md:col-span-4 space-y-1">
                     <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
-                    <Select
-                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
-                      onValueChange={(val) => {
-                        // Single functional update. The old code called updateField twice
-                        // (boqItemId then uom) over the SAME stale snapshot, so the uom call
-                        // wiped boqItemId → the picker kept showing "Not linked".
+                    <BillItemPicker
+                      items={siteBoqItems}
+                      value={item.boqItemId ?? null}
+                      testidPrefix={`structure-${idx}`}
+                      onChange={(id, it) => {
                         setStructureItems((prev) =>
-                          prev.map((s, i) => {
-                            if (i !== idx) return s;
-                            if (val === "__none__") return { ...s, boqItemId: null };
-                            const bi = siteBoqItems.find((b) => b.id === parseInt(val));
-                            return {
-                              ...s,
-                              boqItemId: parseInt(val),
-                              uom: bi && (bi as any).unit ? (bi as any).unit : s.uom,
-                            };
-                          })
+                          prev.map((s, i) =>
+                            i === idx
+                              ? { ...s, boqItemId: id, uom: it?.unit ? it.unit : s.uom }
+                              : s,
+                          ),
                         );
                       }}
-                      data-testid={`select-structure-boq-item-${idx}`}
-                    >
-                      <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
-                        <SelectValue placeholder="Link to a structure BOQ item…" />
-                      </SelectTrigger>
-                      <SelectContent className="max-w-[min(92vw,640px)]">
-                        <SelectItem value="__none__">— Not linked —</SelectItem>
-                        {structureBoqItemsFor(item).map((bi: any) => (
-                          <SelectItem
-                            key={bi.id}
-                            value={String(bi.id)}
-                            className="items-start whitespace-normal leading-snug py-2"
-                          >
-                            <span className="block pr-2" title={bi.description || bi.itemName || ""}>
-                              {bi.itemCode ? <span className="font-semibold">{bi.itemCode} · </span> : null}
-                              {shortItemName(bi.itemName || bi.description)}
-                              {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
                   )}
                   <div>
@@ -975,43 +959,19 @@ export default function SiteEntry() {
                         boqItemId is stored on the progress entry and sent with the DPR payload. */}
                     <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
                     {siteBoqItems.length > 0 ? (
-                      <Select
-                        value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
-                        onValueChange={(val) => {
+                      <BillItemPicker
+                        items={siteBoqItems}
+                        value={entry.boqItemId ?? null}
+                        stacked
+                        labels={false}
+                        testidPrefix={`progress-${idx}`}
+                        onChange={(id, it) => {
                           const updated = [...progress];
-                          if (val === "__none__") {
-                            updated[idx].boqItemId = null;
-                            updated[idx].activity = "";
-                          } else {
-                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
-                            updated[idx].boqItemId = parseInt(val);
-                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
-                          }
+                          updated[idx].boqItemId = id;
+                          updated[idx].activity = it ? it.description.toUpperCase() : "";
                           setProgress(updated);
                         }}
-                        data-testid={`select-boq-item-${idx}`}
-                      >
-                        <SelectTrigger className="uppercase text-sm h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
-                          <SelectValue placeholder="Select BOQ item…" />
-                        </SelectTrigger>
-                        <SelectContent className="max-w-[min(92vw,640px)]">
-                          <SelectItem value="__none__">— Select activity —</SelectItem>
-                          {siteBoqItems.map((item) => (
-                            <SelectItem
-                              key={item.id}
-                              value={String(item.id)}
-                              className="items-start whitespace-normal leading-snug py-2"
-                            >
-                              <span className="block pr-2 normal-case" title={item.description || item.itemName || ""}>
-                                {item.itemCode ? <span className="font-semibold">{item.itemCode} · </span> : null}
-                                {shortItemName(item.itemName || item.description)}
-                                {" "}<span className="text-slate-400 font-normal">({item.unit}
-                                {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     ) : (
                       <Input
                         placeholder="Activity name"

@@ -1,0 +1,540 @@
+# SitePulse — Patch 28: Friendly DPR — Road & Structure split + cascading "Bill → Item" picker
+
+Verified against your live repo (commit `6ed56b66`) and your *NH 167 BoQ* file.
+
+## The design (why it'll feel easy & enthusiastic to use)
+A site engineer should never scroll a flat list of 140 items. So every DPR activity now uses a
+**two-tap funnel**:
+
+1. **Bill / Section** — pick the bill exactly as in your Excel: *"BILL No. 1 SITE CLEARANCE",
+   "BILL No 2 EARTH WORK", …*
+2. **Work Item** — shows **only** the items inside that bill, as short readable names
+   (full text on hover), with unit auto-filled.
+
+Plus the DPR is **split into two dedicated entry points** from the Site hub — **Road Works**
+and **Structures** — each opening its own form (no confusing toggle). This is what lets you
+sell a "Structures-only" build to a bridge contractor and a "Road-only" build to a road
+contractor, from the same codebase.
+
+> Both forms share Equipment / Labour / Materials / Purchases (every contractor needs those) —
+> only the **Activity Progress** differs (road chainage rows vs structure rows), and both now
+> use the same friendly Bill → Item picker.
+
+---
+
+## PART A — NEW FILE: `client/src/components/BillItemPicker.tsx`
+Create this file with exactly the contents below.
+
+```tsx
+// Cascading "Bill → Item" picker for DPR activity selection.
+// Field 1 = the BOQ Bill / Section (exactly as imported from Excel, e.g. "BILL No. 1 SITE CLEARANCE").
+// Field 2 = only the items inside the chosen bill (short name, full text on hover).
+// Reused by both the Road DPR and the Structure DPR.
+
+import { useMemo, useState } from "react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+
+export type BillItem = {
+  id: number;
+  description: string;
+  itemCode: string | null;
+  itemName: string | null;
+  unit: string;
+  dprConversionFactor: number | null;
+  categoryName?: string | null;
+  sortOrder?: number | null;
+};
+
+// Same smart short-name used elsewhere — strips boilerplate, keeps grade + location.
+function shortItemName(full?: string | null): string {
+  if (!full) return "";
+  let s = String(full).replace(/\s+/g, " ").trim();
+  const PREFIXES = [
+    /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
+    /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
+    /^providing\s*(&|and)\s*casting\s*(of\s*)?/i,
+    /^providing,?\s*laying\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
+    /^providing\s*(of\s*)?/i,
+    /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking)?\s*(of\s*)?/i,
+    /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
+    /^construction\s*of\s*/i,
+    /^constructing\s*(of\s*)?/i,
+    /^laying\s*(of\s*)?/i,
+    /^casting\s*(of\s*)?/i,
+    /^fixing\s*(of\s*)?/i,
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const re of PREFIXES) {
+      const next = s.replace(re, "");
+      if (next !== s) { s = next.trim(); changed = true; }
+    }
+  }
+  s = s.split(/\b(complete as per|as per drawing|as per technical|as per specification|including all lead|including all lift|all complete|at all (heights|leads|lifts)|including cost of|excluding cost of|i\/c\b|incl\.? )/i)[0].trim();
+  s = s.replace(/[,;:.\-\s]+$/, "").trim();
+  if (s.length < 4) return String(full).replace(/\s+/g, " ").trim().slice(0, 60);
+  if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, "") + "…";
+  return s;
+}
+
+const BILL_OTHER = "Other / Unbilled";
+
+export function BillItemPicker({
+  items,
+  value,
+  onChange,
+  testidPrefix = "boq",
+  stacked = false,
+  labels = true,
+}: {
+  items: BillItem[];
+  value: number | null;
+  onChange: (id: number | null, item: BillItem | null) => void;
+  testidPrefix?: string;
+  stacked?: boolean;
+  labels?: boolean;
+}) {
+  // Bills in their original Excel order (by first item's sortOrder).
+  const bills = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of items) {
+      const name = it.categoryName?.trim() || BILL_OTHER;
+      const so = it.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      if (!m.has(name) || so < (m.get(name) as number)) m.set(name, so);
+    }
+    return [...m.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name);
+  }, [items]);
+
+  const selectedItem = value != null ? items.find((i) => i.id === value) ?? null : null;
+  const [bill, setBill] = useState<string>(selectedItem?.categoryName?.trim() || "");
+  const effectiveBill = bill || selectedItem?.categoryName?.trim() || "";
+
+  const billItems = useMemo(
+    () =>
+      items
+        .filter((i) => (i.categoryName?.trim() || BILL_OTHER) === effectiveBill)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [items, effectiveBill],
+  );
+
+  return (
+    <div className={stacked ? "flex flex-col gap-1.5" : "grid grid-cols-1 sm:grid-cols-2 gap-2"}>
+      <div className="space-y-1">
+        {labels && <Label className="text-sm">Bill / Section</Label>}
+        <Select
+          value={effectiveBill || "__none__"}
+          onValueChange={(v) => {
+            setBill(v === "__none__" ? "" : v);
+            onChange(null, null); // changing the bill clears the item
+          }}
+          data-testid={`${testidPrefix}-bill-select`}
+        >
+          <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+            <SelectValue placeholder="Select bill…" />
+          </SelectTrigger>
+          <SelectContent className="max-w-[min(92vw,560px)]">
+            <SelectItem value="__none__">— Select bill —</SelectItem>
+            {bills.map((b) => (
+              <SelectItem key={b} value={b} className="whitespace-normal leading-snug py-2">
+                {b}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1">
+        {labels && <Label className="text-sm">Work Item</Label>}
+        <Select
+          value={value != null ? String(value) : "__none__"}
+          disabled={!effectiveBill}
+          onValueChange={(v) => {
+            if (v === "__none__") { onChange(null, null); return; }
+            const it = items.find((i) => i.id === parseInt(v)) ?? null;
+            onChange(it ? it.id : null, it);
+          }}
+          data-testid={`${testidPrefix}-item-select`}
+        >
+          <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+            <SelectValue placeholder={effectiveBill ? "Select item…" : "Pick a bill first"} />
+          </SelectTrigger>
+          <SelectContent className="max-w-[min(92vw,640px)]">
+            <SelectItem value="__none__">— Select item —</SelectItem>
+            {billItems.map((it) => (
+              <SelectItem
+                key={it.id}
+                value={String(it.id)}
+                className="items-start whitespace-normal leading-snug py-2"
+              >
+                <span className="block pr-2" title={it.description}>
+                  {it.itemCode ? <span className="font-semibold">{it.itemCode} · </span> : null}
+                  {shortItemName(it.itemName || it.description)}{" "}
+                  <span className="text-slate-400 font-normal">
+                    ({it.unit}
+                    {it.dprConversionFactor != null && it.dprConversionFactor !== 1
+                      ? ` × ${it.dprConversionFactor}`
+                      : ""}
+                    )
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## PART B — `client/src/pages/SiteEntry.tsx`
+
+### B1. Add the import (after the structureHierarchy import, line ~26)
+
+**FIND:**
+
+```ts
+import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
+```
+
+**REPLACE WITH:**
+
+```ts
+import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
+import { BillItemPicker } from "@/components/BillItemPicker";
+```
+
+### B2. Extend the `SiteBoqItem` type so the picker can see the bill + order
+
+**FIND:**
+
+```ts
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null };
+```
+
+**REPLACE WITH:**
+
+```ts
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null };
+```
+
+### B3. Lock the work type from the URL (`?type=road` / `?type=structure`)
+
+**FIND:**
+
+```ts
+  const [workType, setWorkType] = useState<string>("road");
+```
+
+**REPLACE WITH:**
+
+```ts
+  const lockedWorkType = useMemo(() => {
+    const t = new URLSearchParams(window.location.search).get("type");
+    return t === "structure" ? "structure" : t === "road" ? "road" : null;
+  }, []);
+  const [workType, setWorkType] = useState<string>(lockedWorkType ?? "road");
+```
+
+### B4. Title the card by mode and hide the toggle when locked
+
+**FIND:**
+
+```tsx
+            <CardTitle>Activity Progress</CardTitle>
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                size="sm"
+                variant={workType === "road" ? "default" : "ghost"}
+                className="h-7 px-3 text-sm"
+                onClick={() => setWorkType("road")}
+                data-testid="button-work-type-road"
+              >Road</Button>
+              <Button
+                size="sm"
+                variant={workType === "structure" ? "default" : "ghost"}
+                className="h-7 px-3 text-sm"
+                onClick={() => setWorkType("structure")}
+                data-testid="button-work-type-structure"
+              >Structure</Button>
+            </div>
+```
+
+**REPLACE WITH:**
+
+```tsx
+            <CardTitle>{workType === "structure" ? "Structure Progress" : "Road Works Progress"}</CardTitle>
+            {!lockedWorkType ? (
+              <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                <Button
+                  size="sm"
+                  variant={workType === "road" ? "default" : "ghost"}
+                  className="h-7 px-3 text-sm"
+                  onClick={() => setWorkType("road")}
+                  data-testid="button-work-type-road"
+                >Road</Button>
+                <Button
+                  size="sm"
+                  variant={workType === "structure" ? "default" : "ghost"}
+                  className="h-7 px-3 text-sm"
+                  onClick={() => setWorkType("structure")}
+                  data-testid="button-work-type-structure"
+                >Structure</Button>
+              </div>
+            ) : (
+              <Badge variant="outline" className="text-sm" data-testid="badge-work-mode">
+                {workType === "structure" ? "Structures" : "Road Works"}
+              </Badge>
+            )}
+```
+
+### B5. Structure form — replace the single BOQ Select with the cascading picker
+
+**FIND:**
+
+```tsx
+                    <Select
+                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        // Single functional update. The old code called updateField twice
+                        // (boqItemId then uom) over the SAME stale snapshot, so the uom call
+                        // wiped boqItemId → the picker kept showing "Not linked".
+                        setStructureItems((prev) =>
+                          prev.map((s, i) => {
+                            if (i !== idx) return s;
+                            if (val === "__none__") return { ...s, boqItemId: null };
+                            const bi = siteBoqItems.find((b) => b.id === parseInt(val));
+                            return {
+                              ...s,
+                              boqItemId: parseInt(val),
+                              uom: bi && (bi as any).unit ? (bi as any).unit : s.uom,
+                            };
+                          })
+                        );
+                      }}
+                      data-testid={`select-structure-boq-item-${idx}`}
+                    >
+                      <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+                        <SelectValue placeholder="Link to a structure BOQ item…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[min(92vw,640px)]">
+                        <SelectItem value="__none__">— Not linked —</SelectItem>
+                        {structureBoqItemsFor(item).map((bi: any) => (
+                          <SelectItem
+                            key={bi.id}
+                            value={String(bi.id)}
+                            className="items-start whitespace-normal leading-snug py-2"
+                          >
+                            <span className="block pr-2" title={bi.description || bi.itemName || ""}>
+                              {bi.itemCode ? <span className="font-semibold">{bi.itemCode} · </span> : null}
+                              {shortItemName(bi.itemName || bi.description)}
+                              {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                    <BillItemPicker
+                      items={siteBoqItems}
+                      value={item.boqItemId ?? null}
+                      testidPrefix={`structure-${idx}`}
+                      onChange={(id, it) => {
+                        setStructureItems((prev) =>
+                          prev.map((s, i) =>
+                            i === idx
+                              ? { ...s, boqItemId: id, uom: it?.unit ? it.unit : s.uom }
+                              : s,
+                          ),
+                        );
+                      }}
+                    />
+```
+
+### B6. Road form — replace the single BOQ Select with the cascading picker
+
+**FIND:**
+
+```tsx
+                    <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteBoqItems.length > 0 ? (
+                      <Select
+                        value={entry.boqItemId != null ? String(entry.boqItemId) : "__none__"}
+                        onValueChange={(val) => {
+                          const updated = [...progress];
+                          if (val === "__none__") {
+                            updated[idx].boqItemId = null;
+                            updated[idx].activity = "";
+                          } else {
+                            const boqItem = siteBoqItems.find((i) => i.id === parseInt(val));
+                            updated[idx].boqItemId = parseInt(val);
+                            updated[idx].activity = boqItem ? boqItem.description.toUpperCase() : "";
+                          }
+                          setProgress(updated);
+                        }}
+                        data-testid={`select-boq-item-${idx}`}
+                      >
+                        <SelectTrigger className="uppercase text-sm h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-[min(92vw,640px)]">
+                          <SelectItem value="__none__">— Select activity —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem
+                              key={item.id}
+                              value={String(item.id)}
+                              className="items-start whitespace-normal leading-snug py-2"
+                            >
+                              <span className="block pr-2 normal-case" title={item.description || item.itemName || ""}>
+                                {item.itemCode ? <span className="font-semibold">{item.itemCode} · </span> : null}
+                                {shortItemName(item.itemName || item.description)}
+                                {" "}<span className="text-slate-400 font-normal">({item.unit}
+                                {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                    <Label className="text-sm">{siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}</Label>
+                    {siteBoqItems.length > 0 ? (
+                      <BillItemPicker
+                        items={siteBoqItems}
+                        value={entry.boqItemId ?? null}
+                        stacked
+                        labels={false}
+                        testidPrefix={`progress-${idx}`}
+                        onChange={(id, it) => {
+                          const updated = [...progress];
+                          updated[idx].boqItemId = id;
+                          updated[idx].activity = it ? it.description.toUpperCase() : "";
+                          setProgress(updated);
+                        }}
+                      />
+```
+
+> This keeps the existing `) : ( <Input … /> )` fallback for sites with no BOQ — leave that part untouched.
+
+---
+
+## PART C — `client/src/pages/SiteHome.tsx` — split "New DPR" into Road & Structure
+
+### C1. Add two icons to the lucide import
+
+**FIND:**
+
+```ts
+import {
+  FileText, Package, ShoppingCart, Fuel,
+  Plus, ChevronRight, Clock, CheckCircle,
+  AlertCircle, Calendar, TrendingUp, Home,
+} from "lucide-react";
+```
+
+**REPLACE WITH:**
+
+```ts
+import {
+  FileText, Package, ShoppingCart, Fuel,
+  Plus, ChevronRight, Clock, CheckCircle,
+  AlertCircle, Calendar, TrendingUp, Home,
+  Route, Building2,
+} from "lucide-react";
+```
+
+### C2. Replace the single New DPR tile with Road + Structure tiles
+
+**FIND:**
+
+```tsx
+            {canDprs && (
+              <Link href="/site/new" data-testid="link-new-dpr">
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-amber-400 hover:shadow-md transition-all cursor-pointer">
+                  <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/70 transition-colors">
+                    <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">New DPR</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Daily progress report</p>
+                  </div>
+                  <div className="w-full flex items-center justify-between mt-auto">
+                    <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+                      {todayDpr ? "Update" : "Today"}
+                    </span>
+                    <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
+                  </div>
+                </button>
+              </Link>
+            )}
+```
+
+**REPLACE WITH:**
+
+```tsx
+            {canDprs && (
+              <Link href="/site/new?type=road" data-testid="link-new-dpr-road">
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-amber-400 hover:shadow-md transition-all cursor-pointer">
+                  <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/70 transition-colors">
+                    <Route className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Road DPR</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Road works progress</p>
+                  </div>
+                  <div className="w-full flex items-center justify-between mt-auto">
+                    <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+                      {todayDpr ? "Update" : "Today"}
+                    </span>
+                    <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
+                  </div>
+                </button>
+              </Link>
+            )}
+
+            {canDprs && (
+              <Link href="/site/new?type=structure" data-testid="link-new-dpr-structure">
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer">
+                  <div className="w-9 h-9 bg-sky-100 dark:bg-sky-900/40 rounded-lg flex items-center justify-center group-hover:bg-sky-200 dark:group-hover:bg-sky-900/70 transition-colors">
+                    <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Structure DPR</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Bridges, culverts &amp; more</p>
+                  </div>
+                  <div className="w-full flex items-center justify-between mt-auto">
+                    <span className="text-[12px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 px-2 py-0.5 rounded-full">Today</span>
+                    <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-500 transition-colors" />
+                  </div>
+                </button>
+              </Link>
+            )}
+```
+
+---
+
+## Verify
+1. Apply Part A (new file), Part B, Part C. `npm run check`, rebuild/restart. No DB change.
+2. **Site hub** now shows two tiles: **Road DPR** and **Structure DPR**.
+3. **Road DPR** opens straight into road mode (toggle hidden, "Road Works" badge). The activity
+   field is now **Bill → Item**: pick *BILL No 2 EARTH WORK* → the item list shows only 2.xx items.
+4. **Structure DPR** opens in structure mode; each structure row's BOQ link is now **Bill → Item**
+   too. Picking an item still auto-fills the unit and stays linked (Patch 26 fix preserved).
+5. Selecting an item still saves `boqItemId` to the DPR exactly as before — Plan-vs-Actual unaffected.
+
+> Note: the old `structureBoqItemsFor` / `STRUCT_SYNONYMS` helpers in SiteEntry are no longer
+> used after B5. They're harmless to leave (your tsconfig doesn't flag unused locals), but you
+> can delete that block later if you like.

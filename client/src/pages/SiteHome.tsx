@@ -8,6 +8,7 @@ import {
   FileText, Package, ShoppingCart, Fuel,
   Plus, ChevronRight, Clock, CheckCircle,
   AlertCircle, Calendar, TrendingUp, Home,
+  Route, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
@@ -184,20 +185,38 @@ export default function SiteHome() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
             {canDprs && (
-              <Link href="/site/new" data-testid="link-new-dpr">
+              <Link href="/site/new?type=road" data-testid="link-new-dpr-road">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-amber-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/70 transition-colors">
-                    <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <Route className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">New DPR</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Daily progress report</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Road DPR</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Road works progress</p>
                   </div>
                   <div className="w-full flex items-center justify-between mt-auto">
                     <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
                       {todayDpr ? "Update" : "Today"}
                     </span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
+                  </div>
+                </button>
+              </Link>
+            )}
+
+            {canDprs && (
+              <Link href="/site/new?type=structure" data-testid="link-new-dpr-structure">
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer">
+                  <div className="w-9 h-9 bg-sky-100 dark:bg-sky-900/40 rounded-lg flex items-center justify-center group-hover:bg-sky-200 dark:group-hover:bg-sky-900/70 transition-colors">
+                    <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Structure DPR</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Bridges, culverts &amp; more</p>
+                  </div>
+                  <div className="w-full flex items-center justify-between mt-auto">
+                    <span className="text-[12px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 px-2 py-0.5 rounded-full">Today</span>
+                    <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-500 transition-colors" />
                   </div>
                 </button>
               </Link>
