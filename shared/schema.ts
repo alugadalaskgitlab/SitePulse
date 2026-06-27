@@ -62,6 +62,9 @@ export const dprStructureItems = pgTable("dpr_structure_items", {
   quantity: real("quantity"),
   uom: text("uom"),
   remarks: text("remarks"),
+  // Plan vs Actual link: the BOQ line this structure item reports against.
+  boqItemId: integer("boq_item_id"),
+  dprConversionFactor: real("dpr_conversion_factor"),
 });
 
 // Equipment Log

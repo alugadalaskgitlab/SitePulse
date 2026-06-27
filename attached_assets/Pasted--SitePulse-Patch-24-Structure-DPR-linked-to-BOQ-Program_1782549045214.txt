@@ -1,0 +1,213 @@
+# SitePulse — Patch 24: Structure DPR linked to BOQ & Programme (independent pipeline)
+
+Verified against your live repo. Makes the **Structure DPR** roll up into Plan‑vs‑Actual /
+programme — independently from road — by linking each structure row to a BOQ item.
+Apply all blocks → **`npm run db:push`** (adds 2 columns) → `npm run check` → rebuild.
+
+## What it does
+- Adds `boqItemId` + `dprConversionFactor` to `dpr_structure_items` (stays a separate table).
+- The structure form gets a **"BOQ Item"** picker per row — filtered to **structure** BOQ
+  items, pre‑sorted by the chosen *Item of Work*, but you can still pick any item.
+- `getPlanVsActual()` now merges structure actuals with road actuals, so structure work
+  counts against its BOQ line + programme automatically.
+
+═══════════════════════════════════════════════════════════════════
+## PART A — `shared/schema.ts`
+═══════════════════════════════════════════════════════════════════
+
+**FIND:**
+
+```ts
+  itemOfWork: text("item_of_work").notNull(),
+  quantity: real("quantity"),
+  uom: text("uom"),
+  remarks: text("remarks"),
+});
+```
+
+**REPLACE WITH:**
+
+```ts
+  itemOfWork: text("item_of_work").notNull(),
+  quantity: real("quantity"),
+  uom: text("uom"),
+  remarks: text("remarks"),
+  // Plan vs Actual link: the BOQ line this structure item reports against.
+  boqItemId: integer("boq_item_id"),
+  dprConversionFactor: real("dpr_conversion_factor"),
+});
+```
+
+> `insertDprStructureItemSchema` is `createInsertSchema(...)` so it auto-accepts the new
+> fields, and `storage.createDpr/updateDpr` insert structure items via `{ ...s, dprId }`,
+> so `boqItemId` saves automatically once the column exists. No storage write change needed.
+
+═══════════════════════════════════════════════════════════════════
+## PART B — `server/storage.ts` (`getPlanVsActual`) — merge structure actuals
+═══════════════════════════════════════════════════════════════════
+
+**FIND:**
+
+```ts
+      actuals = rawActuals.rows as ActualRow[];
+    }
+```
+
+**REPLACE WITH:**
+
+```ts
+      actuals = rawActuals.rows as ActualRow[];
+
+      // Structure DPR actuals (dpr_structure_items linked to a BOQ item) — merged into
+      // the same per-item totals so structure work also shows Plan vs Actual.
+      const rawStruct = await db.execute(sql`
+        SELECT dsi.boq_item_id as "boqItemId",
+               COALESCE(SUM(dsi.quantity * COALESCE(dsi.dpr_conversion_factor, bi.dpr_conversion_factor, 1.0)), 0) as "totalQty",
+               MAX(dprs.date) as "lastDate"
+        FROM dpr_structure_items dsi
+        JOIN dprs ON dprs.id = dsi.dpr_id
+        JOIN boq_items bi ON bi.id = dsi.boq_item_id
+        WHERE dsi.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
+          AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+          ${dateFilter}
+        GROUP BY dsi.boq_item_id
+      `);
+      for (const sr of rawStruct.rows as ActualRow[]) {
+        const existing = actuals.find(a => a.boqItemId === sr.boqItemId);
+        if (existing) {
+          existing.totalQty += Number(sr.totalQty);
+          if (sr.lastDate > existing.lastDate) existing.lastDate = sr.lastDate;
+        } else {
+          actuals.push({ ...sr, totalQty: Number(sr.totalQty) });
+        }
+      }
+    }
+```
+
+═══════════════════════════════════════════════════════════════════
+## PART C — `client/src/pages/SiteEntry.tsx`
+═══════════════════════════════════════════════════════════════════
+
+### C1. Add the fields to the `StructureItem` type
+
+**FIND:**
+
+```ts
+  itemOfWork: string;
+  quantity: number | null;
+  uom: string;
+```
+
+**REPLACE WITH:**
+
+```ts
+  itemOfWork: string;
+  quantity: number | null;
+  uom: string;
+  boqItemId?: number | null;
+  dprConversionFactor?: number | null;
+```
+
+### C2. Add the structure BOQ-item helpers (after the `siteBoqItems` query)
+
+**FIND:**
+
+```ts
+    enabled: !!siteBoqProjectId,
+  });
+
+  const { data: personnelList } = useQuery<Personnel[]>({
+```
+
+**REPLACE WITH:**
+
+```ts
+    enabled: !!siteBoqProjectId,
+  });
+
+  // Structure BOQ-item helpers — link each structure DPR row to the right BOQ line.
+  const STRUCTURE_KW = /culvert|bridge|\brcc\b|\bpsc\b|\brob\b|\bvup\b|\blup\b|girder|abutment|\bpier\b|\bdeck\b|\bbox\b|\bslab\b|\bpile\b|retaining|breast\s*wall|\bdrain\b|\bcd\b\s*work|head\s*wall|wing\s*wall|parapet|foundation|footing|protection\s*work/i;
+  const isStructureBoqItem = (bi: any) =>
+    STRUCTURE_KW.test(`${bi.categoryName ?? ""} ${bi.itemName ?? ""} ${bi.description ?? ""}`);
+  const structureBoqItemsFor = (itemOfWork: string) => {
+    const matched = siteBoqItems.filter(isStructureBoqItem);
+    const base = matched.length ? matched : siteBoqItems; // fall back to all if none classified
+    const kw = (itemOfWork || "").toLowerCase().trim();
+    if (!kw || kw === "other") return base;
+    const tokens = kw.split(/\s+/).filter(t => t.length > 2);
+    const score = (bi: any) => {
+      const hay = `${bi.itemName ?? ""} ${bi.description ?? ""}`.toLowerCase();
+      return tokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+    };
+    return [...base].sort((a, b) => score(b) - score(a));
+  };
+
+  const { data: personnelList } = useQuery<Personnel[]>({
+```
+
+### C3. Add the BOQ-item picker to each structure row (after "Item of Work")
+
+**FIND:**
+
+```tsx
+                    {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
+                  </div>
+                  <div>
+                    <Label className="text-sm">Quantity</Label>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                    {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
+                  </div>
+                  {siteBoqItems.length > 0 && (
+                  <div className="sm:col-span-2 md:col-span-4 space-y-1">
+                    <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
+                    <Select
+                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        if (val === "__none__") { updateField("boqItemId", null); return; }
+                        const bi = siteBoqItems.find((i) => i.id === parseInt(val));
+                        updateField("boqItemId", parseInt(val));
+                        if (bi && (bi as any).unit) updateField("uom", (bi as any).unit);
+                      }}
+                      data-testid={`select-structure-boq-item-${idx}`}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Link to a structure BOQ item…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Not linked —</SelectItem>
+                        {structureBoqItemsFor(item.itemOfWork).map((bi: any) => (
+                          <SelectItem key={bi.id} value={String(bi.id)}>
+                            {bi.itemCode ? `${bi.itemCode} · ` : ""}{bi.itemName || bi.description}
+                            {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  )}
+                  <div>
+                    <Label className="text-sm">Quantity</Label>
+```
+
+═══════════════════════════════════════════════════════════════════
+## Apply & verify
+═══════════════════════════════════════════════════════════════════
+1. Apply A, B, C → **`npm run db:push`** (creates `boq_item_id` + `dpr_conversion_factor`; type `yes`).
+2. `npm run check`, rebuild/restart.
+3. **Site Entry → Structure DPR:** each row now has a **BOQ Item** dropdown listing your
+   structure BOQ lines (sorted by the selected Item of Work). Pick one, enter qty, save.
+4. **Plan vs Actual / Programme:** the structure quantity now shows as Actual against that
+   BOQ line — independent of, but consistent with, the road DPR.
+
+> The structure picker auto-detects structure BOQ items by category/keywords (culvert,
+> bridge, RCC, pier, deck, drain, CD works, etc.). If a structure line isn't classified,
+> the dropdown falls back to showing all items so you can still link it.
+
+═══════════════════════════════════════════════════════════════════
+## Phase 2 (next, optional) — Structure Register
+═══════════════════════════════════════════════════════════════════
+Define each physical structure once (name, chainage, type) with a **stage → BOQ-item map**,
+so daily entry is "pick structure → pick stage → qty" and the BOQ link is automatic, giving
+a true per-structure % complete across all stages. Say the word and I'll design it.

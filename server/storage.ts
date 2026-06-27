@@ -20422,6 +20422,30 @@ export class DatabaseStorage implements IStorage {
         GROUP BY pe.boq_item_id
       `);
       actuals = rawActuals.rows as ActualRow[];
+
+      // Structure DPR actuals (dpr_structure_items linked to a BOQ item) — merged into
+      // the same per-item totals so structure work also shows Plan vs Actual.
+      const rawStruct = await db.execute(sql`
+        SELECT dsi.boq_item_id as "boqItemId",
+               COALESCE(SUM(dsi.quantity * COALESCE(dsi.dpr_conversion_factor, bi.dpr_conversion_factor, 1.0)), 0) as "totalQty",
+               MAX(dprs.date) as "lastDate"
+        FROM dpr_structure_items dsi
+        JOIN dprs ON dprs.id = dsi.dpr_id
+        JOIN boq_items bi ON bi.id = dsi.boq_item_id
+        WHERE dsi.boq_item_id = ANY(ARRAY[${sql.raw(itemIds.join(","))}]::int[])
+          AND (dprs.is_superseded = false OR dprs.is_superseded IS NULL)
+          ${dateFilter}
+        GROUP BY dsi.boq_item_id
+      `);
+      for (const sr of rawStruct.rows as ActualRow[]) {
+        const existing = actuals.find(a => a.boqItemId === sr.boqItemId);
+        if (existing) {
+          existing.totalQty += Number(sr.totalQty);
+          if (sr.lastDate > existing.lastDate) existing.lastDate = sr.lastDate;
+        } else {
+          actuals.push({ ...sr, totalQty: Number(sr.totalQty) });
+        }
+      }
     }
 
     // Planned to date — fractional-month overlap up to currentMonth.

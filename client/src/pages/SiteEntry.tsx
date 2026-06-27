@@ -99,6 +99,8 @@ interface StructureItem {
   itemOfWork: string;
   quantity: number | null;
   uom: string;
+  boqItemId?: number | null;
+  dprConversionFactor?: number | null;
   remarks: string;
 }
 
@@ -240,6 +242,23 @@ export default function SiteEntry() {
     },
     enabled: !!siteBoqProjectId,
   });
+
+  // Structure BOQ-item helpers — link each structure DPR row to the right BOQ line.
+  const STRUCTURE_KW = /culvert|bridge|\brcc\b|\bpsc\b|\brob\b|\bvup\b|\blup\b|girder|abutment|\bpier\b|\bdeck\b|\bbox\b|\bslab\b|\bpile\b|retaining|breast\s*wall|\bdrain\b|\bcd\b\s*work|head\s*wall|wing\s*wall|parapet|foundation|footing|protection\s*work/i;
+  const isStructureBoqItem = (bi: any) =>
+    STRUCTURE_KW.test(`${bi.categoryName ?? ""} ${bi.itemName ?? ""} ${bi.description ?? ""}`);
+  const structureBoqItemsFor = (itemOfWork: string) => {
+    const matched = siteBoqItems.filter(isStructureBoqItem);
+    const base = matched.length ? matched : siteBoqItems; // fall back to all if none classified
+    const kw = (itemOfWork || "").toLowerCase().trim();
+    if (!kw || kw === "other") return base;
+    const tokens = kw.split(/\s+/).filter(t => t.length > 2);
+    const score = (bi: any) => {
+      const hay = `${bi.itemName ?? ""} ${bi.description ?? ""}`.toLowerCase();
+      return tokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+    };
+    return [...base].sort((a, b) => score(b) - score(a));
+  };
 
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
@@ -722,6 +741,32 @@ export default function SiteEntry() {
                     </Select>
                     {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
                   </div>
+                  {siteBoqItems.length > 0 && (
+                  <div className="sm:col-span-2 md:col-span-4 space-y-1">
+                    <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
+                    <Select
+                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        if (val === "__none__") { updateField("boqItemId", null); return; }
+                        const bi = siteBoqItems.find((i) => i.id === parseInt(val));
+                        updateField("boqItemId", parseInt(val));
+                        if (bi && (bi as any).unit) updateField("uom", (bi as any).unit);
+                      }}
+                      data-testid={`select-structure-boq-item-${idx}`}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Link to a structure BOQ item…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Not linked —</SelectItem>
+                        {structureBoqItemsFor(item.itemOfWork).map((bi: any) => (
+                          <SelectItem key={bi.id} value={String(bi.id)}>
+                            {bi.itemCode ? `${bi.itemCode} · ` : ""}{bi.itemName || bi.description}
+                            {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  )}
                   <div>
                     <Label className="text-sm">Quantity</Label>
                     <Input type="number" step="0.01" placeholder="0" value={item.quantity ?? ""} onChange={(e) => updateField("quantity", e.target.value ? parseFloat(e.target.value) : null)} data-testid={`input-structure-qty-${idx}`} />
