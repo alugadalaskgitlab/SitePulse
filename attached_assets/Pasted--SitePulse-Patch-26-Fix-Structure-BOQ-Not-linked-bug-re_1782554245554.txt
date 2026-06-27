@@ -1,0 +1,240 @@
+# SitePulse — Patch 26: Fix Structure BOQ "Not linked" bug + readable short item names
+
+Verified against your live repo (commit `4149de2`). Fixes the two issues you reported in the
+**Structure DPR → BOQ Item** picker, and adds a smart **short name** so you can actually read
+and match each BOQ line.
+
+## What it fixes
+1. **🔴 "Still says Not linked" after selecting** — the picker's `onValueChange` called
+   `updateField()` **twice in a row** (once for `boqItemId`, once for `uom`). Both calls read
+   the **same stale** `structureItems` snapshot, so the second `setState` (uom) overwrote and
+   wiped the `boqItemId` you just set → it reverted to `null` → showed "— Not linked —".
+   Whenever the BOQ line had a unit (almost always), the link silently dropped.
+   **Fix:** one single functional `setStructureItems(prev => …)` that updates both fields at once.
+2. **🟠 Truncated, unreadable descriptions** — list rows inherited single-line clamping +
+   `overflow-x-hidden`, so long BOQ text got cut.
+   **Fix:** rows now **wrap to multiple lines**, the selected value shows up to 2 lines, and we
+   render a **smart short name** (full text still on hover).
+
+## What the short name does
+Strips only the boilerplate wrapper (e.g. *"Providing and laying"*, *"Construction of"*,
+*"…complete as per drawings & specifications"*) while **keeping every discriminating token** —
+the grade (M15/M20/M25…), the material (PCC/RCC), and the location/component
+(foundation, substructure, pier, abutment, deck slab …).
+
+- *"Providing and laying PCC M15 in foundation of structures complete as per drawings…"* →
+  **"PCC M15 in foundation of structures"**
+- *"Providing and laying RCC M25 in substructure (pier/abutment) including…"* →
+  **"RCC M25 in substructure (pier/abutment)"**
+
+═══════════════════════════════════════════════════════════════════
+## PART A — `client/src/pages/SiteEntry.tsx` — add the `shortItemName()` helper
+═══════════════════════════════════════════════════════════════════
+
+**FIND** (the end of `formatTimeDuration`, just before `export default function SiteEntry()`):
+
+```ts
+    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+  } catch { return null; }
+}
+
+export default function SiteEntry() {
+```
+
+**REPLACE WITH:**
+
+```ts
+    return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+  } catch { return null; }
+}
+
+// Turn a verbose BOQ description into a short, still-identifiable label.
+// Removes only boilerplate wrappers; KEEPS grade (M15/M20…), material (PCC/RCC) and the
+// structural location/component so the user can still match the right item. Never returns
+// something useless like just "Providing and laying".
+function shortItemName(full?: string | null): string {
+  if (!full) return "";
+  let s = String(full).replace(/\s+/g, " ").trim();
+
+  // 1) Strip leading boilerplate verbs/phrases (repeatedly, in case they stack).
+  const PREFIXES = [
+    /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
+    /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
+    /^providing\s*(&|and)\s*casting\s*(of\s*)?/i,
+    /^providing,?\s*laying\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
+    /^providing\s*(of\s*)?/i,
+    /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking)?\s*(of\s*)?/i,
+    /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
+    /^construction\s*of\s*/i,
+    /^constructing\s*(of\s*)?/i,
+    /^laying\s*(of\s*)?/i,
+    /^casting\s*(of\s*)?/i,
+    /^fixing\s*(of\s*)?/i,
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const re of PREFIXES) {
+      const next = s.replace(re, "");
+      if (next !== s) { s = next.trim(); changed = true; }
+    }
+  }
+
+  // 2) Cut trailing boilerplate (rate / "complete as per…" / leads & lifts / etc.).
+  s = s.split(/\b(complete as per|as per drawing|as per technical|as per specification|including all lead|including all lift|all complete|at all (heights|leads|lifts)|including cost of|excluding cost of|i\/c\b|incl\.? )/i)[0].trim();
+
+  // 3) Trim trailing connectors/punctuation.
+  s = s.replace(/[,;:.\-\s]+$/, "").trim();
+
+  // 4) Safety nets.
+  if (s.length < 4) return String(full).replace(/\s+/g, " ").trim().slice(0, 60);
+  if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, "") + "…";
+  return s;
+}
+
+export default function SiteEntry() {
+```
+
+═══════════════════════════════════════════════════════════════════
+## PART B — Fix the Structure DPR BOQ picker (the "Not linked" bug + readability)
+═══════════════════════════════════════════════════════════════════
+
+**FIND:**
+
+```tsx
+                    <Select
+                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        if (val === "__none__") { updateField("boqItemId", null); return; }
+                        const bi = siteBoqItems.find((i) => i.id === parseInt(val));
+                        updateField("boqItemId", parseInt(val));
+                        if (bi && (bi as any).unit) updateField("uom", (bi as any).unit);
+                      }}
+                      data-testid={`select-structure-boq-item-${idx}`}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Link to a structure BOQ item…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Not linked —</SelectItem>
+                        {structureBoqItemsFor(item).map((bi: any) => (
+                          <SelectItem key={bi.id} value={String(bi.id)}>
+                            {bi.itemCode ? `${bi.itemCode} · ` : ""}{bi.itemName || bi.description}
+                            {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                    <Select
+                      value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        // Single functional update. The old code called updateField twice
+                        // (boqItemId then uom) over the SAME stale snapshot, so the uom call
+                        // wiped boqItemId → the picker kept showing "Not linked".
+                        setStructureItems((prev) =>
+                          prev.map((s, i) => {
+                            if (i !== idx) return s;
+                            if (val === "__none__") return { ...s, boqItemId: null };
+                            const bi = siteBoqItems.find((b) => b.id === parseInt(val));
+                            return {
+                              ...s,
+                              boqItemId: parseInt(val),
+                              uom: bi && (bi as any).unit ? (bi as any).unit : s.uom,
+                            };
+                          })
+                        );
+                      }}
+                      data-testid={`select-structure-boq-item-${idx}`}
+                    >
+                      <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+                        <SelectValue placeholder="Link to a structure BOQ item…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[min(92vw,640px)]">
+                        <SelectItem value="__none__">— Not linked —</SelectItem>
+                        {structureBoqItemsFor(item).map((bi: any) => (
+                          <SelectItem
+                            key={bi.id}
+                            value={String(bi.id)}
+                            className="items-start whitespace-normal leading-snug py-2"
+                          >
+                            <span className="block pr-2" title={bi.description || bi.itemName || ""}>
+                              {bi.itemCode ? <span className="font-semibold">{bi.itemCode} · </span> : null}
+                              {shortItemName(bi.itemName || bi.description)}
+                              {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+```
+
+═══════════════════════════════════════════════════════════════════
+## PART C — Same readability fix for the road **Progress → BOQ Item** picker (consistency)
+═══════════════════════════════════════════════════════════════════
+
+**FIND:**
+
+```tsx
+                        <SelectTrigger className="uppercase text-sm">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Select activity —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem key={item.id} value={String(item.id)}>
+                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.itemName || item.description}
+                              {" "}<span className="text-slate-400 font-normal normal-case">({item.unit}
+                              {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                        <SelectTrigger className="uppercase text-sm h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+                          <SelectValue placeholder="Select BOQ item…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-[min(92vw,640px)]">
+                          <SelectItem value="__none__">— Select activity —</SelectItem>
+                          {siteBoqItems.map((item) => (
+                            <SelectItem
+                              key={item.id}
+                              value={String(item.id)}
+                              className="items-start whitespace-normal leading-snug py-2"
+                            >
+                              <span className="block pr-2 normal-case" title={item.description || item.itemName || ""}>
+                                {item.itemCode ? <span className="font-semibold">{item.itemCode} · </span> : null}
+                                {shortItemName(item.itemName || item.description)}
+                                {" "}<span className="text-slate-400 font-normal">({item.unit}
+                                {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+```
+
+> Note: this picker stores the **full** `description` into `activity` on select (that logic is
+> unchanged) — only the *displayed label* is shortened. Plan-vs-Actual is unaffected.
+
+═══════════════════════════════════════════════════════════════════
+## Apply & verify
+═══════════════════════════════════════════════════════════════════
+1. Apply A, B, C. No DB change, no `db:push` needed. Run `npm run check`, rebuild/restart.
+2. **Site Entry → Structure DPR:** open the **BOQ Item** dropdown — long lines now wrap and
+   read as short labels (e.g. "PCC M15 in foundation"). **Select one → it stays selected**
+   (no more "Not linked"), the selected value shows on up to 2 lines, and the unit auto-fills.
+3. Hover any row to see the full original description.
+4. **Road Progress → BOQ Item** picker reads the same clean way.
+
+═══════════════════════════════════════════════════════════════════
+## Next (optional) — apply `shortItemName()` to Gantt / BOM / BOQ list
+═══════════════════════════════════════════════════════════════════
+The helper is local to `SiteEntry.tsx` for now. If you want the same short names on the Gantt
+bars, BOM contributor list and the BOQ table, I'll lift `shortItemName()` into a shared util
+(e.g. `client/src/lib/itemName.ts`) and wire it into those screens — plus de-dupe the repeated
+BOM contributor rows (one line per `boqItemId`). Say the word.

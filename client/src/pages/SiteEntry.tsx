@@ -158,6 +158,50 @@ function formatTimeDuration(start: string, end: string): string | null {
   } catch { return null; }
 }
 
+// Turn a verbose BOQ description into a short, still-identifiable label.
+// Removes only boilerplate wrappers; KEEPS grade (M15/M20…), material (PCC/RCC) and the
+// structural location/component so the user can still match the right item. Never returns
+// something useless like just "Providing and laying".
+function shortItemName(full?: string | null): string {
+  if (!full) return "";
+  let s = String(full).replace(/\s+/g, " ").trim();
+
+  // 1) Strip leading boilerplate verbs/phrases (repeatedly, in case they stack).
+  const PREFIXES = [
+    /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
+    /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i,
+    /^providing\s*(&|and)\s*casting\s*(of\s*)?/i,
+    /^providing,?\s*laying\s*(&|and)?\s*(compacting|finishing)?\s*(of\s*)?/i,
+    /^providing\s*(of\s*)?/i,
+    /^supplying\s*(&|and)\s*(laying|fixing|installing|stacking)?\s*(of\s*)?/i,
+    /^supply\s*(&|and)\s*(laying|fixing)?\s*(of\s*)?/i,
+    /^construction\s*of\s*/i,
+    /^constructing\s*(of\s*)?/i,
+    /^laying\s*(of\s*)?/i,
+    /^casting\s*(of\s*)?/i,
+    /^fixing\s*(of\s*)?/i,
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const re of PREFIXES) {
+      const next = s.replace(re, "");
+      if (next !== s) { s = next.trim(); changed = true; }
+    }
+  }
+
+  // 2) Cut trailing boilerplate (rate / "complete as per…" / leads & lifts / etc.).
+  s = s.split(/\b(complete as per|as per drawing|as per technical|as per specification|including all lead|including all lift|all complete|at all (heights|leads|lifts)|including cost of|excluding cost of|i\/c\b|incl\.? )/i)[0].trim();
+
+  // 3) Trim trailing connectors/punctuation.
+  s = s.replace(/[,;:.\-\s]+$/, "").trim();
+
+  // 4) Safety nets.
+  if (s.length < 4) return String(full).replace(/\s+/g, " ").trim().slice(0, 60);
+  if (s.length > 80) s = s.slice(0, 80).replace(/\s+\S*$/, "") + "…";
+  return s;
+}
+
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -791,20 +835,40 @@ export default function SiteEntry() {
                     <Select
                       value={item.boqItemId != null ? String(item.boqItemId) : "__none__"}
                       onValueChange={(val) => {
-                        if (val === "__none__") { updateField("boqItemId", null); return; }
-                        const bi = siteBoqItems.find((i) => i.id === parseInt(val));
-                        updateField("boqItemId", parseInt(val));
-                        if (bi && (bi as any).unit) updateField("uom", (bi as any).unit);
+                        // Single functional update. The old code called updateField twice
+                        // (boqItemId then uom) over the SAME stale snapshot, so the uom call
+                        // wiped boqItemId → the picker kept showing "Not linked".
+                        setStructureItems((prev) =>
+                          prev.map((s, i) => {
+                            if (i !== idx) return s;
+                            if (val === "__none__") return { ...s, boqItemId: null };
+                            const bi = siteBoqItems.find((b) => b.id === parseInt(val));
+                            return {
+                              ...s,
+                              boqItemId: parseInt(val),
+                              uom: bi && (bi as any).unit ? (bi as any).unit : s.uom,
+                            };
+                          })
+                        );
                       }}
                       data-testid={`select-structure-boq-item-${idx}`}
                     >
-                      <SelectTrigger><SelectValue placeholder="Link to a structure BOQ item…" /></SelectTrigger>
-                      <SelectContent>
+                      <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
+                        <SelectValue placeholder="Link to a structure BOQ item…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[min(92vw,640px)]">
                         <SelectItem value="__none__">— Not linked —</SelectItem>
                         {structureBoqItemsFor(item).map((bi: any) => (
-                          <SelectItem key={bi.id} value={String(bi.id)}>
-                            {bi.itemCode ? `${bi.itemCode} · ` : ""}{bi.itemName || bi.description}
-                            {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                          <SelectItem
+                            key={bi.id}
+                            value={String(bi.id)}
+                            className="items-start whitespace-normal leading-snug py-2"
+                          >
+                            <span className="block pr-2" title={bi.description || bi.itemName || ""}>
+                              {bi.itemCode ? <span className="font-semibold">{bi.itemCode} · </span> : null}
+                              {shortItemName(bi.itemName || bi.description)}
+                              {" "}<span className="text-slate-400 font-normal">({bi.unit})</span>
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -927,16 +991,23 @@ export default function SiteEntry() {
                         }}
                         data-testid={`select-boq-item-${idx}`}
                       >
-                        <SelectTrigger className="uppercase text-sm">
+                        <SelectTrigger className="uppercase text-sm h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
                           <SelectValue placeholder="Select BOQ item…" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-w-[min(92vw,640px)]">
                           <SelectItem value="__none__">— Select activity —</SelectItem>
                           {siteBoqItems.map((item) => (
-                            <SelectItem key={item.id} value={String(item.id)}>
-                              {item.itemCode ? `${item.itemCode} · ` : ""}{item.itemName || item.description}
-                              {" "}<span className="text-slate-400 font-normal normal-case">({item.unit}
-                              {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
+                            <SelectItem
+                              key={item.id}
+                              value={String(item.id)}
+                              className="items-start whitespace-normal leading-snug py-2"
+                            >
+                              <span className="block pr-2 normal-case" title={item.description || item.itemName || ""}>
+                                {item.itemCode ? <span className="font-semibold">{item.itemCode} · </span> : null}
+                                {shortItemName(item.itemName || item.description)}
+                                {" "}<span className="text-slate-400 font-normal">({item.unit}
+                                {item.dprConversionFactor != null && item.dprConversionFactor !== 1 ? ` × ${item.dprConversionFactor}` : ""})</span>
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>
