@@ -1,0 +1,218 @@
+# SitePulse — Patch 27: Group BOQ by your real Excel bills + show full descriptions
+
+Verified against your live repo (commit `6ed56b66`) **and** your file *NH 167 BoQ SK Sample.xlsx*.
+
+## What I found in your Excel (the root cause, confirmed)
+Your bills are numbered like this:
+
+| Bill | Title | Item codes |
+|---|---|---|
+| BILL No. 1 | SITE CLEARANCE | 1.01… |
+| BILL No 2 | EARTH WORK | 2.01, 2.03A… |
+| BILL No 3 | SUB-BASE AND BASE COURSES | 3.01… |
+| BILL No 4 | BITUMINOUS WORKS | 4.01… |
+| Bill No 5 | Culverts | 5.01… |
+| … | … | … |
+| BILL No 12 | HIGHWAY LIGHTING | 12.01… |
+
+But the app's auto-classifier (`suggestWorkCategory` → `mapChapterToCategory`) assumes the
+**MoRTH standard chapter scheme**, which is shifted by one bill vs yours:
+
+| Your code | App labels it as | Should be (your bill) |
+|---|---|---|
+| 1.xx | **Preliminaries** | Site Clearance |
+| 2.xx | **Site Clearance** | Earth Work |
+| 4.xx | **Sub-base & Base** | Bituminous |
+| 5.xx | **Bituminous** | Culverts |
+
+…and the BOQ screen **groups by that wrong standardized bucket** — which is exactly why your
+items look "mixed up". **The good news:** the importer already stored your real bills
+(`boq_categories` / `categoryName`, e.g. *"BILL No. 1 SITE CLEARANCE"*), so we just need to
+group by *that* instead. No re-import needed.
+
+This patch:
+1. **Groups & orders the BOQ by your own Excel bills** (verbatim titles, original file order).
+2. **Removes the 40-character description truncation** — full text, wrapped, with hover tooltip.
+
+> Note: the standardized `workCategory` is still kept on each item (used by BOM / SNL material
+> analytics); we just stop using it as the *display grouping*.
+
+═══════════════════════════════════════════════════════════════════
+## `client/src/pages/BoqProjectDetail.tsx`
+═══════════════════════════════════════════════════════════════════
+
+### 1. Replace the grouping logic (group by your Excel bills, in file order)
+
+**FIND:**
+
+```ts
+  const groupedByWorkCat = useMemo(() => {
+    const map: Record<string, BoqItemWithCategory[]> = {};
+    for (const item of items) {
+      const key = item.workCategory ?? "__uncategorised__";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
+    }
+    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
+    }
+    return map;
+  }, [items]);
+
+  // Standard categories that have items — plus always show all 15 in fixed order
+  const workCatSections = useMemo(() => {
+    return BOQ_WORK_CATEGORIES.map(cat => ({
+      code: cat.code,
+      label: cat.label,
+      items: groupedByWorkCat[cat.code] ?? [],
+    }));
+  }, [groupedByWorkCat]);
+
+  const hasUncategorised = !!groupedByWorkCat["__uncategorised__"]?.length;
+```
+
+**REPLACE WITH:**
+
+```ts
+  // Group strictly by the BOQ's OWN bill structure as imported from Excel
+  // (categoryName, e.g. "BILL No. 1 SITE CLEARANCE"), preserving the file's order.
+  // Only falls back to the standardized work category / "Uncategorized" when an item
+  // genuinely has no bill assigned.
+  const billSections = useMemo(() => {
+    const map = new Map<string, { name: string; order: number; items: BoqItemWithCategory[] }>();
+    for (const item of items) {
+      const name =
+        (item.categoryName?.trim()) ||
+        getWorkCategoryLabel(item.workCategory) ||
+        "Uncategorized";
+      const so = item.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      let bucket = map.get(name);
+      if (!bucket) { bucket = { name, order: so, items: [] }; map.set(name, bucket); }
+      bucket.items.push(item);
+      if (so < bucket.order) bucket.order = so;
+    }
+    const sections = [...map.values()];
+    // Bills appear in their original Excel order (by first row's sortOrder).
+    sections.sort((a, b) => a.order - b.order);
+    // Within a bill keep the file order, then fall back to item-code order.
+    for (const s of sections) {
+      s.items.sort((a, b) => {
+        const ao = a.sortOrder ?? 0, bo = b.sortOrder ?? 0;
+        if (ao !== bo) return ao - bo;
+        return compareItemCode(a.itemCode, b.itemCode);
+      });
+    }
+    return sections;
+  }, [items]);
+```
+
+### 2. Update the "Work Categories" stat tile to count your bills
+
+**FIND:**
+
+```ts
+          { label: "Work Categories", value: String(workCatSections.filter(s => s.items.length > 0).length + (hasUncategorised ? 1 : 0)) },
+```
+
+**REPLACE WITH:**
+
+```ts
+          { label: "Bills / Categories", value: String(billSections.length) },
+```
+
+### 3. Render the sections from your bills (replace the work-category render block)
+
+**FIND:**
+
+```tsx
+            {workCatSections.filter(sec => sec.items.length > 0).map(sec => (
+              <CategorySection
+                key={sec.code}
+                name={sec.label}
+                items={sec.items}
+                projectId={projectId}
+                defaultCollapsed={false}
+                onOpenRecipe={setRecipeItem}
+              />
+            ))}
+            {hasUncategorised && (
+              <CategorySection
+                name="Uncategorized"
+                items={groupedByWorkCat["__uncategorised__"]}
+                projectId={projectId}
+                defaultCollapsed={false}
+                onOpenRecipe={setRecipeItem}
+              />
+            )}
+```
+
+**REPLACE WITH:**
+
+```tsx
+            {billSections.map(sec => (
+              <CategorySection
+                key={sec.name}
+                name={sec.name}
+                items={sec.items}
+                projectId={projectId}
+                defaultCollapsed={false}
+                onOpenRecipe={setRecipeItem}
+              />
+            ))}
+```
+
+### 4. Remove the description truncation in the main BOQ table (show full text)
+
+**FIND:**
+
+```tsx
+                    <td className="px-3 py-1.5 text-slate-700 max-w-[200px]" title={item.description}>
+                      <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
+                    </td>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                    <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
+                      <span className="block whitespace-normal leading-snug">{item.description}</span>
+                    </td>
+```
+
+### 5. Same de-truncation in the secondary (revision/compact) table
+
+**FIND:**
+
+```tsx
+                          <td className="px-3 py-1.5 text-slate-700 max-w-[180px]" title={item.description}>
+                            <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
+                          </td>
+```
+
+**REPLACE WITH:**
+
+```tsx
+                          <td className="px-3 py-1.5 text-slate-700 max-w-[400px]" title={item.description}>
+                            <span className="block whitespace-normal leading-snug">{item.description}</span>
+                          </td>
+```
+
+═══════════════════════════════════════════════════════════════════
+## Verify
+═══════════════════════════════════════════════════════════════════
+1. `npm run check`, rebuild/restart. (No DB change.)
+2. Open **Work Program & BOQ → your project.** The sections now read exactly like your Excel:
+   **BILL No. 1 SITE CLEARANCE → BILL No 2 EARTH WORK → BILL No 3 SUB-BASE… → … → BILL No 12
+   HIGHWAY LIGHTING**, items in their original order, codes 1.01 / 2.01 / 2.03A intact.
+3. Descriptions now show in full (wrapped), with the complete text on hover.
+4. The top tile now reads **"Bills / Categories: 12"** (or however many bills have items).
+
+═══════════════════════════════════════════════════════════════════
+## Optional follow-up (recommended) — fix the auto-classifier off-by-one
+═══════════════════════════════════════════════════════════════════
+The standardized `workCategory` is still being auto-guessed with the shifted chapter map
+(1→Preliminaries…), which can mis-filter SNL/material suggestions even though the *display*
+is now correct. If you want, I'll add a second patch that **derives `workCategory` from the
+item's actual bill (`categoryName`) instead of the chapter number**, so the standardized lens
+also lines up with your bills. Say the word.

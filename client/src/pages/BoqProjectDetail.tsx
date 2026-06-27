@@ -329,8 +329,8 @@ function CategorySection({
                     <td className="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap">
                       {item.itemCode ?? "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-slate-700 max-w-[200px]" title={item.description}>
-                      <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
+                    <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
+                      <span className="block whitespace-normal leading-snug">{item.description}</span>
                     </td>
                     <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">
@@ -534,8 +534,8 @@ function NewRevisionDialog({
                           data-testid={`row-rev-item-${item.id}`}
                         >
                           <td className="px-3 py-1.5 font-mono text-slate-500">{item.itemCode ?? "—"}</td>
-                          <td className="px-3 py-1.5 text-slate-700 max-w-[180px]" title={item.description}>
-                            <span className="line-clamp-2">{(item as any).itemName || item.description.slice(0, 40)}</span>
+                          <td className="px-3 py-1.5 text-slate-700 max-w-[400px]" title={item.description}>
+                            <span className="block whitespace-normal leading-snug">{item.description}</span>
                           </td>
                           <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
                           <td className="px-3 py-1.5 text-right text-slate-700 font-medium">
@@ -1368,30 +1368,36 @@ export default function BoqProjectDetail() {
   });
 
   // ── Derived values ──
-  const groupedByWorkCat = useMemo(() => {
-    const map: Record<string, BoqItemWithCategory[]> = {};
+  // Group strictly by the BOQ's OWN bill structure as imported from Excel
+  // (categoryName, e.g. "BILL No. 1 SITE CLEARANCE"), preserving the file's order.
+  // Only falls back to the standardized work category / "Uncategorized" when an item
+  // genuinely has no bill assigned.
+  const billSections = useMemo(() => {
+    const map = new Map<string, { name: string; order: number; items: BoqItemWithCategory[] }>();
     for (const item of items) {
-      const key = item.workCategory ?? "__uncategorised__";
-      if (!map[key]) map[key] = [];
-      map[key].push(item);
+      const name =
+        (item.categoryName?.trim()) ||
+        getWorkCategoryLabel(item.workCategory) ||
+        "Uncategorized";
+      const so = item.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      let bucket = map.get(name);
+      if (!bucket) { bucket = { name, order: so, items: [] }; map.set(name, bucket); }
+      bucket.items.push(item);
+      if (so < bucket.order) bucket.order = so;
     }
-    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
-    for (const key of Object.keys(map)) {
-      map[key].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
+    const sections = [...map.values()];
+    // Bills appear in their original Excel order (by first row's sortOrder).
+    sections.sort((a, b) => a.order - b.order);
+    // Within a bill keep the file order, then fall back to item-code order.
+    for (const s of sections) {
+      s.items.sort((a, b) => {
+        const ao = a.sortOrder ?? 0, bo = b.sortOrder ?? 0;
+        if (ao !== bo) return ao - bo;
+        return compareItemCode(a.itemCode, b.itemCode);
+      });
     }
-    return map;
+    return sections;
   }, [items]);
-
-  // Standard categories that have items — plus always show all 15 in fixed order
-  const workCatSections = useMemo(() => {
-    return BOQ_WORK_CATEGORIES.map(cat => ({
-      code: cat.code,
-      label: cat.label,
-      items: groupedByWorkCat[cat.code] ?? [],
-    }));
-  }, [groupedByWorkCat]);
-
-  const hasUncategorised = !!groupedByWorkCat["__uncategorised__"]?.length;
 
   const totalAmount = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const activeRevision = revisions.find(r => r.status === "active");
@@ -1572,7 +1578,7 @@ export default function BoqProjectDetail() {
 
         const tiles: { label: string; value: string; extra?: string; extraCls?: string; onClick?: () => void; highlight?: boolean; confidence?: number }[] = [
           { label: "BOQ Items", value: String(items.length) },
-          { label: "Work Categories", value: String(workCatSections.filter(s => s.items.length > 0).length + (hasUncategorised ? 1 : 0)) },
+          { label: "Bills / Categories", value: String(billSections.length) },
           { label: "Revisions", value: String(revisions.length) },
           {
             label: "SNL Mapped",
@@ -1648,25 +1654,16 @@ export default function BoqProjectDetail() {
               </p>
             </div>
 
-            {workCatSections.filter(sec => sec.items.length > 0).map(sec => (
+            {billSections.map(sec => (
               <CategorySection
-                key={sec.code}
-                name={sec.label}
+                key={sec.name}
+                name={sec.name}
                 items={sec.items}
                 projectId={projectId}
                 defaultCollapsed={false}
                 onOpenRecipe={setRecipeItem}
               />
             ))}
-            {hasUncategorised && (
-              <CategorySection
-                name="Uncategorized"
-                items={groupedByWorkCat["__uncategorised__"]}
-                projectId={projectId}
-                defaultCollapsed={false}
-                onOpenRecipe={setRecipeItem}
-              />
-            )}
 
             {/* Grand total */}
             {totalAmount > 0 && (
