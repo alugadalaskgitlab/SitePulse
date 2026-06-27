@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
+  Route, Building2,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -91,13 +92,22 @@ export default function SiteHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`/site/new?returnTo=${HUB}`}
-              icon={FileText}
-              title="New Daily Progress Report"
-              description="Record today's site progress, labour & equipment"
+              href={`/site/new?type=road&returnTo=${HUB}`}
+              icon={Route}
+              title="Road Works DPR"
+              description="Daily progress for road activities (BOQ-linked)"
               accent="amber"
               iconBg="bg-amber-100"
               badge={dprs.length === 0 && sectionVisible("site_dprs") ? "Today" : undefined}
+              enabled={sectionVisible("site_dprs")}
+            />
+            <HubActionTile
+              href={`/site/new?type=structure&returnTo=${HUB}`}
+              icon={Building2}
+              title="Structure DPR"
+              description="Daily progress for bridges, culverts & structures"
+              accent="blue"
+              iconBg="bg-blue-100"
               enabled={sectionVisible("site_dprs")}
             />
             <HubActionTile

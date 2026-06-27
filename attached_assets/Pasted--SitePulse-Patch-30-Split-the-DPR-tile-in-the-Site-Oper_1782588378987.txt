@@ -1,0 +1,94 @@
+# SitePulse — Patch 30: Split the DPR tile in the Site Operations hub (SiteHub)
+
+Patch 28 split the tile on `SiteHome.tsx`, but your **Site Operations hub is `SiteHub.tsx`**
+(the "Operations & Actions" tiles). This patch splits its single "New Daily Progress Report"
+tile into **Road Works DPR** and **Structure DPR**, both routing into the right mode.
+
+## ⚠️ FIRST — rebuild the frontend (this is why you don't see the new picker)
+You're still seeing the **old single dropdown** in the activity row. That code no longer exists
+in your repo (Patch 28 replaced it with the Bill → Item picker), so the running app is serving
+an **old build**. On Replit:
+- If you run the app with **Run** (dev): **Stop** the Repl and **Run** again, then **hard-refresh**
+  the browser (Ctrl/Cmd-Shift-R). The dev server must restart to pick up the pulled code.
+- If you use a **Deployment**: click **Redeploy** (deployments serve a built bundle; they don't
+  rebuild on git pull).
+
+After the rebuild you'll immediately see the Bill → Item cascading dropdowns in every DPR. Then
+apply this patch so the hub also shows the two tiles.
+
+═══════════════════════════════════════════════════════════════════
+## `client/src/pages/SiteHub.tsx`
+═══════════════════════════════════════════════════════════════════
+
+### 1. Add the two icons to the lucide import
+
+**FIND:**
+
+```tsx
+import {
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
+} from "lucide-react";
+```
+
+**REPLACE WITH:**
+
+```tsx
+import {
+  FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
+  Route, Building2,
+} from "lucide-react";
+```
+
+### 2. Split the single DPR tile into Road + Structure
+
+**FIND:**
+
+```tsx
+            <HubActionTile
+              href={`/site/new?returnTo=${HUB}`}
+              icon={FileText}
+              title="New Daily Progress Report"
+              description="Record today's site progress, labour & equipment"
+              accent="amber"
+              iconBg="bg-amber-100"
+              badge={dprs.length === 0 && sectionVisible("site_dprs") ? "Today" : undefined}
+              enabled={sectionVisible("site_dprs")}
+            />
+```
+
+**REPLACE WITH:**
+
+```tsx
+            <HubActionTile
+              href={`/site/new?type=road&returnTo=${HUB}`}
+              icon={Route}
+              title="Road Works DPR"
+              description="Daily progress for road activities (BOQ-linked)"
+              accent="amber"
+              iconBg="bg-amber-100"
+              badge={dprs.length === 0 && sectionVisible("site_dprs") ? "Today" : undefined}
+              enabled={sectionVisible("site_dprs")}
+            />
+            <HubActionTile
+              href={`/site/new?type=structure&returnTo=${HUB}`}
+              icon={Building2}
+              title="Structure DPR"
+              description="Daily progress for bridges, culverts & structures"
+              accent="blue"
+              iconBg="bg-blue-100"
+              enabled={sectionVisible("site_dprs")}
+            />
+```
+
+═══════════════════════════════════════════════════════════════════
+## Verify
+═══════════════════════════════════════════════════════════════════
+1. Rebuild (see top), then apply this patch and rebuild again.
+2. **Site Operations hub** now shows **Road Works DPR** + **Structure DPR** tiles.
+3. **Road Works DPR** opens in road mode (toggle hidden, "Road Works" badge); the activity row
+   shows the **Bill / Section → Work Item** cascading picker.
+4. **Structure DPR** opens in structure mode; structure rows use the same Bill → Item picker.
+
+> Note: `SiteDashboard.tsx` (the DPR *history* page) still has plain "New Report" / "Create
+> Report" buttons → `/site/new` (no type) — they open the form with the Road/Structure toggle
+> visible, which is fine. Tell me if you'd like those split too.
