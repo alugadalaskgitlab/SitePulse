@@ -341,9 +341,13 @@ function StretchRow({
           className="flex-shrink-0 self-stretch w-0.5 mr-0.5"
           style={{ backgroundColor: isFirst ? "transparent" : color, opacity: 0.5 }}
         />
-        {!isFirst && (
+        {(bar as any).reachLabel ? (
+          <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 rounded px-1 font-semibold flex-shrink-0 dark:bg-teal-900/30 dark:text-teal-300" title="Reach front">
+            {(bar as any).reachLabel}
+          </span>
+        ) : !isFirst ? (
           <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
-        )}
+        ) : null}
 
         {/* Chainage inputs */}
         <span className="text-xs text-slate-400 flex-shrink-0">Ch</span>

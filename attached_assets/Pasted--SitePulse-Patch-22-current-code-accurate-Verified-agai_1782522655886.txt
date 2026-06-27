@@ -1,0 +1,278 @@
+# SitePulse — Patch 22 (current-code accurate)
+
+Verified against your live repo (`alugadalaskgitlab/SitePulse`). Fixes:
+1. **LDO + aggregate fractions missing for DBM/BC** — bituminous items whose mix type
+   has no matching template returned **nothing**. Added a last-resort fallback to an
+   available standard bituminous template so they still get aggregates + LDO.
+2. **Bituminous quantities wrong (per-SQM) + double bitumen (VG-30 & VG-40)** — Patch 19
+   was never applied; now the formula is unit-aware (CUM/MT/SQM) and emits a single binder.
+3. **HSD scoping** — diesel now computed only for productive plant/earthmoving items;
+   cranes (lifting) never fuel, and erection/fixing/misc items (toll booth, crash barrier,
+   signage, road furniture, buildings) are skipped.
+4. **Concrete missing from the Layer Type dropdown** — added.
+5. **Reach number on the Gantt** — each stretch now shows its "Reach N" label.
+6. **WMM/GSB wrongly listed in bituminous mix templates** — hidden for BC/DBM/SDBC/BM.
+7. **Muted/light fonts** — darkened app-wide (light theme).
+
+---
+
+## PART A — `shared/planningEngine.ts`
+
+### A1. Bituminous derivation: unit-aware + single binder + LDO (Patch 19)
+
+**FIND:**
+
+```ts
+  if (layerConfig.layerType === "bituminous") {
+    const thickness = layerConfig.thicknessMm ?? 0;
+    const density = layerConfig.densityTPerCum ?? 2.35;
+    if (thickness <= 0) return [];
+    const mtPerSqm = (thickness / 1000) * density;
+    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
+    if (!mixTemplate) return [];
+    const rows: DerivedMaterialRow[] = [];
+    const bitPct = mixTemplate.bitumenPercent ?? 0;
+    if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+    for (const c of mixTemplate.components) {
+      if ((c.percent ?? 0) > 0) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
+      }
+    }
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
+    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerSqm,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+```
+
+**REPLACE WITH:**
+
+```ts
+  if (layerConfig.layerType === "bituminous") {
+    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
+    if (!mixTemplate) return [];
+    const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
+    const thickness = layerConfig.thicknessMm ?? 0;
+
+    // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:
+    //   CUM → 1 CUM = density MT (thickness irrelevant)
+    //   MT  → 1
+    //   SQM → (thickness/1000) × density  (needs thickness)
+    const u = String(_boqUnit || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let mtPerUnit: number;
+    if (/^(CUM|CUB|M3|CU|CUBICM)$/.test(u)) {
+      mtPerUnit = density;
+    } else if (/^(MT|TON|T|TONNE|TONNES|TONS)$/.test(u)) {
+      mtPerUnit = 1;
+    } else {
+      if (thickness <= 0) return [];
+      mtPerUnit = (thickness / 1000) * density;
+    }
+
+    const rows: DerivedMaterialRow[] = [];
+    // Single binder row — use the grade from the template component if listed,
+    // else bitumenPercent with a VG-30 default. Prevents VG-30 + VG-40 duplicates.
+    const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
+    const binderComp = mixTemplate.components.find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const bitPct = binderComp?.percent ?? mixTemplate.bitumenPercent ?? 0;
+    const binderName = binderComp?.materialName?.trim() || "Bitumen VG-30";
+    if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+
+    // Aggregate fractions — skip the binder component (already counted).
+    for (const c of mixTemplate.components) {
+      if (c === binderComp || isBinderName(c.materialName)) continue;
+      if ((c.percent ?? 0) > 0) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
+      }
+    }
+
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per unit)
+    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerUnit,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+```
+
+### A2. HSD scoping — skip cranes & non-plant items
+
+**FIND:**
+
+```ts
+      const norm = e.consumptionNorm ?? 0;
+      const isDiesel = /diesel|hsd/i.test(textOf(e.fuelType));
+      if (norm > 0 && isDiesel) {
+```
+
+**REPLACE WITH:**
+
+```ts
+      const norm = e.consumptionNorm ?? 0;
+      const isDiesel = /diesel|hsd/i.test(textOf(e.fuelType));
+      // HSD scoping: cranes/lifting run intermittently → never fuel the BOM.
+      // Structure-erection / fixing / misc items don't consume continuous plant fuel.
+      const isCraneEquip = /\bcrane\b|lifting|girder|launch/i.test(e.equipmentName);
+      const isNonHsdItem = /toll\s*booth|toll\s*plaza|crash\s*barrier|\bsignage\b|sign\s*board|road\s*furniture|delineator|road\s*marking|thermoplastic|painting|railing|parapet|building|\bbooth\b|guard\s*rail|metal\s*beam|gantry|\bkm\s*stone|boundary\s*(stone|pillar)|reflector/i.test(item.description || "");
+      if (norm > 0 && isDiesel && !isCraneEquip && !isNonHsdItem) {
+```
+
+---
+
+## PART B — `server/routes.ts` (bituminous template fallback)
+
+### B1. Precompute a fallback bituminous template id
+
+**FIND:**
+
+```ts
+      // Fetch mix template data and resolve component material names in parallel
+      const mixTemplateMap = new Map<number, {
+```
+
+**REPLACE WITH:**
+
+```ts
+      // First available standard bituminous template — last-resort fallback so DBM/SDBC
+      // items still get aggregate fractions + LDO when no exact mixType template exists.
+      const firstBitTemplateId =
+        allMixTemplates.find(t => /bitumin|dbm|\bbc\b|sdbc|\bbm\b|wearing|dense/i.test(`${t.mixType ?? ""} ${t.name ?? ""}`))?.id
+        ?? (allMixTemplates[0]?.id ?? null);
+
+      // Fetch mix template data and resolve component material names in parallel
+      const mixTemplateMap = new Map<number, {
+```
+
+### B2. Use the fallback when no exact template resolves
+
+**FIND:**
+
+```ts
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
+            // Generic fallback: single bituminous mix-link for this project
+            const bitLinks = mixLinks.filter(l => l.mixTemplateId);
+            if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
+          }
+```
+
+**REPLACE WITH:**
+
+```ts
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
+            // Generic fallback: single bituminous mix-link for this project
+            const bitLinks = mixLinks.filter(l => l.mixTemplateId);
+            if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
+          }
+          // Last resort: any standard bituminous template in Masters, so the item still
+          // gets aggregate fractions + LDO instead of a "template required" blank.
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && firstBitTemplateId) {
+            resolvedMixTemplateId = firstBitTemplateId;
+          }
+```
+
+---
+
+## PART C — `client/src/pages/BoqItemRecipes.tsx` (add Concrete to the dropdown)
+
+**FIND:**
+
+```ts
+  { value: "spray_coat", label: "Spray Coat (Tack / Prime / Fog Seal)" },
+  { value: "earthwork", label: "Earthwork / Embankment" },
+```
+
+**REPLACE WITH:**
+
+```ts
+  { value: "spray_coat", label: "Spray Coat (Tack / Prime / Fog Seal)" },
+  { value: "concrete", label: "Concrete (PCC / RCC / PQC / DLC)" },
+  { value: "earthwork", label: "Earthwork / Embankment" },
+```
+
+---
+
+## PART D — `client/src/pages/WorkProgramme.tsx` (Reach label on each stretch)
+
+**FIND:**
+
+```tsx
+        {!isFirst && (
+          <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
+        )}
+```
+
+**REPLACE WITH:**
+
+```tsx
+        {(bar as any).reachLabel ? (
+          <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 rounded px-1 font-semibold flex-shrink-0 dark:bg-teal-900/30 dark:text-teal-300" title="Reach front">
+            {(bar as any).reachLabel}
+          </span>
+        ) : !isFirst ? (
+          <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
+        ) : null}
+```
+
+---
+
+## PART E — `client/src/pages/Plant.tsx` (hide WMM/GSB from bituminous templates)
+
+**FIND:**
+
+```tsx
+                      {aggregateMaterials.map((mat, idx) => {
+```
+
+**REPLACE WITH:**
+
+```tsx
+                      {aggregateMaterials.filter(mat => {
+                        // Granular fractions (WMM/GSB) don't belong in bituminous templates.
+                        const isBit = /^(BC|DBM|SDBC|BM)$/i.test(String(mixType).trim());
+                        return !(isBit && /^(WMM|GSB)$/i.test(String(mat.name).trim()));
+                      }).map((mat, idx) => {
+```
+
+---
+
+## PART F — `client/src/index.css` (darken muted fonts, light theme)
+
+**ADD this to the END of the file:**
+
+```css
+/* Darken muted text app-wide in light theme for readability */
+:root:not(.dark) .text-muted-foreground { color: hsl(215 25% 27%); }
+:root:not(.dark) .text-slate-400 { color: rgb(71 85 105); }   /* → slate-600 */
+:root:not(.dark) .text-slate-500 { color: rgb(51 65 85); }    /* → slate-700 */
+:root:not(.dark) .text-gray-400  { color: rgb(75 85 99); }    /* → gray-600 */
+:root:not(.dark) .text-gray-500  { color: rgb(55 65 81); }    /* → gray-700 */
+```
+
+---
+
+## Verify
+1. `npm run check`, rebuild.
+2. **BOM → Materials:** DBM/BC items now show **aggregate fractions + LDO / Process Fuel**;
+   bitumen appears as **one** grade per item; quantities for CUM items are realistic
+   (≈ density × volume). **Diesel/HSD** no longer counts cranes or toll-booth/building items.
+3. **Edit any item → Layer Config:** "Concrete (PCC / RCC / PQC / DLC)" is now selectable.
+4. **Work Programme Gantt:** each reach stretch shows a **Reach N** badge.
+5. **Masters → edit a BC/DBM mix template:** WMM/GSB rows are gone from Aggregate Proportions.
+6. Fonts across the app are noticeably darker.
+
+> If a DBM/SDBC item still shows wrong aggregates, it's using the BC fallback template —
+> add a proper DBM/SDBC template in Masters (mix type DBM/SDBC) and it'll switch automatically.

@@ -3595,7 +3595,11 @@ export function MixTemplateMaster() {
                       </tr>
                     </thead>
                     <tbody>
-                      {aggregateMaterials.map((mat, idx) => {
+                      {aggregateMaterials.filter(mat => {
+                        // Granular fractions (WMM/GSB) don't belong in bituminous templates.
+                        const isBit = /^(BC|DBM|SDBC|BM)$/i.test(String(mixType).trim());
+                        return !(isBit && /^(WMM|GSB)$/i.test(String(mat.name).trim()));
+                      }).map((mat, idx) => {
                         const mc = parseFloat(aggregateMoistureContent[mat.id] || "0") || 0;
                         const wf = parseFloat(aggregateWastageFactors[mat.id] || "0") || 0;
                         const multiplier = (1 + wf / 100) / (1 - mc / 100);

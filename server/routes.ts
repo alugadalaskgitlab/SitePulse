@@ -10036,6 +10036,12 @@ export async function registerRoutes(
         if (normalised && normalised !== raw && !mixTypeToTemplateId.has(normalised)) { mixTypeToTemplateId.set(normalised, t.id); mixTemplateIds.add(t.id); }
       }
 
+      // First available standard bituminous template — last-resort fallback so DBM/SDBC
+      // items still get aggregate fractions + LDO when no exact mixType template exists.
+      const firstBitTemplateId =
+        allMixTemplates.find(t => /bitumin|dbm|\bbc\b|sdbc|\bbm\b|wearing|dense/i.test(`${t.mixType ?? ""} ${t.name ?? ""}`))?.id
+        ?? (allMixTemplates[0]?.id ?? null);
+
       // Fetch mix template data and resolve component material names in parallel
       const mixTemplateMap = new Map<number, {
         bitumenPercent: number | null;
@@ -10101,6 +10107,11 @@ export async function registerRoutes(
             // Generic fallback: single bituminous mix-link for this project
             const bitLinks = mixLinks.filter(l => l.mixTemplateId);
             if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
+          }
+          // Last resort: any standard bituminous template in Masters, so the item still
+          // gets aggregate fractions + LDO instead of a "template required" blank.
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && firstBitTemplateId) {
+            resolvedMixTemplateId = firstBitTemplateId;
           }
           // Concrete/RMC — prefer the user's RMC module mix design (by grade), then
           // fall back to the deterministic standard design so concrete demand never

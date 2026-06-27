@@ -887,7 +887,11 @@ export function calculateBomDemand(
       // equipment/plant running hours × consumption norm (liters/hour). Wired month-wise.
       const norm = e.consumptionNorm ?? 0;
       const isDiesel = /diesel|hsd/i.test(textOf(e.fuelType));
-      if (norm > 0 && isDiesel) {
+      // HSD scoping: cranes/lifting run intermittently → never fuel the BOM.
+      // Structure-erection / fixing / misc items don't consume continuous plant fuel.
+      const isCraneEquip = /\bcrane\b|lifting|girder|launch/i.test(e.equipmentName);
+      const isNonHsdItem = /toll\s*booth|toll\s*plaza|crash\s*barrier|\bsignage\b|sign\s*board|road\s*furniture|delineator|road\s*marking|thermoplastic|painting|railing|parapet|building|\bbooth\b|guard\s*rail|metal\s*beam|gantry|\bkm\s*stone|boundary\s*(stone|pillar)|reflector/i.test(item.description || "");
+      if (norm > 0 && isDiesel && !isCraneEquip && !isNonHsdItem) {
         const fuelPerBoqUnit = e.qtyPerBoqUnit * cnt * norm; // liters per BOQ unit
         const fuelKey = canonResourceKey("Diesel / HSD");
         if (!matMap.has(fuelKey)) {
@@ -1484,27 +1488,50 @@ export function deriveMaterialsFromLayerConfig(
   }
 
   if (layerConfig.layerType === "bituminous") {
-    const thickness = layerConfig.thicknessMm ?? 0;
-    const density = layerConfig.densityTPerCum ?? 2.35;
-    if (thickness <= 0) return [];
-    const mtPerSqm = (thickness / 1000) * density;
     // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
     if (!mixTemplate) return [];
+    const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
+    const thickness = layerConfig.thicknessMm ?? 0;
+
+    // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:
+    //   CUM → 1 CUM = density MT (thickness irrelevant)
+    //   MT  → 1
+    //   SQM → (thickness/1000) × density  (needs thickness)
+    const u = String(_boqUnit || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let mtPerUnit: number;
+    if (/^(CUM|CUB|M3|CU|CUBICM)$/.test(u)) {
+      mtPerUnit = density;
+    } else if (/^(MT|TON|T|TONNE|TONNES|TONS)$/.test(u)) {
+      mtPerUnit = 1;
+    } else {
+      if (thickness <= 0) return [];
+      mtPerUnit = (thickness / 1000) * density;
+    }
+
     const rows: DerivedMaterialRow[] = [];
-    const bitPct = mixTemplate.bitumenPercent ?? 0;
-    if (bitPct > 0) rows.push({ materialName: "Bitumen VG-30", uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerSqm, isAuto: true });
+    // Single binder row — use the grade from the template component if listed,
+    // else bitumenPercent with a VG-30 default. Prevents VG-30 + VG-40 duplicates.
+    const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
+    const binderComp = mixTemplate.components.find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const bitPct = binderComp?.percent ?? mixTemplate.bitumenPercent ?? 0;
+    const binderName = binderComp?.materialName?.trim() || "Bitumen VG-30";
+    if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+
+    // Aggregate fractions — skip the binder component (already counted).
     for (const c of mixTemplate.components) {
+      if (c === binderComp || isBinderName(c.materialName)) continue;
       if ((c.percent ?? 0) > 0) {
-        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerSqm, isAuto: true });
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
       }
     }
-    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per SqM)
+
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per unit)
     const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
     if (ldoNorm > 0) {
       rows.push({
         materialName: "LDO / Process Fuel",
         uom: "L",
-        qtyPerBoqUnit: ldoNorm * mtPerSqm,
+        qtyPerBoqUnit: ldoNorm * mtPerUnit,
         isAuto: true,
         applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
       });

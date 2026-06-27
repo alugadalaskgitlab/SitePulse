@@ -169,6 +169,7 @@ const LAYER_TYPE_OPTIONS = [
   { value: "bituminous", label: "Bituminous Mix (BC / DBM / BM / SDBC)" },
   { value: "granular", label: "Granular Layer (GSB / WMM)" },
   { value: "spray_coat", label: "Spray Coat (Tack / Prime / Fog Seal)" },
+  { value: "concrete", label: "Concrete (PCC / RCC / PQC / DLC)" },
   { value: "earthwork", label: "Earthwork / Embankment" },
 ];
 

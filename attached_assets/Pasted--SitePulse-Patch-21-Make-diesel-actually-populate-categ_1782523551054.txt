@@ -1,0 +1,164 @@
+# SitePulse — Patch 21: Make diesel actually populate (category-based) + ensure fuel fields render
+
+This supersedes the fuel-norm parts of Patch 20. Apply after Patch 20.
+**Run `npm run db:push` first** if you haven't (the `consumption_norm` + `fuel_type`
+columns from Patch 20 must exist — re-run db:push to be safe).
+
+## Why Patch 20 did nothing
+- Your equipment is named **"EXCAVATOR" / "JCB/BACK HOE"**, not the MoRTH seed names
+  (e.g. "Hydraulic Excavator (0.9 CUM)"). Patch 20 backfilled fuel **only by exact name
+  match**, so it skipped every one of your machines.
+- The **Fuel Type / Fuel Norm fields never rendered** in the Edit Equipment dialog.
+
+This patch fixes both: the seed now assigns a sensible **diesel norm by category** to
+**every** equipment that has no norm yet (regardless of its name), and the dialog gets
+the fuel fields so you can fine-tune per machine.
+
+---
+
+## PART A — `server/storage.ts`: assign diesel by CATEGORY to all equipment
+
+Find the **end** of `seedPlanningMorthDefaults` — the part that returns the counts. It
+looks roughly like this:
+
+**FIND:**
+
+```ts
+    return { equipmentInserted, labourInserted };
+  }
+```
+
+**REPLACE WITH:**
+
+```ts
+    // ── Fuel norms by CATEGORY ──────────────────────────────────────────────
+    // Assign a default diesel consumption (L/hr) to EVERY equipment type that has
+    // no fuel norm yet — works for custom names (EXCAVATOR, JCB/BACK HOE, …) too.
+    // Fine-tune per machine in Planning Masters afterwards.
+    const CATEGORY_FUEL_DEFAULTS: Record<string, number> = {
+      Earthwork: 16,
+      Compaction: 10,
+      Plant: 28,
+      Paving: 14,
+      Transport: 10,
+      Concreting: 12,
+      Concrete: 12,
+      Lifting: 15,
+      General: 12,
+    };
+    const allEquip = await db.select().from(planningEquipmentTypes);
+    let fuelUpdated = 0;
+    for (const e of allEquip) {
+      if ((e as any).consumptionNorm != null && (e as any).consumptionNorm > 0) continue;
+      const isSurvey = /survey|total\s*station|\blevel\b|theodolite|\bgps\b|instrument/i.test(e.name);
+      const norm = isSurvey ? 0 : (CATEGORY_FUEL_DEFAULTS[e.category] ?? 12);
+      await db.update(planningEquipmentTypes)
+        .set({ consumptionNorm: norm, fuelType: isSurvey ? "None" : "Diesel" })
+        .where(eq(planningEquipmentTypes.id, e.id));
+      fuelUpdated++;
+    }
+    console.log(`seedPlanningMorthDefaults: fuel norms set on ${fuelUpdated} equipment types`);
+
+    return { equipmentInserted, labourInserted };
+  }
+```
+
+> If your `return { equipmentInserted, labourInserted };` line differs slightly, just
+> paste the whole `// ── Fuel norms by CATEGORY ──` block **immediately before** that
+> `return` statement inside `seedPlanningMorthDefaults`.
+
+---
+
+## PART B — `client/src/pages/PlanningMasters.tsx`: ensure the fuel fields render
+
+The fuel inputs must sit **inside the Equipment dialog, between the Category dropdown
+and the "STANDARD OUTPUTS (PER HOUR)" section.**
+
+### B1. State (inside the equipment dialog component, near the other `useState`s)
+
+Make sure these two lines exist right after the `category` state:
+
+```ts
+  const [fuelType, setFuelType] = useState<string>((item as any)?.fuelType ?? "Diesel");
+  const [fuelNorm, setFuelNorm] = useState<string>(
+    (item as any)?.consumptionNorm != null ? String((item as any).consumptionNorm) : ""
+  );
+```
+
+### B2. Include them in the save payload
+
+Find where the equipment dialog builds its save object (`const payload = { name: ... }`)
+and add the two fields:
+
+```ts
+        fuelType: fuelType || null,
+        consumptionNorm: fuelNorm.trim() ? parseFloat(fuelNorm) : null,
+```
+
+So the payload becomes:
+
+```ts
+      const payload = {
+        name: name.trim(),
+        category,
+        standardOutputs,
+        fuelType: fuelType || null,
+        consumptionNorm: fuelNorm.trim() ? parseFloat(fuelNorm) : null,
+        isActive: true,
+      };
+```
+
+### B3. Render the inputs — place this JSX **immediately above** the
+`<Label …>Standard Outputs (per hour)</Label>` block (i.e. right after the Name/Category row):
+
+```tsx
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-sm">Fuel Type</Label>
+              <Select value={fuelType} onValueChange={setFuelType}>
+                <SelectTrigger className="h-8 text-sm mt-1" data-testid="select-equip-fuel-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Diesel", "LDO", "Petrol", "Electric", "None"].map((f) => (
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm">Fuel Norm (L/hr)</Label>
+              <Input
+                type="number" step="0.1" min="0"
+                className="h-8 text-sm mt-1"
+                value={fuelNorm}
+                onChange={(e) => setFuelNorm(e.target.value)}
+                placeholder="e.g. 16"
+                data-testid="input-equip-fuel-norm"
+              />
+            </div>
+          </div>
+```
+
+> `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`, `Input`,
+> `Label` are already imported in this file (they're used by the dialog). If `Select`
+> is somehow not imported, add:
+> `import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";`
+
+---
+
+## Verify (do in this order)
+1. `npm run db:push` → confirm `consumption_norm` + `fuel_type` columns exist (type `yes` if prompted).
+2. `npm run check`, rebuild/restart.
+3. **Planning Masters → Edit any equipment** (e.g. EXCAVATOR): you should now see
+   **Fuel Type** + **Fuel Norm (L/hr)** between Category and Standard Outputs. Set
+   EXCAVATOR ≈ 16, JCB/BACK HOE ≈ 12–16, rollers ≈ 10, HMP/WMM plant ≈ 28, paver ≈ 14,
+   tankers/tippers ≈ 10. Click **Update**.
+4. Or just click **Seed MoRTH Defaults** once — it now fills a category-based diesel
+   norm on every machine that has none (you can fine-tune after).
+5. **Work Programme → Auto-build recipes** (re-run so items pick up equipment fuel norms).
+6. **BOM → Materials:** **"Diesel / HSD" (L)** should now appear with month-wise demand.
+
+If after step 4 the BOM still shows no diesel, tell me — and if possible paste the
+Replit console line `seedPlanningMorthDefaults: fuel norms set on N equipment types`
+(N tells us whether the update ran).
