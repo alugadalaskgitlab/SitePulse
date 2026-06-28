@@ -10069,13 +10069,9 @@ export async function registerRoutes(
         if (g && !gradeToDesign.has(g)) gradeToDesign.set(g, d);
       }
 
-      // Bituminous: fall back to STANDARD mix templates in Masters/HMP when no project link exists.
-      for (const t of allMixTemplates) {
-        const raw = String(t.mixType ?? "").toUpperCase();
-        const normalised = normaliseMixType(t.mixType ?? "");
-        if (raw && !mixTypeToTemplateId.has(raw)) { mixTypeToTemplateId.set(raw, t.id); mixTemplateIds.add(t.id); }
-        if (normalised && normalised !== raw && !mixTypeToTemplateId.has(normalised)) { mixTypeToTemplateId.set(normalised, t.id); mixTemplateIds.add(t.id); }
-      }
+      // Pre-add ALL master template IDs so mixTemplateMap gets component data for every
+      // template before we decide which one wins for each mix type.
+      for (const t of allMixTemplates) mixTemplateIds.add(t.id);
 
       // (Cross-type "first bituminous template" fallback removed — Patch 40.
       //  Items with no matching mix type now fall back to the built-in IRC default
@@ -10104,6 +10100,27 @@ export async function registerRoutes(
           });
         }
       }));
+
+      // Bituminous: index STANDARD mix templates in Masters/HMP as fallback when no project
+      // link exists for a mix type. "Usable" templates (components with actual percent values)
+      // always beat stubs (all-null percent). This prevents a stub DBM template from
+      // blocking a fully-filled DBM template with the same mixType key.
+      const tmplUsableScore = (tmplId: number) =>
+        (mixTemplateMap.get(tmplId)?.components ?? []).filter(c => (c.percent ?? 0) > 0).length;
+
+      for (const t of allMixTemplates) {
+        const raw = String(t.mixType ?? "").toUpperCase();
+        const normalised = normaliseMixType(t.mixType ?? "");
+        for (const key of Array.from(new Set([raw, normalised].filter(Boolean)))) {
+          const existing = mixTypeToTemplateId.get(key);
+          if (!existing) {
+            mixTypeToTemplateId.set(key, t.id);
+          } else if (tmplUsableScore(t.id) > tmplUsableScore(existing)) {
+            // Upgrade: new candidate has more filled-in component percentages
+            mixTypeToTemplateId.set(key, t.id);
+          }
+        }
+      }
 
       const barItemIds = new Set(bars.map(b => b.boqItemId));
 
