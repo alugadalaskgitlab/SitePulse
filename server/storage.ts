@@ -313,6 +313,30 @@ import {
 } from "@shared/heating-trends-constants";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BOQ planning exclusion helper — shared between importBoqItems (new rows) and
+// backfillBoqPlanningInclude (one-time migration for existing rows).
+// Returns true when a description matches a known non-production item type.
+function isNonPlanningItem(description: string): boolean {
+  const d = description.toLowerCase();
+  return (
+    d.includes("toll plaza") ||
+    d.includes("toll booth") ||
+    d.includes("toll gate") ||
+    d.includes("provisional sum") ||
+    d.includes("lump sum provision") ||
+    d.includes("highway lighting") ||
+    d.includes("solar lighting") ||
+    d.includes("street lighting") ||
+    d.includes("lamp post") ||
+    d.includes("road furniture") ||
+    d.includes("road sign") ||
+    d.includes("signage") ||
+    d.includes("ambulance") ||
+    d.includes("first aid")
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RAW SQL CONVENTION — db.execute() usage
 //
 // When running raw SQL with db.execute(sql`...`) always follow these rules:
@@ -19895,6 +19919,7 @@ export class DatabaseStorage implements IStorage {
         mappingStatus: boqItems.mappingStatus,
         layerConfig: boqItems.layerConfig,
         dprConversionFactor: boqItems.dprConversionFactor,
+        includedInPlanning: boqItems.includedInPlanning,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
@@ -19916,6 +19941,7 @@ export class DatabaseStorage implements IStorage {
       snlItemId: r.snlItemId ?? null,
       snlItemCode: r.snlItemCode ?? null,
       snlConfidence: r.snlConfidence ?? null,
+      includedInPlanning: r.includedInPlanning ?? true,
     }));
   }
 
@@ -19959,6 +19985,9 @@ export class DatabaseStorage implements IStorage {
           ? Math.round(item.clientRate * item.boqQty * 100) / 100
           : null;
 
+      // Auto-detect planning exclusion for known non-construction item types at import time
+      const includedInPlanning = !isNonPlanningItem(item.description);
+
       const [inserted] = await db.insert(boqItems).values({
         boqProjectId,
         categoryId,
@@ -19972,6 +20001,7 @@ export class DatabaseStorage implements IStorage {
         clientAmount,
         sortOrder: item.sortOrder ?? i,
         workCategory: item.workCategory ?? suggestWorkCategory(item.itemCode) ?? null,
+        includedInPlanning,
       }).returning({ id: boqItems.id });
       insertedIds.push(inserted.id);
     }
