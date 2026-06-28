@@ -9609,6 +9609,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/boq/items/:id/work-type", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const id = parseInt(req.params.id);
+      const { planningWorkType } = req.body as { planningWorkType: string };
+      if (planningWorkType !== "road" && planningWorkType !== "structure") {
+        return res.status(400).json({ error: "planningWorkType must be 'road' or 'structure'" });
+      }
+      await storage.updateBoqItemWorkType(id, planningWorkType);
+      res.json({ ok: true, id, planningWorkType });
+    } catch (err) {
+      console.error("PATCH /api/boq/items/:id/work-type:", err);
+      res.status(500).json({ error: "Failed to update work type" });
+    }
+  });
+
   app.patch("/api/boq/items/:id/planning-include", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
@@ -10251,8 +10267,15 @@ export async function registerRoutes(
                 thicknessMm: cl.thicknessMm,
                 densityTPerCum: cl.density,
               };
+              // For composite sub-layers, don't force the item-level description grade onto
+              // sub-layers whose templates already specify their own binder grade (e.g. MA
+              // uses VG-40 per template while BC uses VG-30 per template). Only fall back to
+              // descBinderGrade when the sub-layer's template has no grade of its own.
+              const subDescBinderGrade = subTmpl?.binderGrade?.trim()
+                ? null
+                : descBinderGrade;
               const subDerived = deriveMaterialsFromLayerConfig(
-                subLc, item.unit, subTmpl ?? undefined, null, { descBinderGrade },
+                subLc, item.unit, subTmpl ?? undefined, null, { descBinderGrade: subDescBinderGrade },
               );
               for (const dr of subDerived) {
                 const ex = combinedMap.get(dr.materialName);
@@ -11049,6 +11072,8 @@ export async function registerRoutes(
     seedPlantMasterData();
     seedPlanningMasters();
     seedSnlItems();
+    storage.backfillBoqPlanningInclude().catch(err => console.error("backfillBoqPlanningInclude failed:", err));
+    storage.backfillBoqWorkType().catch(err => console.error("backfillBoqWorkType failed:", err));
   })().catch((err) => console.error("Startup tasks failed:", err));
 
   return httpServer;

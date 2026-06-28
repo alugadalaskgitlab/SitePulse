@@ -281,6 +281,15 @@ function CategorySection({
     onError: () => toast({ title: "Failed to update planning flag", variant: "destructive" }),
   });
 
+  const workTypeMutation = useMutation({
+    mutationFn: ({ id, planningWorkType }: { id: number; planningWorkType: string }) =>
+      apiRequest("PATCH", `/api/boq/items/${id}/work-type`, { planningWorkType }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+    },
+    onError: () => toast({ title: "Failed to update work type", variant: "destructive" }),
+  });
+
   const categoryId = items[0]?.categoryId ?? null;
   const allIncluded = items.every(it => it.includedInPlanning !== false);
   const anyExcluded = items.some(it => it.includedInPlanning === false);
@@ -389,19 +398,39 @@ function CategorySection({
                       {fmtAmt(item.clientAmount)}
                     </td>
                     <td className="px-2 py-1.5 text-center">
-                      <button
-                        onClick={() => planToggleMutation.mutate({ id: item.id, includedInPlanning: !item.includedInPlanning })}
-                        disabled={planToggleMutation.isPending}
-                        title={item.includedInPlanning ? "Included in Gantt/BOM — click to exclude" : "Excluded from Gantt/BOM — click to include"}
-                        data-testid={`button-plan-toggle-${item.id}`}
-                        className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold transition-colors ${
-                          item.includedInPlanning
-                            ? "bg-teal-50 border-teal-300 text-teal-700 hover:bg-teal-100"
-                            : "bg-slate-100 border-slate-300 text-slate-400 hover:bg-slate-200"
-                        }`}
-                      >
-                        {item.includedInPlanning ? "✓" : "−"}
-                      </button>
+                      <div className="flex items-center gap-1 justify-center">
+                        <button
+                          onClick={() => planToggleMutation.mutate({ id: item.id, includedInPlanning: !item.includedInPlanning })}
+                          disabled={planToggleMutation.isPending}
+                          title={item.includedInPlanning ? "Included in Gantt/BOM — click to exclude" : "Excluded from Gantt/BOM — click to include"}
+                          data-testid={`button-plan-toggle-${item.id}`}
+                          className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold transition-colors ${
+                            item.includedInPlanning
+                              ? "bg-teal-50 border-teal-300 text-teal-700 hover:bg-teal-100"
+                              : "bg-slate-100 border-slate-300 text-slate-400 hover:bg-slate-200"
+                          }`}
+                        >
+                          {item.includedInPlanning ? "✓" : "−"}
+                        </button>
+                        <button
+                          onClick={() => workTypeMutation.mutate({
+                            id: item.id,
+                            planningWorkType: (item as any).planningWorkType === "structure" ? "road" : "structure",
+                          })}
+                          disabled={workTypeMutation.isPending}
+                          title={(item as any).planningWorkType === "structure"
+                            ? "Structure/bridge item — qty entered per location (click to switch to Road)"
+                            : "Road/linear item — qty auto-distributed by chainage (click to switch to Structure)"}
+                          data-testid={`button-work-type-${item.id}`}
+                          className={`inline-flex items-center justify-center px-1 h-5 rounded border text-[10px] font-semibold transition-colors ${
+                            (item as any).planningWorkType === "structure"
+                              ? "bg-violet-50 border-violet-300 text-violet-700 hover:bg-violet-100"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                          }`}
+                        >
+                          {(item as any).planningWorkType === "structure" ? "Str" : "Rd"}
+                        </button>
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <div className="flex items-center gap-0.5 justify-center">

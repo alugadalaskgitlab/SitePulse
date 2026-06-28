@@ -135,6 +135,12 @@ function StretchRow({
   // Locked duration (months) for fixed mode: set when entering FIX, preserved when start shifts.
   const lockedDurationRef = useRef<number>(bar.endMonth - bar.startMonth);
 
+  // Structure-aware mode: for bridge/CD/culvert items, qty is entered directly per location.
+  const isStructure = (item as any).planningWorkType === "structure";
+  const [structQtyStr, setStructQtyStr] = useState(() =>
+    bar.plannedQty > 0 ? String(bar.plannedQty) : "",
+  );
+
   // Sync from DB when not dirty
   useEffect(() => {
     if (dirty.current) return;
@@ -150,6 +156,7 @@ function StretchRow({
     } else if (roadLen > 0 && boqQty > 0) {
       setMult(String(+(boqQty / roadLen).toFixed(4)));
     }
+    if (isStructure) setStructQtyStr(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
   }, [bar.chainageFrom, bar.chainageTo, bar.startMonth, bar.endMonth, bar.durationMode, bar.plannedQty]);
 
   const cfNum = parseFloat(cf);
@@ -158,14 +165,15 @@ function StretchRow({
   const smNum = parseFloat(startM) || 1;
   const validCh = !isNaN(cfNum) && !isNaN(ctNum) && ctNum > cfNum;
 
-  // Auto qty from chainage × editable multiplier
+  // Auto qty from chainage × editable multiplier (disabled for structure items)
   const autoQty = useMemo(() => {
+    if (isStructure) return null;
     if (!validCh) return null;
     const stretchLen = ctNum - cfNum;
     if (!isNaN(multNum) && multNum > 0) return +(stretchLen * multNum).toFixed(4);
     if (roadLen > 0) return calculateStretchQty(boqQty, cfNum, ctNum, roadLen);
     return boqQty;
-  }, [validCh, cfNum, ctNum, multNum, roadLen, boqQty]);
+  }, [isStructure, validCh, cfNum, ctNum, multNum, roadLen, boqQty]);
 
   // Default multiplier (boqQty/roadLen) for display hint
   const defaultRate = roadLen > 0 ? boqQty / roadLen : null;
@@ -184,7 +192,10 @@ function StretchRow({
     }));
   }, [item.id, recipesMap]);
 
-  const effectiveQty = autoQty ?? bar.plannedQty;
+  const structQtyNum = isStructure ? (parseFloat(structQtyStr) || 0) : 0;
+  const effectiveQty = isStructure
+    ? (structQtyNum > 0 ? structQtyNum : bar.plannedQty)
+    : (autoQty ?? bar.plannedQty);
   // Prefer the specific mix type (BC/DBM/WMM/M20 stored when a mix template is linked)
   // over the generic layerType ("bituminous"/"granular") so the planning engine can
   // resolve the correct per-type productivity override without alias collapse.
@@ -292,9 +303,11 @@ function StretchRow({
 
   function save() {
     dirty.current = false;
-    const qty = autoQty ?? bar.plannedQty;
+    const qty = effectiveQty;
     const em = +(smNum + effectiveDurationMonths).toFixed(2);
-    const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
+    const isQtyOverride = isStructure
+      ? false
+      : !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
     const isDurationOverride = durationModeState === "fixed" || (autoDurationMonths == null && bar.isDurationOverride === true);
     // Compute real calendar dates if project has a start date
     const startDateVal = project.startDate
@@ -319,7 +332,7 @@ function StretchRow({
   // ── Bar positioning: uses live draft start + effective duration ─────────────
   const liveStart = smNum;
   const liveEnd = +(smNum + effectiveDurationMonths).toFixed(2);
-  const liveQty = autoQty ?? bar.plannedQty;
+  const liveQty = effectiveQty;
   const barLeft = Math.max(0, (liveStart - 1) * colW);
   const barWidth = Math.max(4, (liveEnd - liveStart) * colW);
   const durationMonths = liveEnd - liveStart;
@@ -382,28 +395,46 @@ function StretchRow({
           </span>
         )}
 
-        {/* @ multiplier — editable, defaults to boqQty/roadLen */}
-        <span className="text-xs text-slate-400 flex-shrink-0">@</span>
-        <input
-          type="number" step="0.0001" min="0.0001"
-          value={mult}
-          onChange={e => { dirty.current = true; setMult(e.target.value); }}
-          onBlur={save}
-          className={`w-[42px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
-            defaultRate != null && !isNaN(multNum) && Math.abs(multNum - defaultRate) > 0.0001
-              ? "border-orange-400 text-orange-600 dark:text-orange-400"
-              : "border-slate-300 dark:border-slate-600"
-          }`}
-          title={defaultRate != null ? `Default rate: ${fmtQty(defaultRate, 4)} ${item.unit}/km` : "Multiplier (qty per km)"}
-          data-testid={`input-mult-${bar.id}`}
-        />
+        {/* Qty input: structure items get direct entry; road items get @ multiplier */}
+        {isStructure ? (
+          <>
+            <span className="text-xs text-violet-400 flex-shrink-0 font-semibold">Qty</span>
+            <input
+              type="number" step="any" min="0"
+              value={structQtyStr}
+              onChange={e => { dirty.current = true; setStructQtyStr(e.target.value); }}
+              onBlur={save}
+              className="w-[54px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-violet-500 dark:text-slate-200 border-violet-300 dark:border-violet-600"
+              title="Quantity at this location (structure/bridge — not chainage-derived)"
+              data-testid={`input-struct-qty-${bar.id}`}
+            />
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-slate-400 flex-shrink-0">@</span>
+            <input
+              type="number" step="0.0001" min="0.0001"
+              value={mult}
+              onChange={e => { dirty.current = true; setMult(e.target.value); }}
+              onBlur={save}
+              className={`w-[42px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-teal-500 dark:text-slate-200 ${
+                defaultRate != null && !isNaN(multNum) && Math.abs(multNum - defaultRate) > 0.0001
+                  ? "border-orange-400 text-orange-600 dark:text-orange-400"
+                  : "border-slate-300 dark:border-slate-600"
+              }`}
+              title={defaultRate != null ? `Default rate: ${fmtQty(defaultRate, 4)} ${item.unit}/km` : "Multiplier (qty per km)"}
+              data-testid={`input-mult-${bar.id}`}
+            />
+          </>
+        )}
 
-        {/* Live qty display — orange = auto from chainage×mult */}
+        {/* Live qty display — violet = structure direct qty, orange = auto from chainage×mult */}
         <span
           className={`text-xs font-bold w-[54px] text-right flex-shrink-0 font-mono ${
+            isStructure ? "text-violet-600 dark:text-violet-400" :
             autoQty != null ? "text-orange-600 dark:text-orange-400" : "text-slate-600 dark:text-slate-300"
           }`}
-          title={autoQty != null ? "Auto-calculated: chainage × multiplier" : "Saved quantity"}
+          title={isStructure ? "Direct qty at this location" : autoQty != null ? "Auto-calculated: chainage × multiplier" : "Saved quantity"}
         >
           {fmtQty(liveQty, 1)}
         </span>
@@ -461,7 +492,7 @@ function StretchRow({
                 lockedDurationRef.current = effectiveDurationMonths;
                 setEndM(String(seedEnd));
                 // Persist mode immediately so the toggle is never silently lost
-                const qty = autoQty ?? bar.plannedQty;
+                const qty = effectiveQty;
                 const em = +seedEnd;
                 const isQtyOverride = !!(autoQty != null && defaultRate != null && Math.abs(multNum - defaultRate) > 0.0001);
                 const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
@@ -473,7 +504,7 @@ function StretchRow({
                 });
               } else {
                 // Switching back to auto: persist immediately
-                const qty = autoQty ?? bar.plannedQty;
+                const qty = effectiveQty;
                 const em = +(smNum + (autoDurationMonths ?? effectiveDurationMonths)).toFixed(2);
                 const startDateVal = project.startDate ? formatDateForInput(monthIndexToDate(smNum, project.startDate)) : null;
                 const endDateVal = project.startDate ? formatDateForInput(monthIndexToDate(em, project.startDate)) : null;
@@ -727,23 +758,19 @@ function InlineGanttTable({
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
-      // Show if: included in planning OR already has bars (keep programmed items visible)
-      if (it.includedInPlanning === false && !(barsByItemId[it.id]?.length > 0)) continue;
+      if (it.includedInPlanning === false) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
     }
-    // Sort items within each category by bill/item code (1.01, 1.02, … 2.01, 10.01)
     for (const cat of Object.keys(m)) {
       m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return m;
-  }, [items, barsByItemId]);
+  }, [items]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
-    // Order categories by the lowest item code they contain, so bills appear
-    // in BOQ order (Preliminaries → Site Clearance → Earthwork → …).
     keys.sort((a, b) => compareItemCode(grouped[a][0]?.itemCode, grouped[b][0]?.itemCode));
     if (grouped["__uncategorised__"]?.length) keys.push("__uncategorised__");
     return keys;
@@ -783,8 +810,8 @@ function InlineGanttTable({
       const totalDur = bar.endMonth - bar.startMonth;
       const leftEnd = +(bar.startMonth + totalDur * leftFraction).toFixed(2);
       const boqQty = items.find(it => it.id === bar.boqItemId)?.currentQty ?? bar.plannedQty * 2;
-      const leftQty = roadLen > 0 ? calculateStretchQty(boqQty, cf, mid, roadLen) : bar.plannedQty * leftFraction;
-      const rightQty = roadLen > 0 ? calculateStretchQty(boqQty, mid, ct, roadLen) : bar.plannedQty * (1 - leftFraction);
+      const leftQty = +(bar.plannedQty * leftFraction).toFixed(4);
+      const rightQty = +(bar.plannedQty * (1 - leftFraction)).toFixed(4);
 
       await apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, {
         chainageFrom: cf, chainageTo: mid,
@@ -832,9 +859,17 @@ function InlineGanttTable({
     const cfVal = lastBar?.chainageTo ?? 0;
     const ctVal = roadLen > 0 ? roadLen : (cfVal + 1);
     const sm = clickedMonth ?? (lastBar ? Math.ceil(lastBar.endMonth) : 1);
-    const qty = roadLen > 0
-      ? calculateStretchQty(item.currentQty, cfVal, ctVal, roadLen)
-      : item.currentQty;
+    const isStructItem = (item as any).planningWorkType === "structure";
+    const existingLen = isStructItem ? 0 : itemBars.reduce(
+      (s, b) => s + Math.max(0, (b.chainageTo ?? 0) - (b.chainageFrom ?? 0)), 0,
+    );
+    const newLen = ctVal - cfVal;
+    const totalLen = existingLen + newLen;
+    const qty = isStructItem
+      ? item.currentQty
+      : (totalLen > 0 && newLen > 0
+        ? +(item.currentQty * (newLen / totalLen)).toFixed(4)
+        : (roadLen > 0 ? calculateStretchQty(item.currentQty, cfVal, ctVal, roadLen) : item.currentQty));
 
     // auto-duration
     const equipment = (recipesMap.get(itemId) ?? []).map(e => ({
@@ -1135,7 +1170,7 @@ function MonthlyPlanView({
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
       // Show if: included in planning OR already has bars (keep programmed items visible)
-      if (it.includedInPlanning === false && !(barsByItemId[it.id]?.length > 0)) continue;
+      if (it.includedInPlanning === false) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);

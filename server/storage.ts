@@ -337,6 +337,40 @@ function isNonPlanningItem(description: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BOQ work-type helper — shared between importBoqItems and backfillBoqWorkType.
+// Returns true when a description is a structure / point-location work item
+// that should NOT be quantity-distributed linearly along the road axis.
+function isStructureWorkItem(description: string): boolean {
+  const d = description.toLowerCase();
+  return (
+    d.includes("bridge") ||
+    d.includes("flyover") ||
+    d.includes("viaduct") ||
+    d.includes("culvert") ||
+    d.includes("minor bridge") ||
+    d.includes("major bridge") ||
+    d.includes("abutment") ||
+    d.includes("pier cap") ||
+    d.includes("pier stem") ||
+    d.includes("deck slab") ||
+    d.includes("deck concrete") ||
+    d.includes("wearing coat") ||
+    d.includes("wearing course on bridge") ||
+    d.includes("cd work") ||
+    d.includes("cross drain") ||
+    d.includes("retaining wall") ||
+    d.includes("breast wall") ||
+    d.includes("toe wall") ||
+    d.includes("wing wall") ||
+    d.includes("box drain") ||
+    d.includes("catch pit") ||
+    d.includes("catch water drain") ||
+    d.includes("head wall") ||
+    d.includes("protection wall")
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RAW SQL CONVENTION — db.execute() usage
 //
 // When running raw SQL with db.execute(sql`...`) always follow these rules:
@@ -1243,6 +1277,9 @@ export interface IStorage {
   backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
   updateBoqItemPlanningInclude(id: number, includedInPlanning: boolean): Promise<void>;
   bulkUpdateCategoryPlanningInclude(projectId: number, categoryId: number | null, includedInPlanning: boolean): Promise<number>;
+  // Task #1193 — structure-aware planning work type
+  backfillBoqWorkType(): Promise<{ set: number; structured: number }>;
+  updateBoqItemWorkType(id: number, planningWorkType: string): Promise<void>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -19920,6 +19957,7 @@ export class DatabaseStorage implements IStorage {
         layerConfig: boqItems.layerConfig,
         dprConversionFactor: boqItems.dprConversionFactor,
         includedInPlanning: boqItems.includedInPlanning,
+        planningWorkType: boqItems.planningWorkType,
         createdAt: boqItems.createdAt,
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
@@ -19942,6 +19980,7 @@ export class DatabaseStorage implements IStorage {
       snlItemCode: r.snlItemCode ?? null,
       snlConfidence: r.snlConfidence ?? null,
       includedInPlanning: r.includedInPlanning ?? true,
+      planningWorkType: (r as any).planningWorkType ?? "road",
     }));
   }
 
@@ -19985,8 +20024,8 @@ export class DatabaseStorage implements IStorage {
           ? Math.round(item.clientRate * item.boqQty * 100) / 100
           : null;
 
-      // Auto-detect planning exclusion for known non-construction item types at import time
       const includedInPlanning = !isNonPlanningItem(item.description);
+      const planningWorkType = isStructureWorkItem(item.description) ? "structure" : "road";
 
       const [inserted] = await db.insert(boqItems).values({
         boqProjectId,
@@ -20002,6 +20041,7 @@ export class DatabaseStorage implements IStorage {
         sortOrder: item.sortOrder ?? i,
         workCategory: item.workCategory ?? suggestWorkCategory(item.itemCode) ?? null,
         includedInPlanning,
+        planningWorkType,
       }).returning({ id: boqItems.id });
       insertedIds.push(inserted.id);
     }
@@ -21169,12 +21209,74 @@ export class DatabaseStorage implements IStorage {
   }
 
   async bulkUpdateCategoryPlanningInclude(projectId: number, categoryId: number | null, includedInPlanning: boolean): Promise<number> {
-    // Update all items in a category for the given project
     const conditions = categoryId !== null
       ? and(eq(boqItems.boqProjectId, projectId), eq(boqItems.categoryId, categoryId))
       : and(eq(boqItems.boqProjectId, projectId), isNull(boqItems.categoryId));
     const result = await db.update(boqItems).set({ includedInPlanning }).where(conditions);
     return (result as any).rowCount ?? 0;
+  }
+
+  async updateBoqItemWorkType(id: number, planningWorkType: string): Promise<void> {
+    await db.update(boqItems).set({ planningWorkType } as any).where(eq(boqItems.id, id));
+  }
+
+  async backfillBoqWorkType(): Promise<{ set: number; structured: number }> {
+    // Ensure the column exists (idempotent migration)
+    await db.execute(sql.raw(`
+      ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS planning_work_type text NOT NULL DEFAULT 'road'
+    `));
+
+    // Step 1: fill any NULL values with 'road' (safe every restart)
+    const setResult = await db.execute(sql.raw(`
+      UPDATE boq_items SET planning_work_type = 'road' WHERE planning_work_type IS NULL
+    `));
+    const set = (setResult as any).rowCount ?? 0;
+
+    // Step 2: one-time pattern detection — mark structure items
+    const markerResult = await db.execute(sql.raw(`
+      SELECT 1 FROM _migration_markers WHERE key = 'boq_work_type_v1'
+    `));
+    if ((markerResult as any).rowCount > 0) {
+      return { set, structured: 0 };
+    }
+
+    const strResult = await db.execute(sql.raw(`
+      UPDATE boq_items SET planning_work_type = 'structure'
+      WHERE planning_work_type = 'road'
+        AND (
+          description ILIKE '%bridge%'
+          OR description ILIKE '%flyover%'
+          OR description ILIKE '%viaduct%'
+          OR description ILIKE '%culvert%'
+          OR description ILIKE '%minor bridge%'
+          OR description ILIKE '%major bridge%'
+          OR description ILIKE '%abutment%'
+          OR description ILIKE '%pier cap%'
+          OR description ILIKE '%pier stem%'
+          OR description ILIKE '%deck slab%'
+          OR description ILIKE '%deck concrete%'
+          OR description ILIKE '%wearing coat%'
+          OR description ILIKE '%wearing course on bridge%'
+          OR description ILIKE '%cd work%'
+          OR description ILIKE '%cross drain%'
+          OR description ILIKE '%retaining wall%'
+          OR description ILIKE '%breast wall%'
+          OR description ILIKE '%toe wall%'
+          OR description ILIKE '%wing wall%'
+          OR description ILIKE '%box drain%'
+          OR description ILIKE '%catch pit%'
+          OR description ILIKE '%catch water drain%'
+          OR description ILIKE '%head wall%'
+          OR description ILIKE '%protection wall%'
+        )
+    `));
+    const structured = (strResult as any).rowCount ?? 0;
+
+    await db.execute(sql.raw(`
+      INSERT INTO _migration_markers (key) VALUES ('boq_work_type_v1') ON CONFLICT DO NOTHING
+    `));
+
+    return { set, structured };
   }
 
   async seedSnlMorthSdb(): Promise<{ source: SnlSource; items: number }> {

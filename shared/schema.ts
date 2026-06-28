@@ -2379,6 +2379,10 @@ export const boqItems = pgTable("boq_items", {
   // When false, the item is excluded from Gantt, BOM, and auto-build-recipes.
   // Remains in the full BOQ for billing. Default true (all items planned).
   includedInPlanning: boolean("included_in_planning").notNull().default(true),
+  // Planning distribution mode. 'road' = linear (qty ∝ chainage length, default).
+  // 'structure' = point-location (qty entered directly per bar; chainage used for
+  // scheduling only). Auto-detected from description keywords at import time.
+  planningWorkType: text("planning_work_type").notNull().default("road"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
