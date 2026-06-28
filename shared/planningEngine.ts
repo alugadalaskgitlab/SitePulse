@@ -875,15 +875,20 @@ export function calculateBomDemand(
       if (m.supplyType) {
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
-      row.breakdown.push({
-        itemDescription: item.itemName || item.description,
-        fullDescription: item.description,
-        itemCode: item.itemCode,
-        qtyPerUnit: effQtyPerUnit,
-        workQty,
-        lineQty,
-        isAuto: m.isAuto ?? true,
-      });
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
+        else row.breakdown.push({
+          itemDescription: item.itemName || item.description,
+          fullDescription: item.description,
+          itemCode: item.itemCode,
+          qtyPerUnit: effQtyPerUnit,
+          workQty,
+          lineQty,
+          isAuto: m.isAuto ?? true,
+        });
+      }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyQty[month] = (row.monthlyQty[month] ?? 0) + effQtyPerUnit * mwq;
       }
@@ -905,7 +910,12 @@ export function calculateBomDemand(
       row.equipmentName = preferDisplayName(row.equipmentName, display);
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
       }
@@ -966,7 +976,12 @@ export function calculateBomDemand(
       const row = labMap.get(key)!;
       row.designation = preferDisplayName(row.designation, designation);
       row.totalDays += lineDays;
-      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
       }
