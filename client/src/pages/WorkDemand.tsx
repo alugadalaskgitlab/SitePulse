@@ -50,9 +50,11 @@ function EmptyState({ label }: { label: string }) {
 function MaterialsTable({
   demand,
   project,
+  structureItemDescriptions,
 }: {
   demand: BomDemand;
   project: BoqProject;
+  structureItemDescriptions: Set<string>;
 }) {
   const mats = demand.materials;
   const [expandedMat, setExpandedMat] = useState<Set<string>>(() => new Set());
@@ -97,12 +99,17 @@ function MaterialsTable({
                   data-testid={`mat-row-${row.materialName}`}
                 >
                   <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-teal-50" : "bg-white"}`}>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {isExpanded
                         ? <ChevronUp className="w-3 h-3 text-teal-500 flex-shrink-0" />
                         : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />
                       }
                       <span className="font-medium text-slate-700">{row.materialName}</span>
+                      {structureItemDescriptions.size > 0 && row.breakdown.length > 0 && row.breakdown.every(b => structureItemDescriptions.has(b.itemDescription)) && (
+                        <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 flex-shrink-0" title="All demand from structure/point-location items — not linearly distributed along the road">
+                          Structure
+                        </span>
+                      )}
                       {row.supplyType === "direct" && (
                         <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 flex-shrink-0" title="Supplied directly from quarry/crusher to site">
                           Direct Supply
@@ -815,6 +822,16 @@ export default function WorkDemand() {
     return calculateBomDemand(items, bars ?? [], project.totalMonths ?? 12);
   }, [bomData, project]);
 
+  // Build set of short descriptions for structure-type BOQ items (point-location, non-linear)
+  const structureItemDescriptions = useMemo((): Set<string> => {
+    if (!bomData?.items?.length) return new Set();
+    const descs = new Set<string>();
+    for (const item of bomData.items) {
+      if ((item as any).planningWorkType === "structure") descs.add(item.description);
+    }
+    return descs;
+  }, [bomData]);
+
   // Build set of descriptions for items that have no programme bars
   const unprogrammedDescriptions = useMemo((): Set<string> => {
     if (!bomData?.unprogrammedItemIds?.length || !bomData.items.length) return new Set();
@@ -1076,7 +1093,7 @@ export default function WorkDemand() {
                   )}
                 </div>
               )}
-              <MaterialsTable demand={demand} project={project} />
+              <MaterialsTable demand={demand} project={project} structureItemDescriptions={structureItemDescriptions} />
             </TabsContent>
 
             <TabsContent value="equipment" className="mt-3">

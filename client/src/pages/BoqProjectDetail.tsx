@@ -1388,6 +1388,7 @@ export default function BoqProjectDetail() {
   const [showImport, setShowImport] = useState(false);
   const [recipeItem, setRecipeItem] = useState<BoqItemWithCategory | null>(null);
   const [snlFloatingOpen, setSnlFloatingOpen] = useState(false);
+  const [dismissedExclusionBanner, setDismissedExclusionBanner] = useState(false);
 
   // ── Data fetching ──
   const { data: project, isLoading: projLoading } = useQuery<BoqProject>({
@@ -1664,6 +1665,29 @@ export default function BoqProjectDetail() {
           </Button>
         </div>
       </div>
+
+      {/* Exclusion warning banner */}
+      {!dismissedExclusionBanner && (() => {
+        const excludedCount = items.filter(it => it.includedInPlanning === false).length;
+        if (!excludedCount) return null;
+        return (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200" data-testid="banner-excluded-items">
+            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 flex-1">
+              <span className="font-semibold">{excludedCount} item{excludedCount > 1 ? "s" : ""} excluded from the work programme.</span>{" "}
+              Any existing Gantt bars for these items are retained in the database and will reappear if you re-include them. Use the ✓/− toggles on each item row to change inclusion.
+            </p>
+            <button
+              onClick={() => setDismissedExclusionBanner(true)}
+              className="text-amber-500 hover:text-amber-700 flex-shrink-0"
+              aria-label="Dismiss"
+              data-testid="button-dismiss-exclusion-banner"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Summary stats */}
       {(() => {
