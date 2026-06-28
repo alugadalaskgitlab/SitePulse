@@ -1,0 +1,156 @@
+# SitePulse — Patch 36
+**Fixes:** Issue 5 (Procurement Intelligence empty) + Issue 2 (Road/Structure tabs return on 2nd DPR)
+**Risk:** Very low. No data/schema changes. Apply in order, then restart the Replit app.
+
+> Apply each FIND exactly once unless it says "replace ALL occurrences". Whitespace matters.
+
+---
+
+## PART A — Issue 5: shared BOM expansion (fixes empty Procurement)
+**File:** `server/routes.ts`
+
+### A1 — Turn the `/bom` handler opener into a reusable function
+**FIND:**
+```ts
+  // BOM demand for the whole project
+  app.get("/api/boq/projects/:id/bom", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
+```
+**REPLACE:**
+```ts
+  // Shared BOM expansion — resolves each BOQ item to its best material list using the
+  // P1→P4 source priority. Used by BOTH /bom and /shortage-check so the two endpoints
+  // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
+  // that only existed inside /bom → ReferenceError → empty Procurement Intelligence.)
+  async function computeProjectBom(projectId: number) {
+      const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
+```
+
+### A2 — Close the function and add a slim `/bom` route that calls it
+**FIND:**
+```ts
+      const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
+      console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes}`);
+      res.json({
+        items: expandedItems,
+        bars,
+        roadLengthKm: project?.roadLengthKm ?? 0,
+        unprogrammedItemIds: items.filter(it => !barItemIds.has(it.id)).map(it => it.id),
+        hasBars: bars.length > 0,
+        hasItems: items.length > 0,
+        hasRecipes,
+      });
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/bom:", err);
+      res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+```
+**REPLACE:**
+```ts
+      return { items, bars, project, expandedItems };
+  }
+
+  // BOM demand for the whole project
+  app.get("/api/boq/projects/:id/bom", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const { items, bars, project, expandedItems } = await computeProjectBom(projectId);
+      const barItemIds = new Set(bars.map(b => b.boqItemId));
+      const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
+      console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes}`);
+      res.json({
+        items: expandedItems,
+        bars,
+        roadLengthKm: project?.roadLengthKm ?? 0,
+        unprogrammedItemIds: items.filter(it => !barItemIds.has(it.id)).map(it => it.id),
+        hasBars: bars.length > 0,
+        hasItems: items.length > 0,
+        hasRecipes,
+      });
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/bom:", err);
+      res.status(500).json({ error: "Failed to fetch BOM data" });
+    }
+  });
+```
+
+### A3 — Make `/shortage-check` use the shared function (this is the actual crash fix)
+**FIND:**
+```ts
+      const [items, bars, allStockBalances, allMaterials] = await Promise.all([
+        storage.getBoqItemsWithRecipes(projectId),
+        storage.getWorkProgramBars(projectId),
+        storage.getStockBalances(), // all parties
+        storage.getPlantMaterials(),
+      ]);
+```
+**REPLACE:**
+```ts
+      const [{ expandedItems, bars }, allStockBalances, allMaterials] = await Promise.all([
+        computeProjectBom(projectId),
+        storage.getStockBalances(), // all parties
+        storage.getPlantMaterials(),
+      ]);
+```
+
+### A4 — Fix the `hasRecipes` reference in the shortage-check response
+**FIND:**
+```ts
+        hasRecipes: items.some(it => it.materials.length > 0),
+```
+**REPLACE:**
+```ts
+        hasRecipes: expandedItems.some(it => it.materials.length > 0),
+```
+
+> Note: `/shortage-check` already fetches `project` near the top of its handler, and the demand line
+> `expandedItems.length && bars.length ? calculateBomDemand(expandedItems, bars, project.totalMonths ?? 12)`
+> now works because `expandedItems` and `bars` are defined by A3.
+
+---
+
+## PART B — Issue 2: keep Road/Structure lock on every new DPR
+**File 1:** `client/src/pages/SiteEntry.tsx`
+
+**FIND:**
+```ts
+      setLocation(appendOrigin(`/site/success/${data.id}`));
+```
+**REPLACE:**
+```ts
+      setLocation(appendOrigin(`/site/success/${data.id}?type=${workType}`));
+```
+
+**File 2:** `client/src/pages/SiteSuccess.tsx`
+
+### B1 — read the work type from the URL
+**FIND:**
+```ts
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/site/dashboard");
+```
+**REPLACE:**
+```ts
+  const { appendOrigin } = useOrigin();
+  const backLink = appendOrigin("/site/dashboard");
+  const newReportType = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("type");
+```
+
+### B2 — carry the type onto the "Create New" link
+**FIND:**
+```ts
+            <Link href={appendOrigin("/site/new")}>
+```
+**REPLACE:**
+```ts
+            <Link href={appendOrigin(`/site/new${newReportType ? `?type=${newReportType}` : ""}`)}>
+```
+
+---
+
+## How to verify
+1. **Procurement:** open a project → **Procurement** tab. Rows now load (previously blank). Backend log no longer shows `expandedItems is not defined`.
+2. **DPR lock:** open the **Road** tile → save a DPR → on the success screen click **Create New Site Report** → the new form opens with **no Road/Structure toggle** (locked to Road). Repeat from the **Structure** tile (locked to Structure).

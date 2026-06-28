@@ -1,0 +1,139 @@
+# SitePulse — Patch 37
+**Fixes:** Issue 3.4 (HYSD shows only foundations) + Issue 3.1 (Bill 10 GSB/WMM "missing") + Issue 3.3 (BC shows Emulsion SS-1) + Issue 4 (NP4 pipes split)
+**Risk:** Low. Pure logic in `shared/planningEngine.ts` and `shared/workTypeRecipes.ts`. No schema/data changes.
+**Apply Patch 36 first.**
+
+---
+
+## PART A — Breakdown contributor key (fixes #3.4 and #3.1)
+**File:** `shared/planningEngine.ts`
+This single line appears **3 times** (inside the materials, equipment and labour loops). **Replace ALL 3 occurrences.**
+
+**FIND (×3):**
+```ts
+        const bk = (item.itemCode ?? item.description) || "";
+```
+**REPLACE (×3):**
+```ts
+        // Key each contributor by the BOQ line's own id so parent/child sub-items
+        // (which share the parent itemCode) and identical descriptions repeated across
+        // different bills each appear as their own breakdown row instead of collapsing.
+        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
+```
+
+> Effect: steel "Foundation / Sub-Structure / Super-Structure" now show as 3 separate contributors, and Bill 3 vs Bill 10 GSB/WMM each show their own row. Totals are unchanged — they were always summed correctly; only the drill-down was hiding contributors.
+
+---
+
+## PART B — Classifier precedence (fixes #3.3, the BC→Emulsion SS-1 bug)
+**File:** `shared/workTypeRecipes.ts`
+Move the prime/tack-coat tests to run **after** the BC/DBM mix tests, so a BC wearing-coat item that says "…after applying prime coat…" is no longer grabbed as a spray coat.
+
+**FIND:**
+```ts
+  // ── Bituminous spray works ──────────────────────────────────────────────────
+  if (/tack\s*coat/i.test(d)) return "tack_coat";
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
+
+  // ── Bituminous wearing ──────────────────────────────────────────────────────
+  if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";
+  if (/wearing\s*coat/i.test(d) && /bitumin/i.test(d)) return "bituminous_wearing";
+  // BC / Bituminous Concrete → wearing unless explicitly DBM/dense-bituminous context
+  if (/bituminous\s*concrete|\bbc\b/i.test(d) && !/dense\s*bituminous|\bdbm\b/i.test(d)) return "bituminous_wearing";
+
+  // ── Bituminous base / binder ────────────────────────────────────────────────
+  if (/\bdbm\b|dense\s*bituminous/i.test(d)) return "bituminous_base";
+  if (/bituminous\s*macadam|\bbm\b/i.test(d)) return "bituminous_base";
+```
+**REPLACE:**
+```ts
+  // ── Bituminous wearing ──────────────────────────────────────────────────────
+  if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";
+  if (/wearing\s*coat/i.test(d) && /bitumin/i.test(d)) return "bituminous_wearing";
+  // BC / Bituminous Concrete → wearing unless explicitly DBM/dense-bituminous context
+  if (/bituminous\s*concrete|\bbc\b/i.test(d) && !/dense\s*bituminous|\bdbm\b/i.test(d)) return "bituminous_wearing";
+
+  // ── Bituminous base / binder ────────────────────────────────────────────────
+  if (/\bdbm\b|dense\s*bituminous/i.test(d)) return "bituminous_base";
+  if (/bituminous\s*macadam|\bbm\b/i.test(d)) return "bituminous_base";
+
+  // ── Bituminous spray works ──────────────────────────────────────────────────
+  // Checked AFTER the mix layers above so a BC/DBM laying item that merely mentions
+  // "after applying prime coat" / "over tack coat" is NOT misclassified as a spray coat.
+  if (/tack\s*coat/i.test(d)) return "tack_coat";
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
+```
+
+---
+
+## PART C — Emulsion naming guard (defence-in-depth for #3.3)
+**File:** `shared/planningEngine.ts` → `normaliseKeyMaterialName()`
+Never rename a BC/DBM/SDBC/BM mix material to emulsion just because its description references a coat.
+
+**FIND:**
+```ts
+  if (/emulsion/i.test(raw) || /prime\s*coat|tack\s*coat/i.test(desc)) {
+    if (/prime\s*coat/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack\s*coat/i.test(desc)) return "Bitumen Emulsion RS-1";
+    return "Bitumen Emulsion";
+  }
+```
+**REPLACE:**
+```ts
+  // Emulsion naming must NEVER apply to a BC/DBM/SDBC/BM mix item that merely mentions
+  // "after applying prime coat" / "over tack coat" — those keep their VG-grade binder.
+  const descIsBitMix = /bituminous\s*concrete|\bbc\b|\bdbm\b|dense\s*bituminous|sdbc|bituminous\s*macadam|\bbm\b/i.test(desc);
+  if (!descIsBitMix && (/emulsion/i.test(raw) || /prim(?:e|er)\s*coat|\bprimer\b|tack\s*coat/i.test(desc))) {
+    if (/prim/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack/i.test(desc)) return "Bitumen Emulsion RS-1";
+    return "Bitumen Emulsion";
+  }
+```
+
+---
+
+## PART D — Tolerant pipe identity (fixes #4, NP4 split)
+**File:** `shared/planningEngine.ts` → `pipeMaterialName()`
+
+**FIND:**
+```ts
+function pipeMaterialName(item: BomInputItem): string {
+  const d = item.description;
+  const cls = /np4/i.test(d) ? "NP4" : /np3/i.test(d) ? "NP3" : /np2/i.test(d) ? "NP2" : /hdpe/i.test(d) ? "HDPE" : "";
+  const dia = d.match(/(\d{3,4})\s*mm/);
+  const size = dia ? `${dia[1]}mm dia` : "";
+  const base = /hdpe/i.test(d) ? "HDPE Pipe" : "RCC Hume Pipe";
+  return [base, cls && `(${cls})`, size].filter(Boolean).join(" ");
+}
+```
+**REPLACE:**
+```ts
+function pipeMaterialName(item: BomInputItem): string {
+  const d = item.description;
+  // Class — tolerant of "NP-4" / "NP 4" / "NP4"
+  const cls =
+    /np[\s-]?4/i.test(d) ? "NP4" :
+    /np[\s-]?3/i.test(d) ? "NP3" :
+    /np[\s-]?2/i.test(d) ? "NP2" :
+    /hdpe/i.test(d) ? "HDPE" : "";
+  // Diameter in mm — tolerant of "1200 mm", "1200mm dia", "1200 dia", "DIA 1200", "1.2 m"
+  let mm: number | null = null;
+  const mDia = d.match(/(\d{3,4})\s*(?:mm)?\s*dia\b/i)   // "1200 dia" / "1200 mm dia"
+            || d.match(/(\d{3,4})\s*mm\b/i)               // "1200 mm"
+            || d.match(/dia\.?\s*(\d{3,4})\b/i);          // "dia 1200"
+  const mMtr = d.match(/\b(\d(?:\.\d+)?)\s*m\b/i);        // "1.2 m"
+  if (mDia) mm = parseInt(mDia[1], 10);
+  else if (mMtr && parseFloat(mMtr[1]) < 10) mm = Math.round(parseFloat(mMtr[1]) * 1000);
+  const size = mm ? `${mm}mm dia` : "";
+  const base = /hdpe/i.test(d) ? "HDPE Pipe" : "RCC Hume Pipe";
+  return [base, cls && `(${cls})`, size].filter(Boolean).join(" ");
+}
+```
+
+---
+
+## How to verify
+1. **Steel:** expand the **TMT / Reinforcement Steel** BOM row → you now see **Foundation, Sub-Structure, Super-Structure** as separate contributor lines (total = sum of all three).
+2. **GSB/WMM:** expand **GSB Material** / **WMM Material** → both the Bill 3 and Bill 10 lines appear as contributors.
+3. **BC:** the Bill-5 "40 mm BC wearing coat … after applying prime coat" item now derives **Bitumen VG-40 + aggregates** (NOT Emulsion SS-1). Genuine prime/tack-coat items still show emulsion.
+4. **NP4:** the Bill-5 ("NP-4 … 1200 dia") and Bill-10 ("NP4 … 1200 mm dia") pipes now merge into a single **RCC Hume Pipe (NP4) 1200mm dia** row; other diameters (600/750/900/1000) keep their own rows.

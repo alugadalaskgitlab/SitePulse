@@ -9990,10 +9990,11 @@ export async function registerRoutes(
     }
   }
 
-  // BOM demand for the whole project
-  app.get("/api/boq/projects/:id/bom", async (req, res) => {
-    try {
-      const projectId = parseInt(req.params.id);
+  // Shared BOM expansion — resolves each BOQ item to its best material list using the
+  // P1→P4 source priority. Used by BOTH /bom and /shortage-check so the two endpoints
+  // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
+  // that only existed inside /bom → ReferenceError → empty Procurement Intelligence.)
+  async function computeProjectBom(projectId: number) {
       const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
         storage.getBoqItemsWithRecipes(projectId),
         storage.getWorkProgramBars(projectId),
@@ -10255,6 +10256,15 @@ export async function registerRoutes(
         return { ...item, materials: cleanedRows, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
       });
 
+      return { items, bars, project, expandedItems };
+  }
+
+  // BOM demand for the whole project
+  app.get("/api/boq/projects/:id/bom", async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const { items, bars, project, expandedItems } = await computeProjectBom(projectId);
+      const barItemIds = new Set(bars.map(b => b.boqItemId));
       const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
       console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes}`);
       res.json({
@@ -10279,9 +10289,8 @@ export async function registerRoutes(
       const project = await storage.getBoqProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
 
-      const [items, bars, allStockBalances, allMaterials] = await Promise.all([
-        storage.getBoqItemsWithRecipes(projectId),
-        storage.getWorkProgramBars(projectId),
+      const [{ expandedItems, bars }, allStockBalances, allMaterials] = await Promise.all([
+        computeProjectBom(projectId),
         storage.getStockBalances(), // all parties
         storage.getPlantMaterials(),
       ]);
@@ -10345,7 +10354,7 @@ export async function registerRoutes(
         projectName: project.name,
         rows: shortageRows,
         hasBars: bars.length > 0,
-        hasRecipes: items.some(it => it.materials.length > 0),
+        hasRecipes: expandedItems.some(it => it.materials.length > 0),
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);

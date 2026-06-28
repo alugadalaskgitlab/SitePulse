@@ -9,6 +9,7 @@ export default function SiteSuccess() {
   const reportId = params?.id;
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/site/dashboard");
+  const newReportType = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("type");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -38,7 +39,7 @@ export default function SiteSuccess() {
                 </Button>
               </Link>
             )}
-            <Link href={appendOrigin("/site/new")}>
+            <Link href={appendOrigin(`/site/new${newReportType ? `?type=${newReportType}` : ""}`)}>
               <Button className="w-full gap-2" data-testid="button-create-new">
                 <Plus className="w-4 h-4" />
                 Create New Site Report

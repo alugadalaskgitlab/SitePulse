@@ -591,7 +591,7 @@ export default function SiteEntry() {
         title: "Report Saved Successfully",
         description: "Your site report has been submitted.",
       });
-      setLocation(appendOrigin(`/site/success/${data.id}`));
+      setLocation(appendOrigin(`/site/success/${data.id}?type=${workType}`));
     },
     onError: () => {
       toast({
