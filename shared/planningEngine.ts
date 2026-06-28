@@ -1270,6 +1270,8 @@ const MIX_TYPE_ALIASES: Record<string, string> = {
   "SEMI-DENSE BITUMINOUS CONCRETE": "SDBC",
   "SEMI DENSE BITUMINOUS CONCRETE": "SDBC",
   "SDBC": "SDBC",
+  "MASTIC ASPHALT": "MA",
+  "MA": "MA",
   "SURFACE DRESSING": "SD",
   "SD": "SD",
   "WET MIX MACADAM": "WMM",
@@ -1474,6 +1476,14 @@ export const BITUMINOUS_IRC_DEFAULTS: Record<string, {
       { name: "20mm Aggregate", pct: 30.0 },
       { name: "10mm Aggregate", pct: 22.0 },
       { name: "Stone Dust",     pct: 6.5  },
+    ],
+  },
+  MA: {
+    bitumenPct: 8.5,
+    aggregates: [
+      { name: "10mm Aggregate", pct: 28.0 },
+      { name: "Stone Dust",     pct: 50.0 },
+      { name: "Filler (Lime)",  pct: 13.5 },
     ],
   },
 };

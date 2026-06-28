@@ -10285,8 +10285,48 @@ export async function registerRoutes(
               isAuto: true as const,
               supplyType: derivedSupplyType,
             }));
+
+            // HMP hours correction for CUM/SQM bituminous items.
+            // The HMP outputs in MT, so when the BOQ unit is SQM or CUM the saved
+            // qtyPerBoqUnit falls back to a flat norm (0.00833 hrs/unit) that ignores
+            // density and thickness. Correct it here: total MT of mix per BOQ unit
+            // (sum of all auto MT material rows) ÷ HMP outputPerHr.
+            let correctedEquipment = item.equipment as typeof item.equipment;
+            if (lc?.layerType === "bituminous") {
+              const boqUnitNorm = (item.unit ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+              const isAlreadyMtUnit = boqUnitNorm === "MT" || boqUnitNorm === "T";
+              if (!isAlreadyMtUnit) {
+                const totalMtPerBoqUnit = derived.reduce(
+                  (sum: number, d: any) => (d.uom === "MT" ? sum + d.qtyPerBoqUnit : sum), 0,
+                );
+                if (totalMtPerBoqUnit > 0) {
+                  correctedEquipment = (item.equipment as any[]).map((eq: any) => {
+                    if (!/hot[\s-]?mix[\s-]?plant|hmp\b/i.test(eq.equipmentName ?? "")) return eq;
+                    try {
+                      const outs = typeof eq.standardOutputs === "string"
+                        ? JSON.parse(eq.standardOutputs)
+                        : eq.standardOutputs;
+                      const mtOut = Array.isArray(outs)
+                        ? outs.find((o: any) => String(o.unit ?? "").toUpperCase() === "MT")
+                        : null;
+                      if (mtOut?.outputPerHr > 0) {
+                        const corrected = totalMtPerBoqUnit / mtOut.outputPerHr;
+                        console.log(
+                          `[HMP HRS FIX] ${item.itemCode} unit=${item.unit} totalMtPerBoqUnit=${totalMtPerBoqUnit.toFixed(4)} ` +
+                          `outputPerHr=${mtOut.outputPerHr} old=${eq.qtyPerBoqUnit?.toFixed(5)} new=${corrected.toFixed(5)}`,
+                        );
+                        return { ...eq, qtyPerBoqUnit: corrected };
+                      }
+                    } catch { /* keep original if parse fails */ }
+                    return eq;
+                  });
+                }
+              }
+            }
+
             return {
               ...item,
+              equipment: correctedEquipment,
               materials: derivedRows.map(dm => ({
                 id: 0,
                 boqItemId: item.id,
