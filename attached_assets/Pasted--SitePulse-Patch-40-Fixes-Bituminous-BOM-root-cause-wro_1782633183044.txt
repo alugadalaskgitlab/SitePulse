@@ -1,0 +1,200 @@
+# SitePulse — Patch 40
+**Fixes:** Bituminous BOM root cause — wrong bitumen grade + missing/incorrect aggregates for BC/DBM.
+**What it does:** (1) Removes the dangerous "first bituminous template" cross-type fallback so **BC can never borrow DBM's template** (and vice-versa). (2) Makes the engine **prefer your approved Masters template (JMF)**, and only when no *complete* template matches the item's exact mix type, fall back to the **built-in IRC default for that exact type** (BC/DBM/SDBC/BM) — so you always get the right grade + a full aggregate set.
+**Risk:** Low — logic only, in `server/routes.ts` and `shared/planningEngine.ts`. Apply after Patches 36–39.
+
+> Validated: 10/10 behavioural tests pass (Masters-template-wins, per-type IRC fallback, no cross-type borrowing, SQM thickness math); both files transpile clean.
+
+---
+
+## EDIT 1 — remove the cross-type "first template" declaration
+**File:** `server/routes.ts`
+**FIND:**
+```ts
+      // First available standard bituminous template — last-resort fallback so DBM/SDBC
+      // items still get aggregate fractions + LDO when no exact mixType template exists.
+      const firstBitTemplateId =
+        allMixTemplates.find(t => /bitumin|dbm|\bbc\b|sdbc|\bbm\b|wearing|dense/i.test(`${t.mixType ?? ""} ${t.name ?? ""}`))?.id
+        ?? (allMixTemplates[0]?.id ?? null);
+```
+**REPLACE:**
+```ts
+      // (Cross-type "first bituminous template" fallback removed — Patch 40.
+      //  Items with no matching mix type now fall back to the built-in IRC default
+      //  for their exact type inside deriveMaterialsFromLayerConfig.)
+```
+
+---
+
+## EDIT 2 — remove the two blanket fallbacks in the resolver
+**File:** `server/routes.ts`
+**FIND:**
+```ts
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
+            // Generic fallback: single bituminous mix-link for this project
+            const bitLinks = mixLinks.filter(l => l.mixTemplateId);
+            if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
+          }
+          // Last resort: any standard bituminous template in Masters, so the item still
+          // gets aggregate fractions + LDO instead of a "template required" blank.
+          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && firstBitTemplateId) {
+            resolvedMixTemplateId = firstBitTemplateId;
+          }
+```
+**REPLACE:**
+```ts
+          // NOTE: no cross-type fallback here. If no template matches this item's exact
+          // mix type (BC/DBM/SDBC/BM), we intentionally leave it unresolved so the engine
+          // falls back to the built-in IRC default for THAT mix type — never borrowing a
+          // different type's template (which caused BC to show DBM's grade/aggregates).
+```
+
+---
+
+## EDIT 3 — make the derivation prefer the Masters template, else IRC-default per type
+**File:** `shared/planningEngine.ts` → `deriveMaterialsFromLayerConfig()`
+**FIND:**
+```ts
+  if (layerConfig.layerType === "bituminous") {
+    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
+    if (!mixTemplate) return [];
+    const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
+    const thickness = layerConfig.thicknessMm ?? 0;
+
+    // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:
+    //   CUM → 1 CUM = density MT (thickness irrelevant)
+    //   MT  → 1
+    //   SQM → (thickness/1000) × density  (needs thickness)
+    const u = String(_boqUnit || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let mtPerUnit: number;
+    if (/^(CUM|CUB|M3|CU|CUBICM)$/.test(u)) {
+      mtPerUnit = density;
+    } else if (/^(MT|TON|T|TONNE|TONNES|TONS)$/.test(u)) {
+      mtPerUnit = 1;
+    } else {
+      if (thickness <= 0) return [];
+      mtPerUnit = (thickness / 1000) * density;
+    }
+
+    const rows: DerivedMaterialRow[] = [];
+    // Single binder row — use the grade from the template component if listed,
+    // else bitumenPercent with a VG-30 default. Prevents VG-30 + VG-40 duplicates.
+    const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
+    const binderComp = mixTemplate.components.find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const bitPct = binderComp?.percent ?? mixTemplate.bitumenPercent ?? 0;
+    const grade = (mixTemplate.binderGrade ?? "").trim();
+    const binderName = grade
+      ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
+      : (binderComp?.materialName?.trim() || "Bitumen VG-30");
+    if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+
+    // Aggregate fractions — skip the binder component (already counted).
+    for (const c of mixTemplate.components) {
+      if (c === binderComp || isBinderName(c.materialName)) continue;
+      if ((c.percent ?? 0) > 0) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
+      }
+    }
+
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per unit)
+    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerUnit,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+
+  return [];
+}
+```
+**REPLACE:**
+```ts
+  if (layerConfig.layerType === "bituminous") {
+    const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
+    const thickness = layerConfig.thicknessMm ?? 0;
+
+    // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:
+    //   CUM → 1 CUM = density MT (thickness irrelevant)
+    //   MT  → 1
+    //   SQM → (thickness/1000) × density  (needs thickness)
+    const u = String(_boqUnit || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let mtPerUnit: number;
+    if (/^(CUM|CUB|M3|CU|CUBICM)$/.test(u)) {
+      mtPerUnit = density;
+    } else if (/^(MT|TON|T|TONNE|TONNES|TONS)$/.test(u)) {
+      mtPerUnit = 1;
+    } else {
+      if (thickness <= 0) return [];
+      mtPerUnit = (thickness / 1000) * density;
+    }
+
+    const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
+
+    // Source of the job mix: PREFER a complete approved Masters/JMF template. Only when
+    // none resolves (or it is incomplete) fall back to the built-in IRC default for THIS
+    // exact mix type, so BC never borrows DBM's grade/aggregates and vice-versa.
+    const tmplAggs = (mixTemplate?.components ?? []).filter(c => !isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const tmplBinderComp = (mixTemplate?.components ?? []).find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const tmplHasBinder = (mixTemplate?.bitumenPercent ?? 0) > 0 || !!tmplBinderComp || !!(mixTemplate?.binderGrade && mixTemplate.binderGrade.trim());
+    const templateUsable = !!mixTemplate && tmplAggs.length > 0 && tmplHasBinder;
+
+    const mixKey = normaliseMixType(layerConfig.mixType ?? "");
+    const ircDefault = BITUMINOUS_IRC_DEFAULTS[mixKey];
+    if (!templateUsable && !ircDefault) return [];   // unknown mix type AND no usable template
+
+    const rows: DerivedMaterialRow[] = [];
+
+    if (templateUsable) {
+      // ── Approved Masters template (JMF) ───────────────────────────────────────
+      const bitPct = tmplBinderComp?.percent ?? mixTemplate!.bitumenPercent ?? 0;
+      const grade = (mixTemplate!.binderGrade ?? "").trim();
+      const binderName = grade
+        ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
+        : (tmplBinderComp?.materialName?.trim() || "Bitumen VG-30");
+      if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+      for (const c of tmplAggs) {
+        rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
+      }
+    } else {
+      // ── IRC standard fallback for THIS exact mix type (keeps template grade if given) ──
+      const grade = (mixTemplate?.binderGrade ?? "VG-30").trim();
+      const binderName = /bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`;
+      rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
+      for (const a of ircDefault.aggregates) {
+        rows.push({ materialName: a.name, uom: "MT", qtyPerBoqUnit: (a.pct / 100) * mtPerUnit, isAuto: true });
+      }
+    }
+
+    // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per unit)
+    const ldoNorm = mixTemplate?.ldoNorm ?? 6; // liters/MT default = 6
+    if (ldoNorm > 0) {
+      rows.push({
+        materialName: "LDO / Process Fuel",
+        uom: "L",
+        qtyPerBoqUnit: ldoNorm * mtPerUnit,
+        isAuto: true,
+        applicationNote: `HMP plant fuel at ${ldoNorm} L/MT`,
+      });
+    }
+    return rows;
+  }
+
+  return [];
+}
+```
+
+---
+
+## How to verify
+1. Open a project → **Demand** → expand a **BC** row: you should see **Bitumen VG-40** (your template grade) + your template's aggregates (10/12mm, 6mm, dust) + LDO.
+2. Expand a **DBM** row: it must show **DBM's own** grade/aggregates — never BC's.
+3. If a bituminous item has no matching template, it now shows a clean **IRC default** set (binder + full aggregate gradation) with the note "IRC default … JMF (no complete template)", instead of being blank or borrowing another mix.
+
+## Still want the exact diagnosis?
+The `[BITUMEN BOM]` log (added in Patch 34) prints, per BC/DBM item: the resolved template's `binderGrade`, `bitumenPercent`, `componentCount` and each component name/percent, plus the derived rows. Paste it for one BC + one DBM item from your Replit console and I'll confirm the fix matched your data exactly — or tune if a template's `mixType`/component names need a small alias.

@@ -277,8 +277,15 @@ describe("deriveMaterialsFromLayerConfig — bituminous from mix template", () =
     expect(rows.find(r => r.materialName === "LDO / Process Fuel")).toBeDefined();
   });
 
-  it("returns [] (no guessing) when no mix template is provided", () => {
+  it("returns IRC default rows for a known mix type when no template is provided", () => {
     const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "BC" }, "SQM", undefined);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.find(r => r.materialName.toLowerCase().includes("bitumen"))).toBeDefined();
+    expect(rows.find(r => r.materialName === "LDO / Process Fuel")).toBeDefined();
+  });
+
+  it("returns [] for a truly unknown mix type with no template", () => {
+    const rows = deriveMaterialsFromLayerConfig({ ...baseLayerConfig, mixType: "UNKNOWN_MIX_XYZ" }, "SQM", undefined);
     expect(rows.length).toBe(0);
   });
 

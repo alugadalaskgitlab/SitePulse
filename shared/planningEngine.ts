@@ -1555,8 +1555,6 @@ export function deriveMaterialsFromLayerConfig(
   }
 
   if (layerConfig.layerType === "bituminous") {
-    // Bituminous materials come ONLY from the mix template / JMF (no IRC guessing).
-    if (!mixTemplate) return [];
     const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
     const thickness = layerConfig.thicknessMm ?? 0;
 
@@ -1575,28 +1573,45 @@ export function deriveMaterialsFromLayerConfig(
       mtPerUnit = (thickness / 1000) * density;
     }
 
-    const rows: DerivedMaterialRow[] = [];
-    // Single binder row — use the grade from the template component if listed,
-    // else bitumenPercent with a VG-30 default. Prevents VG-30 + VG-40 duplicates.
     const isBinderName = (n: string) => /bitumen|\bvg[\s-]?\d+\b|binder|emulsion/i.test(n || "");
-    const binderComp = mixTemplate.components.find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
-    const bitPct = binderComp?.percent ?? mixTemplate.bitumenPercent ?? 0;
-    const grade = (mixTemplate.binderGrade ?? "").trim();
-    const binderName = grade
-      ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
-      : (binderComp?.materialName?.trim() || "Bitumen VG-30");
-    if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
 
-    // Aggregate fractions — skip the binder component (already counted).
-    for (const c of mixTemplate.components) {
-      if (c === binderComp || isBinderName(c.materialName)) continue;
-      if ((c.percent ?? 0) > 0) {
+    // Source of the job mix: PREFER a complete approved Masters/JMF template. Only when
+    // none resolves (or it is incomplete) fall back to the built-in IRC default for THIS
+    // exact mix type, so BC never borrows DBM's grade/aggregates and vice-versa.
+    const tmplAggs = (mixTemplate?.components ?? []).filter(c => !isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const tmplBinderComp = (mixTemplate?.components ?? []).find(c => isBinderName(c.materialName) && (c.percent ?? 0) > 0);
+    const tmplHasBinder = (mixTemplate?.bitumenPercent ?? 0) > 0 || !!tmplBinderComp || !!(mixTemplate?.binderGrade && mixTemplate.binderGrade.trim());
+    const templateUsable = !!mixTemplate && tmplAggs.length > 0 && tmplHasBinder;
+
+    const mixKey = normaliseMixType(layerConfig.mixType ?? "");
+    const ircDefault = BITUMINOUS_IRC_DEFAULTS[mixKey];
+    if (!templateUsable && !ircDefault) return [];   // unknown mix type AND no usable template
+
+    const rows: DerivedMaterialRow[] = [];
+
+    if (templateUsable) {
+      // ── Approved Masters template (JMF) ───────────────────────────────────────
+      const bitPct = tmplBinderComp?.percent ?? mixTemplate!.bitumenPercent ?? 0;
+      const grade = (mixTemplate!.binderGrade ?? "").trim();
+      const binderName = grade
+        ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
+        : (tmplBinderComp?.materialName?.trim() || "Bitumen VG-30");
+      if (bitPct > 0) rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (bitPct / 100) * mtPerUnit, isAuto: true });
+      for (const c of tmplAggs) {
         rows.push({ materialName: c.materialName, uom: "MT", qtyPerBoqUnit: ((c.percent ?? 0) / 100) * mtPerUnit, isAuto: true });
+      }
+    } else {
+      // ── IRC standard fallback for THIS exact mix type (keeps template grade if given) ──
+      const grade = (mixTemplate?.binderGrade ?? "VG-30").trim();
+      const binderName = /bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`;
+      rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
+      for (const a of ircDefault.aggregates) {
+        rows.push({ materialName: a.name, uom: "MT", qtyPerBoqUnit: (a.pct / 100) * mtPerUnit, isAuto: true });
       }
     }
 
     // LDO / Process Fuel — HMP fuel demand (liters per MT of mix × MT per unit)
-    const ldoNorm = mixTemplate.ldoNorm ?? 6; // liters/MT default = 6
+    const ldoNorm = mixTemplate?.ldoNorm ?? 6; // liters/MT default = 6
     if (ldoNorm > 0) {
       rows.push({
         materialName: "LDO / Process Fuel",

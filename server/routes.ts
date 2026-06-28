@@ -10047,11 +10047,9 @@ export async function registerRoutes(
         if (normalised && normalised !== raw && !mixTypeToTemplateId.has(normalised)) { mixTypeToTemplateId.set(normalised, t.id); mixTemplateIds.add(t.id); }
       }
 
-      // First available standard bituminous template — last-resort fallback so DBM/SDBC
-      // items still get aggregate fractions + LDO when no exact mixType template exists.
-      const firstBitTemplateId =
-        allMixTemplates.find(t => /bitumin|dbm|\bbc\b|sdbc|\bbm\b|wearing|dense/i.test(`${t.mixType ?? ""} ${t.name ?? ""}`))?.id
-        ?? (allMixTemplates[0]?.id ?? null);
+      // (Cross-type "first bituminous template" fallback removed — Patch 40.
+      //  Items with no matching mix type now fall back to the built-in IRC default
+      //  for their exact type inside deriveMaterialsFromLayerConfig.)
 
       // Fetch mix template data and resolve component material names in parallel
       const mixTemplateMap = new Map<number, {
@@ -10116,16 +10114,10 @@ export async function registerRoutes(
               mixTypeToTemplateId.get(normaliseMixType(cat)) ??
               null;
           }
-          if (!resolvedMixTemplateId && lc.layerType === "bituminous") {
-            // Generic fallback: single bituminous mix-link for this project
-            const bitLinks = mixLinks.filter(l => l.mixTemplateId);
-            if (bitLinks.length === 1) resolvedMixTemplateId = bitLinks[0].mixTemplateId;
-          }
-          // Last resort: any standard bituminous template in Masters, so the item still
-          // gets aggregate fractions + LDO instead of a "template required" blank.
-          if (!resolvedMixTemplateId && lc.layerType === "bituminous" && firstBitTemplateId) {
-            resolvedMixTemplateId = firstBitTemplateId;
-          }
+          // NOTE: no cross-type fallback here. If no template matches this item's exact
+          // mix type (BC/DBM/SDBC/BM), we intentionally leave it unresolved so the engine
+          // falls back to the built-in IRC default for THAT mix type — never borrowing a
+          // different type's template (which caused BC to show DBM's grade/aggregates).
           // Concrete/RMC — prefer the user's RMC module mix design (by grade), then
           // fall back to the deterministic standard design so concrete demand never
           // silently blanks out. lc.mixType carries DLC/PQC when the description has
