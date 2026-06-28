@@ -120,7 +120,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                 <span className="font-black text-sm tracking-tight text-white">Site</span>
                 <span className="font-black text-sm tracking-tight text-orange-400">Pulse</span>
               </div>
-              <p className="text-[12px] text-slate-500 leading-none mt-0.5 truncate max-w-[150px]">{companyName}</p>
+              <p className="text-[12px] text-slate-400 leading-none mt-0.5 truncate max-w-[150px]">{companyName}</p>
             </div>
           </a>
         </Link>
@@ -128,7 +128,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto flex flex-col">
-        <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2">Navigation</p>
+        <p className="text-[12px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-2">Navigation</p>
         {mainNavItems.map((item) => {
           const active = isNavActive(item);
           const showUnassignedBadge = item.href === "/" && unassignedCount > 0;
@@ -140,7 +140,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   active
                     ? "bg-orange-500/15 text-orange-300 border border-orange-500/20"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
               >
                 <item.icon className="w-4 h-4 flex-shrink-0" />
@@ -172,7 +172,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
         {/* Bottom nav items (Estimator, Settings) */}
         {bottomNavItems.length > 0 && (
           <>
-            <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
+            <p className="text-[12px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-2 mt-2">Tools</p>
             {bottomNavItems.map((item) => {
               const active = isNavActive(item);
               const showBadge = item.href === "/masters/hub" && unassignedCount > 0;
@@ -183,7 +183,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       active
                         ? "bg-orange-500/15 text-orange-300 border border-orange-500/20"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
                     }`}
                   >
                     <item.icon className="w-4 h-4 flex-shrink-0" />
