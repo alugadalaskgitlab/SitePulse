@@ -1,0 +1,51 @@
+# SitePulse — Patch 39
+**Fixes:** Issue 6 (sticky headers so the month columns stay visible while scrolling the BOM / Plan tables).
+**Risk:** Very low. CSS-only (Tailwind classes) in `client/src/pages/WorkDemand.tsx`. No logic changes.
+**Apply after Patches 36–38 (independent, but keep the order).**
+
+---
+
+## PART A — Bounded, scrollable table containers with a sticky header
+**File:** `client/src/pages/WorkDemand.tsx`
+
+The Material, Equipment and Labour tables each open with the **same** wrapper div. Replace **ALL 3 occurrences**.
+
+**FIND (×3):**
+```tsx
+    <div className="overflow-x-auto rounded-xl border">
+```
+**REPLACE (×3):**
+```tsx
+    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20">
+```
+
+> This caps each table's height and scrolls inside it, and pins every header cell to the top while you scroll.
+
+---
+
+## PART B — Keep the pinned first column above the body when scrolling
+**File:** `client/src/pages/WorkDemand.tsx`
+
+The first header cell of each table (Material / Equipment / Labour) shares the **same** class string. Replace **ALL 3 occurrences**.
+
+**FIND (×3):**
+```tsx
+sticky left-0 z-10 min-w-[220px]
+```
+**REPLACE (×3):**
+```tsx
+sticky left-0 top-0 z-20 min-w-[220px]
+```
+
+> Note: this string is unique to the three header cells (the body's pinned cells use `sticky left-0 z-10` **without** `min-w-[220px]`, so they correctly stay at `z-10`). After this, the top-left corner cell sits above both the body's pinned column and the scrolling rows.
+
+---
+
+## How to verify
+1. Open a project → **BOM** (Materials / Equipment / Labour). Scroll down a long list — the **month/Total header row stays pinned** at the top, and the **Material/Equipment/Labour column stays pinned** on the left. The corner cell never gets hidden behind the body.
+2. Resize the window narrow — horizontal scroll still works, header still pinned.
+
+---
+
+## Next (optional, say the word)
+- Add a small **search box** above the Material table to filter rows by name, and apply the same sticky-header treatment to the **Plan vs Actual** and **Monthly Plan** tables (these live in separate components — I'll locate and patch them next).

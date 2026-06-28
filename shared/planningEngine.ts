@@ -10,7 +10,7 @@ export const WORKING_HRS_DEFAULT = 8;
 export const UNIT_MAP: Record<string, string> = {
   CUM: "CUM", CUBICMETER: "CUM", "CUBIC METER": "CUM", M3: "CUM",
   SQM: "SQM", SQMTR: "SQM", SQUAREMETER: "SQM", "SQUARE METER": "SQM", M2: "SQM",
-  MT: "MT", TON: "MT", TONNE: "MT", METRIC: "MT",
+  MT: "MT", TON: "MT", TONNE: "MT", METRIC: "MT", T: "MT", TONNES: "MT", TONS: "MT",
   RM: "RM", RMT: "RM", LM: "RM", "LINEAR METER": "RM",
   HECT: "HECT", HECTARE: "HECT", HA: "HECT",
   KL: "KL", "KILO LITRE": "KL",
@@ -686,7 +686,7 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
   if (/filler/i.test(raw)) return "Filler";
   if (/stone\s*dust|aggregate\s*dust|crusher\s*dust|dust/i.test(raw)) return "Stone Dust";
   if (/6\s*mm/i.test(raw)) return "6mm Aggregate";
-  if (/10\s*mm|12\.?5\s*mm/i.test(raw)) return "10mm Aggregate";
+  if (/10\s*mm|10\s*\/?\s*12\s*mm|11\.?2\s*mm|12\.?5\s*mm|13\.?2\s*mm/i.test(raw)) return "10mm Aggregate";
   if (/20\s*mm/i.test(raw)) return "20mm Aggregate";
   if (/40\s*mm|37\.?5\s*mm|53\s*mm|45\s*mm/i.test(raw)) return "40mm Aggregate";
   if (/aggregate/i.test(raw)) return "Aggregate";
