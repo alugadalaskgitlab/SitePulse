@@ -1489,6 +1489,7 @@ export function deriveMaterialsFromLayerConfig(
     bitumenPercent: number | null;
     ldoNorm?: number | null;
     binderGrade?: string | null;
+    densityTPerCum?: number | null;
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
   concreteDesign?: ConcreteMixDesignInput | null,
@@ -1558,7 +1559,13 @@ export function deriveMaterialsFromLayerConfig(
   }
 
   if (layerConfig.layerType === "bituminous") {
-    const density = layerConfig.densityTPerCum ?? 2.35;   // MT per CUM of compacted mix
+    // Density priority: template → saved layerConfig → IRC mix-type default → absolute fallback
+    const IRC_DENSITY: Record<string, number> = { BC: 2.40, SDBC: 2.40, DBM: 2.40, BM: 2.35 };
+    const mixKeyDens = normaliseMixType(layerConfig.mixType ?? "");
+    const density = mixTemplate?.densityTPerCum
+      ?? layerConfig.densityTPerCum
+      ?? IRC_DENSITY[mixKeyDens]
+      ?? 2.35;
     const thickness = layerConfig.thicknessMm ?? 0;
 
     // MT of mix per 1 BOQ unit — depends on how the BOQ measures the item:

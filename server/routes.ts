@@ -10056,6 +10056,7 @@ export async function registerRoutes(
         bitumenPercent: number | null;
         ldoNorm: number | null;
         binderGrade: string | null;
+        densityTPerCum: number | null;
         components: Array<{ materialName: string; percent: number | null }>;
       }>();
       await Promise.all([...mixTemplateIds].map(async (mtId) => {
@@ -10065,6 +10066,7 @@ export async function registerRoutes(
             bitumenPercent: mt.template.bitumenPercent ?? null,
             ldoNorm: mt.template.ldoNorm ?? 6,
             binderGrade: (mt.template as any).binderGrade ?? null,
+            densityTPerCum: (mt.template as any).densityTPerCum ?? null,
             components: mt.components.map(c => ({
               materialName: matNameById.get(c.materialId) ?? `Material #${c.materialId}`,
               percent: c.percent ?? null,

@@ -3222,6 +3222,7 @@ export function MixTemplateMaster() {
   const [mixType, setMixType] = useState("");
   const [bitumenPercent, setBitumenPercent] = useState("");
   const [ldoNorm, setLdoNorm] = useState("6");
+  const [densityTPerCum, setDensityTPerCum] = useState("");
   const [binderGrade, setBinderGrade] = useState("VG-30");
   const [notes, setNotes] = useState("");
   const [aggregateProportions, setAggregateProportions] = useState<Record<number, string>>({});
@@ -3396,6 +3397,7 @@ export function MixTemplateMaster() {
     setMixType("");
     setBitumenPercent("");
     setLdoNorm("6");
+    setDensityTPerCum("");
     setBinderGrade("VG-30");
     setNotes("");
     setSelectedPartyId("");
@@ -3410,6 +3412,7 @@ export function MixTemplateMaster() {
     setMixType(template.mixType);
     setBitumenPercent(template.bitumenPercent?.toString() || "");
     setLdoNorm(template.ldoNorm?.toString() || "6");
+    setDensityTPerCum((template as any).densityTPerCum?.toString() || "");
     setBinderGrade((template as any).binderGrade || "VG-30");
     setNotes(template.notes || "");
     setSelectedPartyId(template.partyId != null ? String(template.partyId) : "");
@@ -3469,6 +3472,7 @@ export function MixTemplateMaster() {
       bitumenPercent: bitumenPercent ? parseFloat(bitumenPercent) : undefined,
       binderGrade: binderGrade || undefined,
       ldoNorm: ldoNorm ? parseFloat(ldoNorm) : 6,
+      densityTPerCum: densityTPerCum ? parseFloat(densityTPerCum) : undefined,
       notes,
       partyId: selectedPartyId ? parseInt(selectedPartyId) : null,
       components
@@ -3585,6 +3589,31 @@ export function MixTemplateMaster() {
                     placeholder="e.g., 5.2"
                     data-testid="input-bitumen-percent"
                   />
+                </div>
+                <div>
+                  <Label htmlFor="density-t-per-cum">
+                    Compacted Density (T/m³)
+                  </Label>
+                  <Input
+                    id="density-t-per-cum"
+                    type="number"
+                    step="0.01"
+                    value={densityTPerCum}
+                    onChange={(e) => setDensityTPerCum(e.target.value)}
+                    placeholder={
+                      /^(BC|SDBC)$/i.test(mixType.trim()) ? "e.g., 2.40" :
+                      /^(DBM|BM)$/i.test(mixType.trim()) ? "e.g., 2.35" :
+                      "e.g., 2.35"
+                    }
+                    data-testid="input-density-t-per-cum"
+                  />
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {/^(BC|SDBC)$/i.test(mixType.trim())
+                      ? "IRC default: 2.40 for BC/SDBC"
+                      : /^(DBM|BM)$/i.test(mixType.trim())
+                      ? "IRC default: 2.35 for DBM/BM"
+                      : "Leave blank to use IRC standard default"}
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="ldo-norm">LDO Norm (L/ton)</Label>
