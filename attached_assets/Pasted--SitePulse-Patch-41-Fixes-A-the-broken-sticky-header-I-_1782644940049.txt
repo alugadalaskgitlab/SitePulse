@@ -1,0 +1,56 @@
+# SitePulse — Patch 41
+**Fixes:** (A) the **broken sticky header** I introduced in Patch 39 (the "Material" corner cell was overlapping the month headers), and (B) the **6 identical "[10.09] Dense Bituminous Macadam" duplicate rows** in the BOM breakdown (a side-effect of Patch 37's `item.id` key).
+**Risk:** Very low — one CSS class value + one key expression. Apply after Patches 36–40.
+
+> Validated: both files transpile clean; 3/3 breakdown-key tests pass (6 DBM rows → 1; steel F/Sub/Super → 3; GSB Bill 3 vs Bill 10 → 2).
+
+---
+
+## PART A — Fix the sticky-header overlap
+**File:** `client/src/pages/WorkDemand.tsx`
+The corner (first) header cell must sit **above** the month headers. Currently it's `z-20`, same as the month headers, so they overlap. Bump it to `z-30`. This string appears **3 times** (Materials / Equipment / Labour) — **replace ALL 3**.
+
+**FIND (×3):**
+```tsx
+sticky left-0 top-0 z-20 min-w-[220px]
+```
+**REPLACE (×3):**
+```tsx
+sticky left-0 top-0 z-30 min-w-[220px]
+```
+
+---
+
+## PART B — Stop the duplicate breakdown rows (supersedes Patch 37 Part A)
+**File:** `shared/planningEngine.ts`
+Patch 37 keyed each contributor by `item.id`, which made 6 identical DBM sub-rows show as 6 meaningless duplicates. Key instead by **itemCode + description** so true duplicates merge while genuinely distinct lines stay separate. This line appears **3 times** (materials / equipment / labour) — **replace ALL 3**.
+
+**FIND (×3):**
+```ts
+        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
+```
+**REPLACE (×3):**
+```ts
+        // Merge only TRUE duplicates (same itemCode AND same description) so 6 identical
+        // DBM sub-rows collapse to one contributor, while genuinely distinct lines that
+        // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
+        // (GSB in Bill 3 vs Bill 10) still show separately.
+        const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
+```
+
+---
+
+## How to verify
+1. **Sticky header:** open BOM → scroll right and down. The "Material" corner cell stays put and **no longer overlaps** the month columns; month headers slide cleanly underneath it.
+2. **DBM breakdown:** expand **Bitumen VG-30** (or the DBM row). You now see **one** "Dense Bituminous Macadam" contributor (with its quantity), not 6 empty duplicates. Steel still shows Foundation / Sub-Structure / Super-Structure separately.
+
+---
+
+## ⚠️ One thing I still can't see — and need from you
+After you apply Patches 40 + 41, the column alignment will be correct (the "L" unit you saw on Bitumen VG-30 was very likely the broken sticky header shifting columns — re-check it then; binder should read **MT**).
+
+But the **VG-40 total of 11,05,450** looks unusually large and I can't tell if that's correct without the source numbers. So when you have a moment, for **one BC item** and **one DBM item** please send me:
+1. The `[BITUMEN BOM]` log line from the Replit console (it prints the resolved template grade/%, components and derived rows).
+2. That BOQ item's own **Unit** and **Quantity** (e.g. BC = 12,500 **SQM**, thickness 40mm — or CUM, or MT).
+
+With those two numbers I can confirm whether the bitumen/aggregate quantities are right, or whether there's a unit/magnitude bug to fix next. I won't claim bituminous is fully correct until we check those.

@@ -891,10 +891,11 @@ export function calculateBomDemand(
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
       {
-        // Key each contributor by the BOQ line's own id so parent/child sub-items
-        // (which share the parent itemCode) and identical descriptions repeated across
-        // different bills each appear as their own breakdown row instead of collapsing.
-        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
+        // Merge only TRUE duplicates (same itemCode AND same description) so 6 identical
+        // DBM sub-rows collapse to one contributor, while genuinely distinct lines that
+        // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
+        // (GSB in Bill 3 vs Bill 10) still show separately.
+        const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
         else row.breakdown.push({
@@ -929,10 +930,11 @@ export function calculateBomDemand(
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
       {
-        // Key each contributor by the BOQ line's own id so parent/child sub-items
-        // (which share the parent itemCode) and identical descriptions repeated across
-        // different bills each appear as their own breakdown row instead of collapsing.
-        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
+        // Merge only TRUE duplicates (same itemCode AND same description) so 6 identical
+        // DBM sub-rows collapse to one contributor, while genuinely distinct lines that
+        // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
+        // (GSB in Bill 3 vs Bill 10) still show separately.
+        const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
@@ -998,10 +1000,11 @@ export function calculateBomDemand(
       row.designation = preferDisplayName(row.designation, designation);
       row.totalDays += lineDays;
       {
-        // Key each contributor by the BOQ line's own id so parent/child sub-items
-        // (which share the parent itemCode) and identical descriptions repeated across
-        // different bills each appear as their own breakdown row instead of collapsing.
-        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
+        // Merge only TRUE duplicates (same itemCode AND same description) so 6 identical
+        // DBM sub-rows collapse to one contributor, while genuinely distinct lines that
+        // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
+        // (GSB in Bill 3 vs Bill 10) still show separately.
+        const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });

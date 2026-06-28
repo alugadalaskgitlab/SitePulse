@@ -72,7 +72,7 @@ function MaterialsTable({
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>Material</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>Material</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[70px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
@@ -210,7 +210,7 @@ function EquipmentTable({
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>Equipment</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>Equipment</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
@@ -328,7 +328,7 @@ function LabourTable({
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour Category</th>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>Labour Category</th>
             <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
             {allMonths.map((m) => (
               <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[72px]">
