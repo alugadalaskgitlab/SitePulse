@@ -29,3 +29,15 @@ export function computeDprQty(
   if (uom === "RMT") return length as number;
   return null;
 }
+
+// Map a BOQ item's unit string to the canonical DPR UOM + which dimensions it needs.
+//   volume (CUM/m³)  -> L,W,T   area (SQM/Ha) -> L,W   length (RMT/m) -> L
+//   count/weight/lumpsum (Nos/MT/kg/LS/%) -> [] (manual qty)
+export type BoqUomProfile = { dimClass: "volume" | "area" | "length" | "count"; uom: string; dims: ("L" | "W" | "T")[] };
+export function boqUomProfile(unit?: string | null): BoqUomProfile {
+  const u = (unit || "").toLowerCase().replace(/[\s().]/g, "");
+  if (/^(cum|cmt|m3|brass)$/.test(u) || /cubic|cum|m3|m³/.test(u)) return { dimClass: "volume", uom: "CUM", dims: ["L", "W", "T"] };
+  if (/^(sqm|sm|m2|ha|hect|hectare|acre|are)$/.test(u) || /sqm|sq\.?m|squarem|m2|m²|hectare|^ha$/.test(u)) return { dimClass: "area", uom: "SQM", dims: ["L", "W"] };
+  if (/^(rmt|rm|rmtr|m|mtr|meter|metre|km|lm)$/.test(u) || /^r\.?m\.?t?$|runningm|rmeter|rmetre|^lm$|^km$/.test(u)) return { dimClass: "length", uom: "RMT", dims: ["L"] };
+  return { dimClass: "count", uom: (unit || "NOS").toUpperCase().replace(/\.$/, ""), dims: [] };
+}

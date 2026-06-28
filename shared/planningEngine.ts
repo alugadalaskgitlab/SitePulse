@@ -892,6 +892,8 @@ export function calculateBomDemand(
     // Equipment
     for (const e of item.equipment) {
       if (e.isClientSupplied) continue;
+      // Manual / labour-based "crew" is labour, not plant — keep it out of the equipment BOM.
+      if (/manual|labour[\s-]?based|labor[\s-]?based|by\s*hand|hand[\s-]?(packing|breaking|mixing)|coolie|mazdoor/i.test(e.equipmentName)) continue;
       const cnt = e.count ?? 1;
       const lineHours = e.qtyPerBoqUnit * workQty * cnt;
       const key = canonEquipmentKey(e.equipmentName);

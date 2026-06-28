@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deriveDprUom, computeDprQty } from "@/lib/dprUom";
+import { deriveDprUom, computeDprQty, boqUomProfile } from "@/lib/dprUom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -436,15 +436,31 @@ export default function SiteEntry() {
     return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
   };
 
-  // Derive UoM + qty from the dimensions; mutates entry.uom so the saved row matches.
-  // Falls back to the existing manual uom/qty for non-geometric items (MT / NOS).
+  // UOM follows the linked BOQ item's unit; qty is computed only from the dimensions
+  // that unit requires. Count/weight units (Nos, MT…) keep a manual quantity.
+  const progressUom = (entry: ProgressEntry): string | null => {
+    const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
+    if (boqItem) {
+      const prof = boqUomProfile(boqItem.unit);
+      if (prof.dimClass !== "count") return prof.uom;
+      return UOM_OPTIONS.includes(prof.uom) ? prof.uom : "NOS";
+    }
+    return deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness);
+  };
+
   const calculateQuantity = (entry: ProgressEntry): number | null => {
     const length = getEffectiveLength(entry);
-    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
-    if (derivedUom) {
-      entry.uom = derivedUom;
-      return computeDprQty(length, entry.width, entry.thickness);
+    const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
+    if (boqItem) {
+      const prof = boqUomProfile(boqItem.unit);
+      entry.uom = progressUom(entry) ?? entry.uom;
+      if (prof.dimClass === "volume") return (length && entry.width && entry.thickness) ? length * entry.width * entry.thickness : (entry.quantity ?? null);
+      if (prof.dimClass === "area") return (length && entry.width) ? length * entry.width : (entry.quantity ?? null);
+      if (prof.dimClass === "length") return length ?? (entry.quantity ?? null);
+      return entry.quantity ?? null; // count / weight → manual
     }
+    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
+    if (derivedUom) { entry.uom = derivedUom; return computeDprQty(length, entry.width, entry.thickness); }
     return entry.quantity ?? null;
   };
 
@@ -599,6 +615,29 @@ export default function SiteEntry() {
   };
 
   const handleSubmit = () => {
+    if (workType !== "structure") {
+      for (let i = 0; i < progress.length; i++) {
+        const p = progress[i];
+        if (p.noSiteWork || p.boqItemId == null) continue;
+        const boqItem = siteBoqItems.find(it => it.id === p.boqItemId);
+        if (!boqItem) continue;
+        const prof = boqUomProfile(boqItem.unit);
+        const L = getEffectiveLength(p);
+        const missing: string[] = [];
+        if (prof.dims.includes("L") && !(L && L > 0)) missing.push("Length");
+        if (prof.dims.includes("W") && !(p.width && p.width > 0)) missing.push("Width");
+        if (prof.dims.includes("T") && !(p.thickness && p.thickness > 0)) missing.push("Thickness");
+        if (prof.dimClass === "count" && !(p.quantity && p.quantity > 0)) missing.push(`Quantity (${prof.uom})`);
+        if (missing.length) {
+          toast({
+            title: `Row ${i + 1}: missing ${prof.uom} input`,
+            description: `${boqItem.itemCode ? boqItem.itemCode + " · " : ""}This item is measured in ${boqItem.unit}. Please enter ${missing.join(", ")} before saving.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
     createMutation.mutate();
   };
 
@@ -1089,13 +1128,13 @@ export default function SiteEntry() {
                   <div>
                     <Label className="text-sm flex items-center gap-1">
                       UOM
-                      {deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness) && (
+                      {progressUom(entry) && (
                         <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
                       )}
                     </Label>
                     <Select
-                      value={entry.uom}
-                      disabled={!!deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness)}
+                      value={progressUom(entry) ?? entry.uom}
+                      disabled={!!progressUom(entry)}
                       onValueChange={(val) => {
                         const updated = [...progress];
                         updated[idx].uom = val;

@@ -1,0 +1,108 @@
+# SitePulse — Patch 33: De-dupe BOM contributor rows + live auto-refresh
+
+Two fixes from your feedback (Plan-vs-Actual & DPR were just stale-page refreshes — Patch 33
+makes that auto):
+
+## Fix 1 — Same BOQ item repeated 4–6× in the BOM breakdown
+When an item is split into multiple programme bars (reach-fronts), the BOM pushed **one
+contributor row per bar**, so "[10.09] Dense Bituminous Macadam" showed 4 times, "[4.03]" 6
+times, etc. This merges them into **one row per item** (summing the quantity).
+File: `shared/planningEngine.ts` — three spots (materials, equipment, labour).
+
+### 1a. Materials breakdown — FIND:
+```ts
+      row.breakdown.push({
+        itemDescription: item.itemName || item.description,
+        fullDescription: item.description,
+        itemCode: item.itemCode,
+        qtyPerUnit: effQtyPerUnit,
+        workQty,
+        lineQty,
+        isAuto: m.isAuto ?? true,
+      });
+```
+REPLACE WITH:
+```ts
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
+        else row.breakdown.push({
+          itemDescription: item.itemName || item.description,
+          fullDescription: item.description,
+          itemCode: item.itemCode,
+          qtyPerUnit: effQtyPerUnit,
+          workQty,
+          lineQty,
+          isAuto: m.isAuto ?? true,
+        });
+      }
+```
+
+### 1b. Equipment breakdown — FIND:
+```ts
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+```
+REPLACE WITH:
+```ts
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+      }
+```
+
+### 1c. Labour breakdown — FIND:
+```ts
+      row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+```
+REPLACE WITH:
+```ts
+      {
+        const bk = (item.itemCode ?? item.description) || "";
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+      }
+```
+
+## Fix 2 — Live auto-refresh on all pages (no more manual refresh)
+File: `client/src/lib/queryClient.ts` — FIND:
+```ts
+      queryFn: getQueryFn({ on401: "throw" }),
+      refetchInterval: false,
+      refetchOnWindowFocus: false,
+      staleTime: Infinity,
+      retry: false,
+```
+REPLACE WITH:
+```ts
+      queryFn: getQueryFn({ on401: "throw" }),
+      refetchInterval: false,
+      refetchOnWindowFocus: true,   // refresh when you return to the tab
+      refetchOnMount: true,         // refresh on every page open / navigation
+      refetchOnReconnect: true,
+      staleTime: 15_000,            // treat data as fresh for 15s, then auto-refetch
+      retry: false,
+```
+This makes every page re-fetch on open, on tab focus and on reconnect — so DPR, Plan-vs-Actual,
+BOM etc. stay current without a manual reload. (I avoided a constant polling interval so we don't
+hammer the server; if you want true seconds-level polling on a specific live screen, tell me which
+and I'll add a targeted `refetchInterval` there.)
+
+## Verify
+1. Apply, `npm run check`, rebuild. 2. BOM → each material/equipment/labour now lists each
+contributing item **once** (qty summed across fronts). 3. File a DPR → go to Plan-vs-Actual: it
+updates without a manual refresh.
+
+---
+### Still open (next, dedicated build)
+- **Aggregates not derived for DBM/BC (only bitumen shows) + wrong VG grade on some items:** the
+  binder derives but the aggregate fractions don't reach the BOM, and items without a proper mix
+  link fall back to a default template (→ VG-30). I need one more focused trace of the
+  material-demand path (server `deriveMaterialsFromLayerConfig` vs the frontend key-material
+  filter) — I'll fix this in the next patch.
+- **SNL auto-map cleanup (most items mis-mapped):** building **(b) item-class auto-classifier +
+  smart defaults** then **(a) the Resource Review anomaly screen** — this is the big trust fix and
+  I'll start it next.
