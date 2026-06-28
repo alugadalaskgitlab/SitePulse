@@ -434,24 +434,31 @@ interface ItemDemandRow {
 
 function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<string>): ItemDemandRow[] {
   const map = new Map<string, ItemDemandRow>();
-  const get = (desc: string): ItemDemandRow => {
-    if (!map.has(desc)) {
-      map.set(desc, {
-        description: desc,
-        unit: "",
+  // Key by itemCode + description so items from different bills with the same short name
+  // stay as separate rows (e.g. Bill-4 DBM "4.03" vs Bill-10 DBM "10.09").
+  const rowKey = (bd: { itemCode?: string | null; itemDescription: string }) =>
+    (bd.itemCode ?? "") + "|" + bd.itemDescription;
+  const get = (bd: { itemCode?: string | null; itemDescription: string; unit?: string }): ItemDemandRow => {
+    const key = rowKey(bd);
+    if (!map.has(key)) {
+      map.set(key, {
+        description: bd.itemDescription,
+        itemCode: bd.itemCode ?? null,
+        unit: bd.unit ?? "",
         workQty: 0,
-        isProgrammed: !unprogrammedDescriptions.has(desc),
+        isProgrammed: !unprogrammedDescriptions.has(bd.itemDescription),
         materials: [],
         equipment: [],
         labour: [],
       });
     }
-    return map.get(desc)!;
+    return map.get(key)!;
   };
   for (const mat of demand.materials) {
     for (const bd of mat.breakdown) {
-      const row = get(bd.itemDescription);
+      const row = get(bd);
       row.workQty = Math.max(row.workQty, bd.workQty);
+      if (bd.unit && !row.unit) row.unit = bd.unit;
       const ex = row.materials.find(m => m.name === mat.materialName);
       if (ex) { ex.qty += bd.lineQty; }
       else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty, qtyPerUnit: bd.qtyPerUnit });
@@ -459,7 +466,8 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
   }
   for (const eq of demand.equipment) {
     for (const bd of eq.breakdown) {
-      const row = get(bd.itemDescription);
+      const row = get(bd);
+      if (bd.unit && !row.unit) row.unit = bd.unit;
       const ex = row.equipment.find(e => e.name === eq.equipmentName);
       if (ex) { ex.hours += bd.lineHours; }
       else row.equipment.push({ name: eq.equipmentName, hours: bd.lineHours, hrsPerUnit: bd.hrsPerUnit });
@@ -467,13 +475,25 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
   }
   for (const lb of demand.labour) {
     for (const bd of lb.breakdown) {
-      const row = get(bd.itemDescription);
+      const row = get(bd);
+      if (bd.unit && !row.unit) row.unit = bd.unit;
       const ex = row.labour.find(l => l.name === lb.designation);
       if (ex) { ex.days += bd.lineDays; }
       else row.labour.push({ name: lb.designation, days: bd.lineDays, daysPerUnit: bd.daysPerUnit });
     }
   }
-  return [...map.values()];
+  // Sort rows: programmed first, then by item code (numeric bill.item order)
+  return [...map.values()].sort((a, b) => {
+    const aCode = a.itemCode ?? "";
+    const bCode = b.itemCode ?? "";
+    if (!aCode && !bCode) return 0;
+    if (!aCode) return 1;
+    if (!bCode) return -1;
+    const [aBill, aItem] = aCode.split(".").map(Number);
+    const [bBill, bItem] = bCode.split(".").map(Number);
+    if (aBill !== bBill) return aBill - bBill;
+    return (aItem ?? 0) - (bItem ?? 0);
+  });
 }
 
 function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand; unprogrammedDescriptions: Set<string> }) {
@@ -482,10 +502,12 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
 
   if (!rows.length) return <EmptyState label="No item demand. Add recipes and work programme bars first." />;
 
-  const toggle = (desc: string) => {
+  const rowId = (row: ItemDemandRow) => (row.itemCode ?? "") + "|" + row.description;
+
+  const toggle = (id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(desc)) next.delete(desc); else next.add(desc);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -494,13 +516,14 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
   const unprogrammed = rows.filter(r => !r.isProgrammed);
 
   const renderRows = (rowList: ItemDemandRow[]) => rowList.map(row => {
-    const open = expanded.has(row.description);
+    const id = rowId(row);
+    const open = expanded.has(id);
     const totalRes = row.materials.length + row.equipment.length + row.labour.length;
     return (
-      <div key={row.description} className="rounded-xl border overflow-hidden">
+      <div key={id} className="rounded-xl border overflow-hidden">
         <div
           className={`flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors ${open ? "bg-slate-100" : "bg-white hover:bg-slate-50"}`}
-          onClick={() => toggle(row.description)}
+          onClick={() => toggle(id)}
         >
           {open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">

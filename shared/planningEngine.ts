@@ -380,7 +380,7 @@ export interface BomMaterialRow {
   materialGroup?: string;
   reviewNeeded?: boolean;
   normalisationReason?: string;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
 }
 
 export interface MaterialNormalisationInput {
@@ -412,14 +412,14 @@ export interface BomEquipmentRow {
   count: number;
   totalHours: number;
   monthlyHours: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; hrsPerUnit: number; workQty: number; lineHours: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; hrsPerUnit: number; workQty: number; lineHours: number }>;
 }
 
 export interface BomLabourRow {
   designation: string;
   totalDays: number;
   monthlyDays: Record<number, number>;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; daysPerUnit: number; workQty: number; lineDays: number }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; daysPerUnit: number; workQty: number; lineDays: number }>;
 }
 
 export interface BomDemand {
@@ -902,6 +902,7 @@ export function calculateBomDemand(
           itemDescription: item.itemName || item.description,
           fullDescription: item.description,
           itemCode: item.itemCode,
+          unit: item.unit,
           qtyPerUnit: effQtyPerUnit,
           workQty,
           lineQty,
@@ -937,7 +938,7 @@ export function calculateBomDemand(
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
@@ -1007,7 +1008,7 @@ export function calculateBomDemand(
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;
