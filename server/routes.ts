@@ -9786,6 +9786,16 @@ export async function registerRoutes(
     }
   });
 
+  // All items + recipes for the Resource Review screen
+  app.get("/api/boq/projects/:id/resource-review", async (req, res) => {
+    try {
+      res.json(await storage.getBoqItemsWithRecipes(parseInt(req.params.id)));
+    } catch (err) {
+      console.error("GET /api/boq/projects/:id/resource-review:", err);
+      res.status(500).json({ error: "Failed to fetch resource review" });
+    }
+  });
+
   // Equipment recipe
   app.get("/api/boq/items/:itemId/equipment", async (req, res) => {
     try {

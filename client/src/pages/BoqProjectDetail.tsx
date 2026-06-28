@@ -5,7 +5,7 @@ import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, CheckCheck, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2, BookOpen,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -1511,6 +1511,19 @@ export default function BoqProjectDetail() {
               >
                 <BookOpen className="w-3.5 h-3.5 mr-1.5" />
                 BOM &amp; Demand
+              </Button>
+            </a>
+          </Link>
+          <Link href={`/work-program/${projectId}/resource-review`}>
+            <a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8"
+                data-testid="button-resource-review"
+              >
+                <Wrench className="w-3.5 h-3.5 mr-1.5" />
+                Resource Review
               </Button>
             </a>
           </Link>
