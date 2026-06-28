@@ -10149,6 +10149,25 @@ export async function registerRoutes(
               : null,
           );
 
+          // --- BITUMEN BOM DIAGNOSTIC (Patch 34) ---
+          if (effLc?.layerType === "bituminous") {
+            console.log("[BITUMEN BOM]", JSON.stringify({
+              item: `${item.itemCode ?? ""} ${item.description?.slice(0, 40)}`,
+              unit: item.unit,
+              layerType: effLc.layerType,
+              resolvedTemplate: mixTemplate
+                ? {
+                    binderGrade: (mixTemplate as any).binderGrade ?? null,
+                    bitumenPercent: (mixTemplate as any).bitumenPercent ?? null,
+                    componentCount: (mixTemplate as any).components?.length ?? 0,
+                    components: ((mixTemplate as any).components ?? []).map((c: any) => ({ name: c.materialName, percent: c.percent })),
+                  }
+                : "NO TEMPLATE RESOLVED",
+              derivedRows: derived.map((d: any) => ({ name: d.materialName, qtyPerBoqUnit: d.qtyPerBoqUnit })),
+            }, null, 2));
+          }
+          // --- END DIAGNOSTIC ---
+
           const derivedSupplyType: "direct" | "plant" | undefined =
             lc.layerType === "granular" && lc.granularSource !== "plant" ? "direct"
             : lc.layerType === "granular" && lc.granularSource === "plant" ? "plant"

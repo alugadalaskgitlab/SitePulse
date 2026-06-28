@@ -1,0 +1,80 @@
+# SitePulse — Patch 34: Bituminous BOM diagnostic logging
+
+You confirmed the DBM/BC items are linked to the correct, fully-filled mix template (with
+20/10/12/6/dust + bitumen% + grade), yet only the bitumen row reaches the BOM. The derivation
+loop *does* push aggregate rows when a component's `percent > 0`, so this logs exactly what the
+engine receives — so we can see whether the aggregate components arrive with `percent = null/0`
+(or get dropped) for these items.
+
+## `server/routes.ts` — add logging right after the derivation call
+In the project BOM handler, FIND:
+```ts
+          const derived = deriveMaterialsFromLayerConfig(
+            effLc,
+            item.unit,
+            mixTemplate ?? undefined,
+            concreteDesign
+              ? {
+                  grade: concreteDesign.grade,
+                  cementContent: concreteDesign.cementContent,
+                  admixtureName: concreteDesign.admixtureName,
+                  admixtureDosage: concreteDesign.admixtureDosage,
+                  componentProportions: concreteDesign.componentProportions as any,
+                }
+              : null,
+          );
+```
+REPLACE WITH:
+```ts
+          const derived = deriveMaterialsFromLayerConfig(
+            effLc,
+            item.unit,
+            mixTemplate ?? undefined,
+            concreteDesign
+              ? {
+                  grade: concreteDesign.grade,
+                  cementContent: concreteDesign.cementContent,
+                  admixtureName: concreteDesign.admixtureName,
+                  admixtureDosage: concreteDesign.admixtureDosage,
+                  componentProportions: concreteDesign.componentProportions as any,
+                }
+              : null,
+          );
+
+          // --- BITUMEN BOM DIAGNOSTIC (Patch 34) ---
+          if (effLc?.layerType === "bituminous") {
+            console.log("[BITUMEN BOM]", JSON.stringify({
+              item: `${item.itemCode ?? ""} ${item.description?.slice(0, 40)}`,
+              unit: item.unit,
+              layerType: effLc.layerType,
+              resolvedTemplate: mixTemplate
+                ? {
+                    binderGrade: (mixTemplate as any).binderGrade ?? null,
+                    bitumenPercent: (mixTemplate as any).bitumenPercent ?? null,
+                    componentCount: (mixTemplate as any).components?.length ?? 0,
+                    components: ((mixTemplate as any).components ?? []).map((c: any) => ({ name: c.materialName, percent: c.percent })),
+                  }
+                : "NO TEMPLATE RESOLVED",
+              derivedRows: derived.map((d: any) => ({ name: d.materialName, qtyPerBoqUnit: d.qtyPerBoqUnit })),
+            }, null, 2));
+          }
+          // --- END DIAGNOSTIC ---
+```
+
+## How to use
+1. Apply, rebuild/restart.
+2. Open the **BOM / Work Demand** page for the project (this calls the endpoint).
+3. In Replit's **server console / logs**, copy the `[BITUMEN BOM]` blocks for your DBM/BC items
+   and paste them back to me.
+
+What I'll be looking for:
+- `resolvedTemplate.components` → are the aggregate rows present, and is `percent` a number or
+  `null`? (If `null`/0 → the proportions aren't reaching the engine → I fix the read/mapping.)
+- `componentCount: 0` or `"NO TEMPLATE RESOLVED"` → the item is hitting the wrong/empty template
+  → it's a template-resolution bug (I fix the resolver).
+- `derivedRows` lists only bitumen → confirms aggregates are skipped at derivation.
+
+This one log will tell us exactly which of the three it is, and I'll ship the precise fix.
+
+> This is temporary logging — once we've diagnosed and fixed it, remove this block (or I'll
+> include its removal in the fix patch).
