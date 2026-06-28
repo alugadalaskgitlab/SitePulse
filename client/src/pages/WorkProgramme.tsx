@@ -727,7 +727,8 @@ function InlineGanttTable({
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
-      if (it.includedInPlanning === false) continue;
+      // Show if: included in planning OR already has bars (keep programmed items visible)
+      if (it.includedInPlanning === false && !(barsByItemId[it.id]?.length > 0)) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
@@ -737,7 +738,7 @@ function InlineGanttTable({
       m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return m;
-  }, [items]);
+  }, [items, barsByItemId]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
@@ -1133,7 +1134,8 @@ function MonthlyPlanView({
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
-      if (it.includedInPlanning === false) continue;
+      // Show if: included in planning OR already has bars (keep programmed items visible)
+      if (it.includedInPlanning === false && !(barsByItemId[it.id]?.length > 0)) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
@@ -1143,7 +1145,7 @@ function MonthlyPlanView({
       m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return m;
-  }, [items]);
+  }, [items, barsByItemId]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");

@@ -1217,7 +1217,8 @@ export interface IStorage {
   clearAllBoqProjectRecipes(projectId: number): Promise<void>;
   // Task #1186 — BOQ planning include/exclude flag
   backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
-  updateBoqItemPlanningInclude(id: number, included: boolean): Promise<void>;
+  updateBoqItemPlanningInclude(id: number, includedInPlanning: boolean): Promise<void>;
+  bulkUpdateCategoryPlanningInclude(projectId: number, categoryId: number | null, includedInPlanning: boolean): Promise<number>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -21078,14 +21079,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }> {
-    // Step 1: set true for any row where the column is NULL (newly added column on existing data)
+    // Create a migration marker table for one-time migrations
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS _migration_markers (
+        key text PRIMARY KEY,
+        applied_at timestamptz DEFAULT now()
+      )
+    `));
+
+    // Step 1: fill any NULL rows with true (safe every restart — DEFAULT true handles new rows;
+    // this only catches rows added between column creation and default propagation)
     const setResult = await db.execute(sql.raw(`
       UPDATE boq_items SET included_in_planning = true WHERE included_in_planning IS NULL
     `));
     const set = (setResult as any).rowCount ?? 0;
 
-    // Step 2: mark well-known non-construction items as excluded
-    // Patterns: toll plaza/booth, road furniture, highway/solar/street lighting, provisional sums
+    // Step 2: one-time pattern exclusion — only runs once per database.
+    // Subsequent restarts skip this block so user overrides are never clobbered.
+    const markerResult = await db.execute(sql.raw(`
+      SELECT 1 FROM _migration_markers WHERE key = 'boq_planning_include_v1'
+    `));
+    if ((markerResult as any).rowCount > 0) {
+      return { set, excluded: 0 };
+    }
+
+    // Not yet run — apply auto-detection patterns for known non-construction items
     const excResult = await db.execute(sql.raw(`
       UPDATE boq_items SET included_in_planning = false
       WHERE included_in_planning = true
@@ -21107,11 +21125,26 @@ export class DatabaseStorage implements IStorage {
         )
     `));
     const excluded = (excResult as any).rowCount ?? 0;
+
+    // Record that the migration has run — future restarts skip auto-detection
+    await db.execute(sql.raw(`
+      INSERT INTO _migration_markers (key) VALUES ('boq_planning_include_v1') ON CONFLICT DO NOTHING
+    `));
+
     return { set, excluded };
   }
 
-  async updateBoqItemPlanningInclude(id: number, included: boolean): Promise<void> {
-    await db.update(boqItems).set({ includedInPlanning: included }).where(eq(boqItems.id, id));
+  async updateBoqItemPlanningInclude(id: number, includedInPlanning: boolean): Promise<void> {
+    await db.update(boqItems).set({ includedInPlanning }).where(eq(boqItems.id, id));
+  }
+
+  async bulkUpdateCategoryPlanningInclude(projectId: number, categoryId: number | null, includedInPlanning: boolean): Promise<number> {
+    // Update all items in a category for the given project
+    const conditions = categoryId !== null
+      ? and(eq(boqItems.boqProjectId, projectId), eq(boqItems.categoryId, categoryId))
+      : and(eq(boqItems.boqProjectId, projectId), isNull(boqItems.categoryId));
+    const result = await db.update(boqItems).set({ includedInPlanning }).where(conditions);
+    return (result as any).rowCount ?? 0;
   }
 
   async seedSnlMorthSdb(): Promise<{ source: SnlSource; items: number }> {

@@ -272,12 +272,26 @@ function CategorySection({
     onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
   });
   const planToggleMutation = useMutation({
-    mutationFn: ({ id, included }: { id: number; included: boolean }) =>
-      apiRequest("PATCH", `/api/boq/items/${id}/planning-include`, { included }),
+    mutationFn: ({ id, includedInPlanning }: { id: number; includedInPlanning: boolean }) =>
+      apiRequest("PATCH", `/api/boq/items/${id}/planning-include`, { includedInPlanning }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] });
     },
     onError: () => toast({ title: "Failed to update planning flag", variant: "destructive" }),
+  });
+
+  const categoryId = items[0]?.categoryId ?? null;
+  const allIncluded = items.every(it => it.includedInPlanning !== false);
+  const anyExcluded = items.some(it => it.includedInPlanning === false);
+  const planBulkMutation = useMutation({
+    mutationFn: (includedInPlanning: boolean) =>
+      apiRequest("PATCH", `/api/boq/projects/${projectId}/planning-include-bulk`, { categoryId, includedInPlanning }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "bom"] });
+    },
+    onError: () => toast({ title: "Failed to update category planning flag", variant: "destructive" }),
   });
 
   const subtotal = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
@@ -286,26 +300,44 @@ function CategorySection({
   return (
     <Card className="border-slate-200 overflow-hidden" data-testid={`section-category-${name}`}>
       {/* Category header */}
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        className="w-full bg-slate-800 hover:bg-slate-700 transition-colors px-4 py-2.5 flex items-center justify-between text-left"
-        data-testid={`button-toggle-category-${name}`}
-      >
-        <div className="flex items-center gap-3">
+      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between">
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="flex items-center gap-3 flex-1 text-left"
+          data-testid={`button-toggle-category-${name}`}
+        >
           <span className="text-sm font-semibold text-white">{name}</span>
           <span className="text-sm text-slate-400">{items.length} items</span>
-        </div>
+          {anyExcluded && (
+            <span className="text-xs bg-slate-600 text-slate-300 px-1.5 py-0.5 rounded-full">
+              {items.filter(it => it.includedInPlanning !== false).length}/{items.length} in plan
+            </span>
+          )}
+        </button>
         <div className="flex items-center gap-3">
           {boqSubtotal > 0 && (
             <span className="text-sm text-slate-300 hidden sm:block">
               ₹{fmtAmt(boqSubtotal)}
             </span>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); planBulkMutation.mutate(!allIncluded); }}
+            disabled={planBulkMutation.isPending}
+            title={allIncluded ? "Exclude all items in this category from Gantt/BOM" : "Include all items in this category in Gantt/BOM"}
+            data-testid={`button-plan-bulk-${name}`}
+            className={`text-xs px-2 py-1 rounded border font-medium transition-colors ${
+              allIncluded
+                ? "border-teal-400/50 text-teal-300 hover:bg-teal-800/30"
+                : "border-amber-400/50 text-amber-300 hover:bg-amber-800/30"
+            }`}
+          >
+            {allIncluded ? "Exclude all" : "Include all"}
+          </button>
           {collapsed
             ? <ChevronDown className="w-4 h-4 text-slate-400" />
             : <ChevronUp className="w-4 h-4 text-slate-400" />}
         </div>
-      </button>
+      </div>
 
       {/* Items table */}
       {!collapsed && (
@@ -327,11 +359,14 @@ function CategorySection({
             <tbody>
               {items.map((item, i) => {
                 const revised = Math.abs((item.currentQty ?? 0) - (item.boqQty ?? 0)) > 0.001;
+                const excluded = item.includedInPlanning === false;
                 return (
                   <tr
                     key={item.id}
-                    className={`border-b border-slate-100 last:border-0 ${
-                      revised ? "bg-amber-50" : i % 2 === 1 ? "bg-slate-50/40" : ""
+                    className={`border-b border-slate-100 last:border-0 transition-opacity ${
+                      excluded
+                        ? "opacity-45 bg-slate-50"
+                        : revised ? "bg-amber-50" : i % 2 === 1 ? "bg-slate-50/40" : ""
                     }`}
                     data-testid={`row-item-${item.id}`}
                   >
@@ -355,7 +390,7 @@ function CategorySection({
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <button
-                        onClick={() => planToggleMutation.mutate({ id: item.id, included: !item.includedInPlanning })}
+                        onClick={() => planToggleMutation.mutate({ id: item.id, includedInPlanning: !item.includedInPlanning })}
                         disabled={planToggleMutation.isPending}
                         title={item.includedInPlanning ? "Included in Gantt/BOM — click to exclude" : "Excluded from Gantt/BOM — click to include"}
                         data-testid={`button-plan-toggle-${item.id}`}

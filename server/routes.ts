@@ -9613,13 +9613,27 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const id = parseInt(req.params.id);
-      const { included } = req.body as { included: boolean };
-      if (typeof included !== "boolean") return res.status(400).json({ error: "included must be a boolean" });
-      await storage.updateBoqItemPlanningInclude(id, included);
-      res.json({ ok: true, id, included });
+      const { includedInPlanning } = req.body as { includedInPlanning: boolean };
+      if (typeof includedInPlanning !== "boolean") return res.status(400).json({ error: "includedInPlanning must be a boolean" });
+      await storage.updateBoqItemPlanningInclude(id, includedInPlanning);
+      res.json({ ok: true, id, includedInPlanning });
     } catch (err) {
       console.error("PATCH /api/boq/items/:id/planning-include:", err);
       res.status(500).json({ error: "Failed to update planning include flag" });
+    }
+  });
+
+  app.patch("/api/boq/projects/:id/planning-include-bulk", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { categoryId, includedInPlanning } = req.body as { categoryId: number | null; includedInPlanning: boolean };
+      if (typeof includedInPlanning !== "boolean") return res.status(400).json({ error: "includedInPlanning must be a boolean" });
+      const updated = await storage.bulkUpdateCategoryPlanningInclude(projectId, categoryId ?? null, includedInPlanning);
+      res.json({ ok: true, updated, includedInPlanning });
+    } catch (err) {
+      console.error("PATCH /api/boq/projects/:id/planning-include-bulk:", err);
+      res.status(500).json({ error: "Failed to bulk update planning include flag" });
     }
   });
 
@@ -10401,17 +10415,17 @@ export async function registerRoutes(
         return { ...item, materials: cleanedRows, materialSetupWarning: null, isProgrammed: barItemIds.has(item.id) };
       });
 
-      return { items, bars, project, expandedItems };
+      return { items, bars, project, expandedItems, excludedCount: allBoqItems.length - items.length };
   }
 
   // BOM demand for the whole project
   app.get("/api/boq/projects/:id/bom", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
-      const { items, bars, project, expandedItems } = await computeProjectBom(projectId);
+      const { items, bars, project, expandedItems, excludedCount } = await computeProjectBom(projectId);
       const barItemIds = new Set(bars.map(b => b.boqItemId));
       const hasRecipes = expandedItems.some(it => it.materials.length > 0 || it.equipment.length > 0 || it.labour.length > 0);
-      console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes}`);
+      console.log(`[BOM] project=${projectId} items=${items.length} bars=${bars.length} hasRecipes=${hasRecipes} excluded=${excludedCount}`);
       res.json({
         items: expandedItems,
         bars,
@@ -10420,6 +10434,7 @@ export async function registerRoutes(
         hasBars: bars.length > 0,
         hasItems: items.length > 0,
         hasRecipes,
+        _excludedCount: excludedCount,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/bom:", err);

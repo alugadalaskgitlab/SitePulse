@@ -886,6 +886,18 @@ export default function WorkDemand() {
             {project?.roadLengthKm ? ` · ${project.roadLengthKm} km` : ""}
             {project?.totalMonths ? ` · ${project.totalMonths} months` : ""}
           </p>
+          {(() => {
+            const included = bomData?.items?.length ?? 0;
+            const excludedCount = (bomData as any)?._excludedCount as number | undefined;
+            if (included > 0 && typeof excludedCount === "number" && excludedCount > 0) {
+              return (
+                <span className="inline-flex items-center gap-1 mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" data-testid="badge-planning-inclusion">
+                  Planning: {included} / {included + excludedCount} items included — {excludedCount} excluded
+                </span>
+              );
+            }
+            return null;
+          })()}
         </div>
         <Link href={`/work-program/${projectId}/programme`}>
           <a>
