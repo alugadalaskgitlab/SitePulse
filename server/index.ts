@@ -471,6 +471,15 @@ app.use((req, res, next) => {
     console.error("Startup: backfillMissingDispatchLdoRows failed:", e);
   }
 
+  try {
+    const r8 = await storage.backfillBoqPlanningInclude();
+    if (r8.set > 0 || r8.excluded > 0) {
+      console.log(`Startup: backfillBoqPlanningInclude — set: ${r8.set}, auto-excluded: ${r8.excluded}`);
+    }
+  } catch (e) {
+    console.error("Startup: backfillBoqPlanningInclude failed:", e);
+  }
+
     // ── Stale draft GRN push alert ───────────────────────────────────────────
   // Runs every hour; sends a single push to managers/admins listing draft
   // GRNs that have had no Purchase Indent reference for > 48 hours.

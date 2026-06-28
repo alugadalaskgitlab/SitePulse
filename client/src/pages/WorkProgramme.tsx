@@ -727,6 +727,7 @@ function InlineGanttTable({
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
+      if (it.includedInPlanning === false) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
@@ -1132,6 +1133,7 @@ function MonthlyPlanView({
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
+      if (it.includedInPlanning === false) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);

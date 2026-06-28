@@ -2376,6 +2376,9 @@ export const boqItems = pgTable("boq_items", {
   // for Plan vs Actual. Use when the DPR field unit differs from the BOQ unit
   // (e.g., DPR in SQM but BOQ in Hectares → factor = 0.0001). Null = 1.0.
   dprConversionFactor: real("dpr_conversion_factor"),
+  // When false, the item is excluded from Gantt, BOM, and auto-build-recipes.
+  // Remains in the full BOQ for billing. Default true (all items planned).
+  includedInPlanning: boolean("included_in_planning").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),

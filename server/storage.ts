@@ -1215,6 +1215,9 @@ export interface IStorage {
   // Clear all auto-applied recipes + snlBoqMappings rows for every non-manually-mapped
   // BOQ item in a project (used before Re-map All so stale data doesn't pollute BOM).
   clearAllBoqProjectRecipes(projectId: number): Promise<void>;
+  // Task #1186 — BOQ planning include/exclude flag
+  backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
+  updateBoqItemPlanningInclude(id: number, included: boolean): Promise<void>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -21072,6 +21075,43 @@ export class DatabaseStorage implements IStorage {
         .set({ mappingStatus: "unmapped" })
         .where(inArray(boqItems.id, clearIds));
     });
+  }
+
+  async backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }> {
+    // Step 1: set true for any row where the column is NULL (newly added column on existing data)
+    const setResult = await db.execute(sql.raw(`
+      UPDATE boq_items SET included_in_planning = true WHERE included_in_planning IS NULL
+    `));
+    const set = (setResult as any).rowCount ?? 0;
+
+    // Step 2: mark well-known non-construction items as excluded
+    // Patterns: toll plaza/booth, road furniture, highway/solar/street lighting, provisional sums
+    const excResult = await db.execute(sql.raw(`
+      UPDATE boq_items SET included_in_planning = false
+      WHERE included_in_planning = true
+        AND (
+          description ILIKE '%toll plaza%'
+          OR description ILIKE '%toll booth%'
+          OR description ILIKE '%toll gate%'
+          OR description ILIKE '%provisional sum%'
+          OR description ILIKE '%lump sum provision%'
+          OR description ILIKE '%highway lighting%'
+          OR description ILIKE '%solar lighting%'
+          OR description ILIKE '%street lighting%'
+          OR description ILIKE '%lamp post%'
+          OR description ILIKE '%road furniture%'
+          OR description ILIKE '%road sign%'
+          OR description ILIKE '%signage%'
+          OR description ILIKE '%ambulance%'
+          OR description ILIKE '%first aid%'
+        )
+    `));
+    const excluded = (excResult as any).rowCount ?? 0;
+    return { set, excluded };
+  }
+
+  async updateBoqItemPlanningInclude(id: number, included: boolean): Promise<void> {
+    await db.update(boqItems).set({ includedInPlanning: included }).where(eq(boqItems.id, id));
   }
 
   async seedSnlMorthSdb(): Promise<{ source: SnlSource; items: number }> {

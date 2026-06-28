@@ -9609,6 +9609,20 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/boq/items/:id/planning-include", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const id = parseInt(req.params.id);
+      const { included } = req.body as { included: boolean };
+      if (typeof included !== "boolean") return res.status(400).json({ error: "included must be a boolean" });
+      await storage.updateBoqItemPlanningInclude(id, included);
+      res.json({ ok: true, id, included });
+    } catch (err) {
+      console.error("PATCH /api/boq/items/:id/planning-include:", err);
+      res.status(500).json({ error: "Failed to update planning include flag" });
+    }
+  });
+
   app.delete("/api/boq/items/:id", async (req, res) => {
     try {
       await storage.deleteBoqItem(parseInt(req.params.id));
@@ -10025,7 +10039,7 @@ export async function registerRoutes(
   // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
   // that only existed inside /bom → ReferenceError → empty Procurement Intelligence.)
   async function computeProjectBom(projectId: number) {
-      const [items, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
+      const [allBoqItems, bars, project, allMaterials, rmcDesigns, allMixTemplates] = await Promise.all([
         storage.getBoqItemsWithRecipes(projectId),
         storage.getWorkProgramBars(projectId),
         storage.getBoqProject(projectId),
@@ -10033,6 +10047,9 @@ export async function registerRoutes(
         storage.getRmcMixDesigns(), // concrete materials source (RMC module)
         storage.getMixTemplates(),  // bituminous standard templates (Masters/HMP)
       ]);
+
+      // Filter to items included in planning (excluded items stay in BOQ for billing only)
+      const items = allBoqItems.filter(it => it.includedInPlanning !== false);
 
       // Build materialId → name map for resolving mix template component names
       const matNameById = new Map(allMaterials.map(m => [m.id, m.name]));
@@ -10625,6 +10642,8 @@ export async function registerRoutes(
       let recipied = 0;
       const unrecipied: Array<{ id: number; itemCode: string | null; description: string }> = [];
       for (const item of items) {
+        // Skip items that are excluded from planning
+        if ((item as any).includedInPlanning === false) continue;
         const wt = classifyWorkType(item.description ?? "", item.unit ?? "");
         if (!wt) {
           unrecipied.push({ id: item.id, itemCode: (item as any).itemCode ?? null, description: item.description ?? "" });

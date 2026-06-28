@@ -271,6 +271,14 @@ function CategorySection({
     },
     onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
   });
+  const planToggleMutation = useMutation({
+    mutationFn: ({ id, included }: { id: number; included: boolean }) =>
+      apiRequest("PATCH", `/api/boq/items/${id}/planning-include`, { included }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "items"] });
+    },
+    onError: () => toast({ title: "Failed to update planning flag", variant: "destructive" }),
+  });
 
   const subtotal = items.reduce((s, i) => s + (i.clientAmount ?? 0), 0);
   const boqSubtotal = items.reduce((s, i) => s + (i.clientRate ?? 0) * i.boqQty, 0);
@@ -312,6 +320,7 @@ function CategorySection({
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-20">Curr Qty</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-22">Rate (₹)</th>
                 <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-24">Amount (₹)</th>
+                <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-12" title="Include in Gantt / BOM planning">Plan</th>
                 <th className="px-2 py-2 w-7" />
               </tr>
             </thead>
@@ -343,6 +352,21 @@ function CategorySection({
                     <td className="px-3 py-1.5 text-right text-slate-600">{fmt(item.clientRate)}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-slate-800">
                       {fmtAmt(item.clientAmount)}
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        onClick={() => planToggleMutation.mutate({ id: item.id, included: !item.includedInPlanning })}
+                        disabled={planToggleMutation.isPending}
+                        title={item.includedInPlanning ? "Included in Gantt/BOM — click to exclude" : "Excluded from Gantt/BOM — click to include"}
+                        data-testid={`button-plan-toggle-${item.id}`}
+                        className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-bold transition-colors ${
+                          item.includedInPlanning
+                            ? "bg-teal-50 border-teal-300 text-teal-700 hover:bg-teal-100"
+                            : "bg-slate-100 border-slate-300 text-slate-400 hover:bg-slate-200"
+                        }`}
+                      >
+                        {item.includedInPlanning ? "✓" : "−"}
+                      </button>
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <div className="flex items-center gap-0.5 justify-center">
@@ -402,6 +426,7 @@ function CategorySection({
                   <td className="px-3 py-1.5 text-right text-sm font-bold text-slate-800">
                     ₹{fmtAmt(subtotal)}
                   </td>
+                  <td />
                   <td />
                 </tr>
               )}
