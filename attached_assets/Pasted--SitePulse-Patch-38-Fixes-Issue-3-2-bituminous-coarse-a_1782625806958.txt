@@ -1,0 +1,49 @@
+# SitePulse — Patch 38
+**Fixes:** Issue 3.2 (bituminous coarse aggregate shown as raw "10/12MM") + steel unit gate hardening (supports the parent "T" unit seen in NH-167 Bill 5).
+**Risk:** Very low. Two small regex/map edits in `shared/planningEngine.ts`. No schema/data changes.
+**Apply Patches 36 & 37 first.**
+
+> Your BC STANDARD and DBM templates are already complete and correct (verified from your screenshots), so **no template/data change is needed**. This patch only fixes naming + unit normalisation in code.
+
+---
+
+## PART A — Recognise weight units "T / TONNES / TONS" (helps #3.4)
+**File:** `shared/planningEngine.ts` → `UNIT_MAP`
+
+**FIND:**
+```ts
+  MT: "MT", TON: "MT", TONNE: "MT", METRIC: "MT",
+```
+**REPLACE:**
+```ts
+  MT: "MT", TON: "MT", TONNE: "MT", METRIC: "MT", T: "MT", TONNES: "MT", TONS: "MT",
+```
+
+> The NH-167 steel parent row uses unit **"T"**, which previously did not normalise to MT. Now any of T / MT / TON / TONNE(S) / TONS map to MT so reinforcement is detected consistently.
+
+---
+
+## PART B — Clean name for the BC/DBM coarse fraction "10/12MM" (#3.2)
+**File:** `shared/planningEngine.ts` → `normaliseKeyMaterialName()`
+
+**FIND:**
+```ts
+  if (/10\s*mm|12\.?5\s*mm/i.test(raw)) return "10mm Aggregate";
+```
+**REPLACE:**
+```ts
+  if (/10\s*mm|10\s*\/?\s*12\s*mm|11\.?2\s*mm|12\.?5\s*mm|13\.?2\s*mm/i.test(raw)) return "10mm Aggregate";
+```
+
+> Effect: the BC/DBM template fraction **"10/12MM"** (and "13.2mm", "11.2mm" variants) now resolves to a clean **"10mm Aggregate"** row that merges consistently with concrete-derived 10mm, instead of appearing as an unrecognised raw "10/12MM" label. Combined with Patch 37 Part B (correct BC classification), a BC item now produces: **Bitumen VG-40 + 10mm Aggregate + 6mm Aggregate + Stone Dust + LDO**.
+
+---
+
+## Deferred (intentionally NOT in this patch)
+- **Strict per-mixType template fallback + "incomplete template" warning.** After Patch 37 fixes the BC misclassification, BC/DBM items resolve to their own correct templates (BC→BC STANDARD, DBM→DBM), so the blanket "first bituminous template" fallback is no longer reached for NH-167. We can add the explicit "incomplete template" guard later as a robustness enhancement for projects whose Masters lack a matching template — say the word if you want it.
+
+---
+
+## How to verify
+1. Expand a **BC** BOM row → the coarse aggregate appears as **"10mm Aggregate"** (not "10/12MM"), alongside 6mm Aggregate, Stone Dust, and Bitumen VG-40.
+2. Steel rows whose source unit was "T" are now picked up as **TMT / Reinforcement Steel**.

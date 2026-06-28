@@ -623,9 +623,21 @@ function isPipeBoqItem(item: BomInputItem): boolean {
 
 function pipeMaterialName(item: BomInputItem): string {
   const d = item.description;
-  const cls = /np4/i.test(d) ? "NP4" : /np3/i.test(d) ? "NP3" : /np2/i.test(d) ? "NP2" : /hdpe/i.test(d) ? "HDPE" : "";
-  const dia = d.match(/(\d{3,4})\s*mm/);
-  const size = dia ? `${dia[1]}mm dia` : "";
+  // Class — tolerant of "NP-4" / "NP 4" / "NP4"
+  const cls =
+    /np[\s-]?4/i.test(d) ? "NP4" :
+    /np[\s-]?3/i.test(d) ? "NP3" :
+    /np[\s-]?2/i.test(d) ? "NP2" :
+    /hdpe/i.test(d) ? "HDPE" : "";
+  // Diameter in mm — tolerant of "1200 mm", "1200mm dia", "1200 dia", "DIA 1200", "1.2 m"
+  let mm: number | null = null;
+  const mDia = d.match(/(\d{3,4})\s*(?:mm)?\s*dia\b/i)   // "1200 dia" / "1200 mm dia"
+            || d.match(/(\d{3,4})\s*mm\b/i)               // "1200 mm"
+            || d.match(/dia\.?\s*(\d{3,4})\b/i);          // "dia 1200"
+  const mMtr = d.match(/\b(\d(?:\.\d+)?)\s*m\b/i);        // "1.2 m"
+  if (mDia) mm = parseInt(mDia[1], 10);
+  else if (mMtr && parseFloat(mMtr[1]) < 10) mm = Math.round(parseFloat(mMtr[1]) * 1000);
+  const size = mm ? `${mm}mm dia` : "";
   const base = /hdpe/i.test(d) ? "HDPE Pipe" : "RCC Hume Pipe";
   return [base, cls && `(${cls})`, size].filter(Boolean).join(" ");
 }
@@ -655,9 +667,12 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
   if (/gsb material/i.test(raw)) return "GSB Material";
   if (/wmm material/i.test(raw)) return "WMM Material";
 
-  if (/emulsion/i.test(raw) || /prime\s*coat|tack\s*coat/i.test(desc)) {
-    if (/prime\s*coat/i.test(desc)) return "Bitumen Emulsion SS-1";
-    if (/tack\s*coat/i.test(desc)) return "Bitumen Emulsion RS-1";
+  // Emulsion naming must NEVER apply to a BC/DBM/SDBC/BM mix item that merely mentions
+  // "after applying prime coat" / "over tack coat" — those keep their VG-grade binder.
+  const descIsBitMix = /bituminous\s*concrete|\bbc\b|\bdbm\b|dense\s*bituminous|sdbc|bituminous\s*macadam|\bbm\b/i.test(desc);
+  if (!descIsBitMix && (/emulsion/i.test(raw) || /prim(?:e|er)\s*coat|\bprimer\b|tack\s*coat/i.test(desc))) {
+    if (/prim/i.test(desc)) return "Bitumen Emulsion SS-1";
+    if (/tack/i.test(desc)) return "Bitumen Emulsion RS-1";
     return "Bitumen Emulsion";
   }
 
@@ -876,7 +891,10 @@ export function calculateBomDemand(
         if (!row.supplyType || m.supplyType === "plant") row.supplyType = m.supplyType;
       }
       {
-        const bk = (item.itemCode ?? item.description) || "";
+        // Key each contributor by the BOQ line's own id so parent/child sub-items
+        // (which share the parent itemCode) and identical descriptions repeated across
+        // different bills each appear as their own breakdown row instead of collapsing.
+        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
         else row.breakdown.push({
@@ -911,7 +929,10 @@ export function calculateBomDemand(
       row.totalHours += lineHours;
       row.count = Math.max(row.count, cnt);
       {
-        const bk = (item.itemCode ?? item.description) || "";
+        // Key each contributor by the BOQ line's own id so parent/child sub-items
+        // (which share the parent itemCode) and identical descriptions repeated across
+        // different bills each appear as their own breakdown row instead of collapsing.
+        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
@@ -977,7 +998,10 @@ export function calculateBomDemand(
       row.designation = preferDisplayName(row.designation, designation);
       row.totalDays += lineDays;
       {
-        const bk = (item.itemCode ?? item.description) || "";
+        // Key each contributor by the BOQ line's own id so parent/child sub-items
+        // (which share the parent itemCode) and identical descriptions repeated across
+        // different bills each appear as their own breakdown row instead of collapsing.
+        const bk = String(item.id ?? item.itemCode ?? item.description ?? "");
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
         if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });

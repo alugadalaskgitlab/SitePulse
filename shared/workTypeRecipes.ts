@@ -47,10 +47,6 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   // Non-consuming items → no recipe (same guard as Patch 12 isNonConsumingItem)
   if (/\bdismantl|\bdemolit|\bdemolish|\bremoving\b|\bremoval\b|\bbreaking\b|\bscarif|\bmilling\b/i.test(d)) return null;
 
-  // ── Bituminous spray works ──────────────────────────────────────────────────
-  if (/tack\s*coat/i.test(d)) return "tack_coat";
-  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
-
   // ── Bituminous wearing ──────────────────────────────────────────────────────
   if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";
   if (/wearing\s*coat/i.test(d) && /bitumin/i.test(d)) return "bituminous_wearing";
@@ -60,6 +56,12 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   // ── Bituminous base / binder ────────────────────────────────────────────────
   if (/\bdbm\b|dense\s*bituminous/i.test(d)) return "bituminous_base";
   if (/bituminous\s*macadam|\bbm\b/i.test(d)) return "bituminous_base";
+
+  // ── Bituminous spray works ──────────────────────────────────────────────────
+  // Checked AFTER the mix layers above so a BC/DBM laying item that merely mentions
+  // "after applying prime coat" / "over tack coat" is NOT misclassified as a spray coat.
+  if (/tack\s*coat/i.test(d)) return "tack_coat";
+  if (/prime\s*coat|primer\s*coat|\bprimer\b/i.test(d)) return "prime_coat";
 
   // ── Granular courses ────────────────────────────────────────────────────────
   if (/\bgsb\b|granular\s*sub[-\s]*base/i.test(d)) return "gsb";
