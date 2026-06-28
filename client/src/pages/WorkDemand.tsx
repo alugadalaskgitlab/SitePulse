@@ -68,7 +68,7 @@ function MaterialsTable({
   const colSpan = 2 + allMonths.length + 1;
 
   return (
-    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20">
+    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 100 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
@@ -206,7 +206,7 @@ function EquipmentTable({
   const colSpan = 2 + allMonths.length + 1;
 
   return (
-    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20">
+    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>
@@ -324,7 +324,7 @@ function LabourTable({
   const colSpan = 2 + allMonths.length + 1;
 
   return (
-    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20">
+    <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
       <table className="text-sm border-collapse" style={{ minWidth: 260 + allMonths.length * 72 + 110 }}>
         <thead>
           <tr style={{ background: "#0F5F64" }}>

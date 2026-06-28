@@ -896,7 +896,7 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
         else row.breakdown.push({
           itemDescription: item.itemName || item.description,
@@ -935,7 +935,7 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       }
@@ -1005,7 +1005,7 @@ export function calculateBomDemand(
         // share a parent itemCode (steel Foundation/Sub/Super) or repeat across bills
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
-        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? b.fullDescription) || "") === bk);
+        const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
         else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       }
@@ -1493,6 +1493,7 @@ export function deriveMaterialsFromLayerConfig(
     components: Array<{ materialName: string; percent: number | null }>;
   } | null,
   concreteDesign?: ConcreteMixDesignInput | null,
+  opts?: { descBinderGrade?: string | null },
 ): DerivedMaterialRow[] {
   if (layerConfig.layerType === "earthwork") {
     return [{ materialName: "Soil / Earth", uom: "CUM", qtyPerBoqUnit: 1.0, isAuto: true }];
@@ -1602,7 +1603,9 @@ export function deriveMaterialsFromLayerConfig(
     if (templateUsable) {
       // ── Approved Masters template (JMF) ───────────────────────────────────────
       const bitPct = tmplBinderComp?.percent ?? mixTemplate!.bitumenPercent ?? 0;
-      const grade = (mixTemplate!.binderGrade ?? "").trim();
+      // Description-explicit grade (e.g. "VG-30" in item text) wins over the template
+      // grade so one template can serve both VG-30 and VG-40 variants of the same mix.
+      const grade = (opts?.descBinderGrade ?? mixTemplate!.binderGrade ?? "").trim();
       const binderName = grade
         ? (/bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`)
         : (tmplBinderComp?.materialName?.trim() || "Bitumen VG-30");
@@ -1612,7 +1615,8 @@ export function deriveMaterialsFromLayerConfig(
       }
     } else {
       // ── IRC standard fallback for THIS exact mix type (keeps template grade if given) ──
-      const grade = (mixTemplate?.binderGrade ?? "VG-30").trim();
+      // Description-explicit grade wins; then template grade; then IRC default VG-30.
+      const grade = (opts?.descBinderGrade ?? mixTemplate?.binderGrade ?? "VG-30").trim();
       const binderName = /bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`;
       rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
       for (const a of ircDefault.aggregates) {

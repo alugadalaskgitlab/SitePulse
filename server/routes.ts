@@ -9990,6 +9990,36 @@ export async function registerRoutes(
     }
   }
 
+  // Composite bituminous layer parser — detects items like "40mm BC + 25mm mastic asphalt"
+  // and returns each sub-layer so materials are derived independently and then combined.
+  // Only applies to area-based (Sqm) items; CUM/MT items use the template directly.
+  function parseCompositeLayers(
+    desc: string, unit: string,
+  ): Array<{thicknessMm: number; mixType: string; density: number}> | null {
+    const uNorm = unit.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!/^(SQM|M2|SQMT|SQM)/.test(uNorm)) return null;
+    const d = desc.toLowerCase();
+    const found: Array<{thicknessMm: number; mixType: string; density: number}> = [];
+    const tryExtract = (typePattern: string, mixType: string, density: number) => {
+      const rx = new RegExp(
+        `(\\d+)\\s*mm\\s*(?:thick\\s*)?(?:layer\\s*of\\s*)?(?:${typePattern})`, "i",
+      );
+      const m = d.match(rx);
+      if (m) {
+        const thk = parseInt(m[1], 10);
+        if (thk > 0 && thk < 200 && !found.find(f => f.mixType === mixType)) {
+          found.push({ thicknessMm: thk, mixType, density });
+        }
+      }
+    };
+    tryExtract("mastic", "MA", 2.30);
+    tryExtract("\\bbc\\b|bituminous\\s*concrete", "BC", 2.40);
+    tryExtract("sdbc|semi.?dense\\s*bituminous", "SDBC", 2.40);
+    tryExtract("dense\\s*bituminous|\\bdbm\\b", "DBM", 2.35);
+    tryExtract("\\bbm\\b|bituminous\\s*macadam", "BM", 2.35);
+    return found.length > 1 ? found : null;
+  }
+
   // Shared BOM expansion — resolves each BOQ item to its best material list using the
   // P1→P4 source priority. Used by BOTH /bom and /shortage-check so the two endpoints
   // can never drift apart. (Previously /shortage-check referenced an `expandedItems`
@@ -10139,33 +10169,80 @@ export async function registerRoutes(
           }
 
           const mixTemplate = resolvedMixTemplateId ? mixTemplateMap.get(resolvedMixTemplateId) : null;
-          const derived = deriveMaterialsFromLayerConfig(
-            effLc,
-            item.unit,
-            mixTemplate ?? undefined,
-            concreteDesign
-              ? {
-                  grade: concreteDesign.grade,
-                  cementContent: concreteDesign.cementContent,
-                  admixtureName: concreteDesign.admixtureName,
-                  admixtureDosage: concreteDesign.admixtureDosage,
-                  componentProportions: concreteDesign.componentProportions as any,
-                }
-              : null,
-          );
+
+          // Grade from description wins over template grade.
+          // "premixed with bituminous binder of VG-30" → always → "Bitumen VG-30"
+          // regardless of which VG grade the mapped template happens to have saved.
+          const descBinderGrade = (() => {
+            const d = String((item as any).description ?? "");
+            if (/vg\s*-?\s*40|vg40/i.test(d)) return "VG-40";
+            if (/vg\s*-?\s*30|vg30/i.test(d)) return "VG-30";
+            if (/vg\s*-?\s*10|vg10/i.test(d)) return "VG-10";
+            return null;
+          })();
+
+          // Composite item detection — e.g. "40mm BC and 25mm mastic asphalt".
+          // We derive materials for each sub-layer using its own template, then combine.
+          const compositeLayers =
+            effLc?.layerType === "bituminous"
+              ? parseCompositeLayers(String((item as any).description ?? ""), item.unit)
+              : null;
+
+          let derived: ReturnType<typeof deriveMaterialsFromLayerConfig>;
+          if (compositeLayers && compositeLayers.length > 0) {
+            const combinedMap = new Map<string, { materialName: string; uom: string; qtyPerBoqUnit: number; isAuto: boolean; applicationNote?: string }>();
+            for (const cl of compositeLayers) {
+              const subTmplId =
+                mixTypeToTemplateId.get(cl.mixType) ??
+                mixTypeToTemplateId.get(normaliseMixType(cl.mixType)) ??
+                null;
+              const subTmpl = subTmplId ? mixTemplateMap.get(subTmplId) : null;
+              const subLc: LayerConfig = {
+                layerType: "bituminous",
+                mixType: cl.mixType,
+                thicknessMm: cl.thicknessMm,
+                densityTPerCum: cl.density,
+              };
+              const subDerived = deriveMaterialsFromLayerConfig(
+                subLc, item.unit, subTmpl ?? undefined, null, { descBinderGrade },
+              );
+              for (const dr of subDerived) {
+                const ex = combinedMap.get(dr.materialName);
+                if (ex) { ex.qtyPerBoqUnit += dr.qtyPerBoqUnit; }
+                else combinedMap.set(dr.materialName, { ...dr });
+              }
+            }
+            derived = [...combinedMap.values()] as ReturnType<typeof deriveMaterialsFromLayerConfig>;
+          } else {
+            derived = deriveMaterialsFromLayerConfig(
+              effLc,
+              item.unit,
+              mixTemplate ?? undefined,
+              concreteDesign
+                ? {
+                    grade: concreteDesign.grade,
+                    cementContent: concreteDesign.cementContent,
+                    admixtureName: concreteDesign.admixtureName,
+                    admixtureDosage: concreteDesign.admixtureDosage,
+                    componentProportions: concreteDesign.componentProportions as any,
+                  }
+                : null,
+              { descBinderGrade },
+            );
+          }
 
           // --- BITUMEN BOM DIAGNOSTIC (Patch 34) ---
           if (effLc?.layerType === "bituminous") {
             console.log("[BITUMEN BOM]", JSON.stringify({
               item: `${item.itemCode ?? ""} ${item.description?.slice(0, 40)}`,
               unit: item.unit,
-              layerType: effLc.layerType,
+              composite: compositeLayers ? compositeLayers.map(c => `${c.thicknessMm}mm ${c.mixType}`) : null,
+              descBinderGrade,
               resolvedTemplate: mixTemplate
                 ? {
                     binderGrade: (mixTemplate as any).binderGrade ?? null,
                     bitumenPercent: (mixTemplate as any).bitumenPercent ?? null,
                     componentCount: (mixTemplate as any).components?.length ?? 0,
-                    components: ((mixTemplate as any).components ?? []).map((c: any) => ({ name: c.materialName, percent: c.percent })),
                   }
                 : "NO TEMPLATE RESOLVED",
               derivedRows: derived.map((d: any) => ({ name: d.materialName, qtyPerBoqUnit: d.qtyPerBoqUnit })),
