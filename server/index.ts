@@ -152,6 +152,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensureStructureBarColumns();
+    console.log("Startup: ensureStructureBarColumns — structure bar columns verified");
+  } catch (e) {
+    console.error("Startup: Failed to ensure structure bar columns:", e);
+  }
+
+  try {
     await storage.ensureHeatingSessionDipColumns();
   } catch (e) {
     console.error("Startup: Failed to ensure heating session dip columns:", e);

@@ -727,33 +727,65 @@ function StructureLocationRow({
       {/* ── Left sticky panel (read-only — re-import to change values) ── */}
       <div
         style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
-        className="flex items-center gap-1.5 px-2 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
+        className="flex flex-col justify-center gap-0.5 px-2 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
       >
-        <MapPin className="w-3 h-3 text-violet-500 flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 truncate flex-1" title={b.structureId ?? ""}>
-          {b.structureId ?? b.reachLabel ?? "—"}
-        </span>
-        {b.structureChainageKm != null && (
-          <span className="text-[10px] text-violet-500 font-mono flex-shrink-0">
-            Km {Number(b.structureChainageKm).toFixed(3)}
+        {/* Row 1: icon + structure name + chainage */}
+        <div className="flex items-center gap-1 min-w-0">
+          <MapPin className="w-3 h-3 text-violet-500 flex-shrink-0" />
+          <span
+            className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 truncate"
+            title={b.structureId ?? ""}
+          >
+            {b.structureId ?? b.reachLabel ?? "—"}
           </span>
-        )}
-        {b.boqSubItem && (
-          <span className="text-[10px] bg-violet-100 text-violet-600 rounded px-1 border border-violet-200 flex-shrink-0 font-mono">
-            {b.boqSubItem}
+          {b.structureChainageKm != null && (
+            <span className="text-[10px] text-violet-500 font-mono flex-shrink-0 ml-auto">
+              Km {Number(b.structureChainageKm).toFixed(3)}
+            </span>
+          )}
+        </div>
+        {/* Row 2: structure type + BOQ item code + sub-item + qty */}
+        <div className="flex items-center gap-1 min-w-0 flex-wrap">
+          {b.structureLocType && (
+            <span className="text-[10px] bg-violet-100 text-violet-700 rounded px-1 border border-violet-200 flex-shrink-0 capitalize">
+              {b.structureLocType}
+            </span>
+          )}
+          {(bar as any).itemCode && (
+            <span className="text-[10px] text-slate-500 font-mono flex-shrink-0">
+              {(bar as any).itemCode}
+            </span>
+          )}
+          {b.boqSubItem && (
+            <span className="text-[10px] bg-violet-50 text-violet-600 rounded px-1 border border-violet-200 flex-shrink-0 font-mono">
+              {b.boqSubItem}
+            </span>
+          )}
+          <span className="text-[10px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-auto">
+            {fmtQty(bar.plannedQty, 2)} {(bar as any).unit ?? ""}
           </span>
-        )}
-        <span className="text-[11px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-1">
-          {fmtQty(bar.plannedQty, 2)} {(bar as any).unit ?? ""}
-        </span>
-        <button
-          onClick={() => onDelete(bar.id)}
-          className="p-1 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
-          title="Delete this structure bar (re-import to update values)"
-          data-testid={`button-delete-sloc-${bar.id}`}
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
+        </div>
+        {/* Row 3: start date + duration + delete */}
+        <div className="flex items-center gap-1 min-w-0">
+          {bar.startDate && (
+            <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
+              {String(bar.startDate).slice(0, 10)}
+            </span>
+          )}
+          {b.durationDays != null && (
+            <span className="text-[10px] text-slate-400 flex-shrink-0">
+              {b.durationDays}d
+            </span>
+          )}
+          <button
+            onClick={() => onDelete(bar.id)}
+            className="p-0.5 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
+            title="Delete this structure bar (re-import to update values)"
+            data-testid={`button-delete-sloc-${bar.id}`}
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       {/* ── Right: Gantt cells ── */}

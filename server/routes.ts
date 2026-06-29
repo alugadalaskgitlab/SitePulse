@@ -10749,10 +10749,18 @@ export async function registerRoutes(
       // Server-side XLSX parsing
       const { read, utils } = await import("xlsx");
       const wb = read(req.file.buffer, { type: "buffer", cellDates: true });
-      const sheetName = wb.SheetNames.includes("Structure_Schedule_Import")
-        ? "Structure_Schedule_Import"
-        : wb.SheetNames[0];
-      if (!sheetName) return res.status(422).json({ error: "No sheets found in Excel file." });
+
+      // Require the named sheet — do NOT silently fall back to first sheet,
+      // which can parse the wrong data. Caller must name their sheet correctly.
+      const REQUIRED_SHEET = "Structure_Schedule_Import";
+      if (!wb.SheetNames.includes(REQUIRED_SHEET)) {
+        return res.status(422).json({
+          error: `Required sheet "${REQUIRED_SHEET}" not found.`,
+          availableSheets: wb.SheetNames,
+          hint: `Rename your target worksheet to "${REQUIRED_SHEET}" and re-upload.`,
+        });
+      }
+      const sheetName = REQUIRED_SHEET;
 
       const ws = wb.Sheets[sheetName];
       const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
@@ -10787,11 +10795,26 @@ export async function registerRoutes(
           const boqItemCode   = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
           const boqSubItem    = colStr(row, "boq_sub_item", "sub_item", "sub item");
           const boqDescription = colStr(row, "boq_description", "description", "item description");
-          const boqExcelRow   = Math.round(colNum(row, "boq_excel_row", "excel_row")) || (i + 2);
+          const boqExcelRowRaw = Math.round(colNum(row, "boq_excel_row", "excel_row", "boq_id"));
+          // boq_excel_row in the structure schedule is treated as the BOQ item ID
+          // (the user copies the system ID into this column for P1 lookup).
+          // It is also stored verbatim on the bar for traceability.
+          const boqExcelRow = boqExcelRowRaw || (i + 2);
 
-          // Server-side BOQ matching — priority: P1 code+subItem, P2 code, P3 description
+          // Server-side BOQ matching — 3-level priority:
+          // P1 → boq_excel_row (as BOQ item ID) + boq_item_code + boq_sub_item — tightest: direct ID lookup
+          // P2 → boq_item_code + boq_sub_item composite exact match
+          // P3 → boq_item_code exact (or leading-zero stripped)
+          // P4 → boq_description partial match (first 40 chars)
           let boqItem: any = null;
-          if (boqItemCode && boqSubItem) {
+          if (boqExcelRowRaw > 0) {
+            const candidate = allItems.find((it: any) => it.id === boqExcelRowRaw) ?? null;
+            // Accept P1 match only if item code also agrees (or code not provided)
+            if (candidate && (!boqItemCode || String(candidate.itemCode ?? "").trim().toLowerCase() === boqItemCode.trim().toLowerCase())) {
+              boqItem = candidate;
+            }
+          }
+          if (!boqItem && boqItemCode && boqSubItem) {
             const k = `${boqItemCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
             boqItem = itemByCodeSubItem.get(k) ?? null;
           }
@@ -10887,6 +10910,7 @@ export async function registerRoutes(
       let skipped = 0;
       let unmatchedBoqRows = 0;
       let uomMismatchRows = 0;
+      let missingDateRows = 0;
       const warnings: string[] = [];
       // Track imported qty per BOQ item for over-planned detection
       const importedQtyByItemId = new Map<number, number>();
@@ -10967,16 +10991,21 @@ export async function registerRoutes(
         // Accumulate imported qty per BOQ item for over-planned detection
         importedQtyByItemId.set(boqItem.id, (importedQtyByItemId.get(boqItem.id) ?? 0) + (r.plannedQty ?? 0));
 
-        // Compute startMonth / endMonth from startDate + durationDays
+        // Compute startMonth / endMonth from startDate + durationDays.
+        // Missing or unparseable start_date is explicitly warned (not silently defaulted).
         let startMonth = 1;
         let endMonth   = 1.1;
-        if (r.startDate && projectStartDate) {
+        const hasValidDate = r.startDate && /^\d{4}-\d{2}-\d{2}/.test(r.startDate);
+        if (!hasValidDate) {
+          missingDateRows++;
+          warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): missing or invalid start_date — bar placed at Month 1. Provide start_date (YYYY-MM-DD) for correct Gantt position.`);
+        }
+        if (hasValidDate && projectStartDate) {
           try {
             const pStart = new Date(projectStartDate);
-            const sDate  = new Date(r.startDate);
+            const sDate  = new Date(r.startDate!);
             const diffMs = sDate.getTime() - pStart.getTime();
             const diffDays = diffMs / 86400000;
-            // Convert offset days → fractional months using workingDays
             startMonth = Math.max(1, 1 + diffDays / workingDays);
             const durMonths = r.durationDays ? r.durationDays / workingDays : 1;
             endMonth = startMonth + durMonths;
@@ -10984,7 +11013,9 @@ export async function registerRoutes(
             if (endMonth <= startMonth) endMonth = startMonth + 0.1;
             startMonth = +startMonth.toFixed(3);
             endMonth   = +endMonth.toFixed(3);
-          } catch (_) { /* leave defaults */ }
+          } catch (dateErr) {
+            warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): could not parse start_date "${r.startDate}" — bar placed at Month 1.`);
+          }
         }
 
         const endDate = r.startDate && r.durationDays
@@ -11056,6 +11087,7 @@ export async function registerRoutes(
         rowsSkipped: skipped,
         unmatchedBoqRows,
         uomMismatchRows,
+        missingDateRows,
         overPlannedItems,
         warnings: warnings.slice(0, 50), // cap at 50 to keep response small
         results,

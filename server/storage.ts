@@ -687,6 +687,7 @@ export interface IStorage {
 
   // Ensures the 4 LDO dip columns added in Task #551 exist on bitumen_heating_sessions.
   // Safe to run multiple times (ALTER TABLE … ADD COLUMN IF NOT EXISTS).
+  ensureStructureBarColumns(): Promise<void>;
   ensureHeatingSessionDipColumns(): Promise<void>;
   ensureMaterialOpeningStockTankNumber(): Promise<void>;
 
@@ -11683,6 +11684,15 @@ export class DatabaseStorage implements IStorage {
         auto_issue_item_id integer
       )
     `));
+  }
+
+  async ensureStructureBarColumns(): Promise<void> {
+    const newCols = [
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS relative_chainage_km real",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_days integer",
+    ];
+    for (const stmt of newCols) await db.execute(sql.raw(stmt));
+    console.log("ensureStructureBarColumns: relative_chainage_km and duration_days verified/added");
   }
 
   async ensureHeatingSessionDipColumns(): Promise<void> {
