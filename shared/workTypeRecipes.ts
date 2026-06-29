@@ -15,7 +15,40 @@ export type WorkType =
   | "rcc"
   | "pqc"
   | "dlc"
-  | "drain_masonry";
+  | "drain_masonry"
+  | "excavation_structure"
+  | "backfill_structure"
+  | "filter_media"
+  | "stone_pitching"
+  | "pipe_culvert"
+  | "reinforcement"
+  | "waterproofing_structure";
+
+/**
+ * Maps each work type to its planning category.
+ * Used by auto-build-recipes to set planningWorkType on each BOQ item.
+ */
+export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
+  earthwork:              "road",
+  gsb:                    "road",
+  wmm:                    "road",
+  bituminous_base:        "road",
+  bituminous_wearing:     "road",
+  prime_coat:             "road",
+  tack_coat:              "road",
+  pqc:                    "road",
+  dlc:                    "road",
+  pcc:                    "structure",
+  rcc:                    "structure",
+  drain_masonry:          "structure",
+  excavation_structure:   "structure",
+  backfill_structure:     "structure",
+  filter_media:           "structure",
+  stone_pitching:         "structure",
+  pipe_culvert:           "structure",
+  reinforcement:          "structure",
+  waterproofing_structure: "structure",
+};
 
 interface EquipmentLine {
   name: string;               // must match MORTH_EQUIPMENT_SEED name exactly
@@ -76,11 +109,42 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
     !/bitumin/i.test(d)
   ) return "pcc";
 
-  // ── Earthwork (must be CUM-type unit) ───────────────────────────────────────
+  // ── Reinforcement / rebar (check before earthwork / excavation rules) ────────
+  if (
+    /\bhysd\b|\btmt\b|reinforcement\s*steel|reinforcing\s*steel|steel\s*reinforcement|bar\s*bending|rebar/i.test(d) &&
+    /^(MT|KG|TON|TONNE)$/i.test(u)
+  ) return "reinforcement";
+
+  // ── Structure excavation — MUST be checked BEFORE generic earthwork ─────────
+  // Foundation pits, abutment trenches, pier holes, culvert cuts, etc.
+  if (
+    /foundation|footing|abutment|pier|culvert|trench|pit\s*excavat|excavat.*structure|structure.*excavat|box\s*cut/i.test(d) &&
+    /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+  ) return "excavation_structure";
+
+  // ── Road earthwork (embankment / subgrade fill — not structural) ────────────
   if (
     /embankment|excavat|earth\s*work|earthwork|cut\s*(and|&)\s*fill|subgrade/i.test(d) &&
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "earthwork";
+
+  // ── Structural backfill (behind abutments, returns, wing walls) ─────────────
+  if (
+    /back\s*fill|backfill|back\s*filling|filling.*behind|behind.*wall|behind.*abutment/i.test(d) &&
+    /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+  ) return "backfill_structure";
+
+  // ── Filter media / drainage layers in structures ────────────────────────────
+  if (/filter\s*media|filter\s*material|drainage\s*layer|granular\s*filter/i.test(d)) return "filter_media";
+
+  // ── Stone pitching (slope protection) ───────────────────────────────────────
+  if (/stone\s*pitching|stone\s*apron|riprap|rip\s*rap|boulder\s*pitching/i.test(d)) return "stone_pitching";
+
+  // ── Pipe culverts / hume pipes ───────────────────────────────────────────────
+  if (/hume\s*pipe|\bnp[2-4]\b|rcc\s*pipe|spun\s*pipe|hdpe\s*pipe|culvert\s*pipe|pipe\s*culvert/i.test(d)) return "pipe_culvert";
+
+  // ── Waterproofing treatments ─────────────────────────────────────────────────
+  if (/waterproof|bituminous\s*paint|coal\s*tar|epoxy.*coat|curing\s*compound/i.test(d)) return "waterproofing_structure";
 
   // ── Minor civil / masonry ────────────────────────────────────────────────────
   if (/masonry|brick\s*work|stone\s*work|drain.*wall|head\s*wall|wing\s*wall/i.test(d)) return "drain_masonry";
@@ -284,6 +348,86 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
     labour: [
       { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.4, count: 4 },
       { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.4, count: 4 },
+    ],
+  },
+
+  // ── Structure excavation (foundation pits, abutment, pier, culvert) ──────────
+  // Smaller-scale excavator + tipper; roller not needed.
+  excavation_structure: {
+    equipment: [
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
+    ],
+    labour: [
+      { designation: "Equipment Operator",       fallbackDaysPerUnit: 0.00208, count: 1 },
+      { designation: "Driver (Tipper / Tanker)", fallbackDaysPerUnit: 0.00208, count: 2 },
+      { designation: "General Helper / Coolie",  fallbackDaysPerUnit: 0.00416, count: 2 },
+    ],
+  },
+
+  // ── Structural backfill (behind abutments / wing walls) ──────────────────────
+  // Compaction by plate-compactor / rammer — no vibratory roller in confined spaces.
+  backfill_structure: {
+    equipment: [
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.025, count: 1 },
+      { name: "Water Tanker (6000 L)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.05,  count: 1 },
+    ],
+    labour: [
+      { designation: "Equipment Operator",      fallbackDaysPerUnit: 0.00312, count: 1 },
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.05,    count: 4 },
+    ],
+  },
+
+  // ── Filter media / drainage layer (CUM or MT) ─────────────────────────────────
+  // Manual placement with light compaction.
+  filter_media: {
+    equipment: [],
+    labour: [
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.1, count: 4 },
+    ],
+  },
+
+  // ── Stone pitching / riprap (SQM or CUM) ─────────────────────────────────────
+  // Mason-intensive; water tanker for bond and curing.
+  stone_pitching: {
+    equipment: [
+      { name: "Water Tanker (6000 L)", preferredUnit: "SQM", fallbackHrsPerUnit: 0.05, count: 1 },
+    ],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.2, count: 3 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.2, count: 3 },
+    ],
+  },
+
+  // ── Pipe culverts / hume pipes (RM or Nos) ───────────────────────────────────
+  // Crane + skilled labour for laying and jointing.
+  pipe_culvert: {
+    equipment: [
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "RM", fallbackHrsPerUnit: 0.05, count: 1 },
+    ],
+    labour: [
+      { designation: "Equipment Operator",      fallbackDaysPerUnit: 0.00625, count: 1 },
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.125, count: 2 },
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.125,  count: 4 },
+    ],
+  },
+
+  // ── Reinforcement / rebar (MT or KG) ─────────────────────────────────────────
+  // Pure labour operation — bar benders and steel fixers.
+  reinforcement: {
+    equipment: [],
+    labour: [
+      { designation: "Steel Fixer (Rebar)",    fallbackDaysPerUnit: 0.3, count: 4 },
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.3, count: 2 },
+    ],
+  },
+
+  // ── Waterproofing treatment (SQM or RM) ──────────────────────────────────────
+  // Bituminous paint / epoxy coating — largely manual with spray pump.
+  waterproofing_structure: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.05, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.05, count: 2 },
     ],
   },
 };

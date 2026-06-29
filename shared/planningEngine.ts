@@ -676,8 +676,13 @@ function normaliseKeyMaterialName(item: BomInputItem, m: KeyBomMaterialInputRow)
     return "Bitumen Emulsion";
   }
 
-  if (/vg\s*-?\s*40|vg40/i.test(raw) || /vg\s*-?\s*40|vg40/i.test(desc)) return "Bitumen VG-40";
-  if (/bitumen|vg\s*-?\s*30|vg30/i.test(raw) || /bitumen|vg\s*-?\s*30|vg30/i.test(desc)) return "Bitumen VG-30";
+  // Only fall back to the item description for VG-grade detection when the raw material
+  // name is itself binder-like. Without this guard, aggregate names like "10/12MM" or
+  // "6MM DOWN" in a DBM item (whose description contains "bituminous macadam") would
+  // be misclassified as "Bitumen VG-30" and collapse into the bitumen row.
+  const rawIsBinder = /bitumen|vg[\s-]?\d+|binder|emulsion/i.test(raw);
+  if (/vg\s*-?\s*40|vg40/i.test(raw) || (rawIsBinder && /vg\s*-?\s*40|vg40/i.test(desc))) return "Bitumen VG-40";
+  if (/bitumen|vg\s*-?\s*30|vg30/i.test(raw) || (rawIsBinder && /vg\s*-?\s*30|vg30/i.test(desc))) return "Bitumen VG-30";
 
   if (/cement/i.test(raw)) return "Cement";
   if (/admixture|plasticizer|super\s*plasticizer/i.test(raw)) return "Admixture";

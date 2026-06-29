@@ -10678,7 +10678,7 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const { classifyWorkType, buildEquipmentRows, buildLabourRows } = await import("@shared/workTypeRecipes");
+      const { classifyWorkType, buildEquipmentRows, buildLabourRows, WORK_TYPE_PLAN_CATEGORY } = await import("@shared/workTypeRecipes");
 
       // Ensure the planning master is seeded with standard norms (idempotent).
       await storage.seedPlanningMorthDefaults();
@@ -10720,6 +10720,9 @@ export async function registerRoutes(
         }));
         await storage.upsertBoqItemEquipment(item.id, eqRows);
         await storage.upsertBoqItemLabour(item.id, labRows);
+        // Auto-set planningWorkType ("road" | "structure") based on classifier result
+        const planCat = WORK_TYPE_PLAN_CATEGORY[wt];
+        if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
         recipied++;
       }
 
