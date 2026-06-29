@@ -15,17 +15,19 @@ function isBridgeDesc(desc: string): boolean {
 }
 
 // ─── Pavement crust (road items) ─────────────────────────────────────────────
-// IRC / MoRTH Clause 400–500 sequence for flexible pavements.
+// MoRTH sequence: C&G → Dismantling → Earthwork → GSB → WMM → Prime → DBM → BC
 const PAVEMENT_STAGE: Partial<Record<WorkType, number>> = {
-  earthwork:          1,   // embankment / subgrade preparation
-  gsb:                2,   // granular sub-base
-  wmm:                3,   // wet mix macadam base course
-  dlc:                3,   // dry lean concrete (rigid alternative sub-base)
-  prime_coat:         4,   // spray on completed WMM/GSB before bituminous
-  tack_coat:          5,   // inter-layer spray coat
-  bituminous_base:    5,   // DBM / BM binder course
-  pqc:                5,   // pavement quality concrete (rigid pavement)
-  bituminous_wearing: 6,   // BC / SDBC wearing course — always last
+  clearing_grubbing:  1,   // MoRTH Cl. 201 — absolute first
+  dismantling:        2,   // MoRTH Cl. 202 — existing structures/pavement
+  earthwork:          3,   // excavation in cutting + embankment / subgrade
+  gsb:                4,   // granular sub-base
+  wmm:                5,   // wet mix macadam base course
+  dlc:                5,   // dry lean concrete (rigid alternative sub-base)
+  prime_coat:         6,   // spray on completed WMM/GSB before bituminous
+  tack_coat:          7,   // inter-layer spray coat
+  bituminous_base:    7,   // DBM / BM binder course
+  pqc:                7,   // pavement quality concrete (rigid pavement)
+  bituminous_wearing: 8,   // BC / SDBC wearing course — always last
 };
 
 // ─── Culvert / cross-drainage / drain sequence ───────────────────────────────
@@ -44,46 +46,53 @@ const CULVERT_STAGE: Partial<Record<WorkType, number>> = {
 };
 
 // ─── Bridge / major structure sequence ───────────────────────────────────────
-// Foundation Exc. → PCC → Substructure (pier/abutment + rebar) → Bearing/Backfill
-// → Superstructure / Deck wearing / Waterproofing
+// Foundation Exc. → PCC → Foundation RCC → Substructure → Bearings/Backfill
+// → Superstructure / Deck / Waterproofing / Wearing
+// NOTE: Foundation (raft/pile cap) and Substructure (piers/abutments) both use
+// the same rcc/reinforcement WorkType. The classifier assigns them both to stage 3.
+// Planners should use manual stage assignment to split the two phases precisely.
 const BRIDGE_STAGE: Partial<Record<WorkType, number>> = {
-  excavation_structure: 1,   // foundation pit excavation
+  excavation_structure: 1,   // foundation pit / pile boring
   pcc:                  2,   // PCC levelling course under foundation
-  rcc:                  3,   // pier / abutment / pile cap RCC
-  reinforcement:        3,   // rebar (concurrent with RCC substructure)
-  filter_media:         4,   // bearing pads / drainage layer
-  backfill_structure:   4,   // backfill behind abutments
-  pipe_culvert:         4,   // pipe drainage if any
-  drain_masonry:        5,   // return walls / wing walls
-  waterproofing_structure: 5,// deck waterproofing / membrane
-  bituminous_wearing:   5,   // wearing coat on bridge deck
-  stone_pitching:       5,   // slope protection at toe of embankment
+  rcc:                  3,   // foundation (raft/pile cap) + substructure (piers/abutments)
+  reinforcement:        3,   // rebar concurrent with RCC works above
+  drain_masonry:        4,   // wing walls / return walls / approach slab masonry
+  filter_media:         5,   // bearing pads / drainage layer
+  backfill_structure:   5,   // backfill behind abutments
+  pipe_culvert:         5,   // pipe drainage through abutment / wing wall
+  waterproofing_structure: 6,// deck waterproofing / membrane
+  bituminous_wearing:   6,   // wearing coat on bridge deck
+  stone_pitching:       6,   // slope protection at toe / approach embankment
 };
 
 // ─── Exported sequence rules (used by Sequence Rules info panel in UI) ────────
 export const SEQUENCE_RULES = {
   pavement: [
-    { stage: 1, label: "Earthwork / Embankment" },
-    { stage: 2, label: "Granular Sub-Base (GSB)" },
-    { stage: 3, label: "WMM / DLC (Base Course)" },
-    { stage: 4, label: "Prime Coat" },
-    { stage: 5, label: "DBM / BM / Tack Coat (Binder)" },
-    { stage: 6, label: "BC / SDBC (Wearing Course)" },
+    { stage: 1, label: "Clearing & Grubbing (MoRTH Cl. 201)" },
+    { stage: 2, label: "Dismantling Existing Structures / Pavement (Cl. 202)" },
+    { stage: 3, label: "Earthwork — Excavation in Cutting + Embankment / Subgrade" },
+    { stage: 4, label: "Granular Sub-Base (GSB)" },
+    { stage: 5, label: "WMM / DLC (Base Course)" },
+    { stage: 6, label: "Prime Coat" },
+    { stage: 7, label: "DBM / BM / Tack Coat (Binder Course)" },
+    { stage: 8, label: "BC / SDBC (Wearing Course)" },
   ],
   culvert: [
     { stage: 1, label: "Foundation Excavation" },
     { stage: 2, label: "PCC Bedding / Levelling" },
-    { stage: 3, label: "Pipe / RCC Walls / Rebar" },
+    { stage: 3, label: "Pipe Laying / RCC Walls / Rebar" },
     { stage: 4, label: "Filter Media / Drainage Layer" },
     { stage: 5, label: "Structural Backfill" },
-    { stage: 6, label: "Headwall / Wingwall / Stone Pitching" },
+    { stage: 6, label: "Headwall / Wingwall / Stone Pitching / Apron" },
   ],
   bridge: [
-    { stage: 1, label: "Foundation Excavation" },
+    { stage: 1, label: "Foundation Excavation (Pit / Pile Boring)" },
     { stage: 2, label: "PCC Levelling Course" },
-    { stage: 3, label: "Pier / Abutment (RCC + Rebar)" },
-    { stage: 4, label: "Backfill / Filter / Bearing" },
-    { stage: 5, label: "Superstructure / Wearing / Waterproofing" },
+    { stage: 3, label: "Foundation (Raft / Isolated Footing / Pile Cap — RCC + Rebar)" },
+    { stage: 4, label: "Substructure (Abutments / Piers / Wing Walls — RCC + Rebar)" },
+    { stage: 5, label: "Bearings / Expansion Joints / Backfill" },
+    { stage: 6, label: "Superstructure (Girders / Deck Slab)" },
+    { stage: 7, label: "Wearing Course / Waterproofing / Parapet / Railing" },
   ],
 } as const;
 
@@ -233,7 +242,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   // bedding→backfill→headwall) so planners see the full sequence per zone.
   // Quantity per bar = totalQty / numStrGroups (task spec §3).
   if (str.length > 0) {
-    const numStrGroups = Math.min(fronts, Math.max(1, Math.floor(opts.structureGroups ?? fronts)));
+    const numStrGroups = Math.max(1, Math.floor(opts.structureGroups ?? fronts));
     const strReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numStrGroups : 0;
     for (let g = 0; g < numStrGroups; g++) {
       const strLabel = numStrGroups > 1 ? `Struct. Front ${g + 1}` : "Structures";
@@ -257,7 +266,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   // matching chainage zone and runs the full bridge stage cycle.
   // Quantity per bar = totalQty / numBrgGroups (task spec §3).
   if (brg.length > 0) {
-    const numBrgGroups = Math.min(fronts, Math.max(1, Math.floor(opts.bridgeGroups ?? fronts)));
+    const numBrgGroups = Math.max(1, Math.floor(opts.bridgeGroups ?? fronts));
     const brgReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numBrgGroups : 0;
     for (let g = 0; g < numBrgGroups; g++) {
       const brgLabel = numBrgGroups > 1 ? `Bridge Grp ${g + 1}` : "Bridges";

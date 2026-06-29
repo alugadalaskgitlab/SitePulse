@@ -4,6 +4,8 @@
 // Labour designations must exactly match MORTH_LABOUR_SEED designations.
 
 export type WorkType =
+  | "clearing_grubbing"
+  | "dismantling"
   | "earthwork"
   | "gsb"
   | "wmm"
@@ -29,6 +31,8 @@ export type WorkType =
  * Used by auto-build-recipes to set planningWorkType on each BOQ item.
  */
 export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
+  clearing_grubbing:      "road",
+  dismantling:            "road",
   earthwork:              "road",
   gsb:                    "road",
   wmm:                    "road",
@@ -77,8 +81,15 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   const d = description.toLowerCase();
   const u = unit.toUpperCase().trim();
 
-  // Non-consuming items → no recipe (same guard as Patch 12 isNonConsumingItem)
-  if (/\bdismantl|\bdemolit|\bdemolish|\bremoving\b|\bremoval\b|\bbreaking\b|\bscarif|\bmilling\b/i.test(d)) return null;
+  // ── Clearing & Grubbing (MoRTH Cl. 201) — MUST be first check ──────────────
+  if (/clearing\s*(and|&)\s*grubbing|clear\s*(and|&)\s*grub|grubbing|removal\s*of\s*(trees?|stumps?|vegetation|bushes?)|felling\s*of\s*trees?|uprooting|removal\s*of\s*shrubs?/i.test(d)) return "clearing_grubbing";
+
+  // ── Dismantling / demolition of existing structures / pavement (MoRTH Cl. 202)
+  if (/\bdismantl|\bdemolit|\bdemolish|\bscarif|\bmilling\b/i.test(d)) return "dismantling";
+  if (/removing\s*(existing|old)\s*(pavement|structure|culvert|drain|wall)|removal\s*of\s*(existing|old)\s*(pavement|structure|culvert|drain|wall)/i.test(d)) return "dismantling";
+
+  // Other removal/breaking items that are not consuming → no recipe
+  if (/\bremoving\b|\bremoval\b|\bbreaking\b/i.test(d)) return null;
 
   // ── Bituminous wearing ──────────────────────────────────────────────────────
   if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";
@@ -158,6 +169,31 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
 // and serve as safe defaults when the planning master has no matching unit output.
 // ──────────────────────────────────────────────────────────────────────────────
 export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
+
+  // ── Clearing & Grubbing (Ha / SQM) ───────────────────────────────────────────
+  // MoRTH Cl. 201 — removal of vegetation, trees, stumps, roots from ROW.
+  // Primarily manual / light machinery work.
+  clearing_grubbing: {
+    equipment: [
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "Ha", fallbackHrsPerUnit: 8, count: 1 },
+    ],
+    labour: [
+      { designation: "Mazdoor (Unskilled Labour)",    fallbackDaysPerUnit: 20, count: 10 },
+      { designation: "Equipment Operator",             fallbackDaysPerUnit: 1,  count: 1  },
+    ],
+  },
+
+  // ── Dismantling Existing Structures / Pavement (MoRTH Cl. 202) ───────────────
+  // Milling, scarification, breaking of existing pavement/structures.
+  dismantling: {
+    equipment: [
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.05, count: 1 },
+    ],
+    labour: [
+      { designation: "Mazdoor (Unskilled Labour)",    fallbackDaysPerUnit: 0.02, count: 6 },
+      { designation: "Equipment Operator",             fallbackDaysPerUnit: 0.006, count: 1 },
+    ],
+  },
 
   // ── Earthwork (CUM) ──────────────────────────────────────────────────────────
   // Machine-driven: excavator is the capacity bottleneck. NO volumetric manual

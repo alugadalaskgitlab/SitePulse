@@ -1965,7 +1965,7 @@ export default function WorkProgramme() {
                   data-testid="input-seq-str-groups"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] text-muted-foreground">Culvert / drain chainage zones (≤ road fronts). Blank = match road fronts</p>
+                <p className="text-[10px] text-muted-foreground">Culvert / drain chainage zones. Blank = match road fronts</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="seq-brg-groups" className="text-xs font-medium">Bridge groups</Label>
@@ -1980,7 +1980,7 @@ export default function WorkProgramme() {
                   data-testid="input-seq-brg-groups"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] text-muted-foreground">Bridge chainage zones (≤ road fronts). Blank = match road fronts</p>
+                <p className="text-[10px] text-muted-foreground">Bridge chainage zones (independent of road fronts). Blank = match road fronts</p>
               </div>
             </div>
 
