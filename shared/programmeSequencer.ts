@@ -3,7 +3,7 @@
 // where each reach (front) runs the crust sequence in dependency order, reaches run
 // in parallel (staggered), and the critical chain is scaled to fit the project duration.
 
-import { classifyWorkType, type WorkType } from "./workTypeRecipes";
+import { classifyWorkType, WORK_TYPE_PLAN_CATEGORY, type WorkType } from "./workTypeRecipes";
 
 export type Track = "pavement" | "structure" | "bridge" | "other";
 
@@ -140,13 +140,25 @@ export interface SeqBar {
 function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
   const wt = classifyWorkType(it.description, it.unit);
 
-  // 1. Use stored planningWorkType as an authoritative track hint.
-  if (it.planningWorkType === "road") {
+  // Resolve effective planning track.
+  // The stored planningWorkType is the primary hint, BUT if the WorkType
+  // classifier definitively disagrees (e.g. item is clearly road earthwork
+  // yet stored as "structure" because its description mentions "structure
+  // excavation" as a source of material), trust the WorkType.
+  let effectivePWT = it.planningWorkType;
+  if (wt !== null && effectivePWT) {
+    const wtCategory = WORK_TYPE_PLAN_CATEGORY[wt]; // "road" | "structure" | undefined
+    if (wtCategory === "road" && effectivePWT === "structure") effectivePWT = "road";
+    if (wtCategory === "structure" && effectivePWT === "road") effectivePWT = "structure";
+  }
+
+  // 1. Use (corrected) planningWorkType as the track hint.
+  if (effectivePWT === "road") {
     const stage = wt !== null ? (PAVEMENT_STAGE[wt] ?? 99) : 99;
     return { track: "pavement", stage };
   }
 
-  if (it.planningWorkType === "structure") {
+  if (effectivePWT === "structure") {
     if (isBridgeDesc(it.description)) {
       const stage = wt !== null ? (BRIDGE_STAGE[wt] ?? 99) : 99;
       return { track: "bridge", stage };
