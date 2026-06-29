@@ -10720,11 +10720,130 @@ export async function registerRoutes(
     }
   });
 
+  // ── Structure Schedule Parse (server-side XLSX) ──────────────────────────────
+  // Accepts a multipart file upload of an Excel workbook and returns matched rows
+  // for the wizard preview step. Matching priority:
+  //   P1 → boq_item_code + boq_sub_item (composite key, exact)
+  //   P2 → boq_item_code alone (exact or leading-zero stripped)
+  //   P3 → boq_description (partial, first 40 chars)
+  // Note: boq_excel_row is stored for traceability but cannot be used as a DB
+  // matching key because BOQ items do not store their original Excel row number.
+  const structureUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+  app.post("/api/boq/projects/:id/parse-structure-schedule", structureUpload.single("file"), async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      if (!req.file) return res.status(400).json({ error: "No file uploaded. Send an Excel file in the 'file' field." });
+      const projectId = parseInt(req.params.id);
+
+      const allItems = await storage.getBoqItems(projectId) as any[];
+      const itemByCode = new Map(allItems.map((it: any) => [String(it.itemCode ?? "").trim().toLowerCase(), it]));
+      const itemByCodeSubItem = new Map<string, any>();
+      for (const it of allItems) {
+        if ((it as any).boqSubItem) {
+          const k = `${String((it as any).itemCode ?? "").trim().toLowerCase()}::${String((it as any).boqSubItem ?? "").trim().toLowerCase()}`;
+          itemByCodeSubItem.set(k, it);
+        }
+      }
+
+      // Server-side XLSX parsing
+      const { read, utils } = await import("xlsx");
+      const wb = read(req.file.buffer, { type: "buffer", cellDates: true });
+      const sheetName = wb.SheetNames.includes("Structure_Schedule_Import")
+        ? "Structure_Schedule_Import"
+        : wb.SheetNames[0];
+      if (!sheetName) return res.status(422).json({ error: "No sheets found in Excel file." });
+
+      const ws = wb.Sheets[sheetName];
+      const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+      if (!json.length) return res.status(422).json({ error: `Sheet "${sheetName}" is empty.` });
+
+      function colStr(row: Record<string, unknown>, ...aliases: string[]): string {
+        for (const alias of aliases) {
+          const key = Object.keys(row).find(k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase());
+          if (key) return String(row[key] ?? "");
+        }
+        return "";
+      }
+      function colNum(row: Record<string, unknown>, ...aliases: string[]): number {
+        const v = parseFloat(colStr(row, ...aliases).replace(/,/g, ""));
+        return isNaN(v) ? 0 : v;
+      }
+      function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
+        const v = colStr(row, ...aliases).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+        const parts = v.split(/[\/-]/);
+        if (parts.length === 3) {
+          const [a, b, c] = parts.map(Number);
+          if (c > 31) return `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+          if (a > 31) return `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
+        }
+        return "";
+      }
+
+      const rows = json
+        .map((row, i) => {
+          const structureId   = colStr(row, "structure_id", "structure_name", "structure id");
+          const boqItemCode   = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
+          const boqSubItem    = colStr(row, "boq_sub_item", "sub_item", "sub item");
+          const boqDescription = colStr(row, "boq_description", "description", "item description");
+          const boqExcelRow   = Math.round(colNum(row, "boq_excel_row", "excel_row")) || (i + 2);
+
+          // Server-side BOQ matching — priority: P1 code+subItem, P2 code, P3 description
+          let boqItem: any = null;
+          if (boqItemCode && boqSubItem) {
+            const k = `${boqItemCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
+            boqItem = itemByCodeSubItem.get(k) ?? null;
+          }
+          if (!boqItem && boqItemCode) {
+            boqItem = itemByCode.get(boqItemCode.trim().toLowerCase()) ?? null;
+            if (!boqItem) {
+              const stripped = boqItemCode.replace(/^0+/, "").trim().toLowerCase();
+              boqItem = allItems.find((it: any) =>
+                String(it.itemCode ?? "").replace(/^0+/, "").trim().toLowerCase() === stripped
+              ) ?? null;
+            }
+          }
+          if (!boqItem && boqDescription) {
+            const needle = boqDescription.toLowerCase();
+            boqItem = allItems.find((it: any) =>
+              (it.description ?? "").toLowerCase().includes(needle.slice(0, 40))
+            ) ?? null;
+          }
+
+          return {
+            rowIdx: i + 2,
+            structureId,
+            structureType:   colStr(row, "structure_type", "type"),
+            chainageKm:      colNum(row, "chainage_km", "chainage", "ch_km"),
+            boqItemCode,
+            boqSubItem,
+            boqExcelRow,
+            boqDescription,
+            plannedQty:      colNum(row, "planned_qty", "quantity", "qty"),
+            uom:             colStr(row, "uom", "unit"),
+            startDate:       colDate(row, "start_date", "start date"),
+            durationDays:    Math.round(colNum(row, "duration_days", "duration", "duration (days)")),
+            remarks:         colStr(row, "remarks", "notes"),
+            boqItemId:       boqItem?.id ?? null,
+            matchStatus:     boqItem ? "matched" : "unmatched",
+            matchedItemCode: boqItem?.itemCode ?? null,
+            matchedDescription: boqItem?.description?.slice(0, 80) ?? null,
+          };
+        })
+        .filter(r => r.structureId || r.boqDescription || r.plannedQty > 0);
+
+      res.json({ sheetName, rows, totalRows: rows.length });
+    } catch (err: any) {
+      console.error("POST /api/boq/projects/:id/parse-structure-schedule:", err);
+      res.status(500).json({ error: `Failed to parse structure schedule: ${err?.message ?? String(err)}` });
+    }
+  });
+
   // ── Structure Schedule Import ────────────────────────────────────────────────
-  // Accepts a pre-parsed array of structure schedule rows from the frontend
-  // (after the user uploads and previews the Excel file). Creates one
-  // work_program_bar per row with planningMode = "structure_location".
-  // Rows that cannot be matched to a BOQ item are skipped and reported back.
+  // Accepts pre-matched rows from the parse-structure-schedule endpoint (or any
+  // JSON row array). Creates one work_program_bar per matched row with
+  // planningMode = "structure_location". Skipped rows are reported back.
   app.post("/api/boq/projects/:id/import-structure", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
@@ -10893,6 +11012,10 @@ export async function registerRoutes(
             structureId: r.structureId,
             structureLocType: r.structureType,
             structureChainageKm: r.chainageKm,
+            relativeChainageKm: (r.chainageKm != null && project?.chainageFrom != null)
+              ? Math.round((r.chainageKm - project.chainageFrom) * 1000) / 1000
+              : null,
+            durationDays: r.durationDays ?? null,
             boqSubItem: r.boqSubItem ?? null,
             boqExcelRow: r.boqExcelRow ?? null,
             notes: r.remarks ?? null,

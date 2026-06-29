@@ -787,8 +787,9 @@ function StructureLocationRow({
 }
 
 // ─── StructureImportWizard ────────────────────────────────────────────────────
-// 2-step wizard: (1) upload & preview parsed rows, (2) confirm import.
-// The frontend parses the Excel file using xlsx and sends JSON to the backend.
+// 2-step wizard: (1) upload → server parses XLSX & returns matched rows for
+// preview, (2) confirm import via /import-structure with pre-matched JSON rows.
+// BOQ matching is authoritative on the server (priority: code+subItem > code > desc).
 
 interface StructureScheduleRow {
   rowIdx: number;
@@ -812,13 +813,13 @@ function StructureImportWizard({
   open,
   onOpenChange,
   projectId,
-  boqItems,
   onImported,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   projectId: number;
-  boqItems: BoqItemWithCategory[];
+  /** Passed by parent for potential future use; matching is authoritative on server */
+  boqItems?: BoqItemWithCategory[];
   onImported: () => void;
 }) {
   const { toast } = useToast();
@@ -829,12 +830,6 @@ function StructureImportWizard({
   const [mode, setMode] = useState<"append" | "replace">("append");
   const [parsing, setParsing] = useState(false);
 
-  // Build lookup maps for BOQ matching
-  const itemByCode = useMemo(
-    () => new Map(boqItems.map(it => [String(it.itemCode ?? "").trim().toLowerCase(), it])),
-    [boqItems],
-  );
-
   function reset() {
     setStep(1);
     setRows([]);
@@ -843,96 +838,26 @@ function StructureImportWizard({
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  function matchRow(r: StructureScheduleRow): StructureScheduleRow {
-    const code = String(r.boqItemCode ?? "").trim().toLowerCase();
-    let matched = itemByCode.get(code) ?? null;
-    if (!matched) {
-      const stripped = code.replace(/^0+/, "");
-      matched = boqItems.find(it =>
-        String(it.itemCode ?? "").trim().replace(/^0+/, "").toLowerCase() === stripped
-      ) ?? null;
-    }
-    if (!matched && r.boqDescription) {
-      const needle = r.boqDescription.toLowerCase().slice(0, 30);
-      matched = boqItems.find(it => (it.description ?? "").toLowerCase().includes(needle)) ?? null;
-    }
-    return {
-      ...r,
-      boqItemId: matched?.id,
-      matchStatus: matched ? "matched" : "unmatched",
-    };
-  }
-
+  // Upload file to server for authoritative BOQ matching and XLSX parsing.
+  // Server applies priority: P1 code+subItem, P2 code (strip leading zeros), P3 description.
   async function parseFile(file: File) {
     setParsing(true);
     setParseError(null);
     try {
-      const { read, utils } = await import("xlsx");
-      const buf = await file.arrayBuffer();
-      const wb = read(buf, { type: "array", cellDates: true });
-
-      // Try sheet "Structure_Schedule_Import" first, then first sheet
-      const sheetName = wb.SheetNames.includes("Structure_Schedule_Import")
-        ? "Structure_Schedule_Import"
-        : wb.SheetNames[0];
-      if (!sheetName) throw new Error("No sheets found in Excel file.");
-
-      const ws = wb.Sheets[sheetName];
-      const json = utils.sheet_to_json<Record<string, unknown>>(ws, {
-        defval: "",
-        raw: false,
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/boq/projects/${projectId}/parse-structure-schedule`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
       });
-
-      if (!json.length) throw new Error(`Sheet "${sheetName}" is empty.`);
-
-      // Normalise column names: lowercase + underscores
-      function col(row: Record<string, unknown>, ...aliases: string[]): string {
-        for (const alias of aliases) {
-          const key = Object.keys(row).find(k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase());
-          if (key) return String(row[key] ?? "");
-        }
-        return "";
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err?.error ?? `Server error ${res.status}`);
       }
-      function colNum(row: Record<string, unknown>, ...aliases: string[]): number {
-        const v = parseFloat(col(row, ...aliases).replace(/,/g, ""));
-        return isNaN(v) ? 0 : v;
-      }
-      function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
-        const v = col(row, ...aliases).trim();
-        // Try ISO, DD/MM/YYYY, MM/DD/YYYY
-        if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-        const parts = v.split(/[\/-]/);
-        if (parts.length === 3) {
-          const [a, b, c] = parts.map(Number);
-          if (c > 31) return `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
-          if (a > 31) return `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
-        }
-        return "";
-      }
-
-      const parsed: StructureScheduleRow[] = json
-        .map((row, i) => {
-          const raw: StructureScheduleRow = {
-            rowIdx: i + 2,
-            structureId:    col(row, "structure_id", "structure_name", "structure id"),
-            structureType:  col(row, "structure_type", "type"),
-            chainageKm:     colNum(row, "chainage_km", "chainage", "ch_km"),
-            boqItemCode:    col(row, "boq_item_code", "item_code", "item code", "boq item code"),
-            boqSubItem:     col(row, "boq_sub_item", "sub_item", "sub item"),
-            boqExcelRow:    colNum(row, "boq_excel_row", "excel_row"),
-            boqDescription: col(row, "boq_description", "description", "item description"),
-            plannedQty:     colNum(row, "planned_qty", "quantity", "qty"),
-            uom:            col(row, "uom", "unit"),
-            startDate:      colDate(row, "start_date", "start date"),
-            durationDays:   colNum(row, "duration_days", "duration", "duration (days)"),
-            remarks:        col(row, "remarks", "notes"),
-          };
-          return matchRow(raw);
-        })
-        .filter(r => r.structureId || r.boqDescription || r.plannedQty > 0);
-
-      if (!parsed.length) throw new Error("No data rows could be read. Check the column headers.");
-      setRows(parsed);
+      const data: { sheetName: string; rows: StructureScheduleRow[]; totalRows: number } = await res.json();
+      if (!data.rows?.length) throw new Error("No data rows could be read. Check the column headers.");
+      setRows(data.rows);
       setStep(2);
     } catch (e: any) {
       setParseError(e?.message ?? String(e));
