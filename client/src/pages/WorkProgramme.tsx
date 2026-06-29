@@ -6,6 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
+  Undo2, Redo2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,11 +109,13 @@ interface StretchRowProps {
   colW: number;
   onDelete: (id: number) => void;
   onSplit: (bar: WorkProgramBarWithItem) => void;
+  onBeforeMutate?: () => void;
   productivitySettings?: ProductivitySettings | null;
 }
 
 function StretchRow({
   bar, itemBars, item, project, recipesMap, projectId, color, isFirst, totalMonths, colW, onDelete, onSplit,
+  onBeforeMutate,
   productivitySettings,
 }: StretchRowProps) {
   const { toast } = useToast();
@@ -309,6 +312,7 @@ function StretchRow({
   });
 
   function save() {
+    onBeforeMutate?.();
     dirty.current = false;
     const qty = effectiveQty;
     const em = +(smNum + effectiveDurationMonths).toFixed(2);
@@ -745,6 +749,71 @@ function InlineGanttTable({
   const [deleteBarId, setDeleteBarId] = useState<number | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
+  // ── Undo / Redo ────────────────────────────────────────────────────────────
+  const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
+  const redoStack = useRef<WorkProgramBarWithItem[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  function pushSnapshot() {
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (!current) return;
+    undoStack.current.push([...current]);
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }
+
+  const restoreMutation = useMutation({
+    mutationFn: (snapBars: WorkProgramBarWithItem[]) =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/restore`, {
+        bars: snapBars.map(b => ({
+          boqItemId: b.boqItemId,
+          reachLabel: b.reachLabel,
+          chainageFrom: b.chainageFrom,
+          chainageTo: b.chainageTo,
+          startMonth: b.startMonth,
+          endMonth: b.endMonth,
+          durationMode: b.durationMode,
+          plannedQty: b.plannedQty,
+          isQtyOverride: b.isQtyOverride,
+          isDurationOverride: b.isDurationOverride,
+          notes: b.notes,
+          source: b.source,
+        })),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+    },
+    onError: () => toast({ title: "Restore failed", variant: "destructive" }),
+  });
+
+  function handleUndo() {
+    if (!undoStack.current.length) return;
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (current) redoStack.current.push([...current]);
+    const prev = undoStack.current.pop()!;
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
+    restoreMutation.mutate(prev);
+  }
+
+  function handleRedo() {
+    if (!redoStack.current.length) return;
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (current) undoStack.current.push([...current]);
+    const next = redoStack.current.pop()!;
+    setCanUndo(true);
+    setCanRedo(redoStack.current.length > 0);
+    restoreMutation.mutate(next);
+  }
+
   const barsByItemId = useMemo(() => {
     const m: Record<number, WorkProgramBarWithItem[]> = {};
     for (const b of bars) {
@@ -791,6 +860,7 @@ function InlineGanttTable({
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiRequest("POST", `/api/boq/projects/${projectId}/programme`, data),
+    onMutate: pushSnapshot,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
     },
@@ -799,6 +869,7 @@ function InlineGanttTable({
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/boq/programme/bars/${id}`),
+    onMutate: pushSnapshot,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       toast({ title: "Stretch deleted" });
@@ -836,6 +907,7 @@ function InlineGanttTable({
         isQtyOverride: false,
       });
     },
+    onMutate: pushSnapshot,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       toast({ title: "Stretch split" });
@@ -1081,6 +1153,7 @@ function InlineGanttTable({
                         colW={colW}
                         onDelete={setDeleteBarId}
                         onSplit={bar => splitMutation.mutate(bar)}
+                        onBeforeMutate={pushSnapshot}
                         productivitySettings={productivitySettings}
                       />
                     ))}
@@ -1615,6 +1688,7 @@ export default function WorkProgramme() {
   const autoGenMutation = useMutation({
     mutationFn: (barsPayload: Record<string, unknown>[]) =>
       apiRequest("POST", `/api/boq/projects/${projectId}/programme/bulk`, { bars: barsPayload }),
+    onMutate: pushSnapshot,
     onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       toast({
@@ -1655,6 +1729,7 @@ export default function WorkProgramme() {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
+    onMutate: pushSnapshot,
     onSuccess: async (data: { bars?: number; fronts?: number }) => {
       setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
@@ -1814,6 +1889,34 @@ export default function WorkProgramme() {
                 : <Sparkles className="w-4 h-4 mr-1" />}
               Auto-build recipes
             </Button>
+          )}
+          {activeTab === "gantt" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canUndo || restoreMutation.isPending}
+                onClick={handleUndo}
+                data-testid="button-undo"
+                title="Undo last change"
+                className="border-slate-300 text-slate-600 hover:bg-slate-50"
+              >
+                {restoreMutation.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Undo2 className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canRedo || restoreMutation.isPending}
+                onClick={handleRedo}
+                data-testid="button-redo"
+                title="Redo"
+                className="border-slate-300 text-slate-600 hover:bg-slate-50"
+              >
+                <Redo2 className="w-4 h-4" />
+              </Button>
+            </>
           )}
           {items.length > 0 && (
             <Button

@@ -20436,6 +20436,26 @@ export class DatabaseStorage implements IStorage {
     await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
   }
 
+  async restoreWorkProgramBars(boqProjectId: number, bars: Array<{
+    boqItemId: number;
+    reachLabel?: string | null;
+    chainageFrom?: number | null;
+    chainageTo?: number | null;
+    startMonth: number;
+    endMonth: number;
+    durationMode?: string | null;
+    plannedQty: number;
+    isQtyOverride?: boolean;
+    isDurationOverride?: boolean;
+    notes?: string | null;
+    source?: string | null;
+  }>): Promise<void> {
+    await db.delete(workProgramBars).where(eq(workProgramBars.boqProjectId, boqProjectId));
+    for (const b of bars) {
+      await db.insert(workProgramBars).values({ ...b, boqProjectId } as any);
+    }
+  }
+
   // --- Monthly Targets (derived from work programme bars, fractional overlap formula) ---
 
   async getMonthlyTargets(boqProjectId: number): Promise<MonthlyTarget[]> {

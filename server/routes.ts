@@ -10603,9 +10603,9 @@ export async function registerRoutes(
       const _lag = Number(req.body?.lagMonths);
       const lagMonths = !isNaN(_lag) ? Math.max(0, _lag) : 0.25;
       const _strGroups = parseInt(req.body?.structureGroups);
-      const structureGroups = _strGroups >= 1 ? Math.min(_strGroups, fronts) : fronts;
+      const structureGroups = _strGroups >= 1 ? _strGroups : fronts;
       const _brgGroups = parseInt(req.body?.bridgeGroups);
-      const bridgeGroups = _brgGroups >= 1 ? Math.min(_brgGroups, fronts) : fronts;
+      const bridgeGroups = _brgGroups >= 1 ? _brgGroups : fronts;
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       await storage.upsertBoqProgramSettings(projectId, {
@@ -10705,6 +10705,21 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("auto-sequence:", err);
       res.status(500).json({ error: `Failed to auto-sequence programme: ${err?.message ?? String(err)}` });
+    }
+  });
+
+  // Restore a full programme snapshot (used by client-side Undo / Redo).
+  app.post("/api/boq/projects/:id/programme/restore", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { bars } = req.body;
+      if (!Array.isArray(bars)) return res.status(400).json({ error: "bars must be an array" });
+      await storage.restoreWorkProgramBars(projectId, bars);
+      res.json({ success: true, restored: bars.length });
+    } catch (err: any) {
+      console.error("programme restore:", err);
+      res.status(500).json({ error: `Failed to restore programme: ${err?.message ?? String(err)}` });
     }
   });
 
