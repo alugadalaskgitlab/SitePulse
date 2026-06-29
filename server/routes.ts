@@ -10254,6 +10254,17 @@ export async function registerRoutes(
 
           let derived: ReturnType<typeof deriveMaterialsFromLayerConfig>;
           if (compositeLayers && compositeLayers.length > 0) {
+            // Normalise raw SDB/template aggregate names to IRC standard names before
+            // combining sub-layer rows, so "10/12MM" from a BC template merges with
+            // "10mm Aggregate" produced by the MA IRC default (and vice versa for 6mm/dust).
+            const normaliseCompKey = (name: string): string => {
+              const n = name.trim();
+              if (/^20\s*mm$/i.test(n)) return "20mm Aggregate";
+              if (/^10\/12\s*mm$|^10\s*mm\s*chips?$|^12\.?5\s*mm$/i.test(n)) return "10mm Aggregate";
+              if (/^6\s*mm\s*(down|agg|chips?)?$|^6\.?3\s*mm$/i.test(n)) return "6mm Aggregate";
+              if (/^dust$|^stone\s*dust$|^crusher\s*dust$|^aggregate\s*dust$/i.test(n)) return "Stone Dust";
+              return n;
+            };
             const combinedMap = new Map<string, { materialName: string; uom: string; qtyPerBoqUnit: number; isAuto: boolean; applicationNote?: string }>();
             for (const cl of compositeLayers) {
               const subTmplId =
@@ -10278,9 +10289,12 @@ export async function registerRoutes(
                 subLc, item.unit, subTmpl ?? undefined, null, { descBinderGrade: subDescBinderGrade },
               );
               for (const dr of subDerived) {
-                const ex = combinedMap.get(dr.materialName);
+                // Use normalised key so template names ("10/12MM", "DUST") collapse with
+                // IRC generic names ("10mm Aggregate", "Stone Dust") from other sub-layers.
+                const normName = normaliseCompKey(dr.materialName);
+                const ex = combinedMap.get(normName);
                 if (ex) { ex.qtyPerBoqUnit += dr.qtyPerBoqUnit; }
-                else combinedMap.set(dr.materialName, { ...dr });
+                else combinedMap.set(normName, { ...dr, materialName: normName });
               }
             }
             derived = [...combinedMap.values()] as ReturnType<typeof deriveMaterialsFromLayerConfig>;

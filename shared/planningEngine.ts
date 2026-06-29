@@ -897,8 +897,14 @@ export function calculateBomDemand(
         // (GSB in Bill 3 vs Bill 10) still show separately.
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
-        if (exB) { exB.lineQty += lineQty; exB.workQty += workQty; }
-        else row.breakdown.push({
+        if (exB) {
+          // Same item, different component normalising to the same material (e.g. composite
+          // items where "10/12MM" and "10mm Aggregate" both → "10mm Aggregate").
+          // Only accumulate lineQty; workQty stays at the value already set (same bars,
+          // not a different item), and update qtyPerUnit to show the combined rate.
+          exB.lineQty += lineQty;
+          exB.qtyPerUnit = exB.lineQty / exB.workQty;
+        } else row.breakdown.push({
           itemDescription: item.itemName || item.description,
           fullDescription: item.description,
           itemCode: item.itemCode,
