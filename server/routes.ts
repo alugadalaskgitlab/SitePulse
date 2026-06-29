@@ -10611,9 +10611,11 @@ export async function registerRoutes(
       const structureGroups = _strGroups >= 1 ? _strGroups : fronts;
       const _brgGroups = parseInt(req.body?.bridgeGroups);
       const bridgeGroups = _brgGroups >= 1 ? _brgGroups : fronts;
-      // When the project already has structure-location bars (from an import), the caller
-      // can request that the sequencer skips the automatic culvert/bridge front splitting.
-      const disableStructureFronts = req.body?.disableStructureFronts === true;
+      // Structure-front auto-splitting ("Struct. Front N" / "Bridge Grp N" bars) is disabled
+      // by default — it produces incorrect results for projects that use per-location structure
+      // bars imported from a schedule. A caller must explicitly pass enableStructureFronts=true
+      // to re-activate the old behaviour (e.g. older projects with no imported structure bars).
+      const disableStructureFronts = req.body?.enableStructureFronts !== true;
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       await storage.upsertBoqProgramSettings(projectId, {
@@ -10623,7 +10625,7 @@ export async function registerRoutes(
           lagMonths,
           structureGroups: _strGroups >= 1 ? structureGroups : null,
           bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
-          disableStructureFronts,
+          enableStructureFronts: !disableStructureFronts,
         },
       } as any);
 
@@ -10765,7 +10767,10 @@ export async function registerRoutes(
       let created = 0;
       let skipped = 0;
       let unmatchedBoqRows = 0;
+      let uomMismatchRows = 0;
       const warnings: string[] = [];
+      // Track imported qty per BOQ item for over-planned detection
+      const importedQtyByItemId = new Map<number, number>();
 
       const project = await storage.getBoqProject(projectId) as any;
       const pSettings = await storage.getBoqProgramSettings(projectId) as any;
@@ -10838,7 +10843,10 @@ export async function registerRoutes(
         // UOM compatibility warning (soft — don't skip, but flag)
         if (r.uom && boqItem.unit && r.uom.toLowerCase() !== boqItem.unit.toLowerCase()) {
           warnings.push(`Row ${i + 1} (${r.structureId}): UOM mismatch — sheet "${r.uom}" vs BOQ item "${boqItem.unit}"`);
+          uomMismatchRows++;
         }
+        // Accumulate imported qty per BOQ item for over-planned detection
+        importedQtyByItemId.set(boqItem.id, (importedQtyByItemId.get(boqItem.id) ?? 0) + (r.plannedQty ?? 0));
 
         // Compute startMonth / endMonth from startDate + durationDays
         let startMonth = 1;
@@ -10897,6 +10905,25 @@ export async function registerRoutes(
         }
       }
 
+      // Detect over-planned BOQ items: sum of imported plannedQty > item.currentQty
+      const overPlannedItems: Array<{ boqItemId: number; itemCode: string; description: string; currentQty: number; importedQty: number }> = [];
+      for (const [itemId, importedQty] of importedQtyByItemId) {
+        const it = itemById.get(itemId);
+        if (it && it.currentQty != null && importedQty > it.currentQty * 1.05) {
+          // Allow 5% tolerance before flagging
+          overPlannedItems.push({
+            boqItemId: itemId,
+            itemCode: it.itemCode ?? "",
+            description: (it.description ?? "").slice(0, 80),
+            currentQty: it.currentQty,
+            importedQty,
+          });
+        }
+      }
+      if (overPlannedItems.length) {
+        warnings.push(`${overPlannedItems.length} BOQ item(s) have total imported quantity exceeding their BOQ quantity — check if all sub-items are correctly assigned.`);
+      }
+
       res.status(201).json({
         created,
         skipped,
@@ -10905,6 +10932,8 @@ export async function registerRoutes(
         rowsImported: created,
         rowsSkipped: skipped,
         unmatchedBoqRows,
+        uomMismatchRows,
+        overPlannedItems,
         warnings: warnings.slice(0, 50), // cap at 50 to keep response small
         results,
       });

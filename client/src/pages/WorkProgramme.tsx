@@ -963,14 +963,17 @@ function StructureImportWizard({
       });
       return res.json();
     },
-    onSuccess: (data: { created: number; skipped: number; total: number; warnings?: string[]; unmatchedBoqRows?: number }) => {
+    onSuccess: (data: { created: number; skipped: number; total: number; warnings?: string[]; unmatchedBoqRows?: number; uomMismatchRows?: number; overPlannedItems?: unknown[] }) => {
       onImported();
       onOpenChange(false);
       reset();
-      const warnSuffix = data.warnings?.length ? ` ${data.warnings.length} warning(s) — check chainage or UOM.` : "";
+      const parts: string[] = [`${data.created} bars created`];
+      if (data.skipped) parts.push(`${data.skipped} skipped`);
+      if (data.uomMismatchRows) parts.push(`${data.uomMismatchRows} UOM mismatch(es)`);
+      if (data.overPlannedItems?.length) parts.push(`${data.overPlannedItems.length} over-planned BOQ item(s)`);
       toast({
         title: "Structure schedule imported",
-        description: `${data.created} bars created${data.skipped ? `, ${data.skipped} rows skipped` : ""}${warnSuffix}`,
+        description: parts.join(", ") + (data.warnings?.length ? ` — ${data.warnings.length} warning(s)` : ""),
       });
     },
     onError: (err: any) =>
@@ -1961,7 +1964,9 @@ export default function WorkProgramme() {
   const [seqStrGroups, setSeqStrGroups] = useState("");   // "" = same as road fronts
   const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
-  const [seqDisableStructure, setSeqDisableStructure] = useState(false); // skip auto structure fronts when imported bars exist
+  // Structure-front auto-splitting is disabled by default (correct new behaviour).
+  // The user can opt back in via the seq dialog checkbox for legacy projects.
+  const [seqEnableStructureFronts, setSeqEnableStructureFronts] = useState(false);
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
   const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
@@ -2178,12 +2183,13 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; disableStructureFronts?: boolean }) => {
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; enableStructureFronts?: boolean }) => {
       const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
       if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
       if (opts.structureGroups && opts.structureGroups > 0) body.structureGroups = opts.structureGroups;
       if (opts.bridgeGroups && opts.bridgeGroups > 0) body.bridgeGroups = opts.bridgeGroups;
-      if (opts.disableStructureFronts) body.disableStructureFronts = true;
+      // Only send enableStructureFronts=true when explicitly opted in — default is disabled
+      if (opts.enableStructureFronts) body.enableStructureFronts = true;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
@@ -2214,8 +2220,8 @@ export default function WorkProgramme() {
       setSeqLag(String(stored.lagMonths ?? 0.25));
       setSeqStrGroups((stored as any).structureGroups ? String((stored as any).structureGroups) : "");
       setSeqBrgGroups((stored as any).bridgeGroups ? String((stored as any).bridgeGroups) : "");
-      if ((stored as any).disableStructureFronts !== undefined) {
-        setSeqDisableStructure(Boolean((stored as any).disableStructureFronts));
+      if ((stored as any).enableStructureFronts !== undefined) {
+        setSeqEnableStructureFronts(Boolean((stored as any).enableStructureFronts));
       }
     }
     setSeqDialogOpen(true);
@@ -2236,7 +2242,7 @@ export default function WorkProgramme() {
       lagMonths: lag,
       structureGroups: strGroups > 0 ? strGroups : undefined,
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
-      disableStructureFronts: seqDisableStructure,
+      enableStructureFronts: seqEnableStructureFronts,
     });
   }
 
@@ -2380,7 +2386,7 @@ export default function WorkProgramme() {
               </Button>
             </>
           )}
-          {items.length > 0 && (
+          {items.some(it => (it as any).planningWorkType === "structure") && (
             <Button
               variant="outline"
               size="sm"
@@ -2573,24 +2579,23 @@ export default function WorkProgramme() {
               </div>
             </div>
 
-            {/* Disable structure fronts toggle — visible when imported structure bars exist */}
-            {bars.some(b => (b as any).planningMode === "structure_location") && (
-              <label className="flex items-start gap-2.5 p-2.5 rounded-md bg-violet-50 border border-violet-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={seqDisableStructure}
-                  onChange={e => setSeqDisableStructure(e.target.checked)}
-                  className="mt-0.5"
-                  data-testid="checkbox-disable-structure-fronts"
-                />
-                <div>
-                  <p className="text-sm font-medium text-violet-800">Skip structure front auto-splitting</p>
-                  <p className="text-[11px] text-violet-600 mt-0.5">
-                    You have imported structure bars — check this to prevent auto-sequence from adding "Struct. Front N" / "Bridge Grp N" bars for structure-type BOQ items.
-                  </p>
-                </div>
-              </label>
-            )}
+            {/* Structure front opt-in — structure fronts are OFF by default; this re-enables them */}
+            <label className="flex items-start gap-2.5 p-2.5 rounded-md bg-slate-50 border border-slate-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={seqEnableStructureFronts}
+                onChange={e => setSeqEnableStructureFronts(e.target.checked)}
+                className="mt-0.5"
+                data-testid="checkbox-enable-structure-fronts"
+              />
+              <div>
+                <p className="text-sm font-medium text-slate-700">Re-enable structure front auto-splitting</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  By default, auto-sequence does not create "Struct. Front N" / "Bridge Grp N" bars —
+                  check this only for older projects without imported per-location structure bars.
+                </p>
+              </div>
+            </label>
 
             {/* Sequence Rules collapsible */}
             <div className="rounded-md border">
