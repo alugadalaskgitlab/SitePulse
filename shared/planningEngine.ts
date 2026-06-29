@@ -380,7 +380,7 @@ export interface BomMaterialRow {
   materialGroup?: string;
   reviewNeeded?: boolean;
   normalisationReason?: string;
-  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
+  breakdown: Array<{ itemDescription: string; fullDescription?: string; itemCode?: string | null; unit?: string; compositeLabel?: string; qtyPerUnit: number; workQty: number; lineQty: number; isAuto?: boolean }>;
 }
 
 export interface MaterialNormalisationInput {
@@ -903,6 +903,7 @@ export function calculateBomDemand(
           fullDescription: item.description,
           itemCode: item.itemCode,
           unit: item.unit,
+          compositeLabel: (item as any).compositeLabel ?? undefined,
           qtyPerUnit: effQtyPerUnit,
           workQty,
           lineQty,
@@ -1443,6 +1444,10 @@ export function normaliseBomMaterial(input: MaterialNormalisationInput): Materia
  */
 export const BITUMINOUS_IRC_DEFAULTS: Record<string, {
   bitumenPct: number;
+  /** IRC-specified binder grade for this mix type when no template is linked.
+   *  Omit for mixes (BC/DBM/etc.) whose grade always comes from the project template.
+   *  MA requires VG-40 hard bitumen per IRC:SP:93. */
+  grade?: string;
   aggregates: Array<{ name: string; pct: number }>;
 }> = {
   BC: {
@@ -1481,6 +1486,7 @@ export const BITUMINOUS_IRC_DEFAULTS: Record<string, {
   },
   MA: {
     bitumenPct: 8.5,
+    grade: "VG-40",   // Mastic Asphalt requires hard bitumen VG-40 per IRC:SP:93
     aggregates: [
       { name: "10mm Aggregate", pct: 28.0 },
       { name: "Stone Dust",     pct: 50.0 },
@@ -1626,8 +1632,9 @@ export function deriveMaterialsFromLayerConfig(
       }
     } else {
       // ── IRC standard fallback for THIS exact mix type (keeps template grade if given) ──
-      // Description-explicit grade wins; then template grade; then IRC default VG-30.
-      const grade = (opts?.descBinderGrade ?? mixTemplate?.binderGrade ?? "VG-30").trim();
+      // Description-explicit grade wins; then template grade; then IRC mix-type grade
+      // (e.g. MA → VG-40 per IRC:SP:93); then generic VG-30.
+      const grade = (opts?.descBinderGrade ?? mixTemplate?.binderGrade ?? ircDefault.grade ?? "VG-30").trim();
       const binderName = /bitumen|emulsion/i.test(grade) ? grade : `Bitumen ${grade}`;
       rows.push({ materialName: binderName, uom: "MT", qtyPerBoqUnit: (ircDefault.bitumenPct / 100) * mtPerUnit, isAuto: true, applicationNote: `IRC default ${mixKey} JMF (no complete template)` });
       for (const a of ircDefault.aggregates) {

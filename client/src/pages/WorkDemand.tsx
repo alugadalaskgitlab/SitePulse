@@ -156,6 +156,11 @@ function MaterialsTable({
                             <span className="flex-1 min-w-0 truncate text-slate-700" title={b.fullDescription ?? b.itemDescription}>
                               {b.itemCode && <span className="font-mono text-[11px] text-slate-400 mr-1">[{b.itemCode}]</span>}
                               {shortItemName(b.fullDescription ?? b.itemDescription)}
+                              {b.compositeLabel && (
+                                <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Composite bituminous item — demand split across sub-layers">
+                                  {b.compositeLabel}
+                                </span>
+                              )}
                             </span>
                             <span className="font-mono whitespace-nowrap text-[11px] flex-shrink-0">
                               <span className="text-slate-500">{fmtQty(b.qtyPerUnit, 4)}</span>
@@ -427,6 +432,7 @@ interface ItemDemandRow {
   unit: string;
   workQty: number;
   isProgrammed: boolean;
+  compositeLabel?: string;
   materials: Array<{ name: string; uom: string; qty: number; qtyPerUnit: number }>;
   equipment: Array<{ name: string; hours: number; hrsPerUnit: number }>;
   labour: Array<{ name: string; days: number; daysPerUnit: number }>;
@@ -438,7 +444,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
   // stay as separate rows (e.g. Bill-4 DBM "4.03" vs Bill-10 DBM "10.09").
   const rowKey = (bd: { itemCode?: string | null; itemDescription: string }) =>
     (bd.itemCode ?? "") + "|" + bd.itemDescription;
-  const get = (bd: { itemCode?: string | null; itemDescription: string; unit?: string }): ItemDemandRow => {
+  const get = (bd: { itemCode?: string | null; itemDescription: string; unit?: string; compositeLabel?: string }): ItemDemandRow => {
     const key = rowKey(bd);
     if (!map.has(key)) {
       map.set(key, {
@@ -447,6 +453,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
         unit: bd.unit ?? "",
         workQty: 0,
         isProgrammed: !unprogrammedDescriptions.has(bd.itemDescription),
+        compositeLabel: bd.compositeLabel,
         materials: [],
         equipment: [],
         labour: [],
@@ -459,6 +466,7 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
       const row = get(bd);
       row.workQty = Math.max(row.workQty, bd.workQty);
       if (bd.unit && !row.unit) row.unit = bd.unit;
+      if (bd.compositeLabel && !row.compositeLabel) row.compositeLabel = bd.compositeLabel;
       const ex = row.materials.find(m => m.name === mat.materialName);
       if (ex) { ex.qty += bd.lineQty; }
       else row.materials.push({ name: mat.materialName, uom: mat.uom, qty: bd.lineQty, qtyPerUnit: bd.qtyPerUnit });
@@ -526,11 +534,16 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
           onClick={() => toggle(id)}
         >
           {open ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold text-slate-700 truncate">
               {row.itemCode ? <span className="font-mono text-[12px] text-muted-foreground mr-1">[{row.itemCode}]</span> : null}
               {shortItemName(row.description)}
             </span>
+            {row.compositeLabel && (
+              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0" title="Composite bituminous item — BOM split across sub-layers">
+                {row.compositeLabel}
+              </span>
+            )}
           </div>
           <span className="text-xs font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
             {fmtQty(row.workQty, 1)} {row.unit || "unit"}

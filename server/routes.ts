@@ -10284,6 +10284,8 @@ export async function registerRoutes(
               }
             }
             derived = [...combinedMap.values()] as ReturnType<typeof deriveMaterialsFromLayerConfig>;
+            // Build composite label e.g. "BC+MA" from sub-layer mix types (sorted to keep canonical order)
+            (item as any).__compositeLabel = compositeLayers.map(cl => cl.mixType).join("+");
           } else {
             derived = deriveMaterialsFromLayerConfig(
               effLc,
@@ -10391,6 +10393,7 @@ export async function registerRoutes(
               derivedKeyMaterials: derivedRows,
               materialSetupWarning: null,
               isProgrammed: barItemIds.has(item.id),
+              compositeLabel: (item as any).__compositeLabel ?? undefined,
             };
           }
 
