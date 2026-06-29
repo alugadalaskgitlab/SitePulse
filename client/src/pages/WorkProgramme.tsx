@@ -1921,9 +1921,10 @@ export default function WorkProgramme() {
   const [seqStrGroups, setSeqStrGroups] = useState("");   // "" = same as road fronts
   const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
-  // Structure-front auto-splitting is disabled by default (correct new behaviour).
-  // The user can opt back in via the seq dialog checkbox for legacy projects.
-  const [seqEnableStructureFronts, setSeqEnableStructureFronts] = useState(false);
+  // When true (default), structure-type BOQ items are excluded from auto-sequence
+  // so imported per-location bars are not overlaid with auto-generated linear bars.
+  // Uncheck only for legacy projects that have no imported structure bars.
+  const [seqSkipStructureItems, setSeqSkipStructureItems] = useState(true);
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
   const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
@@ -2199,7 +2200,7 @@ export default function WorkProgramme() {
       lagMonths: lag,
       structureGroups: strGroups > 0 ? strGroups : undefined,
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
-      enableStructureFronts: seqEnableStructureFronts,
+      enableStructureFronts: !seqSkipStructureItems,
     });
   }
 
@@ -2536,20 +2537,21 @@ export default function WorkProgramme() {
               </div>
             </div>
 
-            {/* Structure front opt-in — structure fronts are OFF by default; this re-enables them */}
+            {/* Skip structure items — checked by default so imported per-location bars are not overlaid */}
             <label className="flex items-start gap-2.5 p-2.5 rounded-md bg-slate-50 border border-slate-200 cursor-pointer">
               <input
                 type="checkbox"
-                checked={seqEnableStructureFronts}
-                onChange={e => setSeqEnableStructureFronts(e.target.checked)}
+                checked={seqSkipStructureItems}
+                onChange={e => setSeqSkipStructureItems(e.target.checked)}
                 className="mt-0.5"
-                data-testid="checkbox-enable-structure-fronts"
+                data-testid="checkbox-skip-structure-items"
               />
               <div>
-                <p className="text-sm font-medium text-slate-700">Re-enable structure front auto-splitting</p>
+                <p className="text-sm font-medium text-slate-700">Skip structure-item scheduling (using imported bars)</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  By default, auto-sequence does not create "Struct. Front N" / "Bridge Grp N" bars —
-                  check this only for older projects without imported per-location structure bars.
+                  When checked, auto-sequence ignores structure-type BOQ items and removes any
+                  previously auto-generated bars for them — leaving your imported per-location
+                  structure bars untouched. Uncheck only for older projects with no structure import.
                 </p>
               </div>
             </label>

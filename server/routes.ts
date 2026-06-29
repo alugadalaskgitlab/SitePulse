@@ -10629,8 +10629,39 @@ export async function registerRoutes(
         },
       } as any);
 
+      // Non-destructive rerun: only remove previously auto-generated bars so that
+      // any bars the planner manually placed (source = "manual") are preserved.
+      // The reach-label fallback catches legacy bars created before the source column existed.
+      const AUTO_LABEL_RE = /^(Full Length|Structures|Bridges|Reach \d+|Struct\. Front \d+|Bridge Grp \d+)$/;
+
+      // When structure fronts are disabled, pre-delete auto-sequence bars that belong to
+      // structure-type BOQ items NOW — outside the "no bars" safety guard — so that old
+      // linear bars don't persist for items that already have imported structure_location bars.
+      if (disableStructureFronts) {
+        const structureItemIds = new Set(
+          (items as any[])
+            .filter((it) => it.planningWorkType === "structure")
+            .map((it) => it.id),
+        );
+        if (structureItemIds.size > 0) {
+          const structureAutoBars = (existingBars as any[]).filter(
+            (b) => structureItemIds.has(b.boqItemId) &&
+                   (b.source === "auto-sequence" || !b.source ||
+                    (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? ""))),
+          );
+          for (const b of structureAutoBars) await storage.deleteWorkProgramBar(b.id);
+        }
+      }
+
+      // Build sequencer input — when structure fronts are disabled, exclude structure-type
+      // items entirely so the sequencer only schedules road/linear work. Their bars were
+      // already pre-deleted above; any imported structure_location bars are untouched.
       const seqItems = (items as any[])
-        .filter((it) => (it.currentQty ?? 0) > 0)
+        .filter((it) => {
+          if ((it.currentQty ?? 0) <= 0) return false;
+          if (disableStructureFronts && it.planningWorkType === "structure") return false;
+          return true;
+        })
         .map((it) => {
           const equipment = ((it.equipment ?? []) as any[]).map((e) => ({
             name: e.equipmentName,
@@ -10687,10 +10718,6 @@ export async function registerRoutes(
       // Build the full new set first; only then replace the old bars.
       let created = 0;
       const insertErrors: string[] = [];
-      // Non-destructive rerun: only remove previously auto-generated bars so that
-      // any bars the planner manually placed (source = "manual") are preserved.
-      // The reach-label fallback catches legacy bars created before the source column existed.
-      const AUTO_LABEL_RE = /^(Full Length|Structures|Bridges|Reach \d+|Struct\. Front \d+|Bridge Grp \d+)$/;
       const autoBars = (existingBars as any[]).filter(
         (b) => b.source === "auto-sequence"
             || !b.source                                            // null = column not yet populated
