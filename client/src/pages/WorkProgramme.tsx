@@ -709,6 +709,7 @@ function InlineGanttTable({
   recipesMap,
   projectId,
   productivitySettings,
+  onBeforeMutate,
 }: {
   project: BoqProject;
   items: BoqItemWithCategory[];
@@ -716,6 +717,7 @@ function InlineGanttTable({
   recipesMap: Map<number, BoqItemEquipmentWithMaster[]>;
   projectId: number;
   productivitySettings?: ProductivitySettings | null;
+  onBeforeMutate?: () => void;
 }) {
   const { toast } = useToast();
   const totalMonths = project.totalMonths ?? 12;
@@ -748,71 +750,6 @@ function InlineGanttTable({
 
   const [deleteBarId, setDeleteBarId] = useState<number | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
-
-  // ── Undo / Redo ────────────────────────────────────────────────────────────
-  const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
-  const redoStack = useRef<WorkProgramBarWithItem[][]>([]);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-
-  function pushSnapshot() {
-    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
-      ["/api/boq/projects", projectId, "programme"]
-    );
-    if (!current) return;
-    undoStack.current.push([...current]);
-    redoStack.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-  }
-
-  const restoreMutation = useMutation({
-    mutationFn: (snapBars: WorkProgramBarWithItem[]) =>
-      apiRequest("POST", `/api/boq/projects/${projectId}/programme/restore`, {
-        bars: snapBars.map(b => ({
-          boqItemId: b.boqItemId,
-          reachLabel: b.reachLabel,
-          chainageFrom: b.chainageFrom,
-          chainageTo: b.chainageTo,
-          startMonth: b.startMonth,
-          endMonth: b.endMonth,
-          durationMode: b.durationMode,
-          plannedQty: b.plannedQty,
-          isQtyOverride: b.isQtyOverride,
-          isDurationOverride: b.isDurationOverride,
-          notes: b.notes,
-          source: b.source,
-        })),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
-    },
-    onError: () => toast({ title: "Restore failed", variant: "destructive" }),
-  });
-
-  function handleUndo() {
-    if (!undoStack.current.length) return;
-    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
-      ["/api/boq/projects", projectId, "programme"]
-    );
-    if (current) redoStack.current.push([...current]);
-    const prev = undoStack.current.pop()!;
-    setCanUndo(undoStack.current.length > 0);
-    setCanRedo(true);
-    restoreMutation.mutate(prev);
-  }
-
-  function handleRedo() {
-    if (!redoStack.current.length) return;
-    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
-      ["/api/boq/projects", projectId, "programme"]
-    );
-    if (current) undoStack.current.push([...current]);
-    const next = redoStack.current.pop()!;
-    setCanUndo(true);
-    setCanRedo(redoStack.current.length > 0);
-    restoreMutation.mutate(next);
-  }
 
   const barsByItemId = useMemo(() => {
     const m: Record<number, WorkProgramBarWithItem[]> = {};
@@ -860,7 +797,7 @@ function InlineGanttTable({
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiRequest("POST", `/api/boq/projects/${projectId}/programme`, data),
-    onMutate: pushSnapshot,
+    onMutate: onBeforeMutate,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
     },
@@ -869,7 +806,7 @@ function InlineGanttTable({
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/boq/programme/bars/${id}`),
-    onMutate: pushSnapshot,
+    onMutate: onBeforeMutate,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       toast({ title: "Stretch deleted" });
@@ -907,7 +844,7 @@ function InlineGanttTable({
         isQtyOverride: false,
       });
     },
-    onMutate: pushSnapshot,
+    onMutate: onBeforeMutate,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       toast({ title: "Stretch split" });
@@ -1571,6 +1508,71 @@ export default function WorkProgramme() {
   const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
 
+  // ── Undo / Redo ────────────────────────────────────────────────────────────
+  const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
+  const redoStack = useRef<WorkProgramBarWithItem[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  function pushSnapshot() {
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (!current) return;
+    undoStack.current.push([...current]);
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }
+
+  const restoreMutation = useMutation({
+    mutationFn: (snapBars: WorkProgramBarWithItem[]) =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/restore`, {
+        bars: snapBars.map(b => ({
+          boqItemId: b.boqItemId,
+          reachLabel: b.reachLabel,
+          chainageFrom: b.chainageFrom,
+          chainageTo: b.chainageTo,
+          startMonth: b.startMonth,
+          endMonth: b.endMonth,
+          durationMode: b.durationMode,
+          plannedQty: b.plannedQty,
+          isQtyOverride: b.isQtyOverride,
+          isDurationOverride: b.isDurationOverride,
+          notes: b.notes,
+          source: b.source,
+        })),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+    },
+    onError: () => { /* toast handled by parent */ },
+  });
+
+  function handleUndo() {
+    if (!undoStack.current.length) return;
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (current) redoStack.current.push([...current]);
+    const prev = undoStack.current.pop()!;
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
+    restoreMutation.mutate(prev);
+  }
+
+  function handleRedo() {
+    if (!redoStack.current.length) return;
+    const current = queryClient.getQueryData<WorkProgramBarWithItem[]>(
+      ["/api/boq/projects", projectId, "programme"]
+    );
+    if (current) undoStack.current.push([...current]);
+    const next = redoStack.current.pop()!;
+    setCanUndo(true);
+    setCanRedo(redoStack.current.length > 0);
+    restoreMutation.mutate(next);
+  }
+
   const { data: project } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
     queryFn: async () => {
@@ -2201,6 +2203,7 @@ export default function WorkProgramme() {
                 bars={bars}
                 recipesMap={recipesMap}
                 projectId={projectId}
+                onBeforeMutate={pushSnapshot}
                 productivitySettings={progSettings ? {
                   mode: (progSettings.productivityMode ?? "snl") as "snl" | "company" | "project",
                   overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
