@@ -112,20 +112,6 @@ import Account from "@/pages/Account";
 
 const WP_ENABLED = import.meta.env.VITE_ENABLE_WORK_PROGRAM === "true";
 
-function Watermark() {
-  return (
-    <div 
-      className="fixed inset-0 pointer-events-none flex items-center justify-center z-0"
-      aria-hidden="true"
-    >
-      <img 
-        src="/sitepulse-logo.png"
-        alt="" 
-        className="w-64 h-64 md:w-80 md:h-80 object-contain opacity-[0.04]"
-      />
-    </div>
-  );
-}
 
 function Router() {
   return (
@@ -246,7 +232,6 @@ function AuthedShell() {
   const { rmcEnabled } = useFeatureFlags();
   return (
     <HubShell>
-      <Watermark />
       <div className="container mx-auto p-4 md:p-8 pt-6 max-w-7xl">
           <Switch>
             <Route path="/site" component={SiteHome} />

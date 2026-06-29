@@ -69,19 +69,23 @@ function CoverageBadge({ planned, boqQty, unit }: { planned: number; boqQty: num
       Not programmed
     </span>
   );
-  if (Math.abs(planned - boqQty) < 0.01) return (
+  const diff = planned - boqQty;
+  const absDiff = Math.abs(diff);
+  // Treat differences < 0.5 unit as "fully covered" to avoid showing "Over/Under by 0"
+  // due to floating-point rounding when the gap is smaller than display precision.
+  if (absDiff < 0.5) return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
       <CheckCircle2 className="w-3 h-3" /> Fully covered
     </span>
   );
-  if (planned < boqQty) return (
+  if (diff < 0) return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-      <AlertTriangle className="w-3 h-3" /> Under by {fmtQty(boqQty - planned)} {unit}
+      <AlertTriangle className="w-3 h-3" /> Under by {fmtQty(absDiff)} {unit}
     </span>
   );
   return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
-      <AlertTriangle className="w-3 h-3" /> Over by {fmtQty(planned - boqQty)} {unit}
+      <AlertTriangle className="w-3 h-3" /> Over by {fmtQty(absDiff)} {unit}
     </span>
   );
 }
@@ -1591,8 +1595,8 @@ export default function WorkProgramme() {
     for (const it of items) {
       const p = planned[it.id] ?? 0;
       if (p === 0) missing++;
-      else if (p < it.currentQty - 0.01) under++;
-      else if (p > it.currentQty + 0.01) over++;
+      else if (p < it.currentQty - 0.5) under++;
+      else if (p > it.currentQty + 0.5) over++;
     }
     return { under, over, missing };
   }, [items, bars]);

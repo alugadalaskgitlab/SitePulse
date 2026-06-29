@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
-  RefreshCw, Database, ClipboardList, FileSpreadsheet, BookOpen,
+  RefreshCw, Database, ClipboardList, FileSpreadsheet, BookOpen, ChevronUp,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
@@ -37,7 +37,17 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => setShowScrollTop(el.scrollTop > 300);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   function handleRefresh() {
     if (isRefreshing) return;
@@ -309,8 +319,18 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <main ref={mainRef} className="flex-1 overflow-auto relative">
           {children}
+          {showScrollTop && (
+            <button
+              onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+              className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 text-white shadow-lg transition-all duration-200"
+              aria-label="Scroll to top"
+              data-testid="button-scroll-to-top"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+          )}
         </main>
       </div>
     </div>
