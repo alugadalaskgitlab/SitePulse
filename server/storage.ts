@@ -2557,7 +2557,7 @@ export class DatabaseStorage implements IStorage {
       { name: "DUST",     bulkDensity: 1.65, conversionFromUom: "CFT" },
       { name: "40MM",     bulkDensity: 1.50, conversionFromUom: "CFT" },
       { name: "GSB",      bulkDensity: 1.75, conversionFromUom: "CFT" },
-      { name: "WMM",      bulkDensity: 2.10, conversionFromUom: "CFT" },
+      { name: "Filler",   bulkDensity: 2.10, conversionFromUom: "CFT" },
     ];
     let updated = 0, skipped = 0;
     const existing = await db.select().from(plantMaterials).where(eq(plantMaterials.isActive, 1));

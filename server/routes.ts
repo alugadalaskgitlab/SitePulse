@@ -11113,7 +11113,7 @@ async function seedPlantMasterData() {
       { name: "DUST",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.65, conversionFromUom: "CFT" },
       { name: "40MM",     category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.50, conversionFromUom: "CFT" },
       { name: "GSB",      category: "Aggregate", defaultUom: "Ton", allowedUoms: JSON.stringify(["Ton", "MT", "CFT", "Cum", "Kg"]), bulkDensity: 1.75, conversionFromUom: "CFT" },
-      { name: "WMM",      category: "Aggregate", defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "CFT", "Cum", "Kg"]), bulkDensity: 2.10, conversionFromUom: "CFT" },
+      { name: "Filler",   category: "Aggregate", defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "CFT", "Cum", "Kg"]), bulkDensity: 2.10, conversionFromUom: "CFT" },
       { name: "BITUMEN",  category: "Bitumen",   defaultUom: "MT",  allowedUoms: JSON.stringify(["MT", "Ton", "Kg", "Barrels"]) },
       { name: "EMULSION", category: "Bitumen",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
       { name: "DIESEL",   category: "Utility",   defaultUom: "Liters", allowedUoms: JSON.stringify(["Liters", "Barrels", "Kg"]) },
