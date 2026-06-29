@@ -20399,6 +20399,7 @@ export class DatabaseStorage implements IStorage {
         isQtyOverride: workProgramBars.isQtyOverride,
         isDurationOverride: workProgramBars.isDurationOverride,
         notes: workProgramBars.notes,
+        source: workProgramBars.source,
         createdAt: workProgramBars.createdAt,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
