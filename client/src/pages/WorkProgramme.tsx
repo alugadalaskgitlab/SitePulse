@@ -6,7 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, CalendarDays,
   Scissors, BookOpen, ChevronDown, ChevronUp, Info,
   GanttChartSquare, TableProperties, ArrowLeftRight, Settings2, Sparkles,
-  Undo2, Redo2,
+  Undo2, Redo2, Upload, MapPin, Building2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -689,6 +689,468 @@ function StretchRow({
   );
 }
 
+// ─── StructureLocationRow ─────────────────────────────────────────────────────
+// Read-only row for bars imported via Structure Schedule Import wizard
+// (planningMode = "structure_location"). Shows Structure ID, chainage, qty,
+// dates. No split, no multiplier — user manages these bars by re-importing.
+
+function StructureLocationRow({
+  bar,
+  project,
+  projectId,
+  color,
+  totalMonths,
+  colW,
+  onDelete,
+}: {
+  bar: WorkProgramBarWithItem;
+  project: BoqProject;
+  projectId: number;
+  color: string;
+  totalMonths: number;
+  colW: number;
+  onDelete: (id: number) => void;
+}) {
+  const { toast } = useToast();
+  const b = bar as any;
+
+  const liveStart = bar.startMonth;
+  const liveEnd   = bar.endMonth;
+  const barLeft   = Math.max(0, (liveStart - 1) * colW);
+  const barWidth  = Math.max(4, (liveEnd - liveStart) * colW);
+
+  const patch = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
+  const [qtyStr, setQtyStr] = useState(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
+
+  return (
+    <div
+      style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
+      className="border-b border-dashed border-violet-100 dark:border-violet-900/30 bg-violet-50/30 dark:bg-violet-950/10"
+      data-testid={`structure-loc-row-${bar.id}`}
+    >
+      {/* ── Left sticky panel ── */}
+      <div
+        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
+        className="flex items-center gap-1.5 px-2 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
+      >
+        <MapPin className="w-3 h-3 text-violet-500 flex-shrink-0" />
+        <span className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 truncate flex-1" title={b.structureId ?? ""}>
+          {b.structureId ?? b.reachLabel ?? "—"}
+        </span>
+        {b.structureChainageKm != null && (
+          <span className="text-[10px] text-violet-500 font-mono flex-shrink-0">
+            Km {Number(b.structureChainageKm).toFixed(3)}
+          </span>
+        )}
+        {b.boqSubItem && (
+          <span className="text-[10px] bg-violet-100 text-violet-600 rounded px-1 border border-violet-200 flex-shrink-0 font-mono">
+            {b.boqSubItem}
+          </span>
+        )}
+        <span className="text-xs text-violet-400 flex-shrink-0 font-semibold">Qty</span>
+        <input
+          type="number" step="any" min="0"
+          value={qtyStr}
+          onChange={e => setQtyStr(e.target.value)}
+          onBlur={() => {
+            const v = parseFloat(qtyStr);
+            if (!isNaN(v) && v >= 0) patch.mutate({ plannedQty: v });
+          }}
+          className="w-[52px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-violet-500 dark:text-slate-200 border-violet-300 dark:border-violet-600"
+          data-testid={`input-sloc-qty-${bar.id}`}
+        />
+        <span className="text-[10px] text-violet-400 flex-shrink-0">{(bar as any).unit ?? ""}</span>
+        {patch.isPending && <Loader2 className="w-2.5 h-2.5 animate-spin text-violet-400 flex-shrink-0" />}
+        <button
+          onClick={() => onDelete(bar.id)}
+          className="p-1 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
+          title="Delete this structure bar"
+          data-testid={`button-delete-sloc-${bar.id}`}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* ── Right: Gantt cells ── */}
+      <div
+        style={{ width: totalMonths * colW, minWidth: totalMonths * colW, position: "relative", flexShrink: 0, overflow: "hidden" }}
+        className="bg-violet-50/10 dark:bg-violet-900/5"
+      >
+        {Array.from({ length: totalMonths }, (_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 border-r border-violet-100 dark:border-violet-900/20"
+            style={{ left: i * colW, width: colW }}
+          />
+        ))}
+        <div
+          className="absolute rounded overflow-hidden select-none"
+          style={{ top: 7, left: barLeft, width: barWidth, height: 24, backgroundColor: "#7c3aed", opacity: 0.80 }}
+          title={`${b.structureId ?? ""} | ${fmtQty(bar.plannedQty, 1)} ${(bar as any).unit ?? ""} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)}`}
+        >
+          {barWidth >= 50 && (
+            <div className="absolute inset-0 flex items-center px-1.5 pointer-events-none overflow-hidden">
+              <span className="text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis opacity-90 drop-shadow-sm">
+                {fmtQty(bar.plannedQty, 1)} {(bar as any).unit ?? ""}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StructureImportWizard ────────────────────────────────────────────────────
+// 2-step wizard: (1) upload & preview parsed rows, (2) confirm import.
+// The frontend parses the Excel file using xlsx and sends JSON to the backend.
+
+interface StructureScheduleRow {
+  rowIdx: number;
+  structureId: string;
+  structureType: string;
+  chainageKm: number;
+  boqItemCode: string;
+  boqSubItem: string;
+  boqExcelRow: number;
+  boqDescription: string;
+  plannedQty: number;
+  uom: string;
+  startDate: string;
+  durationDays: number;
+  remarks: string;
+  boqItemId?: number;   // resolved by server
+  matchStatus?: "matched" | "unmatched";
+}
+
+function StructureImportWizard({
+  open,
+  onOpenChange,
+  projectId,
+  boqItems,
+  onImported,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  projectId: number;
+  boqItems: BoqItemWithCategory[];
+  onImported: () => void;
+}) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [rows, setRows] = useState<StructureScheduleRow[]>([]);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"append" | "replace">("append");
+  const [parsing, setParsing] = useState(false);
+
+  // Build lookup maps for BOQ matching
+  const itemByCode = useMemo(
+    () => new Map(boqItems.map(it => [String(it.itemCode ?? "").trim().toLowerCase(), it])),
+    [boqItems],
+  );
+
+  function reset() {
+    setStep(1);
+    setRows([]);
+    setParseError(null);
+    setParsing(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function matchRow(r: StructureScheduleRow): StructureScheduleRow {
+    const code = String(r.boqItemCode ?? "").trim().toLowerCase();
+    let matched = itemByCode.get(code) ?? null;
+    if (!matched) {
+      const stripped = code.replace(/^0+/, "");
+      matched = boqItems.find(it =>
+        String(it.itemCode ?? "").trim().replace(/^0+/, "").toLowerCase() === stripped
+      ) ?? null;
+    }
+    if (!matched && r.boqDescription) {
+      const needle = r.boqDescription.toLowerCase().slice(0, 30);
+      matched = boqItems.find(it => (it.description ?? "").toLowerCase().includes(needle)) ?? null;
+    }
+    return {
+      ...r,
+      boqItemId: matched?.id,
+      matchStatus: matched ? "matched" : "unmatched",
+    };
+  }
+
+  async function parseFile(file: File) {
+    setParsing(true);
+    setParseError(null);
+    try {
+      const { read, utils } = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = read(buf, { type: "array", cellDates: true });
+
+      // Try sheet "Structure_Schedule_Import" first, then first sheet
+      const sheetName = wb.SheetNames.includes("Structure_Schedule_Import")
+        ? "Structure_Schedule_Import"
+        : wb.SheetNames[0];
+      if (!sheetName) throw new Error("No sheets found in Excel file.");
+
+      const ws = wb.Sheets[sheetName];
+      const json = utils.sheet_to_json<Record<string, unknown>>(ws, {
+        defval: "",
+        raw: false,
+      });
+
+      if (!json.length) throw new Error(`Sheet "${sheetName}" is empty.`);
+
+      // Normalise column names: lowercase + underscores
+      function col(row: Record<string, unknown>, ...aliases: string[]): string {
+        for (const alias of aliases) {
+          const key = Object.keys(row).find(k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase());
+          if (key) return String(row[key] ?? "");
+        }
+        return "";
+      }
+      function colNum(row: Record<string, unknown>, ...aliases: string[]): number {
+        const v = parseFloat(col(row, ...aliases).replace(/,/g, ""));
+        return isNaN(v) ? 0 : v;
+      }
+      function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
+        const v = col(row, ...aliases).trim();
+        // Try ISO, DD/MM/YYYY, MM/DD/YYYY
+        if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+        const parts = v.split(/[\/-]/);
+        if (parts.length === 3) {
+          const [a, b, c] = parts.map(Number);
+          if (c > 31) return `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+          if (a > 31) return `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
+        }
+        return "";
+      }
+
+      const parsed: StructureScheduleRow[] = json
+        .map((row, i) => {
+          const raw: StructureScheduleRow = {
+            rowIdx: i + 2,
+            structureId:    col(row, "structure_id", "structure_name", "structure id"),
+            structureType:  col(row, "structure_type", "type"),
+            chainageKm:     colNum(row, "chainage_km", "chainage", "ch_km"),
+            boqItemCode:    col(row, "boq_item_code", "item_code", "item code", "boq item code"),
+            boqSubItem:     col(row, "boq_sub_item", "sub_item", "sub item"),
+            boqExcelRow:    colNum(row, "boq_excel_row", "excel_row"),
+            boqDescription: col(row, "boq_description", "description", "item description"),
+            plannedQty:     colNum(row, "planned_qty", "quantity", "qty"),
+            uom:            col(row, "uom", "unit"),
+            startDate:      colDate(row, "start_date", "start date"),
+            durationDays:   colNum(row, "duration_days", "duration", "duration (days)"),
+            remarks:        col(row, "remarks", "notes"),
+          };
+          return matchRow(raw);
+        })
+        .filter(r => r.structureId || r.boqDescription || r.plannedQty > 0);
+
+      if (!parsed.length) throw new Error("No data rows could be read. Check the column headers.");
+      setRows(parsed);
+      setStep(2);
+    } catch (e: any) {
+      setParseError(e?.message ?? String(e));
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/import-structure`, {
+        rows: rows.map(r => ({
+          structureId:    r.structureId,
+          structureType:  r.structureType,
+          chainageKm:     r.chainageKm,
+          boqItemCode:    r.boqItemCode,
+          boqSubItem:     r.boqSubItem,
+          boqExcelRow:    r.boqExcelRow || undefined,
+          boqDescription: r.boqDescription,
+          plannedQty:     r.plannedQty,
+          uom:            r.uom,
+          startDate:      r.startDate || undefined,
+          durationDays:   r.durationDays || undefined,
+          remarks:        r.remarks || undefined,
+          boqItemId:      r.boqItemId,
+        })),
+        mode,
+      });
+      return res.json();
+    },
+    onSuccess: (data: { created: number; skipped: number; total: number }) => {
+      onImported();
+      onOpenChange(false);
+      reset();
+      toast({
+        title: "Structure schedule imported",
+        description: `${data.created} bars created${data.skipped ? `, ${data.skipped} rows skipped` : ""}.`,
+      });
+    },
+    onError: (err: any) =>
+      toast({ title: "Import failed", description: String(err?.message ?? err), variant: "destructive" }),
+  });
+
+  const matchedCount  = rows.filter(r => r.matchStatus === "matched").length;
+  const unmatchedCount = rows.filter(r => r.matchStatus !== "matched").length;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-violet-600" />
+            Import Structure Schedule
+          </DialogTitle>
+        </DialogHeader>
+
+        {step === 1 && (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Upload an Excel file containing the structure schedule. The sheet should be named{" "}
+              <code className="text-violet-700 font-mono bg-violet-50 px-1 rounded">Structure_Schedule_Import</code>{" "}
+              with columns: <em>structure_id, structure_type, chainage_km, boq_item_code, boq_sub_item, planned_qty, uom, start_date, duration_days, remarks</em>.
+            </p>
+
+            <div className="rounded-lg border-2 border-dashed border-violet-200 p-6 text-center bg-violet-50/40">
+              <Upload className="w-8 h-8 text-violet-400 mx-auto mb-2" />
+              <p className="text-sm text-slate-600 mb-3">Click to browse or drag an Excel file here</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                className="border-violet-300 text-violet-700 hover:bg-violet-50"
+                disabled={parsing}
+                data-testid="button-browse-structure-excel"
+              >
+                {parsing ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Parsing…</> : "Browse file"}
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.xlsm"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); }}
+                data-testid="input-structure-excel"
+              />
+            </div>
+
+            {parseError && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" />
+                {parseError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="inline-flex items-center gap-1 text-teal-700 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" />{matchedCount} matched
+              </span>
+              {unmatchedCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-amber-600 font-semibold">
+                  <AlertTriangle className="w-3.5 h-3.5" />{unmatchedCount} unmatched (will be skipped)
+                </span>
+              )}
+              <span className="text-muted-foreground ml-auto">{rows.length} total rows</span>
+            </div>
+
+            <div className="border rounded-lg overflow-auto max-h-72 text-xs">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Structure ID</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Type</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Chainage</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">BOQ Code</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Description</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Qty</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Start</th>
+                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr
+                      key={i}
+                      className={r.matchStatus === "matched"
+                        ? "hover:bg-slate-50/50"
+                        : "bg-amber-50/60 dark:bg-amber-900/10"}
+                    >
+                      <td className="px-2 py-1 border-b truncate max-w-[120px]" title={r.structureId}>{r.structureId || "—"}</td>
+                      <td className="px-2 py-1 border-b truncate max-w-[90px]">{r.structureType || "—"}</td>
+                      <td className="px-2 py-1 border-b font-mono">{r.chainageKm > 0 ? r.chainageKm.toFixed(3) : "—"}</td>
+                      <td className="px-2 py-1 border-b font-mono">{r.boqItemCode || "—"}</td>
+                      <td className="px-2 py-1 border-b truncate max-w-[140px]" title={r.boqDescription}>{r.boqDescription || "—"}</td>
+                      <td className="px-2 py-1 border-b font-mono">{r.plannedQty > 0 ? fmtQty(r.plannedQty, 2) : "—"} {r.uom}</td>
+                      <td className="px-2 py-1 border-b">{r.startDate || "—"}</td>
+                      <td className="px-2 py-1 border-b">
+                        {r.matchStatus === "matched"
+                          ? <span className="text-teal-600 font-semibold">✓ matched</span>
+                          : <span className="text-amber-600 font-semibold">⚠ no match</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center gap-4 text-sm">
+              <Label className="font-medium text-slate-700">Import mode</Label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="import-mode" value="append" checked={mode === "append"} onChange={() => setMode("append")} data-testid="radio-mode-append" />
+                <span>Append</span>
+                <span className="text-muted-foreground text-xs">(keep existing structure bars)</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="import-mode" value="replace" checked={mode === "replace"} onChange={() => setMode("replace")} data-testid="radio-mode-replace" />
+                <span>Replace</span>
+                <span className="text-muted-foreground text-xs">(delete existing structure bars first)</span>
+              </label>
+            </div>
+
+            {unmatchedCount === rows.length && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                No rows could be matched to BOQ items — check that BOQ item codes in the file match those in this project.
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => { if (step === 2) setStep(1); else onOpenChange(false); }}>
+            {step === 2 ? "← Back" : "Cancel"}
+          </Button>
+          {step === 2 && matchedCount > 0 && (
+            <Button
+              size="sm"
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              onClick={() => importMutation.mutate()}
+              disabled={importMutation.isPending}
+              data-testid="button-confirm-structure-import"
+            >
+              {importMutation.isPending
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Importing…</>
+                : <><Upload className="w-3.5 h-3.5 mr-1" />Import {matchedCount} bars</>}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── InlineGanttTable ────────────────────────────────────────────────────────────
 
 // Natural sort for MoRTH bill/item codes: 1.01 < 1.02 < 1.10 < 2.01 < 10.01
@@ -1074,26 +1536,39 @@ function InlineGanttTable({
                       </div>
                     </div>
 
-                    {/* Stretch rows */}
-                    {itemBars.map((bar, i) => (
-                      <StretchRow
-                        key={bar.id}
-                        bar={bar}
-                        itemBars={itemBars}
-                        item={item}
-                        project={project}
-                        recipesMap={recipesMap}
-                        projectId={projectId}
-                        color={color}
-                        isFirst={i === 0}
-                        totalMonths={totalMonths}
-                        colW={colW}
-                        onDelete={setDeleteBarId}
-                        onSplit={bar => splitMutation.mutate(bar)}
-                        onBeforeMutate={onBeforeMutate}
-                        productivitySettings={productivitySettings}
-                      />
-                    ))}
+                    {/* Stretch rows — dispatch to StructureLocationRow for imported structure bars */}
+                    {itemBars.map((bar, i) =>
+                      (bar as any).planningMode === "structure_location" ? (
+                        <StructureLocationRow
+                          key={bar.id}
+                          bar={bar}
+                          project={project}
+                          projectId={projectId}
+                          color={color}
+                          totalMonths={totalMonths}
+                          colW={colW}
+                          onDelete={setDeleteBarId}
+                        />
+                      ) : (
+                        <StretchRow
+                          key={bar.id}
+                          bar={bar}
+                          itemBars={itemBars.filter(b => (b as any).planningMode !== "structure_location")}
+                          item={item}
+                          project={project}
+                          recipesMap={recipesMap}
+                          projectId={projectId}
+                          color={color}
+                          isFirst={i === 0}
+                          totalMonths={totalMonths}
+                          colW={colW}
+                          onDelete={setDeleteBarId}
+                          onSplit={bar => splitMutation.mutate(bar)}
+                          onBeforeMutate={onBeforeMutate}
+                          productivitySettings={productivitySettings}
+                        />
+                      )
+                    )}
 
                     {/* Total row when ≥ 2 stretches */}
                     {itemBars.length >= 2 && (
@@ -1500,6 +1975,7 @@ export default function WorkProgramme() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const [activeTab, setActiveTab] = useState("gantt");
+  const [strImportOpen, setStrImportOpen] = useState(false);
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
   const [seqFronts, setSeqFronts] = useState("");         // "" = auto
   const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
@@ -1924,6 +2400,19 @@ export default function WorkProgramme() {
             <Button
               variant="outline"
               size="sm"
+              className="border-violet-300 text-violet-700 hover:bg-violet-50"
+              onClick={() => setStrImportOpen(true)}
+              data-testid="button-import-structure-schedule"
+              title="Import a per-location structure schedule from Excel. Creates Gantt bars for each structure (bridge, culvert, etc.) at the correct chainage."
+            >
+              <Building2 className="w-4 h-4 mr-1" />
+              Import Structures
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
               className="border-purple-300 text-purple-700 hover:bg-purple-50"
               onClick={openSeqDialog}
               disabled={autoSequenceMutation.isPending}
@@ -1994,6 +2483,17 @@ export default function WorkProgramme() {
           </div>
         </div>
       )}
+
+      {/* Structure Schedule Import wizard */}
+      <StructureImportWizard
+        open={strImportOpen}
+        onOpenChange={setStrImportOpen}
+        projectId={projectId}
+        boqItems={items}
+        onImported={() =>
+          queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] })
+        }
+      />
 
       {/* Auto-sequence settings dialog */}
       <Dialog open={seqDialogOpen} onOpenChange={setSeqDialogOpen}>

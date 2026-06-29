@@ -2430,6 +2430,16 @@ export const workProgramBars = pgTable("work_program_bars", {
   notes: text("notes"),
   // "auto-sequence" = created by the auto-sequencer; "manual" = hand-placed. Used for non-destructive reruns.
   source: text("source").default("manual"),
+  // ── Structure-location bars (planningMode = "structure_location") ─────────
+  // These are imported via the Structure Schedule Import wizard rather than
+  // auto-generated from chainage splits. Each row represents one BOQ sub-item
+  // at one physical structure location.
+  planningMode: text("planning_mode"),          // null | "structure_location"
+  structureId: text("structure_id"),            // e.g. "Bridge at Km 195.400"
+  structureLocType: text("structure_loc_type"), // bridge | culvert | retaining_wall | …
+  structureChainageKm: real("structure_chainage_km"), // structure location chainage
+  boqSubItem: text("boq_sub_item"),             // sub-item code from Excel (e.g. "2.1a")
+  boqExcelRow: integer("boq_excel_row"),        // original Excel row for traceability
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),

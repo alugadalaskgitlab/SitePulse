@@ -120,6 +120,13 @@ export interface SeqOptions {
   structureGroups?: number;
   /** How many bridge groups to create (≤ fronts). Defaults to fronts when omitted. */
   bridgeGroups?: number;
+  /**
+   * When true, skip auto-generation of Struct. Front / Bridge Grp bars for
+   * items classified as structure or bridge. Structure BOQ items will be
+   * excluded from the auto-sequenced output entirely; planners must provide
+   * structure bars via the Structure Schedule Import wizard instead.
+   */
+  disableStructureFronts?: boolean;
 }
 
 export interface SeqBar {
@@ -266,7 +273,9 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   // Every group runs the COMPLETE MoRTH culvert stage cycle (excav→PCC→RCC→
   // bedding→backfill→headwall) so planners see the full sequence per zone.
   // Quantity per bar = totalQty / numStrGroups (task spec §3).
-  if (str.length > 0) {
+  // Skipped when disableStructureFronts = true — structure bars are instead
+  // imported via the Structure Schedule Import wizard per physical location.
+  if (str.length > 0 && !opts.disableStructureFronts) {
     const numStrGroups = Math.max(1, Math.floor(opts.structureGroups ?? fronts));
     const strReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numStrGroups : 0;
     for (let g = 0; g < numStrGroups; g++) {
@@ -299,7 +308,8 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   // bridge groups (controlled by opts.bridgeGroups). Each group covers the
   // matching chainage zone and runs the full bridge stage cycle.
   // Quantity per bar = totalQty / numBrgGroups (task spec §3).
-  if (brg.length > 0) {
+  // Skipped when disableStructureFronts = true (same as structure above).
+  if (brg.length > 0 && !opts.disableStructureFronts) {
     const numBrgGroups = Math.max(1, Math.floor(opts.bridgeGroups ?? fronts));
     const brgReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numBrgGroups : 0;
     for (let g = 0; g < numBrgGroups; g++) {

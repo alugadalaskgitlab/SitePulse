@@ -10713,6 +10713,154 @@ export async function registerRoutes(
     }
   });
 
+  // ── Structure Schedule Import ────────────────────────────────────────────────
+  // Accepts a pre-parsed array of structure schedule rows from the frontend
+  // (after the user uploads and previews the Excel file). Creates one
+  // work_program_bar per row with planningMode = "structure_location".
+  // Rows that cannot be matched to a BOQ item are skipped and reported back.
+  app.post("/api/boq/projects/:id/import-structure", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const { rows, mode = "append" } = req.body as {
+        rows: Array<{
+          structureId: string;
+          structureType: string;
+          chainageKm: number;
+          boqItemCode?: string;
+          boqSubItem?: string;
+          boqExcelRow?: number;
+          boqDescription?: string;
+          plannedQty: number;
+          uom?: string;
+          startDate?: string;    // ISO date "YYYY-MM-DD"
+          durationDays?: number;
+          remarks?: string;
+          // matched BOQ item (resolved by frontend preview)
+          boqItemId?: number;
+        }>;
+        mode?: "append" | "replace";
+      };
+
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ error: "rows array is required and must not be empty" });
+      }
+
+      // Load all BOQ items for fallback matching
+      const allItems = await storage.getBoqItems(projectId) as any[];
+      const itemById = new Map(allItems.map((it: any) => [it.id, it]));
+      const itemByCode = new Map(allItems.map((it: any) => [String(it.itemCode ?? "").trim().toLowerCase(), it]));
+
+      // Replace mode: wipe existing structure-location bars for this project
+      if (mode === "replace") {
+        await storage.deleteStructureLocationBars(projectId);
+      }
+
+      const results: { row: number; status: "created" | "skipped"; structureId?: string; reason?: string }[] = [];
+      let created = 0;
+      let skipped = 0;
+
+      const project = await storage.getBoqProject(projectId) as any;
+      const pSettings = await storage.getBoqProgramSettings(projectId) as any;
+      const projectStartDate: string | null = pSettings?.projectStartDate ?? null;
+      const totalMonths: number = project?.totalMonths ?? 18;
+      const workingDays: number = pSettings?.workingDaysPerMonth ?? 25;
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+
+        // Resolve BOQ item — prefer frontend-resolved id, then by code
+        let boqItem: any = null;
+        if (r.boqItemId && itemById.has(r.boqItemId)) {
+          boqItem = itemById.get(r.boqItemId);
+        } else if (r.boqItemCode) {
+          boqItem = itemByCode.get(String(r.boqItemCode).trim().toLowerCase()) ?? null;
+          if (!boqItem) {
+            // fuzzy: strip leading zeros / spaces
+            const stripped = String(r.boqItemCode).replace(/^0+/, "").trim().toLowerCase();
+            boqItem = allItems.find((it: any) =>
+              String(it.itemCode ?? "").replace(/^0+/, "").trim().toLowerCase() === stripped
+            ) ?? null;
+          }
+        }
+        if (!boqItem && r.boqDescription) {
+          // last-resort: partial description match
+          const needle = r.boqDescription.toLowerCase();
+          boqItem = allItems.find((it: any) =>
+            (it.description ?? "").toLowerCase().includes(needle.slice(0, 30))
+          ) ?? null;
+        }
+
+        if (!boqItem) {
+          results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: `No BOQ item matched (code: ${r.boqItemCode ?? "—"})` });
+          skipped++;
+          continue;
+        }
+
+        // Compute startMonth / endMonth from startDate + durationDays
+        let startMonth = 1;
+        let endMonth   = 1.1;
+        if (r.startDate && projectStartDate) {
+          try {
+            const pStart = new Date(projectStartDate);
+            const sDate  = new Date(r.startDate);
+            const diffMs = sDate.getTime() - pStart.getTime();
+            const diffDays = diffMs / 86400000;
+            // Convert offset days → fractional months using workingDays
+            startMonth = Math.max(1, 1 + diffDays / workingDays);
+            const durMonths = r.durationDays ? r.durationDays / workingDays : 1;
+            endMonth = startMonth + durMonths;
+            if (endMonth > totalMonths) endMonth = totalMonths;
+            if (endMonth <= startMonth) endMonth = startMonth + 0.1;
+            startMonth = +startMonth.toFixed(3);
+            endMonth   = +endMonth.toFixed(3);
+          } catch (_) { /* leave defaults */ }
+        }
+
+        const endDate = r.startDate && r.durationDays
+          ? (() => {
+              const d = new Date(r.startDate);
+              d.setDate(d.getDate() + r.durationDays);
+              return d.toISOString().slice(0, 10);
+            })()
+          : null;
+
+        try {
+          await storage.upsertWorkProgramBar({
+            boqProjectId: projectId,
+            boqItemId: boqItem.id,
+            reachLabel: r.structureId,
+            chainageFrom: r.chainageKm,
+            chainageTo: r.chainageKm,
+            startMonth,
+            endMonth,
+            startDate: r.startDate ?? null,
+            endDate,
+            plannedQty: r.plannedQty ?? 0,
+            source: "structure_import",
+            planningMode: "structure_location",
+            structureId: r.structureId,
+            structureLocType: r.structureType,
+            structureChainageKm: r.chainageKm,
+            boqSubItem: r.boqSubItem ?? null,
+            boqExcelRow: r.boqExcelRow ?? null,
+            notes: r.remarks ?? null,
+          } as any);
+          created++;
+          results.push({ row: i + 1, status: "created", structureId: r.structureId });
+        } catch (e: any) {
+          results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: e?.message ?? String(e) });
+          skipped++;
+        }
+      }
+
+      res.status(201).json({ created, skipped, total: rows.length, results });
+    } catch (err: any) {
+      console.error("POST /api/boq/projects/:id/import-structure:", err);
+      res.status(500).json({ error: `Failed to import structure schedule: ${err?.message ?? String(err)}` });
+    }
+  });
+
   // Restore a full programme snapshot (used by client-side Undo / Redo).
   app.post("/api/boq/projects/:id/programme/restore", async (req, res) => {
     try {

@@ -1280,6 +1280,8 @@ export interface IStorage {
   // Task #1193 — structure-aware planning work type
   backfillBoqWorkType(): Promise<{ set: number; structured: number }>;
   updateBoqItemWorkType(id: number, planningWorkType: string): Promise<void>;
+  // Task #1206 — structure schedule import
+  deleteStructureLocationBars(boqProjectId: number): Promise<number>;
 }
 
 // Task #219 — Detail returned by the per-(date, plant) Boiler Meter
@@ -20434,6 +20436,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorkProgramBar(id: number): Promise<void> {
     await db.delete(workProgramBars).where(eq(workProgramBars.id, id));
+  }
+
+  async deleteStructureLocationBars(boqProjectId: number): Promise<number> {
+    const result = await db.delete(workProgramBars).where(
+      and(eq(workProgramBars.boqProjectId, boqProjectId), eq(workProgramBars.planningMode as any, "structure_location"))
+    );
+    return execDmlRowCount(result, "deleteStructureLocationBars");
   }
 
   async restoreWorkProgramBars(boqProjectId: number, bars: Array<{
