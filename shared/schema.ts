@@ -2516,6 +2516,8 @@ export const boqProgramSettings = pgTable("boq_program_settings", {
   // Productivity mode: snl = SNL/standard norms, company = company norms, project = per-item overrides
   productivityMode: text("productivity_mode").notNull().default("snl"),
   productivityOverrides: jsonb("productivity_overrides"),
+  // Auto-sequence options: { fronts?: number; staggerMonths?: number; lagMonths?: number }
+  sequenceOptions: jsonb("sequence_options"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

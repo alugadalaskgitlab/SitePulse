@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
@@ -29,6 +31,7 @@ import {
   type LayerConfig,
   type ProductivitySettings,
 } from "@shared/planningEngine";
+import { SEQUENCE_RULES } from "@shared/programmeSequencer";
 import { shortItemName } from "@/lib/itemName";
 import type {
   BoqProject,
@@ -1487,6 +1490,11 @@ export default function WorkProgramme() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const [activeTab, setActiveTab] = useState("gantt");
+  const [seqDialogOpen, setSeqDialogOpen] = useState(false);
+  const [seqFronts, setSeqFronts] = useState("");        // "" = auto
+  const [seqStagger, setSeqStagger] = useState("1");     // months
+  const [seqLag, setSeqLag] = useState("0.25");          // months
+  const [seqRulesOpen, setSeqRulesOpen] = useState(false);
 
   const { data: project } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -1507,6 +1515,7 @@ export default function WorkProgramme() {
     quarryToHmpKm: number | null; quarryToRmcKm: number | null; rmcToSiteKm: number | null;
     borrowToSiteKm: number | null; disposalDistanceKm: number | null;
     productivityMode: string; productivityOverrides: unknown | null;
+    sequenceOptions: { fronts?: number | null; staggerMonths?: number; lagMonths?: number } | null;
   }>({
     queryKey: ["/api/boq/projects", projectId, "program-settings"],
     queryFn: async () => {
@@ -1636,12 +1645,16 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, {});
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number }) => {
+      const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
+      if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
     onSuccess: async (data: { bars?: number; fronts?: number }) => {
+      setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
       toast({
         title: "Programme sequenced",
         description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
@@ -1654,6 +1667,24 @@ export default function WorkProgramme() {
         variant: "destructive",
       }),
   });
+
+  // Pre-populate dialog with last-used sequence options when it opens
+  function openSeqDialog() {
+    const stored = progSettings?.sequenceOptions;
+    if (stored) {
+      setSeqFronts(stored.fronts ? String(stored.fronts) : "");
+      setSeqStagger(String(stored.staggerMonths ?? 1));
+      setSeqLag(String(stored.lagMonths ?? 0.25));
+    }
+    setSeqDialogOpen(true);
+  }
+
+  function runAutoSequence() {
+    const fronts = parseInt(seqFronts) || 0;
+    const stagger = parseFloat(seqStagger) || 1;
+    const lag = parseFloat(seqLag);
+    autoSequenceMutation.mutate({ fronts: fronts > 0 ? fronts : undefined, staggerMonths: stagger, lagMonths: isNaN(lag) ? 0.25 : lag });
+  }
 
   function handleAutoGenerate() {
     if (!effectiveProject) return;
@@ -1772,10 +1803,10 @@ export default function WorkProgramme() {
               variant="outline"
               size="sm"
               className="border-purple-300 text-purple-700 hover:bg-purple-50"
-              onClick={() => autoSequenceMutation.mutate()}
+              onClick={openSeqDialog}
               disabled={autoSequenceMutation.isPending}
               data-testid="button-auto-sequence"
-              title="Sequence the whole programme reach-wise: multiple parallel fronts, each running earthwork → GSB → WMM → prime → bituminous in dependency order, scaled to the project duration."
+              title="Open the auto-sequence settings dialog to configure fronts, stagger, and lag, then run the sequencer."
             >
               {autoSequenceMutation.isPending
                 ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -1841,6 +1872,143 @@ export default function WorkProgramme() {
           </div>
         </div>
       )}
+
+      {/* Auto-sequence settings dialog */}
+      <Dialog open={seqDialogOpen} onOpenChange={setSeqDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="w-4 h-4 text-purple-600" />
+              Auto-Sequence Settings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              The sequencer splits the project into road fronts, assigns structure and bridge items to their
+              matching front, and orders all items by MoRTH construction stage within each front.
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="seq-fronts" className="text-xs font-medium">Road fronts</Label>
+                <Input
+                  id="seq-fronts"
+                  type="number"
+                  min={1}
+                  max={10}
+                  placeholder="Auto"
+                  value={seqFronts}
+                  onChange={e => setSeqFronts(e.target.value)}
+                  data-testid="input-seq-fronts"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Leave blank to auto-calculate from road length</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seq-stagger" className="text-xs font-medium">Front stagger (months)</Label>
+                <Input
+                  id="seq-stagger"
+                  type="number"
+                  min={0}
+                  max={6}
+                  step={0.25}
+                  value={seqStagger}
+                  onChange={e => setSeqStagger(e.target.value)}
+                  data-testid="input-seq-stagger"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Mobilisation delay between fronts</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seq-lag" className="text-xs font-medium">Stage lag (months)</Label>
+                <Input
+                  id="seq-lag"
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.25}
+                  value={seqLag}
+                  onChange={e => setSeqLag(e.target.value)}
+                  data-testid="input-seq-lag"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Handover gap between stages</p>
+              </div>
+            </div>
+
+            {/* Sequence Rules collapsible */}
+            <div className="rounded-md border">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-muted/40"
+                onClick={() => setSeqRulesOpen(o => !o)}
+                data-testid="button-toggle-seq-rules"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-slate-400" />
+                  Construction stage order
+                </span>
+                {seqRulesOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {seqRulesOpen && (
+                <div className="px-3 pb-3 pt-1 grid grid-cols-3 gap-3 text-xs">
+                  {/* Pavement track */}
+                  <div>
+                    <p className="font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide text-[10px]">Road (pavement)</p>
+                    <ol className="space-y-0.5">
+                      {SEQUENCE_RULES.pavement.map(r => (
+                        <li key={r.stage} className="flex items-start gap-1">
+                          <span className="w-4 h-4 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-px">{r.stage}</span>
+                          <span className="text-slate-600 dark:text-slate-400">{r.label}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  {/* Culvert track */}
+                  <div>
+                    <p className="font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide text-[10px]">Culverts / Drains</p>
+                    <ol className="space-y-0.5">
+                      {SEQUENCE_RULES.culvert.map(r => (
+                        <li key={r.stage} className="flex items-start gap-1">
+                          <span className="w-4 h-4 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-px">{r.stage}</span>
+                          <span className="text-slate-600 dark:text-slate-400">{r.label}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  {/* Bridge track */}
+                  <div>
+                    <p className="font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide text-[10px]">Bridges / Major Structures</p>
+                    <ol className="space-y-0.5">
+                      {SEQUENCE_RULES.bridge.map(r => (
+                        <li key={r.stage} className="flex items-start gap-1">
+                          <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-px">{r.stage}</span>
+                          <span className="text-slate-600 dark:text-slate-400">{r.label}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setSeqDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={runAutoSequence}
+              disabled={autoSequenceMutation.isPending}
+              data-testid="button-run-auto-sequence"
+            >
+              {autoSequenceMutation.isPending
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Sequencing…</>
+                : <><ArrowLeftRight className="w-3.5 h-3.5 mr-1" />Run Sequence</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Loading */}
       {isLoading && (

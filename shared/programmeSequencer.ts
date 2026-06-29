@@ -5,35 +5,96 @@
 
 import { classifyWorkType, type WorkType } from "./workTypeRecipes";
 
-type Track = "pavement" | "structure" | "other";
+export type Track = "pavement" | "structure" | "bridge" | "other";
 
-// Stage numbers within each track — items with lower stage run before higher stage.
-// Adapted from IRC / MoRTH construction sequence for road projects.
-// "pcc" / "rcc" / "drain_masonry" run on a parallel structure track (culverts, drains).
-const STAGE: Partial<Record<WorkType, { stage: number; track: Track }>> = {
-  // ── Flexible pavement sequence ─────────────────────────────────────────────
-  earthwork:          { stage: 1, track: "pavement" },   // embankment / subgrade
-  gsb:                { stage: 2, track: "pavement" },   // granular sub-base
-  wmm:                { stage: 3, track: "pavement" },   // wet mix macadam base
-  dlc:                { stage: 3, track: "pavement" },   // dry lean concrete (rigid sub-base)
-  prime_coat:         { stage: 4, track: "pavement" },   // spray on WMM before bituminous
-  tack_coat:          { stage: 5, track: "pavement" },   // spray between bituminous layers
-  bituminous_base:    { stage: 5, track: "pavement" },   // DBM / BM binder course
-  bituminous_wearing: { stage: 6, track: "pavement" },   // BC / SDBC wearing course
-  pqc:                { stage: 5, track: "pavement" },   // rigid pavement layer (PQC)
-  // ── Structure track (culverts, bridges, drains) ───────────────────────────
-  pcc:                { stage: 1, track: "structure" },
-  rcc:                { stage: 1, track: "structure" },
-  drain_masonry:      { stage: 2, track: "structure" },
-  // earthwork / gsb also appear under structures occasionally — handled by "other" fallback
+// ─── Bridge keyword detector ──────────────────────────────────────────────────
+// Fires for bridges, viaducts, flyovers, retaining/breast walls.
+// Used to route structure items onto the bridge track instead of culvert track.
+function isBridgeDesc(desc: string): boolean {
+  return /\bbridge\b|viaduct|flyover|abutment|pier\b|bearing\b|girder|deck\s*slab|superstructure|substructure|pile\s*cap|pylon|\barch\b|major\s*bridge|minor\s*bridge|retaining\s*wall|breast\s*wall/i.test(desc);
+}
+
+// ─── Pavement crust (road items) ─────────────────────────────────────────────
+// IRC / MoRTH Clause 400–500 sequence for flexible pavements.
+const PAVEMENT_STAGE: Partial<Record<WorkType, number>> = {
+  earthwork:          1,   // embankment / subgrade preparation
+  gsb:                2,   // granular sub-base
+  wmm:                3,   // wet mix macadam base course
+  dlc:                3,   // dry lean concrete (rigid alternative sub-base)
+  prime_coat:         4,   // spray on completed WMM/GSB before bituminous
+  tack_coat:          5,   // inter-layer spray coat
+  bituminous_base:    5,   // DBM / BM binder course
+  pqc:                5,   // pavement quality concrete (rigid pavement)
+  bituminous_wearing: 6,   // BC / SDBC wearing course — always last
 };
 
+// ─── Culvert / cross-drainage / drain sequence ───────────────────────────────
+// Excavation → PCC bed → Pipe / RCC walls → Filter → Backfill → Headwall/Apron
+const CULVERT_STAGE: Partial<Record<WorkType, number>> = {
+  excavation_structure: 1,
+  pcc:                  2,   // PCC bedding / levelling
+  rcc:                  3,   // RCC walls, box sections
+  pipe_culvert:         3,   // hume pipe / HDPE pipe laying
+  reinforcement:        3,   // rebar concurrent with RCC walls
+  filter_media:         4,   // drainage filter layer
+  backfill_structure:   5,   // backfill behind walls / wingwalls
+  drain_masonry:        6,   // headwall, wingwalls, masonry apron
+  stone_pitching:       6,   // slope protection / apron pitching
+  waterproofing_structure: 6,// final waterproofing treatment
+};
+
+// ─── Bridge / major structure sequence ───────────────────────────────────────
+// Foundation Exc. → PCC → Substructure (pier/abutment + rebar) → Bearing/Backfill
+// → Superstructure / Deck wearing / Waterproofing
+const BRIDGE_STAGE: Partial<Record<WorkType, number>> = {
+  excavation_structure: 1,   // foundation pit excavation
+  pcc:                  2,   // PCC levelling course under foundation
+  rcc:                  3,   // pier / abutment / pile cap RCC
+  reinforcement:        3,   // rebar (concurrent with RCC substructure)
+  filter_media:         4,   // bearing pads / drainage layer
+  backfill_structure:   4,   // backfill behind abutments
+  pipe_culvert:         4,   // pipe drainage if any
+  drain_masonry:        5,   // return walls / wing walls
+  waterproofing_structure: 5,// deck waterproofing / membrane
+  bituminous_wearing:   5,   // wearing coat on bridge deck
+  stone_pitching:       5,   // slope protection at toe of embankment
+};
+
+// ─── Exported sequence rules (used by Sequence Rules info panel in UI) ────────
+export const SEQUENCE_RULES = {
+  pavement: [
+    { stage: 1, label: "Earthwork / Embankment" },
+    { stage: 2, label: "Granular Sub-Base (GSB)" },
+    { stage: 3, label: "WMM / DLC (Base Course)" },
+    { stage: 4, label: "Prime Coat" },
+    { stage: 5, label: "DBM / BM / Tack Coat (Binder)" },
+    { stage: 6, label: "BC / SDBC (Wearing Course)" },
+  ],
+  culvert: [
+    { stage: 1, label: "Foundation Excavation" },
+    { stage: 2, label: "PCC Bedding / Levelling" },
+    { stage: 3, label: "Pipe / RCC Walls / Rebar" },
+    { stage: 4, label: "Filter Media / Drainage Layer" },
+    { stage: 5, label: "Structural Backfill" },
+    { stage: 6, label: "Headwall / Wingwall / Stone Pitching" },
+  ],
+  bridge: [
+    { stage: 1, label: "Foundation Excavation" },
+    { stage: 2, label: "PCC Levelling Course" },
+    { stage: 3, label: "Pier / Abutment (RCC + Rebar)" },
+    { stage: 4, label: "Backfill / Filter / Bearing" },
+    { stage: 5, label: "Superstructure / Wearing / Waterproofing" },
+  ],
+} as const;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 export interface SeqInputItem {
   boqItemId: number;
   description: string;
   unit: string;
   totalQty: number;
   fullDurationMonths: number; // duration for totalQty at a single front
+  planningWorkType?: "road" | "structure"; // stored DB hint — overrides classifier
 }
 
 export interface SeqOptions {
@@ -57,6 +118,45 @@ export interface SeqBar {
   isDurationOverride: boolean;
 }
 
+// ─── Item classifier ──────────────────────────────────────────────────────────
+function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
+  const wt = classifyWorkType(it.description, it.unit);
+
+  // 1. Use stored planningWorkType as an authoritative track hint.
+  if (it.planningWorkType === "road") {
+    const stage = wt !== null ? (PAVEMENT_STAGE[wt] ?? 99) : 99;
+    return { track: "pavement", stage };
+  }
+
+  if (it.planningWorkType === "structure") {
+    if (isBridgeDesc(it.description)) {
+      const stage = wt !== null ? (BRIDGE_STAGE[wt] ?? 99) : 99;
+      return { track: "bridge", stage };
+    }
+    const stage = wt !== null ? (CULVERT_STAGE[wt] ?? 99) : 99;
+    return { track: "structure", stage };
+  }
+
+  // 2. No stored hint — classify from WorkType + description.
+  if (wt === null) return { track: "other", stage: 99 };
+
+  if (wt in PAVEMENT_STAGE) {
+    return { track: "pavement", stage: PAVEMENT_STAGE[wt]! };
+  }
+
+  // Structure work types — distinguish bridge from culvert by description.
+  if (isBridgeDesc(it.description)) {
+    return { track: "bridge", stage: BRIDGE_STAGE[wt] ?? 99 };
+  }
+
+  if (wt in CULVERT_STAGE) {
+    return { track: "structure", stage: CULVERT_STAGE[wt]! };
+  }
+
+  return { track: "other", stage: 99 };
+}
+
+// ─── Main sequencer ───────────────────────────────────────────────────────────
 export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptions): SeqBar[] {
   const fronts = Math.max(1, Math.floor(opts.fronts || 1));
   const lag = opts.lagMonths ?? 0.25;
@@ -64,19 +164,12 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   const startCh = opts.chainageStartKm ?? 0;
   const reachLen = opts.roadLengthKm > 0 ? opts.roadLengthKm / fronts : 0;
 
-  // Classify every item and assign track + stage
-  const classified = items.map((it) => {
-    const wt = classifyWorkType(it.description, it.unit);
-    const meta = wt ? STAGE[wt] : null;
-    return {
-      it,
-      stage: meta?.stage ?? 99,
-      track: (meta?.track ?? "other") as Track,
-    };
-  });
+  // Classify every item
+  const classified = items.map((it) => ({ it, ...classifyItem(it) }));
 
   const pav = classified.filter((c) => c.track === "pavement").sort((a, b) => a.stage - b.stage);
   const str = classified.filter((c) => c.track === "structure").sort((a, b) => a.stage - b.stage);
+  const brg = classified.filter((c) => c.track === "bridge").sort((a, b) => a.stage - b.stage);
   const oth = classified.filter((c) => c.track === "other");
 
   const bars: SeqBar[] = [];
@@ -104,32 +197,49 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   for (let r = 0; r < fronts; r++) {
     const chFrom = startCh + r * reachLen;
     const chTo   = startCh + (r + 1) * reachLen;
-    const label  = fronts > 1 ? `Reach ${r + 1}` : "Full Length";
-    const offset = r * stagger; // each reach starts `stagger` months later
+    const offset = r * stagger; // each reach/group starts `stagger` months later
 
-    let pavCursor    = offset;
-    let structCursor = offset;
-    let otherCursor  = offset;
-
+    // ── Road (pavement) front ──────────────────────────────────────────────────
+    const reachLabel = fronts > 1 ? `Reach ${r + 1}` : "Full Length";
+    let pavCursor = offset;
     for (const c of pav) {
       const qty = c.it.totalQty / fronts;
       const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-      bars.push(mkBar(c.it, label, chFrom, chTo, pavCursor, pavCursor + dur, qty));
+      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, pavCursor, pavCursor + dur, qty));
       pavCursor += dur + lag;
     }
-
-    for (const c of str) {
-      const qty = c.it.totalQty / fronts;
-      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-      bars.push(mkBar(c.it, label, chFrom, chTo, structCursor, structCursor + dur, qty));
-      structCursor += dur + lag;
-    }
-
     for (const c of oth) {
       const qty = c.it.totalQty / fronts;
       const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-      bars.push(mkBar(c.it, label, chFrom, chTo, otherCursor, otherCursor + dur, qty));
-      otherCursor += dur + lag;
+      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, offset, offset + dur, qty));
+    }
+
+    // ── Structure (culvert / drain) front ─────────────────────────────────────
+    // Culverts are point features; each front covers its chainage zone.
+    // The stage sequence runs fully within each front, starting at the same
+    // mobilisation offset as the road front.
+    if (str.length > 0) {
+      const strLabel = fronts > 1 ? `Struct. Front ${r + 1}` : "Structures";
+      let strCursor = offset;
+      for (const c of str) {
+        const qty = c.it.totalQty / fronts;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, qty));
+        strCursor += dur + lag;
+      }
+    }
+
+    // ── Bridge front ───────────────────────────────────────────────────────────
+    // Bridges are even more localised; each group runs the complete sub-sequence.
+    if (brg.length > 0) {
+      const brgLabel = fronts > 1 ? `Bridge Grp ${r + 1}` : "Bridges";
+      let brgCursor = offset;
+      for (const c of brg) {
+        const qty = c.it.totalQty / fronts;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, qty));
+        brgCursor += dur + lag;
+      }
     }
   }
 

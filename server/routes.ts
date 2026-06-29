@@ -10598,6 +10598,13 @@ export async function registerRoutes(
       const fronts = requestedFronts >= 1
         ? requestedFronts
         : Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
+      const staggerMonths = Number(req.body?.staggerMonths) > 0 ? Number(req.body.staggerMonths) : 1;
+      const lagMonths = Number(req.body?.lagMonths) >= 0 ? Number(req.body.lagMonths) : 0.25;
+
+      // Persist sequence options so the UI can pre-populate the dialog next time.
+      await storage.upsertBoqProgramSettings(projectId, {
+        sequenceOptions: { fronts: requestedFronts >= 1 ? fronts : null, staggerMonths, lagMonths },
+      } as any);
 
       const seqItems = (items as any[])
         .filter((it) => (it.currentQty ?? 0) > 0)
@@ -10625,6 +10632,10 @@ export async function registerRoutes(
             unit: it.unit ?? "",
             totalQty: it.currentQty ?? 0,
             fullDurationMonths: dur.months > 0 ? dur.months : 1,
+            // Pass stored planningWorkType so user-overridden classifications are respected
+            planningWorkType: (it.planningWorkType === "road" || it.planningWorkType === "structure")
+              ? it.planningWorkType as "road" | "structure"
+              : undefined,
           };
         });
 
@@ -10633,6 +10644,8 @@ export async function registerRoutes(
         totalMonths,
         roadLengthKm,
         chainageStartKm: 0,
+        staggerMonths,
+        lagMonths,
       });
 
       // SAFETY: never wipe the existing programme unless we actually built new bars.
