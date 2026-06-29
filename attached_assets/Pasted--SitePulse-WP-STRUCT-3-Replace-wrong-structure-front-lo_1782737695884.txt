@@ -1,0 +1,305 @@
+# SitePulse — WP-STRUCT-3: Replace wrong structure-front logic with optional Structure Schedule Import
+
+Current issue:
+The earlier structure planning logic is wrong because it tries to create “Structure Front 1, 2, 3…” like road stretches and splits BOQ quantities by chainage/fronts. This causes wrong planning for culverts, drains and bridges.
+
+New product rule:
+Road/linear items are planned by chainage reaches.
+Structures/culverts/bridges are planned by structure schedule/location.
+The app must not invent structure quantities from road fronts.
+
+Do not change:
+
+* BOQ import
+* BOQ category grouping
+* Material BOM key-material logic
+* Labour calculation
+* Equipment calculation
+* Stock
+* IRN/PI
+* Dashboard
+* Existing road/linear Work Programme behaviour
+
+Primary files likely:
+
+* `client/src/pages/WorkProgramme.tsx`
+* `server/routes.ts`
+* `shared/schema.ts` only if a new table is required
+* `server/storage.ts` only if new storage methods are required
+
+Test import file:
+Use the uploaded file:
+`NH167_Structure_Schedule_Import_Matched_BOQ.xlsx`
+
+---
+
+## 1. Disable/remove earlier wrong structure-front auto logic
+
+Find and disable any logic that:
+
+* creates `Struct. Front 1`, `Struct. Front 2`, etc.
+* splits structure quantities by road length
+* treats structure groups as chainage ranges
+* auto-assigns embankment/earthwork/road items into structure fronts
+* uses `structure groups` to divide the whole project length
+
+Required:
+
+* Road items should still use normal chainage reaches.
+* Structure items should not be auto-split unless imported or manually added as location schedule rows.
+
+If retaining code for future reference, guard it behind a disabled feature flag:
+
+```ts
+const ENABLE_OLD_STRUCTURE_FRONTS = false;
+```
+
+But preferred: remove it from active execution.
+
+---
+
+## 2. Add Structure Schedule Import mode
+
+Add optional import for structure/location planning.
+
+Importer should read Excel sheet:
+
+`Structure_Schedule_Import`
+
+Expected columns:
+
+```text
+structure_id
+structure_type
+chainage_km
+relative_chainage_km
+boq_item_code
+boq_sub_item
+boq_excel_row
+boq_description
+planned_qty
+uom
+start_date
+duration_days
+remarks
+```
+
+Importer matching priority:
+
+```text
+1. boq_excel_row + boq_item_code + boq_sub_item
+2. boq_item_code + boq_sub_item
+3. boq_item_code + closest BOQ description match
+```
+
+Do not rely only on `boq_item_code`, because item codes can repeat or be ambiguous.
+
+---
+
+## 3. Create location-based programme bars
+
+For every valid imported row:
+
+Create a Work Programme bar/entry with:
+
+```text
+planning_mode = "structure_location"
+structure_id
+structure_type
+chainage_km
+relative_chainage_km
+boq_item_id
+planned_qty
+uom
+start_date
+duration_days
+end_date = start_date + duration_days - 1
+```
+
+Important:
+
+* Use `planned_qty` directly from the import.
+* Do not calculate quantity from chainage length.
+* Do not split quantity by road reach.
+* Allow same chainage from/to or point chainage.
+* Structure bars should represent location work, not road stretches.
+
+If current schema does not support these fields, either:
+
+* add nullable columns to the existing programme bar table, or
+* add a new `structure_schedule_items` table and convert them into programme bars for demand calculation.
+
+Use the least disruptive option.
+
+---
+
+## 4. Validation during import
+
+Before saving, validate:
+
+1. BOQ item found.
+2. Planned quantity is positive.
+3. UOM in import matches or is compatible with BOQ item UOM.
+4. Chainage is within project limits.
+5. Start date and duration are valid.
+6. Same structure_id can have multiple BOQ item rows.
+7. Total planned quantity per BOQ item should be compared with BOQ quantity.
+
+Return import summary:
+
+```ts
+{
+  rowsRead,
+  rowsImported,
+  rowsSkipped,
+  unmatchedBoqRows,
+  uomMismatchRows,
+  overPlannedItems,
+  warnings
+}
+```
+
+Do not silently import wrong rows.
+
+---
+
+## 5. Programme quantity reconciliation
+
+For structure-location bars:
+
+Coverage should be:
+
+```text
+sum(imported planned_qty for BOQ item) / BOQ quantity
+```
+
+Not chainage length coverage.
+
+Show warning if:
+
+```text
+total structure planned qty > BOQ qty
+```
+
+or if:
+
+```text
+total structure planned qty < BOQ qty
+```
+
+but do not block saving.
+
+---
+
+## 6. Work Programme UI changes
+
+In Work Programme:
+
+For structure/location bars, show:
+
+```text
+Structure ID
+Structure Type
+Chainage
+BOQ Item Code
+Planned Qty
+Start Date
+Duration
+```
+
+Do not show road-style multiplier or length-based quantity for structure rows.
+
+Hide or disable:
+
+* Split button
+* road-length multiplier
+* front length calculation
+* chainage-from/to based quantity calculation
+
+For road/linear bars, keep the existing UI unchanged.
+
+---
+
+## 7. Demand calculation integration
+
+Material, labour and equipment demand must use structure imported bars the same way as programme bars:
+
+```text
+workQty = imported planned_qty
+month = based on start/end dates
+```
+
+This ensures:
+
+* structure concrete demand appears in correct month
+* steel demand appears in correct month
+* labour/equipment demand appears in correct month
+
+Do not require a separate BOM logic for structures. Once imported rows become valid programme bars, existing demand engine should consume them.
+
+---
+
+## 8. Prevent wrong auto-sequencing
+
+Auto-sequence should not assign road items like embankment, subgrade, GSB, WMM, DBM, BC into structure fronts.
+
+Road/linear examples:
+
+* earthwork in embankment
+* subgrade
+* GSB
+* WMM
+* DBM
+* BC
+* shoulder
+* median
+* prime/tack coat
+
+These remain road reach items.
+
+Structure/location examples:
+
+* culvert excavation
+* PCC bedding
+* NP3/NP4 pipe laying
+* headwall/wingwall
+* filter media
+* structural backfilling
+* stone pitching/apron
+* RCC foundation/substructure/superstructure
+* bearings/joints
+
+These should come from schedule import or manual structure location entry.
+
+---
+
+## 9. Test with uploaded NH-167 structure file
+
+Use:
+`NH167_Structure_Schedule_Import_Matched_BOQ.xlsx`
+
+Expected result:
+
+1. Imported rows create structure/location bars.
+2. Bars show chainages within 182.120 to 227.600.
+3. No `Struct. Front 1..14` road-style rows are created.
+4. Embankment item 2.03 is not classified as structure.
+5. Structure bars use direct planned quantity from Excel.
+6. Programme summary compares imported qty vs BOQ qty.
+7. Material/Labour/Equipment demand follows imported structure quantities month-wise.
+8. Road/linear programme remains unchanged.
+9. Full tests pass.
+
+---
+
+## 10. Git/diff requirement
+
+Before editing:
+
+* show the existing active structure-front logic.
+
+After editing:
+
+* show diff for changed files only.
+* run tests.
+* confirm no changes to Material BOM, BOQ import, Stock, IRN/PI, Dashboard.
