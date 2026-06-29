@@ -2179,7 +2179,8 @@ export default function WorkProgramme() {
       setSeqStrGroups((stored as any).structureGroups ? String((stored as any).structureGroups) : "");
       setSeqBrgGroups((stored as any).bridgeGroups ? String((stored as any).bridgeGroups) : "");
       if ((stored as any).enableStructureFronts !== undefined) {
-        setSeqEnableStructureFronts(Boolean((stored as any).enableStructureFronts));
+        // skip = true means DO NOT enable structure fronts (inverted from stored field)
+        setSeqSkipStructureItems(!Boolean((stored as any).enableStructureFronts));
       }
     }
     setSeqDialogOpen(true);
