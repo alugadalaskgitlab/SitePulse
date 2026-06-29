@@ -1090,7 +1090,7 @@ function InlineGanttTable({
                         colW={colW}
                         onDelete={setDeleteBarId}
                         onSplit={bar => splitMutation.mutate(bar)}
-                        onBeforeMutate={pushSnapshot}
+                        onBeforeMutate={onBeforeMutate}
                         productivitySettings={productivitySettings}
                       />
                     ))}
