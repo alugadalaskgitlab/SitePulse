@@ -15,11 +15,12 @@ function isBridgeDesc(desc: string): boolean {
 }
 
 // ─── Pavement crust (road items) ─────────────────────────────────────────────
-// MoRTH sequence: C&G → Dismantling → Earthwork → GSB → WMM → Prime → DBM → BC
+// MoRTH sequence: C&G → Dismantling → Earthwork (Excavation + Embankment concurrent) → GSB → WMM → Prime → DBM → BC
 const PAVEMENT_STAGE: Partial<Record<WorkType, number>> = {
-  clearing_grubbing:  1,   // MoRTH Cl. 201 — absolute first
-  dismantling:        2,   // MoRTH Cl. 202 — existing structures/pavement
-  earthwork:          3,   // excavation in cutting + embankment / subgrade
+  clearing_grubbing:   1,   // MoRTH Cl. 201 — absolute first
+  dismantling:         2,   // MoRTH Cl. 202 — existing structures/pavement
+  roadway_excavation:  3,   // MoRTH Cl. 301 — cutting; concurrent with embankment
+  earthwork:           3,   // MoRTH Cl. 305 — embankment (cut/borrow); concurrent with excavation
   gsb:                4,   // granular sub-base
   wmm:                5,   // wet mix macadam base course
   dlc:                5,   // dry lean concrete (rigid alternative sub-base)
@@ -70,7 +71,7 @@ export const SEQUENCE_RULES = {
   pavement: [
     { stage: 1, label: "Clearing & Grubbing (MoRTH Cl. 201)" },
     { stage: 2, label: "Dismantling Existing Structures / Pavement (Cl. 202)" },
-    { stage: 3, label: "Earthwork — Excavation in Cutting + Embankment / Subgrade" },
+    { stage: 3, label: "Earthwork — Roadway Excavation (Cl. 301) + Embankment/Borrow (Cl. 305) — concurrent" },
     { stage: 4, label: "Granular Sub-Base (GSB)" },
     { stage: 5, label: "WMM / DLC (Base Course)" },
     { stage: 6, label: "Prime Coat" },
@@ -218,13 +219,25 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     const offset = r * stagger; // each reach/group starts `stagger` months later
 
     // ── Road (pavement) front ──────────────────────────────────────────────────
+    // Items at the same stage start concurrently (same stageStart); the cursor
+    // only advances after each stage group using the MAX duration in that group.
     const reachLabel = fronts > 1 ? `Reach ${r + 1}` : "Full Length";
     let pavCursor = offset;
+    let prevPavStage = -1;
+    let pavStageStart = offset;
+    let pavStageDur = 0;
     for (const c of pav) {
       const qty = c.it.totalQty / fronts;
       const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, pavCursor, pavCursor + dur, qty));
-      pavCursor += dur + lag;
+      if (c.stage !== prevPavStage) {
+        // Close the previous stage group and advance cursor
+        if (prevPavStage !== -1) pavCursor = pavStageStart + pavStageDur + lag;
+        pavStageStart = pavCursor;
+        pavStageDur = 0;
+        prevPavStage = c.stage;
+      }
+      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, pavStageStart, pavStageStart + dur, qty));
+      pavStageDur = Math.max(pavStageDur, dur);
     }
     for (const c of oth) {
       const qty = c.it.totalQty / fronts;
@@ -251,11 +264,20 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       // Map structure group g to the nearest road front for its stagger offset.
       const roadFront = Math.round((g / Math.max(1, numStrGroups - 1)) * (fronts - 1));
       let strCursor = roadFront * stagger;
+      let prevStrStage = -1;
+      let strStageStart = strCursor;
+      let strStageDur = 0;
       for (const c of str) {
         const qty = c.it.totalQty / numStrGroups;
         const dur = Math.max(0.1, c.it.fullDurationMonths / numStrGroups);
-        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, qty));
-        strCursor += dur + lag;
+        if (c.stage !== prevStrStage) {
+          if (prevStrStage !== -1) strCursor = strStageStart + strStageDur + lag;
+          strStageStart = strCursor;
+          strStageDur = 0;
+          prevStrStage = c.stage;
+        }
+        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strStageStart, strStageStart + dur, qty));
+        strStageDur = Math.max(strStageDur, dur);
       }
     }
   }
@@ -274,11 +296,20 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       const chTo   = startCh + (g + 1) * brgReachLen;
       const roadFront = Math.round((g / Math.max(1, numBrgGroups - 1)) * (fronts - 1));
       let brgCursor = roadFront * stagger;
+      let prevBrgStage = -1;
+      let brgStageStart = brgCursor;
+      let brgStageDur = 0;
       for (const c of brg) {
         const qty = c.it.totalQty / numBrgGroups;
         const dur = Math.max(0.1, c.it.fullDurationMonths / numBrgGroups);
-        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, qty));
-        brgCursor += dur + lag;
+        if (c.stage !== prevBrgStage) {
+          if (prevBrgStage !== -1) brgCursor = brgStageStart + brgStageDur + lag;
+          brgStageStart = brgCursor;
+          brgStageDur = 0;
+          prevBrgStage = c.stage;
+        }
+        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgStageStart, brgStageStart + dur, qty));
+        brgStageDur = Math.max(brgStageDur, dur);
       }
     }
   }

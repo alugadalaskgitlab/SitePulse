@@ -6,6 +6,7 @@
 export type WorkType =
   | "clearing_grubbing"
   | "dismantling"
+  | "roadway_excavation"
   | "earthwork"
   | "gsb"
   | "wmm"
@@ -33,6 +34,7 @@ export type WorkType =
 export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
   clearing_grubbing:      "road",
   dismantling:            "road",
+  roadway_excavation:     "road",
   earthwork:              "road",
   gsb:                    "road",
   wmm:                    "road",
@@ -133,9 +135,19 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "excavation_structure";
 
-  // ── Road earthwork (embankment / subgrade fill — not structural) ────────────
+  // ── Roadway excavation (MoRTH Cl. 301) — cutting of hills/formation ─────────
+  // Must be checked BEFORE the generic earthwork rule below.
+  // Catches: roadway excavation, excavation in cutting, hill/rock cutting,
+  // formation cutting, cutting in ordinary/hard/soft soil or rock.
+  // Does NOT catch embankment / fill / borrow items (those fall through to earthwork).
   if (
-    /embankment|excavat|earth\s*work|earthwork|cut\s*(and|&)\s*fill|subgrade/i.test(d) &&
+    /roadway\s*excavat|\bexcavat\w*\s+in\s+(cutting|rock|ordinary|hard|soft|soil|earth)|hill\s*(cutting|excavat\w*)|rock\s*cutting|formation\s*(excavat\w*|cut(?!.*fill))|cutting\s+in\s+(ordinary|hard|soft|rock|soil|earth)|ordinary\s+(soil|earth)\s*excavat/i.test(d) &&
+    /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+  ) return "roadway_excavation";
+
+  // ── Road earthwork / embankment (MoRTH Cl. 305) — fill, borrow, subgrade ───
+  if (
+    /embankment|earth\s*work|earthwork|cut\s*(and|&)\s*fill|subgrade|borrow|formation\s*fill/i.test(d) &&
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "earthwork";
 
@@ -195,9 +207,30 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
     ],
   },
 
-  // ── Earthwork (CUM) ──────────────────────────────────────────────────────────
-  // Machine-driven: excavator is the capacity bottleneck. NO volumetric manual
-  // labour (the 2 CUM/day manual norm is what caused insane labour numbers).
+  // ── Roadway Excavation / Cutting (CUM) ───────────────────────────────────────
+  // MoRTH Cl. 301 — cutting of hills and formation to road level.
+  // Excavator-led (capacity bottleneck); dozer/grader for bench and rough-trim;
+  // tippers haul cut spoil directly to embankment fill area.
+  // No vibratory roller — cut slopes do not require compaction pass.
+  roadway_excavation: {
+    equipment: [
+      // Excavator: 60 CUM/hr → 1/60 = 0.0167 hr/CUM  — primary duration driver
+      { name: "Hydraulic Excavator (0.9 CUM)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.0167, count: 1 },
+      // Grader for bench cleanup and subgrade trimming
+      { name: "Motor Grader (180 HP)",         preferredUnit: "CUM", fallbackHrsPerUnit: 0.0067, count: 1 },
+    ],
+    labour: [
+      // Operators: excavator + grader
+      { designation: "Equipment Operator",       fallbackDaysPerUnit: 0.00208, count: 2 },
+      // Drivers for tippers hauling spoil to fill areas
+      { designation: "Driver (Tipper / Tanker)", fallbackDaysPerUnit: 0.00208, count: 4 },
+    ],
+  },
+
+  // ── Earthwork / Embankment (CUM) ─────────────────────────────────────────────
+  // MoRTH Cl. 305 — embankment construction with cut material or borrow.
+  // Runs concurrently with roadway excavation (tippers shuttle cut→fill).
+  // Roller compaction required; water tanker for OMC moisture.
   earthwork: {
     equipment: [
       // Excavator: 60 CUM/hr → 1/60 = 0.0167 hr/CUM  — primary duration driver
