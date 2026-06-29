@@ -2342,6 +2342,9 @@ export const boqProjects = pgTable("boq_projects", {
   wmmPlantChainageKm: real("wmm_plant_chainage_km"),
   quarryChainageKm: real("quarry_chainage_km"),
   avgTipperSpeedKmHr: real("avg_tipper_speed_km_hr").default(30),
+  // Actual project chainage range (e.g. 182.120 to 227.600 km on NH-167)
+  chainageFrom: real("chainage_from"),
+  chainageTo: real("chainage_to"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

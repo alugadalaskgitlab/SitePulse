@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   ChevronRight, FileSpreadsheet, Settings2, Loader2, Truck,
   MapPin, CalendarDays, AlertCircle, Link2, Trash2, Plus,
-  CheckCircle2, BarChart2,
+  CheckCircle2, BarChart2, ArrowLeftRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -376,6 +376,11 @@ export default function BoqProgramSettings() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [formPopulated, setFormPopulated] = useState(false);
 
+  // ── Project Info (chainage / road length) ──────────────────────────────────
+  const [chFrom, setChFrom] = useState("");
+  const [chTo, setChTo] = useState("");
+  const [projInfoSaved, setProjInfoSaved] = useState(false);
+
   const { data: project, isLoading: projectLoading } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
     queryFn: async () => {
@@ -461,6 +466,49 @@ export default function BoqProgramSettings() {
     form.handleSubmit(data => saveMutation.mutate(data))();
   }, [form, saveMutation]);
 
+  // ── Project PATCH mutation (chainage / road length) ───────────────────────
+  const projPatchMutation = useMutation({
+    mutationFn: (data: { chainageFrom?: number | null; chainageTo?: number | null; roadLengthKm?: number | null }) =>
+      apiRequest("PATCH", `/api/boq/projects/${projectId}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/boq/projects", projectId] });
+      setProjInfoSaved(true);
+      setTimeout(() => setProjInfoSaved(false), 3000);
+    },
+    onError: () => toast({ title: "Failed to save project info", variant: "destructive" }),
+  });
+
+  // Populate chainage fields from project when it loads (once)
+  useEffect(() => {
+    if (!project) return;
+    if (chFrom === "" && chTo === "") {
+      const cf = (project as any).chainageFrom;
+      const ct = (project as any).chainageTo;
+      // Auto-parse from project name if not stored yet (e.g. "Km 182 to 227" or "182.120 to 227.600")
+      if (cf == null || ct == null) {
+        const m = project.name.match(/(\d{1,3}(?:\.\d+)?)\s*(?:to|-)\s*(\d{1,3}(?:\.\d+)?)\s*km/i)
+          ?? project.name.match(/[Kk][Mm]\s*(\d{1,3}(?:\.\d+)?)\s*(?:to|-)\s*(\d{1,3}(?:\.\d+)?)/i);
+        if (m) { setChFrom(m[1]); setChTo(m[2]); }
+        else { if (cf != null) setChFrom(String(cf)); if (ct != null) setChTo(String(ct)); }
+      } else {
+        setChFrom(String(cf)); setChTo(String(ct));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project]);
+
+  function saveProjectInfo() {
+    const cfNum = parseFloat(chFrom);
+    const ctNum = parseFloat(chTo);
+    if (isNaN(cfNum) && isNaN(ctNum)) return;
+    const roadLen = (!isNaN(cfNum) && !isNaN(ctNum)) ? Math.max(0, ctNum - cfNum) : null;
+    projPatchMutation.mutate({
+      chainageFrom: isNaN(cfNum) ? null : cfNum,
+      chainageTo:   isNaN(ctNum) ? null : ctNum,
+      ...(roadLen != null ? { roadLengthKm: roadLen } : {}),
+    });
+  }
+
   const isLoading = projectLoading || settingsLoading;
   const vals = form.watch();
 
@@ -525,6 +573,57 @@ export default function BoqProgramSettings() {
             )}
           </div>
         </div>
+
+        {/* ── 0. Project Info ──────────────────────────────────────────────── */}
+        <SectionCard
+          icon={<ArrowLeftRight className="w-4 h-4 text-teal-600" />}
+          title="Project Info"
+          subtitle="Actual project chainage range — used by Auto-Sequence for bar chainages and road length."
+        >
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div className="space-y-1.5">
+              <Label className="text-sm">PROJECT CHAINAGE FROM (km)</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="e.g. 182.120"
+                value={chFrom}
+                onChange={e => setChFrom(e.target.value)}
+                onBlur={saveProjectInfo}
+                className="h-9"
+                data-testid="input-chainage-from"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">PROJECT CHAINAGE TO (km)</Label>
+              <Input
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="e.g. 227.600"
+                value={chTo}
+                onChange={e => setChTo(e.target.value)}
+                onBlur={saveProjectInfo}
+                className="h-9"
+                data-testid="input-chainage-to"
+              />
+            </div>
+          </div>
+          {chFrom && chTo && !isNaN(parseFloat(chFrom)) && !isNaN(parseFloat(chTo)) && (
+            <div className="flex items-center gap-4 text-xs text-muted-foreground rounded-md bg-slate-50 border border-slate-200 px-3 py-2">
+              <span>Road length: <strong className="text-slate-700">{Math.max(0, parseFloat(chTo) - parseFloat(chFrom)).toFixed(3)} km</strong></span>
+              <span>·</span>
+              <span>Ch {parseFloat(chFrom).toFixed(3)} – {parseFloat(chTo).toFixed(3)} km</span>
+              {projInfoSaved && <span className="ml-auto text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Saved</span>}
+              {projPatchMutation.isPending && <span className="ml-auto text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving…</span>}
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Values are auto-detected from the project name — update if the detected range is incorrect.
+            Saves on blur. Re-run <strong>Auto-Sequence</strong> after changing these values.
+          </p>
+        </SectionCard>
 
         {/* ── 1. Schedule Defaults ─────────────────────────────────────────── */}
         <SectionCard

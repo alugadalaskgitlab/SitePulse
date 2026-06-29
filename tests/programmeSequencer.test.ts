@@ -87,6 +87,18 @@ describe("classifyWorkType — earthwork (embankment/fill, not cutting)", () => 
   it("classifies 'Cut and Fill' as earthwork", () => {
     expect(classifyWorkType("Cut and Fill", CUM)).toBe("earthwork");
   });
+
+  it("classifies MoRTH Cl.305 embankment-from-structure-excavation as earthwork, not excavation_structure (regression: phrase 'structure excavation' is a material source, not the primary work)", () => {
+    // Item 877 pattern: embankment whose material comes from structure excavation cuts
+    expect(classifyWorkType(
+      "Construction of embankment with approved materials obtained from roadway, drainage & structure excavation, including lead upto 5 Km and all lifts",
+      CUM,
+    )).toBe("earthwork");
+  });
+
+  it("still classifies genuine culvert foundation excavation as excavation_structure", () => {
+    expect(classifyWorkType("Excavation for foundation of culvert box in ordinary soil", CUM)).toBe("excavation_structure");
+  });
 });
 
 // ─── generateSequencedProgramme: excavation and embankment are concurrent ─────

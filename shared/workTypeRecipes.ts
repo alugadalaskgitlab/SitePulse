@@ -131,9 +131,12 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
 
   // ── Structure excavation — MUST be checked BEFORE generic earthwork ─────────
   // Foundation pits, abutment trenches, pier holes, culvert cuts, etc.
+  // Exclude embankment items that merely cite structure excavation as a *material source*
+  // (e.g. "embankment with approved materials obtained from structure excavation").
   if (
     /foundation|footing|abutment|pier|culvert|trench|pit\s*excavat|excavat.*structure|structure.*excavat|box\s*cut/i.test(d) &&
-    /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
+    /^(CUM|CUB|M3|CU\.?M)$/i.test(u) &&
+    !/\bembankment\b/i.test(d)
   ) return "excavation_structure";
 
   // ── Roadway excavation (MoRTH Cl. 301) — cutting of hills/formation ─────────

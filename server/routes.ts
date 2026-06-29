@@ -10593,7 +10593,12 @@ export async function registerRoutes(
       const workingHrs  = (project as any)?.workingHoursPerDay  ?? 8;
       const workingDays = (project as any)?.workingDaysPerMonth ?? 26;
       const totalMonths = (project as any)?.totalMonths         ?? 18;
-      const roadLengthKm = (project as any)?.roadLengthKm       ?? 0;
+      const projChFrom  = (project as any)?.chainageFrom        ?? 0;
+      const projChTo    = (project as any)?.chainageTo          ?? null;
+      // Prefer chainage-derived length if both endpoints are set
+      const roadLengthKm = projChTo != null
+        ? Math.max(0, projChTo - projChFrom)
+        : (project as any)?.roadLengthKm ?? 0;
       const requestedFronts = Math.floor(Number(req.body?.fronts) || 0);
       const fronts = requestedFronts >= 1
         ? requestedFronts
@@ -10655,7 +10660,7 @@ export async function registerRoutes(
         fronts,
         totalMonths,
         roadLengthKm,
-        chainageStartKm: 0,
+        chainageStartKm: projChFrom,
         staggerMonths,
         lagMonths,
         structureGroups,
