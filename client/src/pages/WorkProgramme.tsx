@@ -711,7 +711,6 @@ function StructureLocationRow({
   colW: number;
   onDelete: (id: number) => void;
 }) {
-  const { toast } = useToast();
   const b = bar as any;
 
   const liveStart = bar.startMonth;
@@ -719,24 +718,13 @@ function StructureLocationRow({
   const barLeft   = Math.max(0, (liveStart - 1) * colW);
   const barWidth  = Math.max(4, (liveEnd - liveStart) * colW);
 
-  const patch = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("PATCH", `/api/boq/programme/bars/${bar.id}`, data),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
-    },
-    onError: () => toast({ title: "Save failed", variant: "destructive" }),
-  });
-
-  const [qtyStr, setQtyStr] = useState(bar.plannedQty > 0 ? String(bar.plannedQty) : "");
-
   return (
     <div
       style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
       className="border-b border-dashed border-violet-100 dark:border-violet-900/30 bg-violet-50/30 dark:bg-violet-950/10"
       data-testid={`structure-loc-row-${bar.id}`}
     >
-      {/* ── Left sticky panel ── */}
+      {/* ── Left sticky panel (read-only — re-import to change values) ── */}
       <div
         style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
         className="flex items-center gap-1.5 px-2 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
@@ -755,24 +743,13 @@ function StructureLocationRow({
             {b.boqSubItem}
           </span>
         )}
-        <span className="text-xs text-violet-400 flex-shrink-0 font-semibold">Qty</span>
-        <input
-          type="number" step="any" min="0"
-          value={qtyStr}
-          onChange={e => setQtyStr(e.target.value)}
-          onBlur={() => {
-            const v = parseFloat(qtyStr);
-            if (!isNaN(v) && v >= 0) patch.mutate({ plannedQty: v });
-          }}
-          className="w-[52px] text-xs font-mono border-b bg-transparent text-center focus:outline-none focus:border-violet-500 dark:text-slate-200 border-violet-300 dark:border-violet-600"
-          data-testid={`input-sloc-qty-${bar.id}`}
-        />
-        <span className="text-[10px] text-violet-400 flex-shrink-0">{(bar as any).unit ?? ""}</span>
-        {patch.isPending && <Loader2 className="w-2.5 h-2.5 animate-spin text-violet-400 flex-shrink-0" />}
+        <span className="text-[11px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-1">
+          {fmtQty(bar.plannedQty, 2)} {(bar as any).unit ?? ""}
+        </span>
         <button
           onClick={() => onDelete(bar.id)}
           className="p-1 rounded text-violet-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 ml-auto"
-          title="Delete this structure bar"
+          title="Delete this structure bar (re-import to update values)"
           data-testid={`button-delete-sloc-${bar.id}`}
         >
           <Trash2 className="w-3 h-3" />
@@ -986,13 +963,14 @@ function StructureImportWizard({
       });
       return res.json();
     },
-    onSuccess: (data: { created: number; skipped: number; total: number }) => {
+    onSuccess: (data: { created: number; skipped: number; total: number; warnings?: string[]; unmatchedBoqRows?: number }) => {
       onImported();
       onOpenChange(false);
       reset();
+      const warnSuffix = data.warnings?.length ? ` ${data.warnings.length} warning(s) — check chainage or UOM.` : "";
       toast({
         title: "Structure schedule imported",
-        description: `${data.created} bars created${data.skipped ? `, ${data.skipped} rows skipped` : ""}.`,
+        description: `${data.created} bars created${data.skipped ? `, ${data.skipped} rows skipped` : ""}${warnSuffix}`,
       });
     },
     onError: (err: any) =>
@@ -1983,6 +1961,7 @@ export default function WorkProgramme() {
   const [seqStrGroups, setSeqStrGroups] = useState("");   // "" = same as road fronts
   const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
+  const [seqDisableStructure, setSeqDisableStructure] = useState(false); // skip auto structure fronts when imported bars exist
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
   const undoStack = useRef<WorkProgramBarWithItem[][]>([]);
@@ -2199,11 +2178,12 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number }) => {
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; disableStructureFronts?: boolean }) => {
       const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
       if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
       if (opts.structureGroups && opts.structureGroups > 0) body.structureGroups = opts.structureGroups;
       if (opts.bridgeGroups && opts.bridgeGroups > 0) body.bridgeGroups = opts.bridgeGroups;
+      if (opts.disableStructureFronts) body.disableStructureFronts = true;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
@@ -2234,6 +2214,9 @@ export default function WorkProgramme() {
       setSeqLag(String(stored.lagMonths ?? 0.25));
       setSeqStrGroups((stored as any).structureGroups ? String((stored as any).structureGroups) : "");
       setSeqBrgGroups((stored as any).bridgeGroups ? String((stored as any).bridgeGroups) : "");
+      if ((stored as any).disableStructureFronts !== undefined) {
+        setSeqDisableStructure(Boolean((stored as any).disableStructureFronts));
+      }
     }
     setSeqDialogOpen(true);
   }
@@ -2253,6 +2236,7 @@ export default function WorkProgramme() {
       lagMonths: lag,
       structureGroups: strGroups > 0 ? strGroups : undefined,
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
+      disableStructureFronts: seqDisableStructure,
     });
   }
 
@@ -2588,6 +2572,25 @@ export default function WorkProgramme() {
                 <p className="text-[10px] text-muted-foreground">Bridge chainage zones (independent of road fronts). Blank = match road fronts</p>
               </div>
             </div>
+
+            {/* Disable structure fronts toggle — visible when imported structure bars exist */}
+            {bars.some(b => (b as any).planningMode === "structure_location") && (
+              <label className="flex items-start gap-2.5 p-2.5 rounded-md bg-violet-50 border border-violet-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={seqDisableStructure}
+                  onChange={e => setSeqDisableStructure(e.target.checked)}
+                  className="mt-0.5"
+                  data-testid="checkbox-disable-structure-fronts"
+                />
+                <div>
+                  <p className="text-sm font-medium text-violet-800">Skip structure front auto-splitting</p>
+                  <p className="text-[11px] text-violet-600 mt-0.5">
+                    You have imported structure bars — check this to prevent auto-sequence from adding "Struct. Front N" / "Bridge Grp N" bars for structure-type BOQ items.
+                  </p>
+                </div>
+              </label>
+            )}
 
             {/* Sequence Rules collapsible */}
             <div className="rounded-md border">

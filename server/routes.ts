@@ -10611,6 +10611,9 @@ export async function registerRoutes(
       const structureGroups = _strGroups >= 1 ? _strGroups : fronts;
       const _brgGroups = parseInt(req.body?.bridgeGroups);
       const bridgeGroups = _brgGroups >= 1 ? _brgGroups : fronts;
+      // When the project already has structure-location bars (from an import), the caller
+      // can request that the sequencer skips the automatic culvert/bridge front splitting.
+      const disableStructureFronts = req.body?.disableStructureFronts === true;
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       await storage.upsertBoqProgramSettings(projectId, {
@@ -10620,6 +10623,7 @@ export async function registerRoutes(
           lagMonths,
           structureGroups: _strGroups >= 1 ? structureGroups : null,
           bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
+          disableStructureFronts,
         },
       } as any);
 
@@ -10665,6 +10669,7 @@ export async function registerRoutes(
         lagMonths,
         structureGroups,
         bridgeGroups,
+        disableStructureFronts,
       });
 
       // SAFETY: never wipe the existing programme unless we actually built new bars.
@@ -10759,21 +10764,53 @@ export async function registerRoutes(
       const results: { row: number; status: "created" | "skipped"; structureId?: string; reason?: string }[] = [];
       let created = 0;
       let skipped = 0;
+      let unmatchedBoqRows = 0;
+      const warnings: string[] = [];
 
       const project = await storage.getBoqProject(projectId) as any;
       const pSettings = await storage.getBoqProgramSettings(projectId) as any;
       const projectStartDate: string | null = pSettings?.projectStartDate ?? null;
       const totalMonths: number = project?.totalMonths ?? 18;
       const workingDays: number = pSettings?.workingDaysPerMonth ?? 25;
+      // Project chainage bounds for range validation (null = skip)
+      const projChFrom: number | null = project?.chainageFrom ?? null;
+      const projChTo: number | null = project?.chainageTo ?? null;
+
+      // Build a secondary lookup: (itemCode:subItem) composite key for when subItem is provided
+      const itemByCodeSubItem = new Map<string, any>();
+      for (const it of allItems) {
+        if ((it as any).boqSubItem) {
+          const compositeKey = `${String((it as any).itemCode ?? "").trim().toLowerCase()}::${String((it as any).boqSubItem ?? "").trim().toLowerCase()}`;
+          itemByCodeSubItem.set(compositeKey, it);
+        }
+      }
 
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
 
-        // Resolve BOQ item — prefer frontend-resolved id, then by code
+        // Validation: skip rows with no meaningful quantity
+        if (!r.plannedQty || r.plannedQty <= 0) {
+          results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: "plannedQty must be > 0" });
+          skipped++;
+          continue;
+        }
+
+        // Chainage range validation (soft warning, not a skip)
+        if (projChFrom != null && projChTo != null && r.chainageKm != null) {
+          if (r.chainageKm < projChFrom - 0.1 || r.chainageKm > projChTo + 0.1) {
+            warnings.push(`Row ${i + 1} (${r.structureId}): chainage ${r.chainageKm} km is outside project range ${projChFrom}–${projChTo} km`);
+          }
+        }
+
+        // Resolve BOQ item — priority: (1) explicit id → (2) code+subItem composite → (3) code alone → (4) description fallback
         let boqItem: any = null;
         if (r.boqItemId && itemById.has(r.boqItemId)) {
           boqItem = itemById.get(r.boqItemId);
-        } else if (r.boqItemCode) {
+        } else if (r.boqItemCode && r.boqSubItem) {
+          const compositeKey = `${String(r.boqItemCode).trim().toLowerCase()}::${String(r.boqSubItem).trim().toLowerCase()}`;
+          boqItem = itemByCodeSubItem.get(compositeKey) ?? null;
+        }
+        if (!boqItem && r.boqItemCode) {
           boqItem = itemByCode.get(String(r.boqItemCode).trim().toLowerCase()) ?? null;
           if (!boqItem) {
             // fuzzy: strip leading zeros / spaces
@@ -10784,17 +10821,23 @@ export async function registerRoutes(
           }
         }
         if (!boqItem && r.boqDescription) {
-          // last-resort: partial description match
+          // last-resort: closest description match (first 40 chars)
           const needle = r.boqDescription.toLowerCase();
           boqItem = allItems.find((it: any) =>
-            (it.description ?? "").toLowerCase().includes(needle.slice(0, 30))
+            (it.description ?? "").toLowerCase().includes(needle.slice(0, 40))
           ) ?? null;
         }
 
         if (!boqItem) {
           results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: `No BOQ item matched (code: ${r.boqItemCode ?? "—"})` });
           skipped++;
+          unmatchedBoqRows++;
           continue;
+        }
+
+        // UOM compatibility warning (soft — don't skip, but flag)
+        if (r.uom && boqItem.unit && r.uom.toLowerCase() !== boqItem.unit.toLowerCase()) {
+          warnings.push(`Row ${i + 1} (${r.structureId}): UOM mismatch — sheet "${r.uom}" vs BOQ item "${boqItem.unit}"`);
         }
 
         // Compute startMonth / endMonth from startDate + durationDays
@@ -10854,7 +10897,17 @@ export async function registerRoutes(
         }
       }
 
-      res.status(201).json({ created, skipped, total: rows.length, results });
+      res.status(201).json({
+        created,
+        skipped,
+        total: rows.length,
+        rowsRead: rows.length,
+        rowsImported: created,
+        rowsSkipped: skipped,
+        unmatchedBoqRows,
+        warnings: warnings.slice(0, 50), // cap at 50 to keep response small
+        results,
+      });
     } catch (err: any) {
       console.error("POST /api/boq/projects/:id/import-structure:", err);
       res.status(500).json({ error: `Failed to import structure schedule: ${err?.message ?? String(err)}` });
