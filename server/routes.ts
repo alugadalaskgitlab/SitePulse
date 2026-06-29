@@ -10613,9 +10613,13 @@ export async function registerRoutes(
       const bridgeGroups = _brgGroups >= 1 ? _brgGroups : fronts;
       // Structure-front auto-splitting ("Struct. Front N" / "Bridge Grp N" bars) is disabled
       // by default — it produces incorrect results for projects that use per-location structure
-      // bars imported from a schedule. A caller must explicitly pass enableStructureFronts=true
-      // to re-activate the old behaviour (e.g. older projects with no imported structure bars).
-      const disableStructureFronts = req.body?.enableStructureFronts !== true;
+      // bars imported from a schedule.
+      // New clients send `disableStructureFronts: true` directly; legacy clients sent
+      // `enableStructureFronts: false` (inverted). Prefer the explicit field; fall back to the
+      // legacy inversion so older saved programme-settings still restore correctly.
+      const disableStructureFronts = req.body?.disableStructureFronts !== undefined
+        ? Boolean(req.body.disableStructureFronts)
+        : req.body?.enableStructureFronts !== true;
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       await storage.upsertBoqProgramSettings(projectId, {

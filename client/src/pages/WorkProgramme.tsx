@@ -2201,7 +2201,7 @@ export default function WorkProgramme() {
       lagMonths: lag,
       structureGroups: strGroups > 0 ? strGroups : undefined,
       bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
-      enableStructureFronts: !seqSkipStructureItems,
+      disableStructureFronts: seqSkipStructureItems,
     });
   }
 
