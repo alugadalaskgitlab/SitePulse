@@ -11687,12 +11687,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async ensureStructureBarColumns(): Promise<void> {
+    // All 8 structure-bar columns added for the Structure Schedule Import feature.
+    // Safe to run multiple times (ADD COLUMN IF NOT EXISTS).
     const newCols = [
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS planning_mode text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS structure_id text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS structure_loc_type text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS structure_chainage_km real",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS relative_chainage_km real",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_days integer",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_sub_item text",
+      "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_excel_row integer",
     ];
     for (const stmt of newCols) await db.execute(sql.raw(stmt));
-    console.log("ensureStructureBarColumns: relative_chainage_km and duration_days verified/added");
+    console.log("ensureStructureBarColumns: all 8 structure-bar columns verified/added");
   }
 
   async ensureHeatingSessionDipColumns(): Promise<void> {

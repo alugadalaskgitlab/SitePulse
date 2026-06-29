@@ -10795,26 +10795,16 @@ export async function registerRoutes(
           const boqItemCode   = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
           const boqSubItem    = colStr(row, "boq_sub_item", "sub_item", "sub item");
           const boqDescription = colStr(row, "boq_description", "description", "item description");
-          const boqExcelRowRaw = Math.round(colNum(row, "boq_excel_row", "excel_row", "boq_id"));
-          // boq_excel_row in the structure schedule is treated as the BOQ item ID
-          // (the user copies the system ID into this column for P1 lookup).
-          // It is also stored verbatim on the bar for traceability.
-          const boqExcelRow = boqExcelRowRaw || (i + 2);
+          const boqExcelRow = Math.round(colNum(row, "boq_excel_row", "excel_row")) || (i + 2);
+          // boq_excel_row is a schedule row reference stored for traceability only.
+          // It is NOT used as a BOQ item lookup key (BOQ items don't store their Excel row).
 
-          // Server-side BOQ matching — 3-level priority:
-          // P1 → boq_excel_row (as BOQ item ID) + boq_item_code + boq_sub_item — tightest: direct ID lookup
-          // P2 → boq_item_code + boq_sub_item composite exact match
-          // P3 → boq_item_code exact (or leading-zero stripped)
-          // P4 → boq_description partial match (first 40 chars)
+          // Server-side BOQ matching — 3-level priority (authoritative):
+          // P1 → boq_item_code + boq_sub_item  — composite exact match (tightest)
+          // P2 → boq_item_code exact (or leading-zero stripped)
+          // P3 → boq_description partial match (first 40 chars, last resort)
           let boqItem: any = null;
-          if (boqExcelRowRaw > 0) {
-            const candidate = allItems.find((it: any) => it.id === boqExcelRowRaw) ?? null;
-            // Accept P1 match only if item code also agrees (or code not provided)
-            if (candidate && (!boqItemCode || String(candidate.itemCode ?? "").trim().toLowerCase() === boqItemCode.trim().toLowerCase())) {
-              boqItem = candidate;
-            }
-          }
-          if (!boqItem && boqItemCode && boqSubItem) {
+          if (boqItemCode && boqSubItem) {
             const k = `${boqItemCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
             boqItem = itemByCodeSubItem.get(k) ?? null;
           }
@@ -10950,7 +10940,12 @@ export async function registerRoutes(
           }
         }
 
-        // Resolve BOQ item — priority: (1) explicit id → (2) code+subItem composite → (3) code alone → (4) description fallback
+        // Resolve BOQ item — 3-level priority matching the parse endpoint:
+        // P0 → boqItemId (pre-matched by parse endpoint, fastest path)
+        // P1 → boq_item_code + boq_sub_item composite exact
+        // P2 → boq_item_code exact / leading-zero stripped
+        // P3 → boq_description partial (first 40 chars, last resort)
+        // Note: boq_excel_row is traceability-only, not used as a lookup key.
         let boqItem: any = null;
         if (r.boqItemId && itemById.has(r.boqItemId)) {
           boqItem = itemById.get(r.boqItemId);
