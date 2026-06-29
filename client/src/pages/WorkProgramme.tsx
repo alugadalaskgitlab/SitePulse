@@ -2141,13 +2141,13 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; enableStructureFronts?: boolean }) => {
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number; disableStructureFronts?: boolean }) => {
       const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
       if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
       if (opts.structureGroups && opts.structureGroups > 0) body.structureGroups = opts.structureGroups;
       if (opts.bridgeGroups && opts.bridgeGroups > 0) body.bridgeGroups = opts.bridgeGroups;
-      // Only send enableStructureFronts=true when explicitly opted in — default is disabled
-      if (opts.enableStructureFronts) body.enableStructureFronts = true;
+      // Always send disableStructureFronts as an explicit boolean so the server can rely on it
+      body.disableStructureFronts = opts.disableStructureFronts !== false;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
