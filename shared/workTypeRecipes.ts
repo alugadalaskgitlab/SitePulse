@@ -91,7 +91,8 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   if (/removing\s*(existing|old)\s*(pavement|structure|culvert|drain|wall)|removal\s*of\s*(existing|old)\s*(pavement|structure|culvert|drain|wall)/i.test(d)) return "dismantling";
 
   // Other removal/breaking items that are not consuming → no recipe
-  if (/\bremoving\b|\bremoval\b|\bbreaking\b/i.test(d)) return null;
+  // Exception: excavation items legitimately contain "removal of unsuitable soil" etc.
+  if (/\bremoving\b|\bremoval\b|\bbreaking\b/i.test(d) && !/excavat/i.test(d)) return null;
 
   // ── Bituminous wearing ──────────────────────────────────────────────────────
   if (/\bsdbc\b|semi[-\s]*dense\s*bituminous/i.test(d)) return "bituminous_wearing";

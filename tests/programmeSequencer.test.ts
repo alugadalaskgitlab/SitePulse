@@ -50,6 +50,15 @@ describe("classifyWorkType — roadway_excavation", () => {
   it("classifies 'Ordinary Soil Excavation' as roadway_excavation", () => {
     expect(classifyWorkType("Ordinary Soil Excavation", CUM)).toBe("roadway_excavation");
   });
+
+  it("classifies MoRTH Cl.301 long-form desc with 'removal of unsuitable soil' as roadway_excavation (regression: must not be trapped by removal-null guard)", () => {
+    expect(
+      classifyWorkType(
+        "Roadway excavation including removal of unsuitable soil for construction of roadway including shoulders and median to designated widths and depths in existing roadway embankment for purpose of pavement construction including trimming of bottom and side slopes in accordance with requirements of lines, grades and cross sections, loading and disposal of surplus and unsuitable material",
+        "Cum"
+      )
+    ).toBe("roadway_excavation");
+  });
 });
 
 describe("classifyWorkType — earthwork (embankment/fill, not cutting)", () => {
