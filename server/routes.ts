@@ -10795,16 +10795,26 @@ export async function registerRoutes(
           const boqItemCode   = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
           const boqSubItem    = colStr(row, "boq_sub_item", "sub_item", "sub item");
           const boqDescription = colStr(row, "boq_description", "description", "item description");
-          const boqExcelRow = Math.round(colNum(row, "boq_excel_row", "excel_row")) || (i + 2);
-          // boq_excel_row is a schedule row reference stored for traceability only.
-          // It is NOT used as a BOQ item lookup key (BOQ items don't store their Excel row).
+          const boqExcelRowRaw = Math.round(colNum(row, "boq_excel_row", "excel_row"));
+          const boqExcelRow = boqExcelRowRaw || (i + 2); // stored verbatim for traceability
 
           // Server-side BOQ matching — 3-level priority (authoritative):
-          // P1 → boq_item_code + boq_sub_item  — composite exact match (tightest)
-          // P2 → boq_item_code exact (or leading-zero stripped)
-          // P3 → boq_description partial match (first 40 chars, last resort)
+          // P1 → boq_excel_row + boq_item_code + boq_sub_item
+          //       Exact: find a BOQ item whose stored excel_row (from BOQ import) matches
+          //       the schedule's boq_excel_row AND whose item_code matches. This is the
+          //       tightest disambiguator when repeated item codes exist across sub-items.
+          // P2 → boq_item_code + boq_sub_item composite exact
+          // P3 → boq_item_code exact (or leading-zero stripped)
+          // P4 → boq_description partial match (first 40 chars, last resort)
           let boqItem: any = null;
-          if (boqItemCode && boqSubItem) {
+          if (boqExcelRowRaw > 0 && boqItemCode) {
+            boqItem = allItems.find((it: any) =>
+              it.excelRow === boqExcelRowRaw &&
+              String(it.itemCode ?? "").trim().toLowerCase() === boqItemCode.trim().toLowerCase() &&
+              (!boqSubItem || String(it.boqSubItem ?? "").trim().toLowerCase() === boqSubItem.trim().toLowerCase())
+            ) ?? null;
+          }
+          if (!boqItem && boqItemCode && boqSubItem) {
             const k = `${boqItemCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
             boqItem = itemByCodeSubItem.get(k) ?? null;
           }
@@ -10940,16 +10950,24 @@ export async function registerRoutes(
           }
         }
 
-        // Resolve BOQ item — 3-level priority matching the parse endpoint:
+        // Resolve BOQ item — 4-level priority matching the parse endpoint:
         // P0 → boqItemId (pre-matched by parse endpoint, fastest path)
-        // P1 → boq_item_code + boq_sub_item composite exact
-        // P2 → boq_item_code exact / leading-zero stripped
-        // P3 → boq_description partial (first 40 chars, last resort)
-        // Note: boq_excel_row is traceability-only, not used as a lookup key.
+        // P1 → boq_excel_row + boq_item_code + boq_sub_item
+        //       (uses boqItems.excelRow stored from BOQ Excel import; exact P1 when available)
+        // P2 → boq_item_code + boq_sub_item composite exact
+        // P3 → boq_item_code exact / leading-zero stripped
+        // P4 → boq_description partial (first 40 chars, last resort)
         let boqItem: any = null;
         if (r.boqItemId && itemById.has(r.boqItemId)) {
           boqItem = itemById.get(r.boqItemId);
-        } else if (r.boqItemCode && r.boqSubItem) {
+        } else if (r.boqExcelRow && r.boqItemCode) {
+          boqItem = allItems.find((it: any) =>
+            it.excelRow === r.boqExcelRow &&
+            String(it.itemCode ?? "").trim().toLowerCase() === String(r.boqItemCode).trim().toLowerCase() &&
+            (!r.boqSubItem || String(it.boqSubItem ?? "").trim().toLowerCase() === String(r.boqSubItem).trim().toLowerCase())
+          ) ?? null;
+        }
+        if (!boqItem && r.boqItemCode && r.boqSubItem) {
           const compositeKey = `${String(r.boqItemCode).trim().toLowerCase()}::${String(r.boqSubItem).trim().toLowerCase()}`;
           boqItem = itemByCodeSubItem.get(compositeKey) ?? null;
         }

@@ -2386,6 +2386,9 @@ export const boqItems = pgTable("boq_items", {
   // 'structure' = point-location (qty entered directly per bar; chainage used for
   // scheduling only). Auto-detected from description keywords at import time.
   planningWorkType: text("planning_work_type").notNull().default("road"),
+  // Row number from the BOQ Excel import; stored for exact P1 matching in
+  // structure schedule import (boq_excel_row + item_code + boq_sub_item).
+  excelRow: integer("excel_row"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),

@@ -11687,7 +11687,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async ensureStructureBarColumns(): Promise<void> {
-    // All 8 structure-bar columns added for the Structure Schedule Import feature.
+    // All 8 structure-bar columns + boq_items.excel_row for P1 matching.
     // Safe to run multiple times (ADD COLUMN IF NOT EXISTS).
     const newCols = [
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS planning_mode text",
@@ -11698,9 +11698,11 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS duration_days integer",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_sub_item text",
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_excel_row integer",
+      // BOQ items: excel_row used for P1 structure schedule matching
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS excel_row integer",
     ];
     for (const stmt of newCols) await db.execute(sql.raw(stmt));
-    console.log("ensureStructureBarColumns: all 8 structure-bar columns verified/added");
+    console.log("ensureStructureBarColumns: all structure-bar and boq_items columns verified/added");
   }
 
   async ensureHeatingSessionDipColumns(): Promise<void> {
@@ -20421,6 +20423,15 @@ export class DatabaseStorage implements IStorage {
         notes: workProgramBars.notes,
         source: workProgramBars.source,
         createdAt: workProgramBars.createdAt,
+        // Structure-location columns (planningMode = "structure_location")
+        planningMode: workProgramBars.planningMode,
+        structureId: workProgramBars.structureId,
+        structureLocType: workProgramBars.structureLocType,
+        structureChainageKm: workProgramBars.structureChainageKm,
+        relativeChainageKm: workProgramBars.relativeChainageKm,
+        durationDays: workProgramBars.durationDays,
+        boqSubItem: workProgramBars.boqSubItem,
+        boqExcelRow: workProgramBars.boqExcelRow,
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         unit: boqItems.unit,
