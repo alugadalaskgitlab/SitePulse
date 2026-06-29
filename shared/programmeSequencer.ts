@@ -220,43 +220,40 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   }
 
   // ── Structure (culvert / drain) fronts ─────────────────────────────────────
-  // Structures are point features at fixed chainage locations — a culvert at km 5
-  // is NOT replicated across every road front. Instead, we partition structure
-  // items into at most `fronts` independent groups (round-robin by sort order).
-  // Each group belongs to exactly one "Struct. Front N" and keeps its full qty.
+  // Culverts and drains are distributed works — the MoRTH stage sequence
+  // (excavation → PCC → RCC → bedding → backfill → headwall) repeats in each
+  // chainage zone. Every structure group runs the COMPLETE stage cycle.
+  // Quantity and duration are divided by fronts so total planned qty = BOQ qty.
+  // Group g maps to the same chainage zone as road front g (chainage-aware).
   if (str.length > 0) {
-    const numGroups = Math.min(fronts, str.length);
-    const strGroups: (typeof str)[] = Array.from({ length: numGroups }, () => []);
-    str.forEach((c, i) => strGroups[i % numGroups].push(c));
-    for (let g = 0; g < numGroups; g++) {
-      if (strGroups[g].length === 0) continue;
+    for (let g = 0; g < fronts; g++) {
       const strLabel = fronts > 1 ? `Struct. Front ${g + 1}` : "Structures";
       const chFrom = startCh + g * reachLen;
       const chTo   = startCh + (g + 1) * reachLen;
       let strCursor = g * stagger;
-      for (const c of strGroups[g]) {
-        const dur = Math.max(0.1, c.it.fullDurationMonths);
-        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, c.it.totalQty));
+      for (const c of str) {
+        const qty = c.it.totalQty / fronts;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, qty));
         strCursor += dur + lag;
       }
     }
   }
 
   // ── Bridge / major-structure fronts ────────────────────────────────────────
-  // Same partition logic: each bridge BOQ item appears in exactly ONE group.
+  // Same logic as culverts: each bridge group covers one front's chainage zone
+  // and runs the complete bridge stage sequence.
+  // Bridge qty/duration divided by fronts for proportional distribution.
   if (brg.length > 0) {
-    const numGroups = Math.min(fronts, brg.length);
-    const brgGroups: (typeof brg)[] = Array.from({ length: numGroups }, () => []);
-    brg.forEach((c, i) => brgGroups[i % numGroups].push(c));
-    for (let g = 0; g < numGroups; g++) {
-      if (brgGroups[g].length === 0) continue;
+    for (let g = 0; g < fronts; g++) {
       const brgLabel = fronts > 1 ? `Bridge Grp ${g + 1}` : "Bridges";
       const chFrom = startCh + g * reachLen;
       const chTo   = startCh + (g + 1) * reachLen;
       let brgCursor = g * stagger;
-      for (const c of brgGroups[g]) {
-        const dur = Math.max(0.1, c.it.fullDurationMonths);
-        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, c.it.totalQty));
+      for (const c of brg) {
+        const qty = c.it.totalQty / fronts;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, qty));
         brgCursor += dur + lag;
       }
     }

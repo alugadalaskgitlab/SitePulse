@@ -20140,6 +20140,20 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS sequence_options jsonb`));
     // Task #1200: Source tag on programme bars for non-destructive reruns
     await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS source text DEFAULT 'manual'`));
+    // Backfill: mark existing auto-generated bars (identifiable by their reach labels)
+    // so that the first non-destructive rerun after migration deletes them correctly.
+    await db.execute(sql.raw(`
+      UPDATE work_program_bars SET source = 'auto-sequence'
+      WHERE source IS NULL OR source = 'manual'
+        AND (
+          reach_label = 'Full Length'
+          OR reach_label = 'Structures'
+          OR reach_label = 'Bridges'
+          OR reach_label ~ E'^Reach \\\\d+$'
+          OR reach_label ~ E'^Struct\\\\. Front \\\\d+$'
+          OR reach_label ~ E'^Bridge Grp \\\\d+$'
+        )
+    `));
 
     // Recreate mix_template_links if old schema (boq_item_id column) exists — incompatible redesign
     const oldMixCol = await db.execute(sql.raw(`

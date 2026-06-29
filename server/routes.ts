@@ -10662,9 +10662,13 @@ export async function registerRoutes(
       let created = 0;
       const insertErrors: string[] = [];
       // Non-destructive rerun: only remove previously auto-generated bars so that
-      // any bars the planner manually placed (source = "manual" or null) are preserved.
+      // any bars the planner manually placed (source = "manual") are preserved.
+      // The reach-label fallback catches legacy bars created before the source column existed.
+      const AUTO_LABEL_RE = /^(Full Length|Structures|Bridges|Reach \d+|Struct\. Front \d+|Bridge Grp \d+)$/;
       const autoBars = (existingBars as any[]).filter(
-        (b) => b.source === "auto-sequence" || b.source === "auto_sequence",
+        (b) => b.source === "auto-sequence"
+            || !b.source                                            // null = column not yet populated
+            || (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? "")),
       );
       for (const b of autoBars) await storage.deleteWorkProgramBar(b.id);
       for (const b of bars) {
