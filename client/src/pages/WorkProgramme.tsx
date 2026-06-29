@@ -1491,9 +1491,11 @@ export default function WorkProgramme() {
   const projectId = parseInt(params.id);
   const [activeTab, setActiveTab] = useState("gantt");
   const [seqDialogOpen, setSeqDialogOpen] = useState(false);
-  const [seqFronts, setSeqFronts] = useState("");        // "" = auto
-  const [seqStagger, setSeqStagger] = useState("1");     // months
-  const [seqLag, setSeqLag] = useState("0.25");          // months
+  const [seqFronts, setSeqFronts] = useState("");         // "" = auto
+  const [seqStagger, setSeqStagger] = useState("1");      // months (0 = concurrent)
+  const [seqLag, setSeqLag] = useState("0.25");           // months
+  const [seqStrGroups, setSeqStrGroups] = useState("");   // "" = same as road fronts
+  const [seqBrgGroups, setSeqBrgGroups] = useState("");   // "" = same as road fronts
   const [seqRulesOpen, setSeqRulesOpen] = useState(false);
 
   const { data: project } = useQuery<BoqProject>({
@@ -1515,7 +1517,7 @@ export default function WorkProgramme() {
     quarryToHmpKm: number | null; quarryToRmcKm: number | null; rmcToSiteKm: number | null;
     borrowToSiteKm: number | null; disposalDistanceKm: number | null;
     productivityMode: string; productivityOverrides: unknown | null;
-    sequenceOptions: { fronts?: number | null; staggerMonths?: number; lagMonths?: number } | null;
+    sequenceOptions: { fronts?: number | null; staggerMonths?: number; lagMonths?: number; structureGroups?: number | null; bridgeGroups?: number | null } | null;
   }>({
     queryKey: ["/api/boq/projects", projectId, "program-settings"],
     queryFn: async () => {
@@ -1645,9 +1647,11 @@ export default function WorkProgramme() {
   });
 
   const autoSequenceMutation = useMutation({
-    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number }) => {
+    mutationFn: async (opts: { fronts?: number; staggerMonths: number; lagMonths: number; structureGroups?: number; bridgeGroups?: number }) => {
       const body: Record<string, unknown> = { staggerMonths: opts.staggerMonths, lagMonths: opts.lagMonths };
       if (opts.fronts && opts.fronts > 0) body.fronts = opts.fronts;
+      if (opts.structureGroups && opts.structureGroups > 0) body.structureGroups = opts.structureGroups;
+      if (opts.bridgeGroups && opts.bridgeGroups > 0) body.bridgeGroups = opts.bridgeGroups;
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence`, body);
       return res.json();
     },
@@ -1673,17 +1677,30 @@ export default function WorkProgramme() {
     const stored = progSettings?.sequenceOptions;
     if (stored) {
       setSeqFronts(stored.fronts ? String(stored.fronts) : "");
-      setSeqStagger(String(stored.staggerMonths ?? 1));
+      setSeqStagger(stored.staggerMonths !== undefined ? String(stored.staggerMonths) : "1");
       setSeqLag(String(stored.lagMonths ?? 0.25));
+      setSeqStrGroups((stored as any).structureGroups ? String((stored as any).structureGroups) : "");
+      setSeqBrgGroups((stored as any).bridgeGroups ? String((stored as any).bridgeGroups) : "");
     }
     setSeqDialogOpen(true);
   }
 
   function runAutoSequence() {
     const fronts = parseInt(seqFronts) || 0;
-    const stagger = parseFloat(seqStagger) || 1;
-    const lag = parseFloat(seqLag);
-    autoSequenceMutation.mutate({ fronts: fronts > 0 ? fronts : undefined, staggerMonths: stagger, lagMonths: isNaN(lag) ? 0.25 : lag });
+    // Allow stagger = 0 (concurrent fronts)
+    const staggerRaw = parseFloat(seqStagger);
+    const stagger = !isNaN(staggerRaw) ? staggerRaw : 1;
+    const lagRaw = parseFloat(seqLag);
+    const lag = !isNaN(lagRaw) ? lagRaw : 0.25;
+    const strGroups = parseInt(seqStrGroups) || 0;
+    const brgGroups = parseInt(seqBrgGroups) || 0;
+    autoSequenceMutation.mutate({
+      fronts: fronts > 0 ? fronts : undefined,
+      staggerMonths: stagger,
+      lagMonths: lag,
+      structureGroups: strGroups > 0 ? strGroups : undefined,
+      bridgeGroups: brgGroups > 0 ? brgGroups : undefined,
+    });
   }
 
   function handleAutoGenerate() {
@@ -1901,7 +1918,7 @@ export default function WorkProgramme() {
                   data-testid="input-seq-fronts"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] text-muted-foreground">Leave blank to auto-calculate from road length</p>
+                <p className="text-[10px] text-muted-foreground">Blank = auto from road length</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="seq-stagger" className="text-xs font-medium">Front stagger (months)</Label>
@@ -1916,7 +1933,7 @@ export default function WorkProgramme() {
                   data-testid="input-seq-stagger"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] text-muted-foreground">Mobilisation delay between fronts</p>
+                <p className="text-[10px] text-muted-foreground">0 = all fronts start together</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="seq-lag" className="text-xs font-medium">Stage lag (months)</Label>
@@ -1932,6 +1949,38 @@ export default function WorkProgramme() {
                   className="h-8 text-sm"
                 />
                 <p className="text-[10px] text-muted-foreground">Handover gap between stages</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="seq-str-groups" className="text-xs font-medium">Structure groups</Label>
+                <Input
+                  id="seq-str-groups"
+                  type="number"
+                  min={1}
+                  max={10}
+                  placeholder="Same as road fronts"
+                  value={seqStrGroups}
+                  onChange={e => setSeqStrGroups(e.target.value)}
+                  data-testid="input-seq-str-groups"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Culvert / drain chainage zones (≤ road fronts). Blank = match road fronts</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="seq-brg-groups" className="text-xs font-medium">Bridge groups</Label>
+                <Input
+                  id="seq-brg-groups"
+                  type="number"
+                  min={1}
+                  max={10}
+                  placeholder="Same as road fronts"
+                  value={seqBrgGroups}
+                  onChange={e => setSeqBrgGroups(e.target.value)}
+                  data-testid="input-seq-brg-groups"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Bridge chainage zones (≤ road fronts). Blank = match road fronts</p>
               </div>
             </div>
 

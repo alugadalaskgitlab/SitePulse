@@ -102,8 +102,14 @@ export interface SeqOptions {
   totalMonths: number;
   roadLengthKm: number;
   chainageStartKm?: number;
-  staggerMonths?: number; // mobilisation offset between successive reaches (default 1)
-  lagMonths?: number;     // gap between dependent stages within a reach (default 0.25)
+  staggerMonths?: number;    // mobilisation offset between successive reaches (default 1, 0 = concurrent)
+  lagMonths?: number;        // gap between dependent stages within a reach (default 0.25)
+  /** How many structure groups to create (≤ fronts). Each group covers one chainage zone.
+   *  Quantity per bar = totalQty / structureGroups (not / fronts).
+   *  Defaults to fronts when omitted. */
+  structureGroups?: number;
+  /** How many bridge groups to create (≤ fronts). Defaults to fronts when omitted. */
+  bridgeGroups?: number;
 }
 
 export interface SeqBar {
@@ -220,20 +226,25 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   }
 
   // ── Structure (culvert / drain) fronts ─────────────────────────────────────
-  // Culverts and drains are distributed works — the MoRTH stage sequence
-  // (excavation → PCC → RCC → bedding → backfill → headwall) repeats in each
-  // chainage zone. Every structure group runs the COMPLETE stage cycle.
-  // Quantity and duration are divided by fronts so total planned qty = BOQ qty.
-  // Group g maps to the same chainage zone as road front g (chainage-aware).
+  // Culverts/drains are distributed along the road. We create at most `fronts`
+  // independent structure groups; each group covers the matching chainage zone.
+  // The number of groups is controlled by opts.structureGroups (≤ fronts).
+  // Every group runs the COMPLETE MoRTH culvert stage cycle (excav→PCC→RCC→
+  // bedding→backfill→headwall) so planners see the full sequence per zone.
+  // Quantity per bar = totalQty / numStrGroups (task spec §3).
   if (str.length > 0) {
-    for (let g = 0; g < fronts; g++) {
-      const strLabel = fronts > 1 ? `Struct. Front ${g + 1}` : "Structures";
-      const chFrom = startCh + g * reachLen;
-      const chTo   = startCh + (g + 1) * reachLen;
-      let strCursor = g * stagger;
+    const numStrGroups = Math.min(fronts, Math.max(1, Math.floor(opts.structureGroups ?? fronts)));
+    const strReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numStrGroups : 0;
+    for (let g = 0; g < numStrGroups; g++) {
+      const strLabel = numStrGroups > 1 ? `Struct. Front ${g + 1}` : "Structures";
+      const chFrom = startCh + g * strReachLen;
+      const chTo   = startCh + (g + 1) * strReachLen;
+      // Map structure group g to the nearest road front for its stagger offset.
+      const roadFront = Math.round((g / Math.max(1, numStrGroups - 1)) * (fronts - 1));
+      let strCursor = roadFront * stagger;
       for (const c of str) {
-        const qty = c.it.totalQty / fronts;
-        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        const qty = c.it.totalQty / numStrGroups;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / numStrGroups);
         bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, qty));
         strCursor += dur + lag;
       }
@@ -241,18 +252,22 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   }
 
   // ── Bridge / major-structure fronts ────────────────────────────────────────
-  // Same logic as culverts: each bridge group covers one front's chainage zone
-  // and runs the complete bridge stage sequence.
-  // Bridge qty/duration divided by fronts for proportional distribution.
+  // Bridge items occupy specific chainage points. We create at most `fronts`
+  // bridge groups (controlled by opts.bridgeGroups). Each group covers the
+  // matching chainage zone and runs the full bridge stage cycle.
+  // Quantity per bar = totalQty / numBrgGroups (task spec §3).
   if (brg.length > 0) {
-    for (let g = 0; g < fronts; g++) {
-      const brgLabel = fronts > 1 ? `Bridge Grp ${g + 1}` : "Bridges";
-      const chFrom = startCh + g * reachLen;
-      const chTo   = startCh + (g + 1) * reachLen;
-      let brgCursor = g * stagger;
+    const numBrgGroups = Math.min(fronts, Math.max(1, Math.floor(opts.bridgeGroups ?? fronts)));
+    const brgReachLen  = opts.roadLengthKm > 0 ? opts.roadLengthKm / numBrgGroups : 0;
+    for (let g = 0; g < numBrgGroups; g++) {
+      const brgLabel = numBrgGroups > 1 ? `Bridge Grp ${g + 1}` : "Bridges";
+      const chFrom = startCh + g * brgReachLen;
+      const chTo   = startCh + (g + 1) * brgReachLen;
+      const roadFront = Math.round((g / Math.max(1, numBrgGroups - 1)) * (fronts - 1));
+      let brgCursor = roadFront * stagger;
       for (const c of brg) {
-        const qty = c.it.totalQty / fronts;
-        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
+        const qty = c.it.totalQty / numBrgGroups;
+        const dur = Math.max(0.1, c.it.fullDurationMonths / numBrgGroups);
         bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, qty));
         brgCursor += dur + lag;
       }

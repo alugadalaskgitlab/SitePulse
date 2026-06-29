@@ -10598,12 +10598,24 @@ export async function registerRoutes(
       const fronts = requestedFronts >= 1
         ? requestedFronts
         : Math.min(5, Math.max(2, Math.ceil((roadLengthKm || 24) / 12)));
-      const staggerMonths = Number(req.body?.staggerMonths) > 0 ? Number(req.body.staggerMonths) : 1;
-      const lagMonths = Number(req.body?.lagMonths) >= 0 ? Number(req.body.lagMonths) : 0.25;
+      const _stagger = Number(req.body?.staggerMonths);
+      const staggerMonths = !isNaN(_stagger) ? Math.max(0, _stagger) : 1;
+      const _lag = Number(req.body?.lagMonths);
+      const lagMonths = !isNaN(_lag) ? Math.max(0, _lag) : 0.25;
+      const _strGroups = parseInt(req.body?.structureGroups);
+      const structureGroups = _strGroups >= 1 ? Math.min(_strGroups, fronts) : fronts;
+      const _brgGroups = parseInt(req.body?.bridgeGroups);
+      const bridgeGroups = _brgGroups >= 1 ? Math.min(_brgGroups, fronts) : fronts;
 
       // Persist sequence options so the UI can pre-populate the dialog next time.
       await storage.upsertBoqProgramSettings(projectId, {
-        sequenceOptions: { fronts: requestedFronts >= 1 ? fronts : null, staggerMonths, lagMonths },
+        sequenceOptions: {
+          fronts: requestedFronts >= 1 ? fronts : null,
+          staggerMonths,
+          lagMonths,
+          structureGroups: _strGroups >= 1 ? structureGroups : null,
+          bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
+        },
       } as any);
 
       const seqItems = (items as any[])
@@ -10646,6 +10658,8 @@ export async function registerRoutes(
         chainageStartKm: 0,
         staggerMonths,
         lagMonths,
+        structureGroups,
+        bridgeGroups,
       });
 
       // SAFETY: never wipe the existing programme unless we actually built new bars.
