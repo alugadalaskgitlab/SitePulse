@@ -2425,6 +2425,8 @@ export const workProgramBars = pgTable("work_program_bars", {
   isQtyOverride: boolean("is_qty_override").default(false),
   isDurationOverride: boolean("is_duration_override").default(false),
   notes: text("notes"),
+  // "auto-sequence" = created by the auto-sequencer; "manual" = hand-placed. Used for non-destructive reruns.
+  source: text("source").default("manual"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),

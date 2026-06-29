@@ -20136,6 +20136,10 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS rmc_to_site_km real`));
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS borrow_to_site_km real`));
     await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS disposal_distance_km real`));
+    // Task #1200: Auto-sequence settings persistence
+    await db.execute(sql.raw(`ALTER TABLE boq_program_settings ADD COLUMN IF NOT EXISTS sequence_options jsonb`));
+    // Task #1200: Source tag on programme bars for non-destructive reruns
+    await db.execute(sql.raw(`ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS source text DEFAULT 'manual'`));
 
     // Recreate mix_template_links if old schema (boq_item_id column) exists — incompatible redesign
     const oldMixCol = await db.execute(sql.raw(`

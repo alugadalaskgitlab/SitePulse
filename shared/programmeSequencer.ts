@@ -116,6 +116,8 @@ export interface SeqBar {
   plannedQty: number;
   isQtyOverride: boolean;
   isDurationOverride: boolean;
+  /** Always "auto-sequence" so the route can safely replace only auto-generated bars */
+  source: "auto-sequence";
 }
 
 // ─── Item classifier ──────────────────────────────────────────────────────────
@@ -192,6 +194,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     plannedQty: +qty.toFixed(3),
     isQtyOverride: true,
     isDurationOverride: false,
+    source: "auto-sequence",
   });
 
   for (let r = 0; r < fronts; r++) {
@@ -214,30 +217,46 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       bars.push(mkBar(c.it, reachLabel, chFrom, chTo, offset, offset + dur, qty));
     }
 
-    // ── Structure (culvert / drain) front ─────────────────────────────────────
-    // Culverts are point features; each front covers its chainage zone.
-    // The stage sequence runs fully within each front, starting at the same
-    // mobilisation offset as the road front.
-    if (str.length > 0) {
-      const strLabel = fronts > 1 ? `Struct. Front ${r + 1}` : "Structures";
-      let strCursor = offset;
-      for (const c of str) {
-        const qty = c.it.totalQty / fronts;
-        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, qty));
+  }
+
+  // ── Structure (culvert / drain) fronts ─────────────────────────────────────
+  // Structures are point features at fixed chainage locations — a culvert at km 5
+  // is NOT replicated across every road front. Instead, we partition structure
+  // items into at most `fronts` independent groups (round-robin by sort order).
+  // Each group belongs to exactly one "Struct. Front N" and keeps its full qty.
+  if (str.length > 0) {
+    const numGroups = Math.min(fronts, str.length);
+    const strGroups: (typeof str)[] = Array.from({ length: numGroups }, () => []);
+    str.forEach((c, i) => strGroups[i % numGroups].push(c));
+    for (let g = 0; g < numGroups; g++) {
+      if (strGroups[g].length === 0) continue;
+      const strLabel = fronts > 1 ? `Struct. Front ${g + 1}` : "Structures";
+      const chFrom = startCh + g * reachLen;
+      const chTo   = startCh + (g + 1) * reachLen;
+      let strCursor = g * stagger;
+      for (const c of strGroups[g]) {
+        const dur = Math.max(0.1, c.it.fullDurationMonths);
+        bars.push(mkBar(c.it, strLabel, chFrom, chTo, strCursor, strCursor + dur, c.it.totalQty));
         strCursor += dur + lag;
       }
     }
+  }
 
-    // ── Bridge front ───────────────────────────────────────────────────────────
-    // Bridges are even more localised; each group runs the complete sub-sequence.
-    if (brg.length > 0) {
-      const brgLabel = fronts > 1 ? `Bridge Grp ${r + 1}` : "Bridges";
-      let brgCursor = offset;
-      for (const c of brg) {
-        const qty = c.it.totalQty / fronts;
-        const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, qty));
+  // ── Bridge / major-structure fronts ────────────────────────────────────────
+  // Same partition logic: each bridge BOQ item appears in exactly ONE group.
+  if (brg.length > 0) {
+    const numGroups = Math.min(fronts, brg.length);
+    const brgGroups: (typeof brg)[] = Array.from({ length: numGroups }, () => []);
+    brg.forEach((c, i) => brgGroups[i % numGroups].push(c));
+    for (let g = 0; g < numGroups; g++) {
+      if (brgGroups[g].length === 0) continue;
+      const brgLabel = fronts > 1 ? `Bridge Grp ${g + 1}` : "Bridges";
+      const chFrom = startCh + g * reachLen;
+      const chTo   = startCh + (g + 1) * reachLen;
+      let brgCursor = g * stagger;
+      for (const c of brgGroups[g]) {
+        const dur = Math.max(0.1, c.it.fullDurationMonths);
+        bars.push(mkBar(c.it, brgLabel, chFrom, chTo, brgCursor, brgCursor + dur, c.it.totalQty));
         brgCursor += dur + lag;
       }
     }

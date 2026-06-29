@@ -10661,8 +10661,12 @@ export async function registerRoutes(
       // Build the full new set first; only then replace the old bars.
       let created = 0;
       const insertErrors: string[] = [];
-      // Delete old bars only after we have a non-empty new set to insert.
-      for (const b of existingBars) await storage.deleteWorkProgramBar((b as any).id);
+      // Non-destructive rerun: only remove previously auto-generated bars so that
+      // any bars the planner manually placed (source = "manual" or null) are preserved.
+      const autoBars = (existingBars as any[]).filter(
+        (b) => b.source === "auto-sequence" || b.source === "auto_sequence",
+      );
+      for (const b of autoBars) await storage.deleteWorkProgramBar(b.id);
       for (const b of bars) {
         try {
           await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
