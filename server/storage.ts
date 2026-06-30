@@ -21228,10 +21228,10 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(snlBoqMappings).where(
         and(inArray(snlBoqMappings.boqItemId, clearIds), eq(snlBoqMappings.isAutoMapped, true))
       );
-      // Reset mapping status to unmapped (auto items only).
+      // Reset mapping status + composite flag to unmapped (auto items only).
       await tx
         .update(boqItems)
-        .set({ mappingStatus: "unmapped" })
+        .set({ mappingStatus: "unmapped", isComposite: false })
         .where(inArray(boqItems.id, clearIds));
     });
   }

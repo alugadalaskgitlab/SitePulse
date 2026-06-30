@@ -381,7 +381,19 @@ function detectCompositeComponents(description: string): ComponentDraft[] | null
     found.push({ tag: finalTag, description: phrase });
   }
 
-  return found.length >= 2 ? found : null;
+  // ── Tag suppression: remove redundant sub-tags when a more-specific tag is present ──
+  // DBM ("Dense Bituminous Macadam") subsumes BM ("Bituminous Macadam") — same material.
+  // SDBC ("Semi Dense Bituminous Concrete") subsumes BC ("Bituminous Concrete").
+  // DBM descriptions frequently contain "bituminous" which also fires BC — suppress BC too.
+  const tagSet = new Set(found.map(f => f.tag));
+  const suppressed = found.filter(f => {
+    if (f.tag === "BM"  && tagSet.has("DBM"))  return false;
+    if (f.tag === "BC"  && tagSet.has("SDBC")) return false;
+    if (f.tag === "BC"  && tagSet.has("DBM"))  return false;
+    return true;
+  });
+
+  return suppressed.length >= 2 ? suppressed : null;
 }
 
 // (Legacy weighted scorer removed — replaced by IDF-weighted cosine + unit/margin gate.)
@@ -477,6 +489,10 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
           };
         });
 
+        // Remove any stale single-SNL auto-mapping so the composite takes over cleanly.
+        await db.delete(snlBoqMappings).where(
+          and(eq(snlBoqMappings.boqItemId, boqRow.id), eq(snlBoqMappings.isAutoMapped, true)),
+        );
         await storage.upsertCompositeComponents(boqRow.id, componentRows);
         await db
           .update(boqItems)
@@ -916,4 +932,86 @@ export async function autoMapProjectWithSummary(boqProjectId: number): Promise<{
     avgConfidence: confCount > 0 ? confSum / confCount : 0,
     ruleMatched,
   };
+}
+
+// ─── One-time composite backfill ──────────────────────────────────────────────
+
+/**
+ * Scan all BOQ items that are currently in `mapped` status with `is_composite=false`
+ * and whose mapping was auto-applied (not manually confirmed).  Re-run composite
+ * detection with the current (fixed) patterns and promote any that now qualify.
+ *
+ * Safe to call at every startup — it is a no-op once all items are up to date.
+ * This fixes items that were mapped before composite detection existed, and items
+ * that were left in a mapped/orphaned state from prior incomplete remaps.
+ */
+export async function backfillCompositeDetection(): Promise<{ promoted: number }> {
+  // All mapped + non-composite candidates
+  const candidates = await db
+    .select({ id: boqItems.id, description: boqItems.description })
+    .from(boqItems)
+    .where(and(eq(boqItems.mappingStatus, "mapped"), eq(boqItems.isComposite, false)));
+
+  if (candidates.length === 0) return { promoted: 0 };
+  const allIds = candidates.map(r => r.id);
+
+  // Exclude items the user confirmed manually — never touch those.
+  const manualRows = await db
+    .select({ boqItemId: snlBoqMappings.boqItemId })
+    .from(snlBoqMappings)
+    .where(and(inArray(snlBoqMappings.boqItemId, allIds), eq(snlBoqMappings.isAutoMapped, false)));
+  const manualIds = new Set(manualRows.map(r => r.boqItemId));
+
+  const eligible = candidates.filter(c => !manualIds.has(c.id));
+  if (eligible.length === 0) return { promoted: 0 };
+
+  // Load SNL items once for rule-matching
+  const snlRows = await db
+    .select({
+      id: snlItems.id,
+      itemCode: snlItems.itemCode,
+      description: snlItems.description,
+      shortLabel: snlItems.shortLabel,
+      unit: snlItems.unit,
+      workCategory: snlItems.workCategory,
+      sector: snlItems.sector,
+    })
+    .from(snlItems)
+    .where(eq(snlItems.isActive, true));
+
+  const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
+  const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
+
+  let promoted = 0;
+  for (const item of eligible) {
+    const drafts = detectCompositeComponents(item.description);
+    if (!drafts || drafts.length < 2) continue;
+
+    // Delete any stale auto single-SNL mapping for this item.
+    await db.delete(snlBoqMappings).where(
+      and(eq(snlBoqMappings.boqItemId, item.id), eq(snlBoqMappings.isAutoMapped, true)),
+    );
+
+    const componentRows = drafts.map((draft, idx) => {
+      const ruleResult = ruleMatchSnl(draft.tag, rulePool);
+      return {
+        componentIndex: idx,
+        componentTag: draft.tag,
+        componentDescription: draft.description,
+        snlItemId: ruleResult ? ruleResult.snlItemId : null,
+        confidenceScore: ruleResult ? ruleResult.confidence : null,
+        status: ruleResult ? ("needs_review" as const) : ("unmapped" as const),
+        notes: ruleResult ? `Auto-suggested via rule: ${draft.tag}` : null,
+      };
+    });
+
+    await storage.upsertCompositeComponents(item.id, componentRows);
+    await db
+      .update(boqItems)
+      .set({ mappingStatus: "needs_review", isComposite: true })
+      .where(eq(boqItems.id, item.id));
+    promoted++;
+  }
+
+  return { promoted };
 }

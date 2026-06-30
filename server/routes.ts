@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError } from "./storage";
-import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary } from "./snlAutoMapper";
+import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -11976,6 +11976,10 @@ async function seedSnlItems() {
     autoMapAllUnmappedItems()
       .then(r => { if (r.remapped > 0) console.log(`SNL global remap: ${r.remapped} items processed`); })
       .catch(err => console.error("SNL global remap failed:", err));
+    // Backfill: promote any auto-mapped items that composite detection now recognises
+    backfillCompositeDetection()
+      .then(r => { if (r.promoted > 0) console.log(`SNL composite backfill: ${r.promoted} items promoted`); })
+      .catch(err => console.error("SNL composite backfill failed:", err));
   } catch (err) {
     console.error("seedSnlItems failed:", err);
   }
