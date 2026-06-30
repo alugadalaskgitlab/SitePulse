@@ -7,6 +7,7 @@ import { z } from "zod";
 import * as xlsx from 'xlsx';
 import multer from 'multer';
 import { importSdbXlsx, buildImportTemplate } from './snlImporter';
+import { importMorthSdbXlsx, isMorthFormat } from './snlMorthParser';
 import PDFDocument from 'pdfkit';
 import { pipeOperatorManualPdf } from './operator-manual-pdf';
 import { pipeAdminGuidePdf } from './admin-guide-pdf';
@@ -11582,6 +11583,14 @@ export async function registerRoutes(
     try {
       if (!assertAdmin(req, res)) return;
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+      // Auto-detect MoRTH official chapter-per-sheet format
+      const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
+      if (isMorthFormat(wb)) {
+        const result = await importMorthSdbXlsx(req.file.buffer);
+        return res.json(result);
+      }
+
       const { sourceName, sourceCode, year } = req.body;
       const result = await importSdbXlsx(req.file.buffer, {
         sourceName: sourceName || undefined,

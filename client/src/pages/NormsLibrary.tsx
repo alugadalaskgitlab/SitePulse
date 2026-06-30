@@ -558,17 +558,22 @@ export default function NormsLibrary() {
                 <Download className="w-3.5 h-3.5 mr-1" />
                 Download template
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importMutation.isPending}
-                className="shrink-0"
-                data-testid="button-import-sdb"
-              >
-                {importMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
-                Import SDB
-              </Button>
+              <div className="flex flex-col items-end gap-0.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importMutation.isPending}
+                  className="shrink-0"
+                  data-testid="button-import-sdb"
+                >
+                  {importMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
+                  Import SDB
+                </Button>
+                <span className="text-[10px] text-muted-foreground pr-0.5">
+                  MoRTH official or 4-sheet format
+                </span>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
