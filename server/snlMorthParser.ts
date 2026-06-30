@@ -143,23 +143,57 @@ function parseUnitLine(d: string): string | null {
 }
 
 /**
- * Normalise any sub-variant label in col C to a code-safe slug.
- * The MoRTH SDB uses many notations: "(ii)", "II", "B", "(A)", "Case-II", "New" …
- * ANY non-empty col C on an item-boundary row signals a sub-variant.
+ * Normalise a col C sub-variant marker to a code-safe slug.
  *
- * Case is PRESERVED so that lowercase "(i)"→"i" stays distinct from uppercase "I",
- * reducing (but not eliminating) collisions from 3-level nesting.
+ * Only known variant notation patterns are recognised.  Any other non-empty
+ * col C value (e.g. "Note", "Ref.", free-text) returns '' so the row is NOT
+ * treated as an item boundary.  Case is preserved so lowercase "(i)"→"i"
+ * stays distinct from uppercase "I", reducing collisions in 3-level nesting.
+ *
+ * Recognised patterns in the MoRTH SDB:
+ *   "(i)" / "(ii)" / "(iii)" … — parenthesised Roman numerals (level-1)
+ *   "I" / "II" / "III" / "IV" / "V" … — bare uppercase Roman (level-2)
+ *   "A" / "B" / "C" … "H" — single uppercase letter (level-3)
+ *   "(A)" / "(b)" — parenthesised single letter
+ *   "Case-II" / "Case - II" — specific named-case variants
+ *   "New" — renewal-rate variant
  */
 function extractVariant(colC: string): string {
   const s = colC.trim();
   if (!s) return '';
-  // Remove parentheses, preserve case, collapse whitespace/dashes to single dash
-  return s
-    .replace(/[()]/g, '')
-    .trim()
-    .replace(/[\s\-]+/g, '-')
-    .replace(/[^\w\-]/g, '')
-    .replace(/-+/g, '-');
+
+  // Parenthesised Roman numeral: "(i)", "(ii)", "(iii)" …
+  if (/^\([ivxlc]+\)$/i.test(s)) {
+    return s.replace(/[()]/g, '');
+  }
+
+  // Parenthesised single letter: "(A)", "(b)" …
+  if (/^\([a-zA-Z]\)$/.test(s)) {
+    return s.replace(/[()]/g, '');
+  }
+
+  // Bare uppercase Roman numeral up to 8 chars: I, II, III, IV, V, VI …
+  if (/^[IVXLC]{1,8}$/.test(s)) {
+    return s;
+  }
+
+  // Single uppercase letter: A–H (the book never goes beyond H in this usage)
+  if (/^[A-H]$/.test(s)) {
+    return s;
+  }
+
+  // "Case-II" / "Case - II"
+  if (/^Case\s*[-–]\s*[IVXLC]+$/i.test(s)) {
+    return s.replace(/\s+/g, '').replace(/[-–]/g, '-');
+  }
+
+  // "New" keyword used in ch-11
+  if (/^New$/i.test(s)) {
+    return 'New';
+  }
+
+  // Anything else (e.g. "Note", free text) → NOT a variant marker
+  return '';
 }
 
 function skillTier(designation: string): string {
@@ -235,6 +269,11 @@ function parseChapterSheet(
     const colF = row[5];
     const colI = cell(row, 8);
 
+    // ── Skip "Note" rows FIRST (col C = "Note" / "Notes") ─────────────────
+    // This must run before variant detection so "Note" in col C is never
+    // mistaken for a sub-variant marker.
+    if (/^notes?$/i.test(colC)) continue;
+
     // ── Detect item / sub-variant boundaries ──────────────────────────────
 
     const isCode = /^\d+\.?\d*[a-z]?$/.test(colA);
@@ -264,9 +303,6 @@ function parseChapterSheet(
       if (lastBaseUnit && current) current.unit = lastBaseUnit;
       continue;
     }
-
-    // ── Skip "Note" rows (col C = "Note") ─────────────────────────────────
-    if (/^note$/i.test(cell(row, 2))) continue;
 
     // ── Process within current item ────────────────────────────────────────
     if (!current) continue;
@@ -455,11 +491,17 @@ async function upsertParsedItems(
 
 /**
  * Detect whether a workbook is the official MoRTH chapter-per-sheet format.
- * Returns true when sheets named "1" through at least "5" are present.
+ * Returns true when at least 12 of the 16 chapter sheets ("1"–"16") are
+ * present.  Checking 12/16 avoids false positives on non-MoRTH uploads while
+ * tolerating minor sheet-naming variations in reissued editions.
  */
 export function isMorthFormat(wb: XLSX.WorkBook): boolean {
   const names = new Set(wb.SheetNames);
-  return ['1', '2', '3', '4', '5'].every(n => names.has(n));
+  let count = 0;
+  for (let n = 1; n <= 16; n++) {
+    if (names.has(String(n))) count++;
+  }
+  return count >= 12;
 }
 
 /**
