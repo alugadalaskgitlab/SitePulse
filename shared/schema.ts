@@ -2389,6 +2389,9 @@ export const boqItems = pgTable("boq_items", {
   // Row number from the BOQ Excel import; stored for exact P1 matching in
   // structure schedule import (boq_excel_row + item_code + boq_sub_item).
   excelRow: integer("excel_row"),
+  // True when auto-mapper detected multiple distinct material layers in the description.
+  // Composite items are mapped per-component via snl_composite_components.
+  isComposite: boolean("is_composite").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
@@ -2602,7 +2605,7 @@ export const insertBoqMixTemplateLinkSchema = createInsertSchema(boqMixTemplateL
 export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSchema>;
 
 // Composite types for API responses
-export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null };
+export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null; isComposite?: boolean | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null; barCount: number };
 export type WorkProgramBarWithItem = WorkProgramBar & {
@@ -2775,6 +2778,26 @@ export const snlBoqMappings = pgTable("snl_boq_mappings", {
   confidenceScore: real("confidence_score"),
   notes: text("notes"),
 });
+
+// Per-component SNL mapping rows for composite BOQ items.
+// A composite item (isComposite=true) maps each detected layer/material to its own SNL norm.
+// Recipes are merged from all confirmed components when the BOQ item reaches "mapped" status.
+export const snlCompositeComponents = pgTable("snl_composite_components", {
+  id: serial("id").primaryKey(),
+  boqItemId: integer("boq_item_id").notNull().references(() => boqItems.id, { onDelete: "cascade" }),
+  componentIndex: integer("component_index").notNull().default(0),
+  componentTag: text("component_tag").notNull(),          // BC, PRIME_COAT, PCC_M15, etc.
+  componentDescription: text("component_description").notNull(), // extracted phrase
+  snlItemId: integer("snl_item_id").references(() => snlItems.id, { onDelete: "set null" }),
+  confidenceScore: real("confidence_score"),
+  status: text("status").notNull().default("unmapped"),   // unmapped | needs_review | mapped
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  boqItemIdx: index("snl_composite_boq_item_idx").on(t.boqItemId),
+}));
+export type SnlCompositeComponent = typeof snlCompositeComponents.$inferSelect;
+export const insertSnlCompositeComponentSchema = createInsertSchema(snlCompositeComponents).omit({ id: true, createdAt: true });
 
 export const snlMixOverrides = pgTable("snl_mix_overrides", {
   id: serial("id").primaryKey(),

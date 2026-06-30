@@ -240,6 +240,7 @@ import {
   boqItemMaterials,
   boqProgramSettings,
   boqMixTemplateLinks,
+  snlCompositeComponents,
   equipmentMaster,
   sites,
   planningEquipmentTypes,
@@ -1274,6 +1275,12 @@ export interface IStorage {
   // Clear all auto-applied recipes + snlBoqMappings rows for every non-manually-mapped
   // BOQ item in a project (used before Re-map All so stale data doesn't pollute BOM).
   clearAllBoqProjectRecipes(projectId: number): Promise<void>;
+  // Composite BOQ item component mapping
+  getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; confidenceScore: number | null; status: string; notes: string | null }>>;
+  upsertCompositeComponents(boqItemId: number, components: Array<{ componentIndex: number; componentTag: string; componentDescription: string; snlItemId?: number | null; confidenceScore?: number | null; status?: string; notes?: string | null }>): Promise<void>;
+  applyCompositeComponentMap(componentId: number, snlItemId: number, mappedBy: string): Promise<void>;
+  applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string): Promise<boolean>;
+  clearCompositeComponents(boqItemId: number): Promise<void>;
   // Task #1186 — BOQ planning include/exclude flag
   backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }>;
   updateBoqItemPlanningInclude(id: number, includedInPlanning: boolean): Promise<void>;
@@ -19986,6 +19993,7 @@ export class DatabaseStorage implements IStorage {
         snlItemCode: snlItems.itemCode,
         snlItemDescription: snlItems.description,
         snlConfidence: snlBoqMappings.confidenceScore,
+        isComposite: boqItems.isComposite,
       })
       .from(boqItems)
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
@@ -20005,6 +20013,7 @@ export class DatabaseStorage implements IStorage {
       snlConfidence: r.snlConfidence ?? null,
       includedInPlanning: r.includedInPlanning ?? true,
       planningWorkType: (r as any).planningWorkType ?? "road",
+      isComposite: (r as any).isComposite ?? false,
     }));
   }
 
@@ -21225,6 +21234,167 @@ export class DatabaseStorage implements IStorage {
         .set({ mappingStatus: "unmapped" })
         .where(inArray(boqItems.id, clearIds));
     });
+  }
+
+  // ─── Composite BOQ Item component methods ────────────────────────────────────
+
+  async getCompositeComponents(boqItemId: number): Promise<Array<{ id: number; componentIndex: number; componentTag: string; componentDescription: string; snlItemId: number | null; snlItemCode: string | null; snlItemDescription: string | null; confidenceScore: number | null; status: string; notes: string | null }>> {
+    const rows = await db
+      .select({
+        id: snlCompositeComponents.id,
+        componentIndex: snlCompositeComponents.componentIndex,
+        componentTag: snlCompositeComponents.componentTag,
+        componentDescription: snlCompositeComponents.componentDescription,
+        snlItemId: snlCompositeComponents.snlItemId,
+        snlItemCode: snlItems.itemCode,
+        snlItemDescription: snlItems.description,
+        confidenceScore: snlCompositeComponents.confidenceScore,
+        status: snlCompositeComponents.status,
+        notes: snlCompositeComponents.notes,
+      })
+      .from(snlCompositeComponents)
+      .leftJoin(snlItems, eq(snlItems.id, snlCompositeComponents.snlItemId))
+      .where(eq(snlCompositeComponents.boqItemId, boqItemId))
+      .orderBy(snlCompositeComponents.componentIndex);
+    return rows.map(r => ({
+      ...r,
+      snlItemCode: r.snlItemCode ?? null,
+      snlItemDescription: r.snlItemDescription ?? null,
+    }));
+  }
+
+  async upsertCompositeComponents(
+    boqItemId: number,
+    components: Array<{ componentIndex: number; componentTag: string; componentDescription: string; snlItemId?: number | null; confidenceScore?: number | null; status?: string; notes?: string | null }>,
+  ): Promise<void> {
+    // Replace all existing auto-detected rows for this item, then insert fresh ones.
+    await db.delete(snlCompositeComponents).where(eq(snlCompositeComponents.boqItemId, boqItemId));
+    if (components.length === 0) return;
+    await db.insert(snlCompositeComponents).values(
+      components.map(c => ({
+        boqItemId,
+        componentIndex: c.componentIndex,
+        componentTag: c.componentTag,
+        componentDescription: c.componentDescription,
+        snlItemId: c.snlItemId ?? null,
+        confidenceScore: c.confidenceScore ?? null,
+        status: c.status ?? "unmapped",
+        notes: c.notes ?? null,
+      }))
+    );
+  }
+
+  async applyCompositeComponentMap(componentId: number, snlItemId: number, mappedBy: string): Promise<void> {
+    await db
+      .update(snlCompositeComponents)
+      .set({ snlItemId, status: "mapped", notes: `Confirmed by ${mappedBy}` })
+      .where(eq(snlCompositeComponents.id, componentId));
+  }
+
+  /**
+   * When all components for a composite BOQ item are mapped, merge all their
+   * SNL norm resources (equipment + labour + materials) additively into the item's
+   * recipe tables and mark the BOQ item as "mapped".
+   *
+   * Returns true when all components are done (and recipes were applied),
+   * false when some components are still unmapped/needs_review.
+   */
+  async applyCompositeRecipesIfComplete(boqItemId: number, appliedBy: string): Promise<boolean> {
+    const components = await this.getCompositeComponents(boqItemId);
+    if (components.length === 0) return false;
+    const allMapped = components.every(c => c.status === "mapped" && c.snlItemId != null);
+    if (!allMapped) return false;
+
+    // Gather all SNL norms for the confirmed components.
+    const allEquip: Array<{ sortBase: number; equipmentType: string; spec: string | null; derivedPerUnit: number; projectCategory: string }> = [];
+    const allLabour: Array<{ sortBase: number; designation: string; derivedPerUnit: number; projectCategory: string }> = [];
+    const allMaterials: Array<{ sortBase: number; materialName: string; unit: string; derivedPerUnit: number; gradingVariant: string | null }> = [];
+
+    for (const comp of components) {
+      const itemFull = await this.getSnlItem(comp.snlItemId!);
+      if (!itemFull) continue;
+      const base = comp.componentIndex * 1000;
+
+      for (const e of itemFull.equipment) {
+        if (e.projectCategory === "MEDIUM" || e.projectCategory === "ALL") {
+          allEquip.push({ sortBase: base + (e.sortOrder ?? 0), equipmentType: e.equipmentType, spec: e.equipmentSpec ?? null, derivedPerUnit: e.derivedPerUnit ?? 0, projectCategory: e.projectCategory });
+        }
+      }
+      for (const l of itemFull.labour) {
+        if (l.projectCategory === "MEDIUM" || l.projectCategory === "ALL") {
+          allLabour.push({ sortBase: base + (l.sortOrder ?? 0), designation: l.designation, derivedPerUnit: l.derivedPerUnit ?? 0, projectCategory: l.projectCategory });
+        }
+      }
+      for (const m of itemFull.materials.filter(m => !m.gradingVariant)) {
+        allMaterials.push({ sortBase: base + (m.sortOrder ?? 0), materialName: m.materialName, unit: m.unit, derivedPerUnit: m.derivedPerUnit ?? 0, gradingVariant: null });
+      }
+    }
+
+    const planTypes = await db
+      .select({ id: planningEquipmentTypes.id, name: planningEquipmentTypes.name })
+      .from(planningEquipmentTypes)
+      .where(eq(planningEquipmentTypes.isActive, true));
+
+    const matchPlanTypeId = (equipmentType: string): number | null => {
+      const et = equipmentType.trim().toLowerCase();
+      const match = planTypes.find(pt =>
+        pt.name.trim().toLowerCase() === et ||
+        et.includes(pt.name.trim().toLowerCase()) ||
+        pt.name.trim().toLowerCase().includes(et),
+      );
+      return match?.id ?? null;
+    };
+
+    await db.transaction(async (tx) => {
+      await tx.delete(boqItemEquipment).where(eq(boqItemEquipment.boqItemId, boqItemId));
+      if (allEquip.length) {
+        await tx.insert(boqItemEquipment).values(
+          allEquip.map(e => ({
+            boqItemId,
+            sortOrder: e.sortBase,
+            equipmentName: e.equipmentType + (e.spec ? ` (${e.spec})` : ""),
+            qtyPerBoqUnit: e.derivedPerUnit,
+            count: 1,
+            planningEquipmentTypeId: matchPlanTypeId(e.equipmentType),
+            notes: `Composite SNL [${e.projectCategory}]`,
+          }))
+        );
+      }
+      await tx.delete(boqItemLabour).where(eq(boqItemLabour.boqItemId, boqItemId));
+      if (allLabour.length) {
+        await tx.insert(boqItemLabour).values(
+          allLabour.map(l => ({
+            boqItemId,
+            sortOrder: l.sortBase,
+            designation: l.designation,
+            qtyPerBoqUnit: l.derivedPerUnit,
+            count: 1,
+            notes: `Composite SNL [${l.projectCategory}]`,
+          }))
+        );
+      }
+      await tx.delete(boqItemMaterials).where(eq(boqItemMaterials.boqItemId, boqItemId));
+      if (allMaterials.length) {
+        await tx.insert(boqItemMaterials).values(
+          allMaterials.map(m => ({
+            boqItemId,
+            sortOrder: m.sortBase,
+            materialName: m.materialName,
+            uom: m.unit,
+            qtyPerBoqUnit: m.derivedPerUnit,
+            isAuto: true,
+            notes: `Composite SNL`,
+          }))
+        );
+      }
+      await tx.update(boqItems).set({ mappingStatus: "mapped" }).where(eq(boqItems.id, boqItemId));
+    });
+
+    return true;
+  }
+
+  async clearCompositeComponents(boqItemId: number): Promise<void> {
+    await db.delete(snlCompositeComponents).where(eq(snlCompositeComponents.boqItemId, boqItemId));
   }
 
   async backfillBoqPlanningInclude(): Promise<{ set: number; excluded: number }> {

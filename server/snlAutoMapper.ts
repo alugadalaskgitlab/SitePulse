@@ -19,7 +19,7 @@
  */
 
 import { db } from "./db";
-import { boqItems, snlItems, snlBoqMappings } from "@shared/schema";
+import { boqItems, snlItems, snlBoqMappings, snlCompositeComponents } from "@shared/schema";
 import { eq, and, inArray, notInArray } from "drizzle-orm";
 import { storage } from "./storage";
 
@@ -192,6 +192,7 @@ function classifyBoqItemForSnl(description: string): string | null {
   if (/\bsdbc\b|semi\s*dense/.test(d)) return "SDBC";
   if (/\bbc\b|bituminous\s*concrete/.test(d)) return "BC";
   if (/\bbm\b|bituminous\s*macadam/.test(d)) return "BM";
+  if (/mastic\s*asphalt/.test(d)) return "MASTIC_ASPHALT";
   if (/prime\s*coat/.test(d)) return "PRIME_COAT";
   if (/tack\s*coat/.test(d)) return "TACK_COAT";
 
@@ -248,6 +249,7 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
   CRASH_BARRIER:        ["crash barrier", "metal beam"],
   JOINTS_SEALANTS:      ["expansion joint", "joint sealant"],
   BEARINGS:             ["elastomeric bearing", "bearing"],
+  MASTIC_ASPHALT:       ["mastic asphalt", "mastic"],
   PIPE_CULVERT:         ["hume pipe", "pipe culvert", "np3", "np4", "hdpe pipe"],
   // Drainage sub-types
   ENERGY_DISSIPATION:   ["energy dissipation", "energy dissipator", "dissipation chamber"],
@@ -304,6 +306,82 @@ function normaliseBoqDescriptionKey(desc: string, unit?: string | null): string 
     .replace(/[0-9]+(\.[0-9]+)?/g, "#")
     .replace(/\s+/g, " ")
     .trim()}|${String(unit ?? "").toLowerCase()}`;
+}
+
+// ─── Composite item detection ─────────────────────────────────────────────────
+/**
+ * Patterns used to detect distinct material/layer components inside a single
+ * BOQ description. Each entry covers one road-construction material type.
+ * Order matters: more specific patterns are listed before broader ones.
+ */
+interface ComponentDraft { tag: string; description: string; }
+
+const COMPOSITE_PATTERNS: Array<{ tag: string; detect: RegExp; extract: RegExp }> = [
+  { tag: "GSB",           detect: /granular\s*sub[-\s]*base|\bgsb\b/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?(?:granular\s*sub[-\s]*base|gsb)(?:\s*layer)?/i },
+  { tag: "WMM",           detect: /wet\s*mix\s*macadam|\bwmm\b/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?(?:wet\s*mix\s*macadam|wmm)/i },
+  { tag: "DBM",           detect: /dense\s*bituminous\s*macadam|\bdbm\b/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?(?:dense\s*bituminous\s*macadam|dbm)/i },
+  { tag: "SDBC",          detect: /semi\s*dense\s*bituminous|\bsdbc\b/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?(?:semi\s*dense\s*bituminous\s*concrete|sdbc)/i },
+  // BC must come before generic "bituminous" so "bituminous concrete" doesn't double-match
+  { tag: "BC",            detect: /bituminous\s*concrete|\bbc\b(?!\s*pipe|\s*class)/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?bituminous\s*concrete/i },
+  { tag: "MASTIC_ASPHALT",detect: /mastic\s*asphalt/i,
+    extract: /(?:\d+\s*mm\s*(?:thick\s*)?(?:layer\s*of\s*)?)?mastic\s*asphalt/i },
+  { tag: "BM",            detect: /bituminous\s*macadam|\bbm\b/i,
+    extract: /(?:\d+\s*mm\s*thick\s*)?bituminous\s*macadam/i },
+  { tag: "PRIME_COAT",    detect: /prime\s*coat/i,
+    extract: /prime\s*coat/i },
+  { tag: "TACK_COAT",     detect: /tack\s*coat/i,
+    extract: /tack\s*coat/i },
+  // Concrete — grade variants
+  { tag: "PCC",           detect: /\bpcc\b|plain\s*cement\s*concrete|plain\s*concrete|(?:\bm[-\s]?\d+\s*concrete)/i,
+    extract: /(?:plain\s*cement\s*concrete|pcc|m[-\s]?\d+\s*concrete)(?:\s*(?:grade\s*)?m[-\s]?\d+)?/i },
+  { tag: "RCC",           detect: /\brcc\b|reinforced\s*cement\s*concrete/i,
+    extract: /reinforced\s*cement\s*concrete|rcc/i },
+  { tag: "STONE_PITCHING",detect: /stone\s*(?:pitching|spalls|apron)|flat\s*stone|boulder\s*pitching/i,
+    extract: /(?:flat\s*stone|boulder|stone)\s*(?:pitching|spalls|apron)/i },
+  { tag: "FILTER_MEDIA",  detect: /filter\s*media/i,
+    extract: /filter\s*media/i },
+  { tag: "REINFORCEMENT_STEEL", detect: /\bhysd\b|\btmt\b|\breinforcement\b/i,
+    extract: /(?:fe\s*\d+\s*)?(?:hysd|tmt|reinforcement\s*steel|reinforcing\s*steel)/i },
+  { tag: "PIPE_CULVERT",  detect: /\bhdpe\b|\bhume\s*pipe\b|\bnp3\b|\bnp4\b/i,
+    extract: /(?:hdpe|hume|np[34])\s*pipe/i },
+];
+
+/**
+ * Scan a BOQ description for multiple distinct material/layer components.
+ * Returns an array of ComponentDraft (≥2 items) when composites are found,
+ * or null when the description is a single-material item.
+ *
+ * Detection is conservative: both components must match COMPOSITE_PATTERNS.
+ * This avoids false positives on plain descriptions.
+ */
+function detectCompositeComponents(description: string): ComponentDraft[] | null {
+  const d = description.toLowerCase();
+  const found: ComponentDraft[] = [];
+  const seenTags = new Set<string>();
+
+  for (const { tag, detect, extract } of COMPOSITE_PATTERNS) {
+    if (!detect.test(d)) continue;
+
+    let finalTag = tag;
+    // Grade-specific PCC/RCC
+    if (tag === "PCC" || tag === "RCC") {
+      const gm = d.match(/\bm[-\s]?([0-9]{2,3})\b/);
+      if (gm) finalTag = `${tag}_M${gm[1]}`;
+    }
+    if (seenTags.has(finalTag)) continue;
+    seenTags.add(finalTag);
+
+    const m = extract.exec(description);
+    const phrase = m ? m[0].trim() : finalTag.toLowerCase().replace(/_/g, " ");
+    found.push({ tag: finalTag, description: phrase });
+  }
+
+  return found.length >= 2 ? found : null;
 }
 
 // (Legacy weighted scorer removed — replaced by IDF-weighted cosine + unit/margin gate.)
@@ -377,6 +455,36 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       continue;
     }
     try {
+      // ── Composite detection (highest priority, before any single-SNL matching) ──
+      // When ≥2 distinct material layers are detected in the description, break the
+      // item into component rows and skip the normal single-SNL mapping path entirely.
+      const compositeDrafts = detectCompositeComponents(boqRow.description);
+      if (compositeDrafts && compositeDrafts.length >= 2) {
+        // Attempt to rule-match each component to an SNL item individually.
+        const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
+        const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
+
+        const componentRows = compositeDrafts.map((draft, idx) => {
+          const ruleResult = ruleMatchSnl(draft.tag, rulePool);
+          return {
+            componentIndex: idx,
+            componentTag: draft.tag,
+            componentDescription: draft.description,
+            snlItemId: ruleResult ? ruleResult.snlItemId : null,
+            confidenceScore: ruleResult ? ruleResult.confidence : null,
+            status: ruleResult ? "needs_review" : "unmapped",
+            notes: ruleResult ? `Auto-suggested via rule: ${draft.tag}` : null,
+          };
+        });
+
+        await storage.upsertCompositeComponents(boqRow.id, componentRows);
+        await db
+          .update(boqItems)
+          .set({ mappingStatus: "needs_review", isComposite: true })
+          .where(eq(boqItems.id, boqRow.id));
+        continue; // skip single-SNL mapping for this row
+      }
+
       // ── Rule classification (used by both scope guard and rule-match) ─────
       const ruleTag = classifyBoqItemForSnl(boqRow.description);
 

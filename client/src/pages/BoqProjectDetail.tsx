@@ -5,7 +5,7 @@ import {
   ChevronRight, Upload, Pencil, ChevronDown, ChevronUp,
   Plus, Check, CheckCheck, Trash2, Loader2, FileSpreadsheet, AlertCircle,
   GitBranch, CalendarDays, Package, Settings2, BookOpen,
-  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench,
+  Link2, Link2Off, Clock, RefreshCw, Search, CheckCircle2, X, Sparkles, Zap, Wrench, Layers,
 } from "lucide-react";
 import { BOQ_WORK_CATEGORIES, getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -686,6 +686,246 @@ type SnlSearchResult = {
   sourceCode: string;
 };
 
+type CompositeComponent = {
+  id: number;
+  componentIndex: number;
+  componentTag: string;
+  componentDescription: string;
+  snlItemId: number | null;
+  snlItemCode: string | null;
+  snlItemDescription: string | null;
+  confidenceScore: number | null;
+  status: string;
+  notes: string | null;
+};
+
+function CompositeReviewCard({
+  item,
+  projectId,
+  onMapped,
+}: {
+  item: BoqItemWithCategory;
+  projectId: number;
+  onMapped: () => void;
+}) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(true);
+  const [searchCompId, setSearchCompId] = useState<number | null>(null);
+  const [searchQ, setSearchQ] = useState("");
+  const [selectedSnlId, setSelectedSnlId] = useState<number | null>(null);
+
+  const { data: components = [], refetch: refetchComponents } = useQuery<CompositeComponent[]>({
+    queryKey: ["/api/boq/items", item.id, "components"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/items/${item.id}/components`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load components");
+      return res.json();
+    },
+    enabled: expanded,
+  });
+
+  const searchingComp = components.find(c => c.id === searchCompId);
+  const { data: searchResults = [], isFetching: searching } = useQuery<SnlSearchResult[]>({
+    queryKey: ["/api/snl/search", searchQ, item.workCategory],
+    queryFn: async () => {
+      if (!searchQ.trim()) return [];
+      const params = new URLSearchParams({ q: searchQ });
+      if (item.workCategory) params.set("category", item.workCategory);
+      const res = await fetch(`/api/snl/search?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Search failed");
+      return res.json();
+    },
+    enabled: searchCompId != null && searchQ.length >= 2,
+  });
+
+  const mapMutation = useMutation({
+    mutationFn: ({ compId, snlItemId }: { compId: number; snlItemId: number }) =>
+      apiRequest("POST", `/api/boq/items/${item.id}/components/${compId}/map`, { snlItemId }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      if (data.allDone) {
+        toast({ title: "All components confirmed — recipe applied!" });
+        queryClient.invalidateQueries({ queryKey: ["/api/boq/items"] });
+        onMapped();
+      } else {
+        toast({ title: "Component confirmed" });
+        refetchComponents();
+      }
+      setSearchCompId(null);
+      setSearchQ("");
+      setSelectedSnlId(null);
+    },
+    onError: () => toast({ title: "Failed to confirm component", variant: "destructive" }),
+  });
+
+  const allMapped = components.length > 0 && components.every(c => c.status === "mapped");
+  const mappedCount = components.filter(c => c.status === "mapped").length;
+
+  return (
+    <div className="border rounded-md border-purple-200 bg-purple-50/40" data-testid={`card-composite-item-${item.id}`}>
+      {/* Header */}
+      <button
+        className="w-full flex items-start gap-2 p-2 text-left"
+        onClick={() => setExpanded(e => !e)}
+        data-testid={`toggle-composite-${item.id}`}
+      >
+        <Layers className="w-3.5 h-3.5 text-purple-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-mono text-slate-400 leading-tight">{item.itemCode ?? "—"} · boq#{item.id}</p>
+          <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{item.description}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">
+              COMPOSITE
+            </span>
+            {components.length > 0 && (
+              <span className="text-[11px] text-slate-500">
+                {mappedCount}/{components.length} components confirmed
+              </span>
+            )}
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="w-3 h-3 text-slate-400 flex-shrink-0 mt-1" /> : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0 mt-1" />}
+      </button>
+
+      {/* Expanded component list */}
+      {expanded && (
+        <div className="border-t border-purple-100 px-2 pb-2 space-y-1.5 pt-1.5">
+          {components.length === 0 && (
+            <p className="text-[12px] text-slate-400 text-center py-2">Loading components…</p>
+          )}
+          {components.map((comp, idx) => {
+            const conf = comp.confidenceScore ?? 0;
+            const lowConf = conf < 0.50 || !comp.snlItemId;
+            const isMapped = comp.status === "mapped";
+            return (
+              <div
+                key={comp.id}
+                className={`rounded border p-1.5 ${isMapped ? "border-emerald-200 bg-emerald-50/60" : lowConf ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
+                data-testid={`card-composite-comp-${comp.id}`}
+              >
+                <div className="flex items-start gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 leading-none mt-0.5">{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-slate-600">
+                      <span className="font-mono text-purple-700">{comp.componentTag}</span>
+                      {comp.componentDescription && (
+                        <span className="text-slate-400 font-normal ml-1">— {comp.componentDescription}</span>
+                      )}
+                    </p>
+                    {comp.snlItemCode && !isMapped && (
+                      <p className={`text-[11px] mt-0.5 ${lowConf ? "text-orange-700" : "text-amber-700"}`}>
+                        SNL: <span className="font-mono">{comp.snlItemCode}</span>
+                        <span className={`ml-1 px-1 py-0.5 rounded text-[10px] font-bold ${lowConf ? "bg-orange-100 text-orange-800" : "bg-amber-100 text-amber-800"}`}>
+                          {(conf * 100).toFixed(0)}%
+                        </span>
+                        {comp.snlItemDescription && (
+                          <span className="block text-[11px] text-slate-500 line-clamp-1 mt-0.5">{comp.snlItemDescription}</span>
+                        )}
+                      </p>
+                    )}
+                    {isMapped && comp.snlItemCode && (
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        <Check className="w-2.5 h-2.5 inline mr-0.5" />
+                        SNL: <span className="font-mono">{comp.snlItemCode}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {!isMapped && (
+                  <div className="flex items-center gap-1 mt-1.5">
+                    {comp.snlItemId && !lowConf && (
+                      <button
+                        onClick={() => mapMutation.mutate({ compId: comp.id, snlItemId: comp.snlItemId! })}
+                        disabled={mapMutation.isPending}
+                        className="flex-1 text-[11px] font-semibold px-2 py-0.5 rounded border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        data-testid={`button-confirm-comp-${comp.id}`}
+                      >
+                        <Check className="w-2.5 h-2.5 inline mr-0.5" />
+                        Confirm
+                      </button>
+                    )}
+                    {lowConf && (
+                      <span className="flex-1 text-center text-[11px] text-orange-700 px-2 py-0.5 rounded border border-orange-200 bg-orange-50">
+                        Search Required
+                      </span>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSearchCompId(comp.id);
+                        setSearchQ(comp.componentDescription || comp.componentTag);
+                        setSelectedSnlId(null);
+                      }}
+                      className="flex-1 text-[11px] px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors"
+                      data-testid={`button-search-comp-${comp.id}`}
+                    >
+                      <Search className="w-2.5 h-2.5 inline mr-0.5" />
+                      Search
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search dialog for a specific component */}
+      {searchCompId != null && searchingComp && (
+        <Dialog open onOpenChange={o => { if (!o) { setSearchCompId(null); setSearchQ(""); setSelectedSnlId(null); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-base flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-600" />
+                Find SNL for component: <span className="font-mono text-purple-700">{searchingComp.componentTag}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-[12px] text-muted-foreground">{searchingComp.componentDescription}</p>
+              <Input
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                placeholder="Search SNL items…"
+                data-testid="input-comp-search-query"
+              />
+              {searching && <p className="text-[12px] text-muted-foreground">Searching…</p>}
+              {!searching && searchResults.length === 0 && searchQ.length >= 2 && (
+                <p className="text-[12px] text-muted-foreground">No results</p>
+              )}
+              <div className="max-h-60 overflow-y-auto space-y-1">
+                {searchResults.map(r => (
+                  <button
+                    key={r.id}
+                    className={`w-full text-left px-2 py-1.5 rounded border text-[12px] transition-colors ${selectedSnlId === r.id ? "border-teal-400 bg-teal-50" : "border-slate-200 hover:bg-slate-50"}`}
+                    onClick={() => setSelectedSnlId(r.id)}
+                    data-testid={`option-comp-snl-${r.id}`}
+                  >
+                    <p className="font-semibold text-slate-700"><span className="font-mono text-teal-700">{r.itemCode}</span> — {r.shortLabel || r.description.slice(0, 50)}</p>
+                    {r.description && r.shortLabel && (
+                      <p className="text-slate-400 line-clamp-1 mt-0.5">{r.description}</p>
+                    )}
+                    <p className="text-[11px] text-slate-400">{r.sourceName} · {r.unit}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => { setSearchCompId(null); setSearchQ(""); setSelectedSnlId(null); }}>Cancel</Button>
+              <Button
+                disabled={!selectedSnlId || mapMutation.isPending}
+                onClick={() => { if (selectedSnlId) mapMutation.mutate({ compId: searchCompId, snlItemId: selectedSnlId }); }}
+                data-testid="button-apply-comp-snl"
+              >
+                {mapMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Apply
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 function SnlMappingPanel({
   projectId,
   items,
@@ -855,6 +1095,18 @@ function SnlMappingPanel({
               </div>
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
                 {needsReview.map(item => {
+                  // Composite items get their own expandable sub-card per detected layer
+                  if (item.isComposite) {
+                    return (
+                      <CompositeReviewCard
+                        key={item.id}
+                        item={item}
+                        projectId={projectId}
+                        onMapped={onMapped}
+                      />
+                    );
+                  }
+                  // Standard single-SNL review card
                   const conf = item.snlConfidence ?? 0;
                   const lowConf = conf < 0.50;
                   return (

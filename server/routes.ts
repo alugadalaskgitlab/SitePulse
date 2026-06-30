@@ -11533,6 +11533,37 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Composite BOQ component endpoints ───────────────────────────────────────
+
+  app.get("/api/boq/items/:id/components", async (req, res) => {
+    try {
+      const boqItemId = parseInt(req.params.id);
+      if (isNaN(boqItemId)) return res.status(400).json({ error: "Invalid item id" });
+      const components = await storage.getCompositeComponents(boqItemId);
+      res.json(components);
+    } catch (err) {
+      console.error("GET /api/boq/items/:id/components:", err);
+      res.status(500).json({ error: "Failed to fetch components" });
+    }
+  });
+
+  app.post("/api/boq/items/:id/components/:compId/map", async (req, res) => {
+    try {
+      const boqItemId = parseInt(req.params.id);
+      const componentId = parseInt(req.params.compId);
+      if (isNaN(boqItemId) || isNaN(componentId)) return res.status(400).json({ error: "Invalid ids" });
+      const { snlItemId } = req.body;
+      if (!snlItemId || typeof snlItemId !== "number") return res.status(400).json({ error: "snlItemId required" });
+      const user = (req as any).user?.username ?? "user";
+      await storage.applyCompositeComponentMap(componentId, snlItemId, user);
+      const allDone = await storage.applyCompositeRecipesIfComplete(boqItemId, user);
+      res.json({ allDone });
+    } catch (err) {
+      console.error("POST /api/boq/items/:id/components/:compId/map:", err);
+      res.status(500).json({ error: "Failed to map component" });
+    }
+  });
+
   app.post("/api/snl/seed", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
