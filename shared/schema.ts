@@ -2602,7 +2602,7 @@ export const insertBoqMixTemplateLinkSchema = createInsertSchema(boqMixTemplateL
 export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSchema>;
 
 // Composite types for API responses
-export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null };
+export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null; barCount: number };
 export type WorkProgramBarWithItem = WorkProgramBar & {

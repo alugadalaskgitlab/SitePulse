@@ -15,7 +15,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings } from "@shared/schema";
+import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNotificationSchema, insertMaterialIssueSchema, insertMaterialReturnSchema, insertMaterialOpeningStockSchema, insertSiteMaterialTripSchema, insertSiteSchema, insertBitumenDipReadingSchema, insertLdoFlowReadingSchema, insertLdoDipReadingSchema, insertPersonnelSchema, createPurchaseIndentRequestSchema, createDieselRequirementRequestSchema, createVendorBillRequestSchema, insertPlantSettingsSchema, insertMaterialReceiptSchema, LABOUR_CATEGORIES, LABOUR_GENDERS, insertRmcMixDesignSchema, insertRmcBatchRecordSchema, insertRmcCubeTestSchema, insertRmcRawMaterialReceiptSchema, dieselRequirements as dieselRequirementsTable, purchaseIndents as purchaseIndentsTable, sites as sitesTable, createIrnRequestSchema, storesVerifyIrnSchema, approveIrnSchema, recordIrnIssueSchema, truckDispatches as truckDispatchesTable, parties as partiesTable, mixTemplates as mixTemplatesTable, plantMaterials, stockBalances, internalRequisitions, internalRequisitionItems, boqItems, snlBoqMappings, snlItems } from "@shared/schema";
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
@@ -11473,7 +11473,10 @@ export async function registerRoutes(
     try {
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
+      // Minimum confidence to bulk-confirm. Cross-sector matches are always skipped
+      // regardless of confidence — they must be manually confirmed after inspection.
       const CONFIRM_THRESHOLD = 0.55;
+      const ROAD_SECTORS = new Set(["ROAD", "STRUCTURE", "STRUCTURES", "BRIDGE", "BRIDGES"]);
 
       // Fetch all needs_review items for this project
       const reviewItems = await db
@@ -11484,13 +11487,16 @@ export async function registerRoutes(
       if (reviewItems.length === 0) return res.json({ confirmed: 0, skipped: 0 });
 
       const ids = reviewItems.map(i => i.id);
+      // Join snlItems to get the sector so we can skip cross-sector suggestions
       const mappings = await db
         .select({
           boqItemId: snlBoqMappings.boqItemId,
           snlItemId: snlBoqMappings.snlItemId,
           confidenceScore: snlBoqMappings.confidenceScore,
+          snlSector: snlItems.sector,
         })
         .from(snlBoqMappings)
+        .leftJoin(snlItems, eq(snlItems.id, snlBoqMappings.snlItemId))
         .where(drizzleInArray(snlBoqMappings.boqItemId, ids));
 
       const mappingMap = new Map(mappings.map(m => [m.boqItemId, m]));
@@ -11501,6 +11507,12 @@ export async function registerRoutes(
       for (const item of reviewItems) {
         const mapping = mappingMap.get(item.id);
         if (!mapping || mapping.confidenceScore == null || mapping.confidenceScore < CONFIRM_THRESHOLD) {
+          skipped++;
+          continue;
+        }
+        // Skip cross-sector suggestions — they need manual review
+        const sector = (mapping.snlSector ?? "").trim().toUpperCase();
+        if (sector && !ROAD_SECTORS.has(sector)) {
           skipped++;
           continue;
         }

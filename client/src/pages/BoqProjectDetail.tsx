@@ -854,25 +854,36 @@ function SnlMappingPanel({
                 </button>
               </div>
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                {needsReview.map(item => (
-                  <div key={item.id} className="border border-amber-200 rounded-md bg-amber-50/50 p-2"
+                {needsReview.map(item => {
+                  const conf = item.snlConfidence ?? 0;
+                  const lowConf = conf < 0.50;
+                  return (
+                  <div key={item.id} className={`border rounded-md p-2 ${lowConf ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
                     data-testid={`card-review-item-${item.id}`}>
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-mono text-slate-500">{item.itemCode ?? "—"}</p>
-                        <p className="text-sm text-slate-700 line-clamp-2" title={item.description}>{(item as any).itemName || item.description.slice(0, 40)}</p>
+                        {/* BOQ identity — show itemCode + full description so the exact row is clear */}
+                        <p className="text-[11px] font-mono text-slate-400 leading-tight">{item.itemCode ?? "—"} · boq#{item.id}</p>
+                        <p className="text-[12px] text-slate-700 leading-snug line-clamp-2 mt-0.5" title={item.description}>{item.description}</p>
                         {item.snlItemCode && (
-                          <p className="text-[12px] text-amber-700 mt-0.5">
-                            Suggestion: <span className="font-mono font-semibold">{item.snlItemCode}</span>
-                            {item.snlConfidence != null && (
-                              <span className="ml-1 text-muted-foreground">({(item.snlConfidence * 100).toFixed(0)}%)</span>
+                          <div className="mt-1">
+                            <p className={`text-[11px] font-semibold ${lowConf ? "text-orange-700" : "text-amber-700"}`}>
+                              SNL: <span className="font-mono">{item.snlItemCode}</span>
+                              <span className={`ml-1.5 px-1 py-0.5 rounded text-[10px] font-bold ${lowConf ? "bg-orange-100 text-orange-800" : "bg-amber-100 text-amber-800"}`}>
+                                {(conf * 100).toFixed(0)}%{lowConf ? " — low" : ""}
+                              </span>
+                            </p>
+                            {item.snlItemDescription && (
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5" title={item.snlItemDescription}>
+                                {item.snlItemDescription}
+                              </p>
                             )}
-                          </p>
+                          </div>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 mt-2">
-                      {item.snlItemId && (
+                      {item.snlItemId && !lowConf && (
                         <button
                           onClick={() => applyMutation.mutate({
                             boqItemId: item.id,
@@ -887,6 +898,11 @@ function SnlMappingPanel({
                           Confirm
                         </button>
                       )}
+                      {lowConf && (
+                        <span className="flex-1 text-center text-[11px] text-orange-700 font-semibold px-2 py-1 rounded border border-orange-200 bg-orange-50">
+                          Search Required
+                        </span>
+                      )}
                       <button
                         onClick={() => { setSearchItem(item); setSearchQ(item.description.slice(0, 30)); }}
                         className="flex-1 text-[12px] px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors"
@@ -897,7 +913,8 @@ function SnlMappingPanel({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

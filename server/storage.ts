@@ -19984,6 +19984,7 @@ export class DatabaseStorage implements IStorage {
         categoryName: boqCategories.name,
         snlItemId: snlBoqMappings.snlItemId,
         snlItemCode: snlItems.itemCode,
+        snlItemDescription: snlItems.description,
         snlConfidence: snlBoqMappings.confidenceScore,
       })
       .from(boqItems)
@@ -20000,6 +20001,7 @@ export class DatabaseStorage implements IStorage {
       snlMappingStatus: r.mappingStatus ?? "unmapped",
       snlItemId: r.snlItemId ?? null,
       snlItemCode: r.snlItemCode ?? null,
+      snlItemDescription: r.snlItemDescription ?? null,
       snlConfidence: r.snlConfidence ?? null,
       includedInPlanning: r.includedInPlanning ?? true,
       planningWorkType: (r as any).planningWorkType ?? "road",

@@ -138,11 +138,27 @@ function unitsCompatible(a: string, b: string): boolean {
   return normalizeUnit(a || "") === normalizeUnit(b || "");
 }
 
-// ── Decision thresholds (calibrated on the MoRTH SDB corpus; tune after first run) ──
+// ── Decision thresholds ────────────────────────────────────────────────────────
 const CONFIDENT_FLOOR = 0.10;       // top similarity must clear this to auto-apply a recipe
 const CONFIDENT_MARGIN = 1.30;      // …and be ≥30% ahead of the 2nd-best candidate
-const SUGGEST_FLOOR = 0.04;         // below confident but worth offering for human review
+const SUGGEST_FLOOR = 0.50;         // below 50% → unmapped / search required (not needs_review)
 const UNIT_MISMATCH_PENALTY = 0.30; // multiply score when units differ (near-veto)
+
+// ── Sector compatibility ───────────────────────────────────────────────────────
+// SNL items from these sectors are considered compatible with road/structure BOQ items.
+// Items from IRRIGATION, BUILDING, ELECTRICAL, GATES_HOIST, WATER sector are cross-sector
+// and incur a near-veto penalty — they should never auto-confirm for a road BOQ project.
+const ROAD_COMPATIBLE_SECTORS = new Set(["ROAD", "STRUCTURE", "STRUCTURES", "BRIDGE", "BRIDGES"]);
+
+/**
+ * Returns a penalty multiplier for cross-sector matches.
+ * 1.0 = compatible (no penalty), 0.05 = near-veto for unrelated sectors.
+ */
+function sectorPenaltyFactor(snlSector: string | null | undefined): number {
+  if (!snlSector) return 1.0; // unknown sector → no penalty (assume compatible)
+  const s = snlSector.trim().toUpperCase();
+  return ROAD_COMPATIBLE_SECTORS.has(s) ? 1.0 : 0.05;
+}
 
 // Work categories that participate in the fuzzy-scoring auto-mapper.
 // Expanded from original 7 to include road furniture, drainage, and clearance items
@@ -174,7 +190,6 @@ function classifyBoqItemForSnl(description: string): string | null {
   if (/\bwmm\b|wet\s*mix\s*macadam|wet\s*mix/.test(d)) return "WMM";
   if (/\bdbm\b|dense\s*bituminous\s*macadam/.test(d)) return "DBM";
   if (/\bsdbc\b|semi\s*dense/.test(d)) return "SDBC";
-  // BC after DBM/SDBC so "dbm" doesn't partially match "\bbc\b" patterns
   if (/\bbc\b|bituminous\s*concrete/.test(d)) return "BC";
   if (/\bbm\b|bituminous\s*macadam/.test(d)) return "BM";
   if (/prime\s*coat/.test(d)) return "PRIME_COAT";
@@ -187,7 +202,6 @@ function classifyBoqItemForSnl(description: string): string | null {
 
   if (/\bhysd\b|\btmt\b|\breinforcement\b|reinforcing\s*steel|steel\s*reinforcement/.test(d)) return "REINFORCEMENT_STEEL";
   if (/binding\s*wire/.test(d)) return "BINDING_WIRE";
-  if (/filter\s*media/.test(d)) return "FILTER_MEDIA";
   if (/stone\s*pitching|stone\s*spalls|\bapron\b|\bboulder\b/.test(d)) return "STONE_PITCHING";
   if (/thermoplastic|road\s*marking/.test(d)) return "THERMOPLASTIC_MARKING";
   if (/kilometre\s*stone|boundary\s*stone|hectometre/.test(d)) return "ROAD_STONES";
@@ -196,6 +210,18 @@ function classifyBoqItemForSnl(description: string): string | null {
   if (/expansion\s*joint|strip\s*seal|joint\s*sealant/.test(d)) return "JOINTS_SEALANTS";
   if (/\bbearing\b|elastomeric/.test(d)) return "BEARINGS";
   if (/\bpipe\b|\bculvert\b|\bnp3\b|\bnp4\b|\bhdpe\b/.test(d)) return "PIPE_CULVERT";
+
+  // ── Drainage sub-types (specific rules first, generic last) ─────────────────
+  if (/energy\s*dissipat/.test(d)) return "ENERGY_DISSIPATION";
+  if (/chute\s*drain/.test(d)) return "CHUTE_DRAIN";
+  if (/catch\s*pit|catch\s*basin|catch\s*water/.test(d)) return "CATCH_PIT";
+  if (/kerb\s*(drain|channel|gutter)/.test(d)) return "KERB_DRAIN";
+  if (/weep\s*hole/.test(d)) return "WEEP_HOLE";
+  if (/filter\s*media|filter\s*drain|french\s*drain/.test(d)) return "FILTER_MEDIA";
+  if (/\bdrain\b|open\s*drain|roadside\s*drain|side\s*drain|v[-\s]*drain/.test(d)) return "OPEN_DRAIN";
+
+  // ── Retaining wall / structural earthwork ───────────────────────────────────
+  if (/retaining\s*wall|toe\s*wall|breast\s*wall/.test(d)) return "RETAINING_WALL";
 
   return null;
 }
@@ -223,6 +249,14 @@ const RULE_TAG_KEYWORDS: Record<string, string[]> = {
   JOINTS_SEALANTS:      ["expansion joint", "joint sealant"],
   BEARINGS:             ["elastomeric bearing", "bearing"],
   PIPE_CULVERT:         ["hume pipe", "pipe culvert", "np3", "np4", "hdpe pipe"],
+  // Drainage sub-types
+  ENERGY_DISSIPATION:   ["energy dissipation", "energy dissipator", "dissipation chamber"],
+  CHUTE_DRAIN:          ["chute drain", "chute drain lining", "chute"],
+  CATCH_PIT:            ["catch pit", "catch basin", "catch water pit"],
+  KERB_DRAIN:           ["kerb drain", "kerb channel", "kerb gutter", "kerb and channel"],
+  WEEP_HOLE:            ["weep hole"],
+  OPEN_DRAIN:           ["open drain", "roadside drain", "side drain", "v drain", "drain"],
+  RETAINING_WALL:       ["retaining wall", "toe wall", "breast wall"],
 };
 
 /**
@@ -299,7 +333,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
   if (boqRows.length === 0) return;
 
-  // Fetch all active SNL items (small enough to fit in memory)
+  // Fetch all active SNL items (small enough to fit in memory).
+  // sector is used to apply a near-veto penalty for cross-sector matches
+  // (e.g. IRRIGATION items should not be suggested for road/structure BOQ).
   const snlRows = await db
     .select({
       id: snlItems.id,
@@ -308,6 +344,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       shortLabel: snlItems.shortLabel,
       unit: snlItems.unit,
       workCategory: snlItems.workCategory,
+      sector: snlItems.sector,
     })
     .from(snlItems)
     .where(eq(snlItems.isActive, true));
@@ -397,8 +434,13 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       }
 
       // ── 1. Rule-based pre-match (after explicit SNL-code, before fuzzy) ───
+      // Filter to road/structure sector items first so rule keywords never match
+      // cross-sector (e.g. irrigation) items. Fall back to full corpus only if no
+      // road-compatible items exist in the loaded SDB data.
       if (ruleTag) {
-        const ruleResult = ruleMatchSnl(ruleTag, snlRows);
+        const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
+        const ruleSearchPool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
+        const ruleResult = ruleMatchSnl(ruleTag, ruleSearchPool);
         if (ruleResult) {
           const ruleSnl = snlRows.find(s => s.id === ruleResult.snlItemId)!;
           const ruleUnitOk = unitsCompatible(boqRow.unit, ruleSnl.unit);
@@ -456,11 +498,16 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       }
 
       // ── 2. Semantic scoring: IDF-weighted cosine over the FULL description, unit-gated ──
+      // Sector penalty: IRRIGATION/BUILDING/ELECTRICAL items get a 0.05× multiplier so
+      // they never beat road/structure items in scoring and can't reach the 50% review floor.
       const boqText = richTokens(`${boqRow.description ?? ""} ${boqRow.workCategory ?? ""}`);
       const scored: ScoredCandidate[] = snlRows
         .map(snl => {
           const sim = weightedCosine(boqText, snlTokenMap.get(snl.id) ?? [], idf);
-          const adj = unitsCompatible(boqRow.unit, snl.unit) ? sim : sim * UNIT_MISMATCH_PENALTY;
+          const sectMul = sectorPenaltyFactor(snl.sector);
+          const adj = unitsCompatible(boqRow.unit, snl.unit)
+            ? sim * sectMul
+            : sim * UNIT_MISMATCH_PENALTY * sectMul;
           return { snlItemId: snl.id, snlItemCode: snl.itemCode, score: adj };
         })
         .sort((a, b) => b.score - a.score);
@@ -468,17 +515,23 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       const top = scored[0];
       const second = scored[1];
 
-      // No usable evidence → unmapped, and flush any stale auto recipe.
+      // No usable evidence → unmapped. Flush stale recipe AND stale auto-suggestion row.
+      // This clears previously wrong cross-sector suggestions on re-run.
       if (!top || top.score < SUGGEST_FLOOR) {
         await storage.clearBoqItemRecipes(boqRow.id);
+        await db
+          .delete(snlBoqMappings)
+          .where(and(eq(snlBoqMappings.boqItemId, boqRow.id), eq(snlBoqMappings.isAutoMapped, true)));
         await db.update(boqItems).set({ mappingStatus: "unmapped" }).where(eq(boqItems.id, boqRow.id));
         continue;
       }
 
       const topSnl = snlRows.find(s => s.id === top.snlItemId)!;
       const unitOk = unitsCompatible(boqRow.unit, topSnl.unit);
+      const sectorOk = sectorPenaltyFactor(topSnl.sector) === 1.0;
       const clearlyAhead = !second || second.score <= 0 || top.score >= second.score * CONFIDENT_MARGIN;
-      const isConfident = unitOk && top.score >= CONFIDENT_FLOOR && clearlyAhead;
+      // Cross-sector matches are NEVER auto-applied even with high scores.
+      const isConfident = unitOk && sectorOk && top.score >= CONFIDENT_FLOOR && clearlyAhead;
 
       const noteTxt = isConfident
         ? `Auto-mapped (sim ${top.score.toFixed(3)})`
