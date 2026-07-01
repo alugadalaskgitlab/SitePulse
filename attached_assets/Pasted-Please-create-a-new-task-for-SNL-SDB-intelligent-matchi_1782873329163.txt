@@ -1,0 +1,67 @@
+Please create a new task for SNL/SDB intelligent matching after the full MoRTH SDB import.
+
+Current issue:
+Now that MoRTH full SDB and other SDB libraries are available, the mapper must not search all SDB items as one blind fuzzy corpus. That caused wrong mappings like reinforcement matching to crash barrier, chute drain matching to unrelated irrigation drain, etc.
+
+Requirement:
+The app should search and match items from all imported SDBs, but with classification, sector priority and guardrails.
+
+1. Classify BOQ item first:
+- road pavement
+- earthwork
+- drainage
+- pipe culvert / cross drainage
+- retaining wall / protection work
+- bridge / major structure
+- reinforcement steel
+- road furniture / signage / crash barrier
+- electrical / miscellaneous
+
+2. Based on classification, search relevant SDB sectors first:
+- road pavement → MoRTH Road / AP Road
+- bridge / structure → MoRTH Bridge / AP Structures
+- drainage → MoRTH Drainage / AP Road Drainage / AP Irrigation only where appropriate
+- pipe culvert → MoRTH Pipe Culvert / AP Structures / Road Cross Drainage
+- reinforcement → only steel / reinforcement SDB items
+- crash barrier / signage → only road furniture / signage / crash barrier SDB items
+
+3. Apply cross-sector penalty:
+If candidate SDB sector does not match BOQ classification, reduce score heavily or reject it.
+
+4. Do not allow unrelated fuzzy matches to become confirmable suggestions.
+
+5. Confidence gates:
+- >= 70%: auto-map allowed
+- 50–69%: needs review
+- < 50%: unmapped / search required
+- < 40%: no Confirm button
+
+6. Confirm All must only confirm safe same-category review rows above threshold.
+
+7. Search modal can still search all SDBs manually, but it must show:
+- SDB source / sector
+- match score
+- category match / mismatch warning
+
+8. Existing wrong or low-confidence suggestions should be cleared after this fix and auto-map should be rerun.
+
+9. Imported SDB items must carry/use metadata:
+- SDB source: MoRTH / AP / Irrigation / CPWD / etc.
+- Sector: Road / Bridge / Drainage / Structures / Irrigation / Buildings
+- Chapter / section
+- Item code
+- Description
+- Unit
+- Labour norms
+- Equipment norms
+- Material norms where available
+
+10. Also verify BOQ identity:
+- SNL review panel, search modal, Confirm, Apply and Confirm All must use internal boq_item_id, not itemCode alone.
+- Item codes are not unique in real BOQs.
+- Panel must show the exact BOQ row being mapped, including sub-item and description.
+
+Do not change BOM, Work Programme, Structure Import, Stock, IRN/PI or Dashboard in this task. This task is only for SNL/SDB matching intelligence and mapping safety.
+
+Direction:
+More SDBs are good, but blind matching across more SDBs is dangerous. Classified matching across all SDBs is the Enterprise intelligence we need.
