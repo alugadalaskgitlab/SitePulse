@@ -9797,23 +9797,32 @@ export async function registerRoutes(
 
   // ── Clean road-style bars from structure items ────────────────────────────
   // Deletes auto-sequence and auto-generate bars that were incorrectly placed on
-  // BOQ items classified as planningWorkType = "structure".  Structure-location
-  // (imported) bars and bars the planner manually placed (source = "manual") are
-  // left untouched.
+  // BOQ items that are structure-planned — either via planningWorkType = "structure"
+  // OR because they already have at least one source = "structure_import" bar.
+  // Structure-location (imported) bars and manually placed bars are left untouched.
   app.post("/api/boq/projects/:id/programme/clean-structure-bars", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);
       const items = await storage.getBoqItemsByProject(boqProjectId);
       const bars  = await storage.getWorkProgramBars(boqProjectId);
 
-      const structureItemIds = new Set(
-        (items as any[])
-          .filter((it) => it.planningWorkType === "structure")
-          .map((it) => it.id),
+      // Items that have at least one imported structure-location bar are implicitly
+      // structure-planned even if planningWorkType was never set manually.
+      const structureImportItemIds = new Set(
+        (bars as any[])
+          .filter((b) => b.source === "structure_import")
+          .map((b) => b.boqItemId),
       );
 
+      const structureItemIds = new Set([
+        ...(items as any[])
+          .filter((it) => it.planningWorkType === "structure")
+          .map((it) => it.id),
+        ...structureImportItemIds,
+      ]);
+
       if (structureItemIds.size === 0) {
-        return res.json({ deleted: 0, message: "No structure-type BOQ items found" });
+        return res.json({ deleted: 0, message: "No structure-planned BOQ items found (no structure_import bars and planningWorkType not set)" });
       }
 
       // Delete bars on structure items that are:
@@ -10692,11 +10701,19 @@ export async function registerRoutes(
       // structure-type BOQ items NOW — outside the "no bars" safety guard — so that old
       // linear bars don't persist for items that already have imported structure_location bars.
       if (disableStructureFronts) {
-        const structureItemIds = new Set(
-          (items as any[])
+        // Items with at least one structure_import bar are implicitly structure-planned
+        // even if planningWorkType was never set manually.
+        const structureImportIds = new Set(
+          (existingBars as any[])
+            .filter((b) => b.source === "structure_import")
+            .map((b) => b.boqItemId),
+        );
+        const structureItemIds = new Set([
+          ...(items as any[])
             .filter((it) => it.planningWorkType === "structure")
             .map((it) => it.id),
-        );
+          ...structureImportIds,
+        ]);
         if (structureItemIds.size > 0) {
           const structureAutoBars = (existingBars as any[]).filter(
             (b) => structureItemIds.has(b.boqItemId) &&
@@ -10707,13 +10724,21 @@ export async function registerRoutes(
         }
       }
 
+      // Derive structure-import item IDs for the seqItems filter below.
+      // We recompute here (outside the if-block) so it's always available.
+      const _structureImportIds = new Set(
+        (existingBars as any[])
+          .filter((b) => b.source === "structure_import")
+          .map((b) => b.boqItemId),
+      );
+
       // Build sequencer input — when structure fronts are disabled, exclude structure-type
       // items entirely so the sequencer only schedules road/linear work. Their bars were
       // already pre-deleted above; any imported structure_location bars are untouched.
       const seqItems = (items as any[])
         .filter((it) => {
           if ((it.currentQty ?? 0) <= 0) return false;
-          if (disableStructureFronts && it.planningWorkType === "structure") return false;
+          if (disableStructureFronts && (it.planningWorkType === "structure" || _structureImportIds.has(it.id))) return false;
           return true;
         })
         .map((it) => {

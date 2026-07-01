@@ -1275,7 +1275,7 @@ function InlineGanttTable({
     const cfVal = lastBar?.chainageTo ?? 0;
     const ctVal = roadLen > 0 ? roadLen : (cfVal + 1);
     const sm = clickedMonth ?? (lastBar ? Math.ceil(lastBar.endMonth) : 1);
-    const isStructItem = (item as any).planningWorkType === "structure";
+    const isStructItem = (item as any).planningWorkType === "structure" || structureImportItemIds.has(item.id);
     const existingLen = isStructItem ? 0 : itemBars.reduce(
       (s, b) => s + Math.max(0, (b.chainageTo ?? 0) - (b.chainageFrom ?? 0)), 0,
     );
@@ -2220,18 +2220,20 @@ export default function WorkProgramme() {
       overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
     } : null;
 
-    // Exclude structure-type items — they must be programmed via Structure Schedule
+    // Exclude structure-planned items — either manually tagged or already carrying
+    // imported structure-location bars. These must be programmed via Structure Schedule
     // Import at specific chainage locations, not as full-road linear bars.
     const toCreate = items.filter(it =>
       !programmedIds.has(it.id) &&
       (it.currentQty ?? 0) > 0 &&
-      (it as any).planningWorkType !== "structure",
+      (it as any).planningWorkType !== "structure" &&
+      !structureImportItemIds.has(it.id),
     );
 
     const skippedStructure = items.filter(it =>
       !programmedIds.has(it.id) &&
       (it.currentQty ?? 0) > 0 &&
-      (it as any).planningWorkType === "structure",
+      ((it as any).planningWorkType === "structure" || structureImportItemIds.has(it.id)),
     ).length;
 
     if (toCreate.length === 0) {
@@ -2296,12 +2298,20 @@ export default function WorkProgramme() {
     onError: () => toast({ title: "Cleanup failed", description: "Could not remove stray bars.", variant: "destructive" }),
   });
 
+  // Items that have at least one imported structure-location bar are implicitly
+  // structure-planned even if planningWorkType was never set manually.
+  const structureImportItemIds = useMemo(
+    () => new Set(bars.filter(b => (b as any).source === "structure_import").map(b => b.boqItemId)),
+    [bars],
+  );
+
   // Show the "Clean structure bars" button only when there are stray auto-generated
-  // bars on structure-type items (not structure_location / not manual).
+  // bars on structure-import-planned items (not structure_location / not manual).
   const hasStrayStructureBars = useMemo(() => {
-    const structureItemIds = new Set(
-      items.filter(it => (it as any).planningWorkType === "structure").map(it => it.id),
-    );
+    const structureItemIds = new Set([
+      ...items.filter(it => (it as any).planningWorkType === "structure").map(it => it.id),
+      ...structureImportItemIds,
+    ]);
     if (structureItemIds.size === 0) return false;
     return bars.some(b =>
       structureItemIds.has(b.boqItemId) &&
