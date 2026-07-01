@@ -1370,10 +1370,10 @@ function InlineGanttTable({
 
           return (
             <div key={cat}>
-              {/* Category header row */}
+              {/* Category header row — sticky below Gantt column header (top: 44px) */}
               <div
-                style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: CAT_H }}
-                className="border-b border-slate-200 dark:border-slate-700"
+                style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: CAT_H, position: "sticky", top: 44, zIndex: 20 }}
+                className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950"
               >
                 <div
                   style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10, backgroundColor: `${color}18` }}
@@ -1632,9 +1632,9 @@ function MonthlyPlanView({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className="overflow-auto rounded-xl border" style={{ maxHeight: "calc(100vh - 240px)" }}>
       <table className="text-sm border-collapse" style={{ minWidth: 200 + maxMonth * 64 + 80 }}>
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>
               BOQ Item
@@ -1658,11 +1658,11 @@ function MonthlyPlanView({
             if (!catHasBars) return null;
 
             return [
-              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12` }}>
+              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12`, position: "sticky", top: 36, zIndex: 5 }}>
                 <td
                   colSpan={3 + maxMonth + 1}
-                  className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider sticky left-0 z-10"
-                  style={{ backgroundColor: `${color}18`, color }}
+                  className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider"
+                  style={{ backgroundColor: `${color}dd`, color: "#fff" }}
                 >
                   {catLabel}
                 </td>

@@ -759,7 +759,7 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
 
       <div className="overflow-x-auto rounded-xl border">
         <table className="text-sm border-collapse w-full" style={{ minWidth: 600 }}>
-          <thead>
+          <thead className="sticky top-14 z-10">
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>

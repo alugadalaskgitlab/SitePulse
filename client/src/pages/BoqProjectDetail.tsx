@@ -308,8 +308,8 @@ function CategorySection({
 
   return (
     <Card className="border-slate-200 overflow-hidden" data-testid={`section-category-${name}`}>
-      {/* Category header */}
-      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between">
+      {/* Category header — sticky below main nav (top-14 = 56px) */}
+      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between sticky top-14 z-10">
         <button
           onClick={() => setCollapsed(c => !c)}
           className="flex items-center gap-3 flex-1 text-left"
