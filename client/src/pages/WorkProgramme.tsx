@@ -2220,9 +2220,25 @@ export default function WorkProgramme() {
       overrides: progSettings.productivityOverrides as Record<string, { outputPerHr?: number; unit?: string }> | null,
     } : null;
 
-    const toCreate = items.filter(it => !programmedIds.has(it.id) && (it.currentQty ?? 0) > 0);
+    // Exclude structure-type items — they must be programmed via Structure Schedule
+    // Import at specific chainage locations, not as full-road linear bars.
+    const toCreate = items.filter(it =>
+      !programmedIds.has(it.id) &&
+      (it.currentQty ?? 0) > 0 &&
+      (it as any).planningWorkType !== "structure",
+    );
+
+    const skippedStructure = items.filter(it =>
+      !programmedIds.has(it.id) &&
+      (it.currentQty ?? 0) > 0 &&
+      (it as any).planningWorkType === "structure",
+    ).length;
+
     if (toCreate.length === 0) {
-      toast({ title: "Nothing to generate", description: "Every item with a quantity is already programmed." });
+      const msg = skippedStructure > 0
+        ? `Every road/linear item is already programmed. ${skippedStructure} structure item(s) were skipped — use "Import Structures" to programme them.`
+        : "Every item with a quantity is already programmed.";
+      toast({ title: "Nothing to generate", description: msg });
       return;
     }
 
@@ -2251,11 +2267,48 @@ export default function WorkProgramme() {
         plannedQty: qty,
         isQtyOverride: false,
         isDurationOverride: !dur,
+        source: "auto_generate",
       };
     });
 
+    if (skippedStructure > 0) {
+      toast({
+        title: `${skippedStructure} structure item(s) skipped`,
+        description: `Road-style bars were not created for culverts, bridges or other structure items. Use "Import Structures" to schedule them at correct chainage locations.`,
+      });
+    }
+
     autoGenMutation.mutate(payload);
   }
+
+  // Cleanup mutation — removes stray auto-sequence / auto-generate bars from structure items.
+  // Preserves imported structure_location bars and manually placed bars.
+  const cleanStructureBarsMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/boq/projects/${projectId}/programme/clean-structure-bars`, {}),
+    onSuccess: async (data: any) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: data?.deleted > 0 ? `Cleaned ${data.deleted} stray bar(s)` : "Already clean",
+        description: data?.message ?? "Structure items now show only imported or manual bars.",
+      });
+    },
+    onError: () => toast({ title: "Cleanup failed", description: "Could not remove stray bars.", variant: "destructive" }),
+  });
+
+  // Show the "Clean structure bars" button only when there are stray auto-generated
+  // bars on structure-type items (not structure_location / not manual).
+  const hasStrayStructureBars = useMemo(() => {
+    const structureItemIds = new Set(
+      items.filter(it => (it as any).planningWorkType === "structure").map(it => it.id),
+    );
+    if (structureItemIds.size === 0) return false;
+    return bars.some(b =>
+      structureItemIds.has(b.boqItemId) &&
+      (b as any).planningMode !== "structure_location" &&
+      (b as any).source !== "manual",
+    );
+  }, [items, bars]);
 
   const isLoading = itemsLoading || barsLoading;
 
@@ -2360,6 +2413,22 @@ export default function WorkProgramme() {
             >
               <Building2 className="w-4 h-4 mr-1" />
               Import Structures
+            </Button>
+          )}
+          {hasStrayStructureBars && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => cleanStructureBarsMutation.mutate()}
+              disabled={cleanStructureBarsMutation.isPending}
+              data-testid="button-clean-structure-bars"
+              title="Remove auto-generated road-style bars from structure items (culverts, bridges, etc.). Imported structure-location bars and manually placed bars are preserved."
+            >
+              {cleanStructureBarsMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Scissors className="w-4 h-4 mr-1" />}
+              Clean Structure Bars
             </Button>
           )}
           {items.length > 0 && (

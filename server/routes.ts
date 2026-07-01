@@ -9795,6 +9795,55 @@ export async function registerRoutes(
     }
   });
 
+  // ── Clean road-style bars from structure items ────────────────────────────
+  // Deletes auto-sequence and auto-generate bars that were incorrectly placed on
+  // BOQ items classified as planningWorkType = "structure".  Structure-location
+  // (imported) bars and bars the planner manually placed (source = "manual") are
+  // left untouched.
+  app.post("/api/boq/projects/:id/programme/clean-structure-bars", async (req, res) => {
+    try {
+      const boqProjectId = parseInt(req.params.id);
+      const items = await storage.getBoqItemsByProject(boqProjectId);
+      const bars  = await storage.getWorkProgramBars(boqProjectId);
+
+      const structureItemIds = new Set(
+        (items as any[])
+          .filter((it) => it.planningWorkType === "structure")
+          .map((it) => it.id),
+      );
+
+      if (structureItemIds.size === 0) {
+        return res.json({ deleted: 0, message: "No structure-type BOQ items found" });
+      }
+
+      // Delete bars on structure items that are:
+      //  • NOT an imported structure-location bar (planningMode !== "structure_location")
+      //  • NOT a bar the planner explicitly placed (source !== "manual")
+      const toDelete = (bars as any[]).filter(
+        (b) =>
+          structureItemIds.has(b.boqItemId) &&
+          b.planningMode !== "structure_location" &&
+          b.source !== "manual",
+      );
+
+      let deleted = 0;
+      for (const b of toDelete) {
+        await storage.deleteWorkProgramBar(b.id);
+        deleted++;
+      }
+
+      res.json({
+        deleted,
+        message: deleted
+          ? `Removed ${deleted} road-style bar(s) from structure items`
+          : "No stray bars found on structure items",
+      });
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/programme/clean-structure-bars:", err);
+      res.status(500).json({ error: "Failed to clean structure bars" });
+    }
+  });
+
   // --- Monthly Targets & Plan vs Actual ---
 
   app.get("/api/boq/projects/:id/monthly-targets", async (req, res) => {
@@ -10651,7 +10700,7 @@ export async function registerRoutes(
         if (structureItemIds.size > 0) {
           const structureAutoBars = (existingBars as any[]).filter(
             (b) => structureItemIds.has(b.boqItemId) &&
-                   (b.source === "auto-sequence" || !b.source ||
+                   (b.source === "auto-sequence" || b.source === "auto_generate" || !b.source ||
                     (b.source === "manual" && AUTO_LABEL_RE.test(b.reachLabel ?? ""))),
           );
           for (const b of structureAutoBars) await storage.deleteWorkProgramBar(b.id);
