@@ -1610,7 +1610,7 @@ function MonthlyPlanView({
       m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return m;
-  }, [items, barsByItemId]);
+  }, [items]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
