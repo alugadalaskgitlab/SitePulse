@@ -2311,20 +2311,29 @@ export default function WorkProgramme() {
     [bars],
   );
 
-  // Show the "Clean structure bars" button only when there are stray auto-generated
-  // bars on structure-import-planned items (not structure_location / not manual).
+  // Regex kept in sync with the server-side clean endpoint.
+  // Legacy bars created before the source column existed often have
+  // source="manual" but carry one of these auto-generated label values.
+  const AUTO_LABEL_RE = /^(Full Length|Structures|Bridges|Reach \d+|Struct\. Front \d+|Bridge Grp \d+)$/;
+
+  // Show the "Clean structure bars" button when there are stray bars on
+  // structure items — uses the same filter logic as the server endpoint.
   const hasStrayStructureBars = useMemo(() => {
     const structureItemIds = new Set([
       ...items.filter(it => (it as any).planningWorkType === "structure").map(it => it.id),
       ...structureImportItemIds,
     ]);
     if (structureItemIds.size === 0) return false;
-    return bars.some(b =>
-      structureItemIds.has(b.boqItemId) &&
-      (b as any).planningMode !== "structure_location" &&
-      (b as any).source !== "manual",
-    );
-  }, [items, bars]);
+    return bars.some(b => {
+      if (!structureItemIds.has(b.boqItemId)) return false;
+      if ((b as any).planningMode === "structure_location") return false;
+      const src = (b as any).source as string | null | undefined;
+      if (src === "auto-sequence" || src === "auto_generate") return true;
+      if (!src) return true; // null = legacy bar
+      if (src === "manual" && AUTO_LABEL_RE.test((b as any).reachLabel ?? "")) return true;
+      return false;
+    });
+  }, [items, bars, structureImportItemIds]);
 
   const isLoading = itemsLoading || barsLoading;
 
