@@ -21037,6 +21037,7 @@ export class DatabaseStorage implements IStorage {
         description: snlItems.description,
         unit: snlItems.unit,
         workCategory: snlItems.workCategory,
+        sector: snlItems.sector,
         isMixSpecific: snlItems.isMixSpecific,
         hasGradingVariants: snlItems.hasGradingVariants,
         sourceName: snlSources.name,

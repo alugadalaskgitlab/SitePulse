@@ -13,9 +13,10 @@
  *          even when BOQ item codes are absent.
  *
  * Thresholds:
- *   >= 0.80 → mapped   (auto-apply recipes)
- *   0.35–0.79 → needs_review (save candidate mapping only)
- *   < 0.35  → unmapped
+ *   >= 0.70 → mapped   (auto-apply recipes when score ≥70%, unit matches, sector compatible, clearly ahead)
+ *   0.50–0.69 → needs_review (save candidate; no auto-apply)
+ *   < 0.50  → unmapped
+ *   < 0.40  → no Confirm button in UI (must search manually)
  */
 
 import { db } from "./db";
@@ -139,25 +140,140 @@ function unitsCompatible(a: string, b: string): boolean {
 }
 
 // ── Decision thresholds ────────────────────────────────────────────────────────
-const CONFIDENT_FLOOR = 0.10;       // top similarity must clear this to auto-apply a recipe
+const CONFIDENT_FLOOR = 0.70;       // score must be ≥70% (+ unit + sector + margin) to auto-map
 const CONFIDENT_MARGIN = 1.30;      // …and be ≥30% ahead of the 2nd-best candidate
-const SUGGEST_FLOOR = 0.50;         // below 50% → unmapped / search required (not needs_review)
+const SUGGEST_FLOOR = 0.50;         // below 50% → unmapped (not needs_review)
 const UNIT_MISMATCH_PENALTY = 0.30; // multiply score when units differ (near-veto)
+const CROSS_SECTOR_SECONDARY_PENALTY = 0.55; // tolerated secondary sector (penalized but not excluded)
 
-// ── Sector compatibility ───────────────────────────────────────────────────────
-// SNL items from these sectors are considered compatible with road/structure BOQ items.
-// Items from IRRIGATION, BUILDING, ELECTRICAL, GATES_HOIST, WATER sector are cross-sector
-// and incur a near-veto penalty — they should never auto-confirm for a road BOQ project.
-const ROAD_COMPATIBLE_SECTORS = new Set(["ROAD", "STRUCTURE", "STRUCTURES", "BRIDGE", "BRIDGES"]);
+// ── 9 canonical BOQ work categories ───────────────────────────────────────────
+export type BoqWorkCategory =
+  | "road_pavement"
+  | "earthwork"
+  | "drainage"
+  | "pipe_culvert"
+  | "retaining_wall"
+  | "bridge_structure"
+  | "reinforcement"
+  | "road_furniture"
+  | "electrical_misc"
+  | "unknown_misc";
 
 /**
- * Returns a penalty multiplier for cross-sector matches.
- * 1.0 = compatible (no penalty), 0.05 = near-veto for unrelated sectors.
+ * Classify a BOQ description into one of 9 canonical work categories.
+ * Uses ordered regex rules (most specific first).
+ * Falls back to `unknown_misc` — NOT `electrical_misc` — when nothing matches.
+ * `electrical_misc` is returned ONLY for descriptions that explicitly indicate
+ * electrical, mechanical, or utility-supply work.
  */
-function sectorPenaltyFactor(snlSector: string | null | undefined): number {
-  if (!snlSector) return 1.0; // unknown sector → no penalty (assume compatible)
+export function classifyBoqItem(description: string): BoqWorkCategory {
+  const d = String(description ?? "").toLowerCase();
+
+  // ── Reinforcement steel (must precede concrete/structural checks) ────────────
+  if (/\b(hysd|tmt|fe[-\s]*[0-9]{3}|reinforcement|reinforcing\s*steel|steel\s*bar|ms\s*bar|deformed\s*bar)\b/.test(d))
+    return "reinforcement";
+  if (/\bbinding\s*wire\b/.test(d)) return "reinforcement";
+
+  // ── Road furniture / crash barrier / signage ─────────────────────────────────
+  if (/\b(crash\s*barrier|metal\s*beam\s*guard|guard\s*rail|delineator|road\s*stud|cat[-\s]*eye|w[-\s]*beam)\b/.test(d))
+    return "road_furniture";
+  if (/\b(traffic\s*sign|sign\s*board|cautionary|mandatory|informatory|kilometre\s*stone|boundary\s*stone|hectometre\s*stone|road\s*marking|thermoplastic\s*marking)\b/.test(d))
+    return "road_furniture";
+
+  // ── Electrical / mechanical / utility ────────────────────────────────────────
+  if (/\b(electrical|transformer|generator\s*set|dg\s*set|cable\s*duct|street\s*light|solar\s*light|high\s*mast|switch\s*board|power\s*supply)\b/.test(d))
+    return "electrical_misc";
+
+  // ── Retaining wall / slope protection (must precede bridge — "stone pitching
+  //    behind abutment" is retaining_wall, not bridge_structure) ─────────────────
+  if (/\b(retaining\s*wall|toe\s*wall|breast\s*wall|wing\s*wall|protection\s*wall|stone\s*pitching|boulder\s*pitching|dry\s*stone\s*pitching)\b/.test(d))
+    return "retaining_wall";
+
+  // ── Bridge / major structure ──────────────────────────────────────────────────
+  if (/\b(bridge|flyover|viaduct|abutment|pier\b|deck\s*slab|girder|pre[-\s]*stressed|composite\s*bridge|box\s*girder|substructure|superstructure)\b/.test(d))
+    return "bridge_structure";
+  if (/\b(elastomeric\s*bearing|pot\s*bearing|expansion\s*joint|strip\s*seal|joint\s*sealant)\b/.test(d))
+    return "bridge_structure";
+
+  // ── Drainage (specific types first, then generic) ─────────────────────────────
+  // Note: energy_dissipat uses a partial stem — avoid trailing \b to allow "dissipation"
+  if (/\b(?:chute\s*drain|energy\s*dissipat(?:ion|e)?|catch\s*pit|catch\s*basin|kerb\s*(?:drain|channel|gutter)|weep\s*hole|filter\s*(?:media|drain|pack)|french\s*drain)(?:\b|$)/.test(d))
+    return "drainage";
+  if (/\b(open\s*drain|roadside\s*drain|side\s*drain|v[-\s]*drain|spout|drain\b|drainage\b)/.test(d))
+    return "drainage";
+
+  // ── Pipe culvert / cross drainage ────────────────────────────────────────────
+  if (/\b(culvert|hume\s*pipe|np3\b|np4\b|hdpe\s*pipe|pipe\s*culvert|rcc\s*pipe|box\s*culvert)\b/.test(d))
+    return "pipe_culvert";
+
+  // ── Road pavement layers ──────────────────────────────────────────────────────
+  if (/\b(gsb|granular\s*sub[-\s]*base|wmm|wet\s*mix\s*macadam|wbm|water\s*bound\s*macadam)\b/.test(d))
+    return "road_pavement";
+  if (/\b(dbm|dense\s*bituminous|sdbc|semi\s*dense|bituminous\s*concrete|\bbc\b|bituminous\s*macadam|\bbm\b|prime\s*coat|tack\s*coat|mastic\s*asphalt|bitumen|asphalt)\b/.test(d))
+    return "road_pavement";
+  if (/\b(pavement\s*quality\s*concrete|pqc\b|dlc\b|dry\s*lean\s*concrete|base\s*course|granular\s*base|sub[-\s]*base\s*course)\b/.test(d))
+    return "road_pavement";
+  if (/\b(kerb\b|median\s*kerb|paved\s*shoulder|shoulder\s*treatment)\b/.test(d))
+    return "road_pavement";
+
+  // ── Earthwork ─────────────────────────────────────────────────────────────────
+  if (/\b(excavat|earthwork|earthen\s*embankment|embankment|subgrade|sub[-\s]*grade|borrow\s*pit|cutting|formation\s*level|scarif|dismantl|site\s*clear|vegetation|grubbing)\b/.test(d))
+    return "earthwork";
+
+  // ── Concrete (PCC/RCC) — contextually sub-classified ─────────────────────────
+  // Must come after road-pavement (PQC/DLC), drainage, and retaining-wall checks
+  if (/\b(plain\s*cement\s*concrete|pcc\b|reinforced\s*cement\s*concrete|rcc\b|concrete\s*m[-\s]*[0-9]+|m[-\s]*[0-9]+\s*concrete)\b/.test(d)) {
+    if (/retaining|toe\s*wall|breast\s*wall|protection\s*wall/.test(d)) return "retaining_wall";
+    if (/drain|dissipat|catch\s*pit|culvert/.test(d)) return "drainage";
+    if (/bridge|abutment|deck|pier\b|pile\b/.test(d)) return "bridge_structure";
+    return "bridge_structure"; // default: structural concrete, not road layer
+  }
+
+  return "unknown_misc";
+}
+
+// ── Sector-to-category allow-list ─────────────────────────────────────────────
+// primary: full score (1.0×), secondary: penalized (CROSS_SECTOR_SECONDARY_PENALTY×)
+// anything not in either set: excluded from candidate pool (score multiplier 0.0)
+const BOQ_CATEGORY_SECTORS: Record<BoqWorkCategory, { primary: Set<string>; secondary: Set<string> }> = {
+  road_pavement:    { primary: new Set(["ROAD", "ROADS"]), secondary: new Set(["STRUCTURES", "STRUCTURE"]) },
+  earthwork:        { primary: new Set(["ROAD", "ROADS"]), secondary: new Set([]) },
+  drainage:         { primary: new Set(["ROAD", "ROADS", "DRAINAGE"]), secondary: new Set(["IRRIGATION", "STRUCTURES", "STRUCTURE"]) },
+  pipe_culvert:     { primary: new Set(["ROAD", "ROADS", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["DRAINAGE"]) },
+  retaining_wall:   { primary: new Set(["STRUCTURES", "STRUCTURE", "ROAD", "ROADS"]), secondary: new Set([]) },
+  bridge_structure: { primary: new Set(["BRIDGE", "BRIDGES", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["ROAD", "ROADS"]) },
+  reinforcement:    { primary: new Set(["STRUCTURES", "STRUCTURE", "BRIDGE", "BRIDGES", "ROAD", "ROADS"]), secondary: new Set([]) },
+  road_furniture:   { primary: new Set(["ROAD", "ROADS"]), secondary: new Set([]) },
+  electrical_misc:  { primary: new Set(["ELECTRICAL", "ROAD", "ROADS"]), secondary: new Set([]) },
+  unknown_misc:     { primary: new Set(["ROAD", "ROADS", "STRUCTURES", "STRUCTURE", "BRIDGE", "BRIDGES", "DRAINAGE"]),
+                      secondary: new Set(["IRRIGATION", "ELECTRICAL", "BUILDING", "BUILDINGS"]) },
+};
+
+/**
+ * Returns the score multiplier for a given BOQ category + SNL sector combination.
+ * - 1.0  = primary sector match (no penalty)
+ * - CROSS_SECTOR_SECONDARY_PENALTY = tolerated secondary sector (penalized)
+ * - 0.0  = excluded from candidate pool
+ * - 0.7  = unknown sector (mild penalty for unknown provenance, not excluded)
+ */
+export function getSectorMultiplier(boqCategory: BoqWorkCategory, snlSector: string | null | undefined): number {
+  if (!snlSector || snlSector.trim() === "") return 0.7;
   const s = snlSector.trim().toUpperCase();
-  return ROAD_COMPATIBLE_SECTORS.has(s) ? 1.0 : 0.05;
+  const allowList = BOQ_CATEGORY_SECTORS[boqCategory];
+  if (!allowList) return 1.0;
+  if (allowList.primary.has(s)) return 1.0;
+  if (allowList.secondary.has(s)) return CROSS_SECTOR_SECONDARY_PENALTY;
+  return 0.0; // excluded
+}
+
+/**
+ * For composite-item rule matching (spans multiple categories): true when sector
+ * is any road/structure/drainage type that is relevant to road-construction projects.
+ */
+function isRoadOrStructureSector(snlSector: string | null | undefined): boolean {
+  if (!snlSector) return true;
+  const s = snlSector.trim().toUpperCase();
+  return ["ROAD", "ROADS", "STRUCTURE", "STRUCTURES", "BRIDGE", "BRIDGES", "DRAINAGE"].includes(s);
 }
 
 // Work categories that participate in the fuzzy-scoring auto-mapper.
@@ -473,7 +589,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       const compositeDrafts = detectCompositeComponents(boqRow.description);
       if (compositeDrafts && compositeDrafts.length >= 2) {
         // Attempt to rule-match each component to an SNL item individually.
-        const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
+        const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
         const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
 
         const componentRows = compositeDrafts.map((draft, idx) => {
@@ -503,6 +619,7 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
       // ── Rule classification (used by both scope guard and rule-match) ─────
       const ruleTag = classifyBoqItemForSnl(boqRow.description);
+      const boqCategory = classifyBoqItem(boqRow.description); // broad 9-category for sector filtering
 
       // No hard scope guard: items that don't match a rule tag still proceed to
       // fuzzy scoring. Only if BOTH rule and fuzzy produce nothing will the item
@@ -562,8 +679,8 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // cross-sector (e.g. irrigation) items. Fall back to full corpus only if no
       // road-compatible items exist in the loaded SDB data.
       if (ruleTag) {
-        const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
-        const ruleSearchPool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
+        const allowedRows = snlRows.filter(s => getSectorMultiplier(boqCategory, s.sector) > 0);
+        const ruleSearchPool = allowedRows.length >= 5 ? allowedRows : snlRows;
         const ruleResult = ruleMatchSnl(ruleTag, ruleSearchPool);
         if (ruleResult) {
           const ruleSnl = snlRows.find(s => s.id === ruleResult.snlItemId)!;
@@ -625,10 +742,13 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
       // Sector penalty: IRRIGATION/BUILDING/ELECTRICAL items get a 0.05× multiplier so
       // they never beat road/structure items in scoring and can't reach the 50% review floor.
       const boqText = richTokens(`${boqRow.description ?? ""} ${boqRow.workCategory ?? ""}`);
-      const scored: ScoredCandidate[] = snlRows
+      // Pre-filter candidates by sector compatibility; fall back to full corpus when too few pass
+      const candidatePool = snlRows.filter(s => getSectorMultiplier(boqCategory, s.sector) > 0);
+      const scoringPool = candidatePool.length >= 5 ? candidatePool : snlRows;
+      const scored: ScoredCandidate[] = scoringPool
         .map(snl => {
           const sim = weightedCosine(boqText, snlTokenMap.get(snl.id) ?? [], idf);
-          const sectMul = sectorPenaltyFactor(snl.sector);
+          const sectMul = getSectorMultiplier(boqCategory, snl.sector);
           const adj = unitsCompatible(boqRow.unit, snl.unit)
             ? sim * sectMul
             : sim * UNIT_MISMATCH_PENALTY * sectMul;
@@ -652,9 +772,9 @@ export async function autoMapBoqItems(boqItemIds: number[]): Promise<void> {
 
       const topSnl = snlRows.find(s => s.id === top.snlItemId)!;
       const unitOk = unitsCompatible(boqRow.unit, topSnl.unit);
-      const sectorOk = sectorPenaltyFactor(topSnl.sector) === 1.0;
+      const sectorOk = getSectorMultiplier(boqCategory, topSnl.sector) === 1.0;
       const clearlyAhead = !second || second.score <= 0 || top.score >= second.score * CONFIDENT_MARGIN;
-      // Cross-sector matches are NEVER auto-applied even with high scores.
+      // Cross-sector + below-floor matches are never auto-applied.
       const isConfident = unitOk && sectorOk && top.score >= CONFIDENT_FLOOR && clearlyAhead;
 
       const noteTxt = isConfident
@@ -979,7 +1099,7 @@ export async function backfillCompositeDetection(): Promise<{ promoted: number }
     .from(snlItems)
     .where(eq(snlItems.isActive, true));
 
-  const roadCompatibleRows = snlRows.filter(s => sectorPenaltyFactor(s.sector) === 1.0);
+  const roadCompatibleRows = snlRows.filter(s => isRoadOrStructureSector(s.sector));
   const rulePool = roadCompatibleRows.length > 0 ? roadCompatibleRows : snlRows;
 
   let promoted = 0;

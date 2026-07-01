@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, StockShortageError } from "./storage";
-import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection } from "./snlAutoMapper";
+import { autoMapBoqItems, remapBoqProject, autoMapAllUnmappedItems, autoMapProjectWithSummary, backfillCompositeDetection, classifyBoqItem, getSectorMultiplier } from "./snlAutoMapper";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import * as xlsx from 'xlsx';
@@ -11379,7 +11379,22 @@ export async function registerRoutes(
       const category = req.query.category as string | undefined;
       const sourceId = req.query.sourceId ? parseInt(req.query.sourceId as string) : undefined;
       const sector = req.query.sector as string | undefined;
-      res.json(await storage.searchSnlItems(q, category, sourceId, sector));
+      const boqDesc = req.query.boqDesc as string | undefined;
+      const items = await storage.searchSnlItems(q, category, sourceId, sector);
+      if (boqDesc) {
+        const boqCategory = classifyBoqItem(boqDesc);
+        const enriched = items.map(item => {
+          const mul = getSectorMultiplier(boqCategory, (item as any).sector ?? null);
+          const categoryMatchStatus: "match" | "secondary" | "mismatch" | "unknown" =
+            !(item as any).sector ? "unknown" :
+            mul === 1.0 ? "match" :
+            mul > 0 ? "secondary" :
+            "mismatch";
+          return { ...item, categoryMatchStatus };
+        });
+        return res.json(enriched);
+      }
+      res.json(items);
     } catch (err) {
       res.status(500).json({ error: "Failed to search SNL" });
     }
@@ -11474,14 +11489,13 @@ export async function registerRoutes(
     try {
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
-      // Minimum confidence to bulk-confirm. Cross-sector matches are always skipped
-      // regardless of confidence — they must be manually confirmed after inspection.
-      const CONFIRM_THRESHOLD = 0.55;
-      const ROAD_SECTORS = new Set(["ROAD", "STRUCTURE", "STRUCTURES", "BRIDGE", "BRIDGES"]);
+      // Minimum confidence to bulk-confirm. Cross-sector matches are skipped
+      // (they must be manually confirmed after inspection).
+      const CONFIRM_THRESHOLD = 0.50;
 
-      // Fetch all needs_review items for this project
+      // Fetch all needs_review items for this project (with description for category classification)
       const reviewItems = await db
-        .select({ id: boqItems.id })
+        .select({ id: boqItems.id, description: boqItems.description })
         .from(boqItems)
         .where(and(eq(boqItems.boqProjectId, boqProjectId), eq(boqItems.mappingStatus, "needs_review")));
 
@@ -11511,9 +11525,10 @@ export async function registerRoutes(
           skipped++;
           continue;
         }
-        // Skip cross-sector suggestions — they need manual review
-        const sector = (mapping.snlSector ?? "").trim().toUpperCase();
-        if (sector && !ROAD_SECTORS.has(sector)) {
+        // Skip cross-sector suggestions (primary sector required for bulk-confirm)
+        const boqCategory = classifyBoqItem(item.description ?? "");
+        const sectorMul = getSectorMultiplier(boqCategory, mapping.snlSector);
+        if (sectorMul < 1.0) {
           skipped++;
           continue;
         }

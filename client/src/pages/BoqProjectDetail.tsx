@@ -682,6 +682,8 @@ type SnlSearchResult = {
   description: string;
   unit: string;
   workCategory: string;
+  sector?: string | null;
+  categoryMatchStatus?: "match" | "secondary" | "mismatch" | "unknown";
   sourceName: string;
   sourceCode: string;
 };
@@ -726,11 +728,12 @@ function CompositeReviewCard({
 
   const searchingComp = components.find(c => c.id === searchCompId);
   const { data: searchResults = [], isFetching: searching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", searchQ, item.workCategory],
+    queryKey: ["/api/snl/search", searchQ, item.workCategory, item.description],
     queryFn: async () => {
       if (!searchQ.trim()) return [];
       const params = new URLSearchParams({ q: searchQ });
       if (item.workCategory) params.set("category", item.workCategory);
+      if (item.description) params.set("boqDesc", item.description);
       const res = await fetch(`/api/snl/search?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Search failed");
       return res.json();
@@ -795,12 +798,13 @@ function CompositeReviewCard({
           )}
           {components.map((comp, idx) => {
             const conf = comp.confidenceScore ?? 0;
-            const lowConf = conf < 0.50 || !comp.snlItemId;
+            const noConfirm = conf < 0.40 || !comp.snlItemId; // <40%: hide Confirm button
+            const lowConf = conf < 0.50; // 40–49%: show Confirm with warning style
             const isMapped = comp.status === "mapped";
             return (
               <div
                 key={comp.id}
-                className={`rounded border p-1.5 ${isMapped ? "border-emerald-200 bg-emerald-50/60" : lowConf ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
+                className={`rounded border p-1.5 ${isMapped ? "border-emerald-200 bg-emerald-50/60" : noConfirm ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
                 data-testid={`card-composite-comp-${comp.id}`}
               >
                 <div className="flex items-start gap-1.5">
@@ -833,20 +837,25 @@ function CompositeReviewCard({
                 </div>
                 {!isMapped && (
                   <div className="flex items-center gap-1 mt-1.5">
-                    {comp.snlItemId && !lowConf && (
+                    {comp.snlItemId && !noConfirm && (
                       <button
                         onClick={() => mapMutation.mutate({ compId: comp.id, snlItemId: comp.snlItemId! })}
                         disabled={mapMutation.isPending}
-                        className="flex-1 text-[11px] font-semibold px-2 py-0.5 rounded border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        className={`flex-1 text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors disabled:opacity-50 ${lowConf ? "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" : "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"}`}
                         data-testid={`button-confirm-comp-${comp.id}`}
                       >
                         <Check className="w-2.5 h-2.5 inline mr-0.5" />
                         Confirm
                       </button>
                     )}
-                    {lowConf && (
+                    {noConfirm && !comp.snlItemId && (
                       <span className="flex-1 text-center text-[11px] text-orange-700 px-2 py-0.5 rounded border border-orange-200 bg-orange-50">
                         Search Required
+                      </span>
+                    )}
+                    {noConfirm && comp.snlItemId && (
+                      <span className="flex-1 text-center text-[11px] text-orange-700 px-2 py-0.5 rounded border border-orange-200 bg-orange-50">
+                        Score too low — search manually
                       </span>
                     )}
                     <button
@@ -996,11 +1005,12 @@ function SnlMappingPanel({
   });
 
   const { data: searchResults = [], isFetching: searching } = useQuery<SnlSearchResult[]>({
-    queryKey: ["/api/snl/search", searchQ, searchItem?.workCategory],
+    queryKey: ["/api/snl/search", searchQ, searchItem?.workCategory, searchItem?.description],
     queryFn: async () => {
       if (!searchQ.trim() && !searchItem) return [];
       const params = new URLSearchParams({ q: searchQ });
       if (searchItem?.workCategory) params.set("category", searchItem.workCategory);
+      if (searchItem?.description) params.set("boqDesc", searchItem.description);
       const res = await fetch(`/api/snl/search?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Search failed");
       return res.json();
@@ -1108,9 +1118,10 @@ function SnlMappingPanel({
                   }
                   // Standard single-SNL review card
                   const conf = item.snlConfidence ?? 0;
-                  const lowConf = conf < 0.50;
+                  const noConfirm = conf < 0.40; // <40%: hide Confirm button entirely
+                  const lowConf = conf < 0.50;   // 40–49%: show Confirm with warning style
                   return (
-                  <div key={item.id} className={`border rounded-md p-2 ${lowConf ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
+                  <div key={item.id} className={`border rounded-md p-2 ${noConfirm ? "border-orange-200 bg-orange-50/40" : "border-amber-200 bg-amber-50/50"}`}
                     data-testid={`card-review-item-${item.id}`}>
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
@@ -1135,7 +1146,7 @@ function SnlMappingPanel({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 mt-2">
-                      {item.snlItemId && !lowConf && (
+                      {item.snlItemId && !noConfirm && (
                         <button
                           onClick={() => applyMutation.mutate({
                             boqItemId: item.id,
@@ -1143,16 +1154,16 @@ function SnlMappingPanel({
                             workCategory: item.workCategory ?? "MEDIUM",
                           })}
                           disabled={applyMutation.isPending}
-                          className="flex-1 text-[12px] font-semibold px-2 py-1 rounded border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                          className={`flex-1 text-[12px] font-semibold px-2 py-1 rounded border transition-colors ${lowConf ? "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" : "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"}`}
                           data-testid={`button-confirm-mapping-${item.id}`}
                         >
                           <Check className="w-2.5 h-2.5 inline mr-0.5" />
                           Confirm
                         </button>
                       )}
-                      {lowConf && (
+                      {noConfirm && (
                         <span className="flex-1 text-center text-[11px] text-orange-700 font-semibold px-2 py-1 rounded border border-orange-200 bg-orange-50">
-                          Search Required
+                          Score too low — search manually
                         </span>
                       )}
                       <button
@@ -1236,12 +1247,21 @@ function SnlMappingPanel({
               {searching && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" /> Searching…</div>}
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 {searchResults.map(result => (
-                  <div key={result.id} className="flex items-start gap-2 p-2 rounded-md border border-transparent hover:bg-slate-50 hover:border-slate-200 transition-colors">
+                  <div key={result.id} className={`flex items-start gap-2 p-2 rounded-md border transition-colors hover:bg-slate-50 ${result.categoryMatchStatus === "mismatch" ? "border-yellow-200 bg-yellow-50/40" : result.categoryMatchStatus === "secondary" ? "border-orange-100 bg-orange-50/20" : "border-transparent hover:border-slate-200"}`}>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[12px] font-mono text-teal-700 font-semibold">{result.itemCode}</span>
                         <span className="text-[12px] text-muted-foreground">{result.unit}</span>
                         <span className="text-[12px] text-slate-400">· {result.sourceCode ?? result.sourceName}</span>
+                        {result.sector && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">{result.sector}</span>
+                        )}
+                        {result.categoryMatchStatus === "mismatch" && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-100 text-yellow-800 font-semibold">⚠ Sector mismatch</span>
+                        )}
+                        {result.categoryMatchStatus === "secondary" && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-orange-100 text-orange-700">Cross-sector</span>
+                        )}
                       </div>
                       <p className="text-sm text-slate-700 line-clamp-2">{result.description}</p>
                     </div>

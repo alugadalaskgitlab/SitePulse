@@ -2866,6 +2866,8 @@ export type SnlSourceWithCounts = SnlSource & { itemCount: number };
 export type SnlSearchResult = Pick<SnlItem, "id" | "itemCode" | "shortLabel" | "description" | "unit" | "workCategory" | "isMixSpecific" | "hasGradingVariants"> & {
   sourceName: string;
   sourceCode: string;
+  sector?: string | null;
+  categoryMatchStatus?: "match" | "secondary" | "mismatch" | "unknown";
   shiftOutput: number | null;
   outputUnit: string | null;
 };
