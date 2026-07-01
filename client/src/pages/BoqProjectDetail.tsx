@@ -307,9 +307,11 @@ function CategorySection({
   const boqSubtotal = items.reduce((s, i) => s + (i.clientRate ?? 0) * i.boqQty, 0);
 
   return (
-    <Card className="border-slate-200 overflow-hidden" data-testid={`section-category-${name}`}>
-      {/* Category header — sticky below main nav (top-14 = 56px) */}
-      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between sticky top-14 z-10">
+    <Card className="border-slate-200" data-testid={`section-category-${name}`}>
+      {/* Category header — sticky below main nav (top-14 = 56px).
+          NOTE: overflow-hidden removed from Card — any overflow on an ancestor
+          breaks position:sticky by capping the sticky container to that element. */}
+      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between sticky top-14 z-10 rounded-t-xl">
         <button
           onClick={() => setCollapsed(c => !c)}
           className="flex items-center gap-3 flex-1 text-left"
