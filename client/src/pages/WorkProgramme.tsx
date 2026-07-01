@@ -1168,6 +1168,12 @@ function InlineGanttTable({
     return m;
   }, [barsByItemId]);
 
+  // Items with at least one structure_import bar are implicitly structure-planned.
+  const structureImportItemIds = useMemo(
+    () => new Set(bars.filter(b => (b as any).source === "structure_import").map(b => b.boqItemId)),
+    [bars],
+  );
+
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
