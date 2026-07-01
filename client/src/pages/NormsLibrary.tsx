@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   BookOpen, ChevronRight, Search, Loader2, RefreshCw, ArrowLeft,
   Wrench, Users, Package, BarChart3, ChevronDown, ChevronUp,
-  Database, AlertCircle, Upload, Download, Filter,
+  AlertCircle, Upload, Download, Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -463,15 +463,6 @@ export default function NormsLibrary() {
     queryKey: ["/api/snl/sources"],
   });
 
-  const seedMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/snl/seed", {}),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/snl/sources"] });
-      toast({ title: "MoRTH SDB 2019 seeded successfully" });
-    },
-    onError: () => toast({ title: "Seed failed", variant: "destructive" }),
-  });
-
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
@@ -585,17 +576,6 @@ export default function NormsLibrary() {
             </>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-            className="shrink-0"
-            data-testid="button-seed-snl"
-          >
-            {seedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Database className="w-3.5 h-3.5 mr-1" />}
-            {hasSource ? "Re-seed MoRTH SDB" : "Load MoRTH SDB 2019"}
-          </Button>
         </div>
       </div>
 
@@ -627,13 +607,12 @@ export default function NormsLibrary() {
       {isLoading ? (
         <div className="py-16 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…</div>
       ) : !hasSource ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
           <AlertCircle className="w-10 h-10 opacity-30" />
-          <p className="text-sm">No norm sources loaded yet.</p>
-          <Button onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending} className="bg-teal-600 hover:bg-teal-700 text-white" data-testid="button-seed-snl-empty">
-            {seedMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Database className="w-4 h-4 mr-2" />}
-            Load MoRTH SDB 2019
-          </Button>
+          <p className="text-sm font-medium">No norm sources loaded yet.</p>
+          <p className="text-xs text-center max-w-xs">
+            Use the <span className="font-semibold text-slate-700">Import SDB</span> button above to load the MoRTH Standard Data Book 2019 (official Excel) or any other SDB in the supported format.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
