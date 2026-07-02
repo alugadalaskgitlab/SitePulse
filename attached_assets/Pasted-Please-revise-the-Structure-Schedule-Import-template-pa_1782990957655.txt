@@ -1,0 +1,59 @@
+Please revise the Structure Schedule Import template/parser to support a section-wise matrix format.
+
+Purpose:
+For real projects with many culverts and bridges, users should prepare structure-wise item quantities in Excel and import them. The app should not require entering these quantities one by one in the Gantt.
+
+Workbook format:
+The import workbook may contain any of these sheets:
+- Culverts
+- Minor_Bridges
+- Major_Bridges
+- Structures
+- Bridges
+- Cross_Drainage
+
+The app should read whichever sheets are present and non-empty.
+
+Sheet format:
+Columns A-D are fixed:
+- BOQ Code
+- BOQ Sub Item
+- BOQ Description
+- UOM
+
+Columns E onward represent structures, one column per structure.
+
+Example:
+BOQ Code | BOQ Sub Item | BOQ Description | UOM | PC-01 | PC-02 | SC-01 | BC-01
+Structure Type | | | | Pipe Culvert | Pipe Culvert | Slab Culvert | Box Culvert
+Chainage Km | | | | 203.640 | 205.210 | 206.500 | 208.300
+5.01 | | Excavation for foundation | Cum | 120 | 140 | 180 | 250
+5.04 | | PCC M15 levelling course | Cum | 8 | 10 | 14 | 20
+5.06 | | RCC M25 for box/slab culverts | Cum | | | 34 | 72
+5.08 | Foundation | HYSD reinforcement | MT | 1.2 | 1.6 | 2.5 | 5.8
+5.14 | | Pipe bedding | Cum | 25 | 30 | | 
+5.16 | | NP3 pipe | RM | 3 | 4 | | 
+5.24 | | BC over slab/box culverts | Sqm | | | 86 | 120
+
+Parser logic:
+1. Detect structure columns from column E onward.
+2. Read structure_id from the column header.
+3. Read structure_type from the “Structure Type” row.
+4. Read chainage_from_km from the “Chainage Km” row.
+5. Treat each non-blank numeric quantity cell below as:
+   structure_id + structure_type + chainage + boq_item_code + boq_sub_item + boq_description + uom + planned_qty.
+6. Convert internally into structure_import programme bars.
+7. Match BOQ rows using boq_item_code + boq_sub_item + description + UOM, then link by internal boq_item_id.
+8. Do not calculate structure quantities from chainage.
+9. Do not auto-spread missing structure items across road reaches.
+10. If a structure-related BOQ item is not included or qty is blank, keep it as:
+    “Not programmed — structure quantity required.”
+11. Imported bars should feed month-wise BOM, labour and equipment demand.
+
+Important:
+- Wearing coat / BC over structures normally applies to slab culverts, box culverts, minor bridges and major bridges, not pipe culverts.
+- If quantity is entered against a normally non-applicable structure type, show a warning but do not block import.
+- The app should support project-specific sheet names. If the BOQ has only Culverts and Bridges, only those sheets are required. If the BOQ has one combined Structures section, one Structures sheet is enough.
+
+Expected result:
+The user can fill a simple Excel matrix where BOQ items are rows and structures are columns. The app unpivots the matrix into structure-wise programme bars automatically.

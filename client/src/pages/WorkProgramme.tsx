@@ -839,6 +839,7 @@ interface StructureScheduleRow {
   remarks: string;
   boqItemId?: number;   // resolved by server
   matchStatus?: "matched" | "unmatched";
+  sheetName?: string;   // which sheet this row came from (matrix format)
 }
 
 function StructureImportWizard({
@@ -859,6 +860,8 @@ function StructureImportWizard({
   const [step, setStep] = useState<1 | 2>(1);
   const [rows, setRows] = useState<StructureScheduleRow[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [parsedSheetNames, setParsedSheetNames] = useState<string[]>([]);
   const [mode, setMode] = useState<"append" | "replace">("append");
   const [parsing, setParsing] = useState(false);
 
@@ -866,6 +869,8 @@ function StructureImportWizard({
     setStep(1);
     setRows([]);
     setParseError(null);
+    setParseWarnings([]);
+    setParsedSheetNames([]);
     setParsing(false);
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -875,6 +880,7 @@ function StructureImportWizard({
   async function parseFile(file: File) {
     setParsing(true);
     setParseError(null);
+    setParseWarnings([]);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -885,11 +891,19 @@ function StructureImportWizard({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err?.error ?? `Server error ${res.status}`);
+        throw new Error(err?.hint ? `${err.error} — ${err.hint}` : (err?.error ?? `Server error ${res.status}`));
       }
-      const data: { sheetName: string; rows: StructureScheduleRow[]; totalRows: number } = await res.json();
-      if (!data.rows?.length) throw new Error("No data rows could be read. Check the column headers.");
+      const data: {
+        sheetNames?: string[];
+        sheetName?: string;
+        rows: StructureScheduleRow[];
+        totalRows: number;
+        warnings?: string[];
+      } = await res.json();
+      if (!data.rows?.length) throw new Error("No data rows could be read. Check column headers and that quantity cells are numeric.");
       setRows(data.rows);
+      setParsedSheetNames(data.sheetNames ?? (data.sheetName ? [data.sheetName] : []));
+      setParseWarnings(data.warnings ?? []);
       setStep(2);
     } catch (e: any) {
       setParseError(e?.message ?? String(e));
@@ -952,11 +966,27 @@ function StructureImportWizard({
 
         {step === 1 && (
           <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">
-              Upload an Excel file containing the structure schedule. The sheet should be named{" "}
-              <code className="text-violet-700 font-mono bg-violet-50 px-1 rounded">Structure_Schedule_Import</code>{" "}
-              with columns: <em>structure_id, structure_type, chainage_km, boq_item_code, boq_sub_item, planned_qty, uom, start_date, duration_days, remarks</em>.
-            </p>
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>
+                Upload an Excel workbook prepared as a <strong>section-wise matrix</strong> — BOQ items as rows, structures as columns.
+              </p>
+              <div className="rounded-md bg-violet-50 border border-violet-200 p-3 space-y-1.5 text-xs">
+                <p className="font-semibold text-violet-800">Sheet names the app recognises:</p>
+                <div className="flex flex-wrap gap-1">
+                  {["Culverts","Minor_Bridges","Major_Bridges","Structures","Bridges","Cross_Drainage"].map(s => (
+                    <code key={s} className="text-violet-700 font-mono bg-white border border-violet-200 px-1.5 py-0.5 rounded">{s}</code>
+                  ))}
+                </div>
+                <p className="text-violet-700 mt-1">Include only the sheets that apply to your project. Each sheet must have:</p>
+                <ul className="list-disc list-inside text-violet-700 space-y-0.5 ml-1">
+                  <li>Columns A–D: <em>BOQ Code · BOQ Sub Item · BOQ Description · UOM</em></li>
+                  <li>Column E onward: one column per structure — structure ID in row 1</li>
+                  <li>A <em>Structure Type</em> row and a <em>Chainage Km</em> row immediately after the header</li>
+                  <li>BOQ quantity rows below — leave blank where a BOQ item doesn't apply to a structure</li>
+                </ul>
+                <p className="text-violet-500 text-[11px]">Legacy flat format (sheet named <code className="font-mono">Structure_Schedule_Import</code>) is still supported.</p>
+              </div>
+            </div>
 
             <div className="rounded-lg border-2 border-dashed border-violet-200 p-6 text-center bg-violet-50/40">
               <Upload className="w-8 h-8 text-violet-400 mx-auto mb-2" />
@@ -992,6 +1022,16 @@ function StructureImportWizard({
 
         {step === 2 && (
           <div className="space-y-3 py-2">
+            {/* Sheet summary */}
+            {parsedSheetNames.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-violet-700 flex-wrap">
+                <span className="font-semibold">Sheets read:</span>
+                {parsedSheetNames.map(s => (
+                  <code key={s} className="bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded font-mono">{s}</code>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-1 text-teal-700 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />{matchedCount} matched
@@ -1004,17 +1044,29 @@ function StructureImportWizard({
               <span className="text-muted-foreground ml-auto">{rows.length} total rows</span>
             </div>
 
-            <div className="border rounded-lg overflow-auto max-h-72 text-xs">
+            {/* Parse warnings (e.g. BC qty on pipe culvert) */}
+            {parseWarnings.length > 0 && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800 space-y-0.5">
+                <p className="font-semibold flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" />{parseWarnings.length} warning(s) — import is not blocked</p>
+                <ul className="list-disc list-inside space-y-0.5 ml-1 max-h-20 overflow-auto">
+                  {parseWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="border rounded-lg overflow-auto max-h-64 text-xs">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0">
                   <tr>
+                    {parsedSheetNames.length > 1 && (
+                      <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Sheet</th>
+                    )}
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Structure ID</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Type</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Chainage</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">BOQ Code</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Description</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Qty</th>
-                    <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Start</th>
                     <th className="px-2 py-1.5 border-b font-semibold text-slate-600">Status</th>
                   </tr>
                 </thead>
@@ -1026,13 +1078,15 @@ function StructureImportWizard({
                         ? "hover:bg-slate-50/50"
                         : "bg-amber-50/60 dark:bg-amber-900/10"}
                     >
-                      <td className="px-2 py-1 border-b truncate max-w-[120px]" title={r.structureId}>{r.structureId || "—"}</td>
-                      <td className="px-2 py-1 border-b truncate max-w-[90px]">{r.structureType || "—"}</td>
+                      {parsedSheetNames.length > 1 && (
+                        <td className="px-2 py-1 border-b text-violet-700 font-mono truncate max-w-[80px]" title={r.sheetName}>{r.sheetName ?? "—"}</td>
+                      )}
+                      <td className="px-2 py-1 border-b truncate max-w-[110px]" title={r.structureId}>{r.structureId || "—"}</td>
+                      <td className="px-2 py-1 border-b truncate max-w-[80px]">{r.structureType || "—"}</td>
                       <td className="px-2 py-1 border-b font-mono">{r.chainageKm > 0 ? r.chainageKm.toFixed(3) : "—"}</td>
                       <td className="px-2 py-1 border-b font-mono">{r.boqItemCode || "—"}</td>
                       <td className="px-2 py-1 border-b truncate max-w-[140px]" title={r.boqDescription}>{r.boqDescription || "—"}</td>
-                      <td className="px-2 py-1 border-b font-mono">{r.plannedQty > 0 ? fmtQty(r.plannedQty, 2) : "—"} {r.uom}</td>
-                      <td className="px-2 py-1 border-b">{r.startDate || "—"}</td>
+                      <td className="px-2 py-1 border-b font-mono whitespace-nowrap">{r.plannedQty > 0 ? fmtQty(r.plannedQty, 2) : "—"} {r.uom}</td>
                       <td className="px-2 py-1 border-b">
                         {r.matchStatus === "matched"
                           ? <span className="text-teal-600 font-semibold">✓ matched</span>

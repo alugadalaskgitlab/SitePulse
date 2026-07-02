@@ -10867,113 +10867,277 @@ export async function registerRoutes(
       const { read, utils } = await import("xlsx");
       const wb = read(req.file.buffer, { type: "buffer", cellDates: true });
 
-      // Require the named sheet — do NOT silently fall back to first sheet,
-      // which can parse the wrong data. Caller must name their sheet correctly.
-      const REQUIRED_SHEET = "Structure_Schedule_Import";
-      if (!wb.SheetNames.includes(REQUIRED_SHEET)) {
+      // ── Sheet detection ────────────────────────────────────────────────────────
+      // Preferred: matrix-format sheets (one column per structure, BOQ items as rows).
+      // Fallback: legacy flat format — one row per structure×item, sheet named
+      // "Structure_Schedule_Import".
+      const MATRIX_SHEETS = [
+        "Culverts", "Minor_Bridges", "Major_Bridges",
+        "Structures", "Bridges", "Cross_Drainage",
+      ];
+      const LEGACY_SHEET = "Structure_Schedule_Import";
+
+      const presentMatrixSheets = MATRIX_SHEETS.filter(s => wb.SheetNames.includes(s));
+      const hasLegacySheet = wb.SheetNames.includes(LEGACY_SHEET);
+
+      if (!presentMatrixSheets.length && !hasLegacySheet) {
         return res.status(422).json({
-          error: `Required sheet "${REQUIRED_SHEET}" not found.`,
+          error: "No recognised structure schedule sheet found in this workbook.",
           availableSheets: wb.SheetNames,
-          hint: `Rename your target worksheet to "${REQUIRED_SHEET}" and re-upload.`,
+          hint: `Name your sheet(s) after structure types: ${MATRIX_SHEETS.join(", ")} — ` +
+                `or use the legacy flat format with a sheet named "${LEGACY_SHEET}".`,
         });
       }
-      const sheetName = REQUIRED_SHEET;
 
-      const ws = wb.Sheets[sheetName];
-      const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
-      if (!json.length) return res.status(422).json({ error: `Sheet "${sheetName}" is empty.` });
-
-      function colStr(row: Record<string, unknown>, ...aliases: string[]): string {
-        for (const alias of aliases) {
-          const key = Object.keys(row).find(k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase());
-          if (key) return String(row[key] ?? "");
+      // ── Shared BOQ matcher (used by both parsers) ──────────────────────────────
+      function matchBoqItem(boqCode: string, boqSubItem: string, boqDesc: string): any {
+        let found: any = null;
+        if (boqCode && boqSubItem) {
+          const k = `${boqCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
+          found = itemByCodeSubItem.get(k) ?? null;
         }
-        return "";
-      }
-      function colNum(row: Record<string, unknown>, ...aliases: string[]): number {
-        const v = parseFloat(colStr(row, ...aliases).replace(/,/g, ""));
-        return isNaN(v) ? 0 : v;
-      }
-      function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
-        const v = colStr(row, ...aliases).trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-        const parts = v.split(/[\/-]/);
-        if (parts.length === 3) {
-          const [a, b, c] = parts.map(Number);
-          if (c > 31) return `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
-          if (a > 31) return `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
-        }
-        return "";
-      }
-
-      const rows = json
-        .map((row, i) => {
-          const structureId   = colStr(row, "structure_id", "structure_name", "structure id");
-          const boqItemCode   = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
-          const boqSubItem    = colStr(row, "boq_sub_item", "sub_item", "sub item");
-          const boqDescription = colStr(row, "boq_description", "description", "item description");
-          const boqExcelRowRaw = Math.round(colNum(row, "boq_excel_row", "excel_row"));
-          const boqExcelRow = boqExcelRowRaw || (i + 2); // stored verbatim for traceability
-
-          // Server-side BOQ matching — 3-level priority (authoritative):
-          // P1 → boq_excel_row + boq_item_code + boq_sub_item
-          //       Exact: find a BOQ item whose stored excel_row (from BOQ import) matches
-          //       the schedule's boq_excel_row AND whose item_code matches. This is the
-          //       tightest disambiguator when repeated item codes exist across sub-items.
-          // P2 → boq_item_code + boq_sub_item composite exact
-          // P3 → boq_item_code exact (or leading-zero stripped)
-          // P4 → boq_description partial match (first 40 chars, last resort)
-          let boqItem: any = null;
-          if (boqExcelRowRaw > 0 && boqItemCode) {
-            boqItem = allItems.find((it: any) =>
-              it.excelRow === boqExcelRowRaw &&
-              String(it.itemCode ?? "").trim().toLowerCase() === boqItemCode.trim().toLowerCase() &&
-              (!boqSubItem || String(it.boqSubItem ?? "").trim().toLowerCase() === boqSubItem.trim().toLowerCase())
+        if (!found && boqCode) {
+          found = itemByCode.get(boqCode.trim().toLowerCase()) ?? null;
+          if (!found) {
+            const stripped = boqCode.replace(/^0+/, "").trim().toLowerCase();
+            found = allItems.find((it: any) =>
+              String(it.itemCode ?? "").replace(/^0+/, "").trim().toLowerCase() === stripped
             ) ?? null;
           }
-          if (!boqItem && boqItemCode && boqSubItem) {
-            const k = `${boqItemCode.trim().toLowerCase()}::${boqSubItem.trim().toLowerCase()}`;
-            boqItem = itemByCodeSubItem.get(k) ?? null;
-          }
-          if (!boqItem && boqItemCode) {
-            boqItem = itemByCode.get(boqItemCode.trim().toLowerCase()) ?? null;
-            if (!boqItem) {
-              const stripped = boqItemCode.replace(/^0+/, "").trim().toLowerCase();
-              boqItem = allItems.find((it: any) =>
-                String(it.itemCode ?? "").replace(/^0+/, "").trim().toLowerCase() === stripped
-              ) ?? null;
+        }
+        if (!found && boqDesc) {
+          const needle = boqDesc.toLowerCase().slice(0, 40);
+          found = allItems.find((it: any) =>
+            (it.description ?? "").toLowerCase().includes(needle)
+          ) ?? null;
+        }
+        return found;
+      }
+
+      // BC / wearing-coat quantities against pipe culverts are unusual — warn.
+      const BC_PATTERN = /wearing\s*coat|bc\s+over|bituminous\s+concrete\s+over|bc\s+on\s+slab/i;
+      const PIPE_CULVERT_PATTERN = /pipe\s+culvert|np[23]\s+pipe|rcc\s+pipe/i;
+
+      // ── Matrix-format parser ───────────────────────────────────────────────────
+      // Sheet layout:
+      //   Row 1  (header):      BOQ Code | BOQ Sub Item | BOQ Description | UOM | <structId1> | <structId2> …
+      //   Row 2  (meta):        Structure Type | | | | <type1> | <type2> …
+      //   Row 3  (meta):        Chainage Km    | | | | <km1>   | <km2>   …
+      //   Rows 4+ (data):       <code> | <sub> | <desc> | <uom> | <qty1> | <qty2> …
+      //   Empty qty cells → skip that structure×item combination.
+
+      function parseMatrixSheet(sheetName: string): { rows: any[]; warnings: string[] } {
+        const ws = wb.Sheets[sheetName];
+        const raw: any[][] = utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }) as any[][];
+        if (!raw.length) return { rows: [], warnings: [`Sheet "${sheetName}" is empty — skipped.`] };
+
+        const localWarnings: string[] = [];
+
+        // Find the header row: first row whose col-0 looks like "BOQ Code"
+        let hdrIdx = raw.findIndex(r =>
+          /boq.?code|item.?code/i.test(String(r[0] ?? "").trim()),
+        );
+        if (hdrIdx < 0) hdrIdx = 0; // assume first row
+
+        const hdrRow = raw[hdrIdx];
+        // Structure IDs from col 4 onward
+        const structIds: string[] = [];
+        for (let c = 4; c < hdrRow.length; c++) {
+          structIds.push(String(hdrRow[c] ?? "").trim());
+        }
+        const structCount = structIds.filter(Boolean).length;
+        if (!structCount) {
+          localWarnings.push(`Sheet "${sheetName}": no structure columns found after column D — skipped.`);
+          return { rows: [], warnings: localWarnings };
+        }
+
+        // Read metadata rows (Structure Type, Chainage Km) immediately after the header
+        const structTypes: string[] = new Array(structIds.length).fill("");
+        const chainages: number[]   = new Array(structIds.length).fill(0);
+        let dataStart = hdrIdx + 1;
+
+        for (let ri = hdrIdx + 1; ri < Math.min(hdrIdx + 6, raw.length); ri++) {
+          const c0 = String(raw[ri][0] ?? "").trim().toLowerCase();
+          if (/^structure[\s_]?type$/i.test(c0)) {
+            for (let c = 4; c < raw[ri].length; c++) {
+              if (c - 4 < structIds.length) structTypes[c - 4] = String(raw[ri][c] ?? "").trim();
             }
+            dataStart = Math.max(dataStart, ri + 1);
+          } else if (/^chainage[\s_]?(km|from)?$/i.test(c0)) {
+            for (let c = 4; c < raw[ri].length; c++) {
+              if (c - 4 < structIds.length) {
+                const v = parseFloat(String(raw[ri][c] ?? "").replace(/,/g, ""));
+                chainages[c - 4] = isNaN(v) ? 0 : v;
+              }
+            }
+            dataStart = Math.max(dataStart, ri + 1);
           }
-          if (!boqItem && boqDescription) {
-            const needle = boqDescription.toLowerCase();
-            boqItem = allItems.find((it: any) =>
-              (it.description ?? "").toLowerCase().includes(needle.slice(0, 40))
-            ) ?? null;
+        }
+
+        const outRows: any[] = [];
+
+        for (let ri = dataStart; ri < raw.length; ri++) {
+          const row = raw[ri];
+          const boqCode = String(row[0] ?? "").trim();
+          const boqSubItem = String(row[1] ?? "").trim();
+          const boqDesc    = String(row[2] ?? "").trim();
+          const uom        = String(row[3] ?? "").trim();
+
+          // Skip blank / metadata rows
+          if (!boqCode && !boqDesc) continue;
+          // Skip if col-0 looks like a metadata marker
+          if (/^(structure[\s_]?type|chainage|remarks|total|sub-total)/i.test(boqCode)) continue;
+
+          const boqItem = matchBoqItem(boqCode, boqSubItem, boqDesc);
+
+          for (let c = 4; c < row.length; c++) {
+            const colIdx = c - 4;
+            const structId = structIds[colIdx];
+            if (!structId) continue;
+
+            const cellStr = String(row[c] ?? "").trim();
+            if (!cellStr) continue;
+            const qty = parseFloat(cellStr.replace(/,/g, ""));
+            if (isNaN(qty) || qty <= 0) continue;
+
+            const structType = structTypes[colIdx] ?? "";
+            const chainageKm = chainages[colIdx] ?? 0;
+
+            // BC / wearing-coat against pipe culverts — warn but allow
+            if (BC_PATTERN.test(boqDesc) && PIPE_CULVERT_PATTERN.test(structType)) {
+              localWarnings.push(
+                `Sheet "${sheetName}" row ${ri + 1}, ${structId} (${structType}): ` +
+                `"${boqDesc}" qty ${qty} — BC/wearing coat is unusual for pipe culverts.`,
+              );
+            }
+
+            outRows.push({
+              rowIdx: ri + 2,
+              structureId:  structId,
+              structureType: structType,
+              chainageKm,
+              boqItemCode:  boqCode,
+              boqSubItem,
+              boqExcelRow:  ri + 2,
+              boqDescription: boqDesc,
+              plannedQty:   qty,
+              uom,
+              startDate:    "",
+              durationDays: 0,
+              remarks:      "",
+              boqItemId:    boqItem?.id ?? null,
+              matchStatus:  boqItem ? "matched" : "unmatched",
+              matchedItemCode: boqItem?.itemCode ?? null,
+              matchedDescription: boqItem?.description?.slice(0, 80) ?? null,
+              sheetName,
+            });
           }
+        }
 
-          return {
-            rowIdx: i + 2,
-            structureId,
-            structureType:   colStr(row, "structure_type", "type"),
-            chainageKm:      colNum(row, "chainage_km", "chainage", "ch_km"),
-            boqItemCode,
-            boqSubItem,
-            boqExcelRow,
-            boqDescription,
-            plannedQty:      colNum(row, "planned_qty", "quantity", "qty"),
-            uom:             colStr(row, "uom", "unit"),
-            startDate:       colDate(row, "start_date", "start date"),
-            durationDays:    Math.round(colNum(row, "duration_days", "duration", "duration (days)")),
-            remarks:         colStr(row, "remarks", "notes"),
-            boqItemId:       boqItem?.id ?? null,
-            matchStatus:     boqItem ? "matched" : "unmatched",
-            matchedItemCode: boqItem?.itemCode ?? null,
-            matchedDescription: boqItem?.description?.slice(0, 80) ?? null,
-          };
-        })
-        .filter(r => r.structureId || r.boqDescription || r.plannedQty > 0);
+        return { rows: outRows, warnings: localWarnings };
+      }
 
-      res.json({ sheetName, rows, totalRows: rows.length });
+      // ── Legacy flat-format parser ──────────────────────────────────────────────
+      // Columns: structure_id | structure_type | chainage_km | boq_item_code |
+      //          boq_sub_item | planned_qty | uom | start_date | duration_days | remarks
+      function parseLegacySheet(): { rows: any[]; warnings: string[] } {
+        const ws = wb.Sheets[LEGACY_SHEET];
+        const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+        if (!json.length) return { rows: [], warnings: [`Sheet "${LEGACY_SHEET}" is empty.`] };
+
+        function colStr(row: Record<string, unknown>, ...aliases: string[]): string {
+          for (const alias of aliases) {
+            const key = Object.keys(row).find(
+              k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase(),
+            );
+            if (key) return String(row[key] ?? "");
+          }
+          return "";
+        }
+        function colNum(row: Record<string, unknown>, ...aliases: string[]): number {
+          const v = parseFloat(colStr(row, ...aliases).replace(/,/g, ""));
+          return isNaN(v) ? 0 : v;
+        }
+        function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
+          const v = colStr(row, ...aliases).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+          const parts = v.split(/[\/-]/);
+          if (parts.length === 3) {
+            const [a, b, c] = parts.map(Number);
+            if (c > 31) return `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+            if (a > 31) return `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
+          }
+          return "";
+        }
+
+        const outRows = json
+          .map((row, i) => {
+            const structureId    = colStr(row, "structure_id", "structure_name", "structure id");
+            const boqItemCode    = colStr(row, "boq_item_code", "item_code", "item code", "boq item code");
+            const boqSubItem     = colStr(row, "boq_sub_item", "sub_item", "sub item");
+            const boqDescription = colStr(row, "boq_description", "description", "item description");
+            const boqExcelRowRaw = Math.round(colNum(row, "boq_excel_row", "excel_row"));
+            const boqExcelRow    = boqExcelRowRaw || (i + 2);
+            const boqItem        = matchBoqItem(boqItemCode, boqSubItem, boqDescription);
+            return {
+              rowIdx: i + 2,
+              structureId,
+              structureType:      colStr(row, "structure_type", "type"),
+              chainageKm:         colNum(row, "chainage_km", "chainage", "ch_km"),
+              boqItemCode,
+              boqSubItem,
+              boqExcelRow,
+              boqDescription,
+              plannedQty:         colNum(row, "planned_qty", "quantity", "qty"),
+              uom:                colStr(row, "uom", "unit"),
+              startDate:          colDate(row, "start_date", "start date"),
+              durationDays:       Math.round(colNum(row, "duration_days", "duration", "duration (days)")),
+              remarks:            colStr(row, "remarks", "notes"),
+              boqItemId:          boqItem?.id ?? null,
+              matchStatus:        boqItem ? "matched" : "unmatched",
+              matchedItemCode:    boqItem?.itemCode ?? null,
+              matchedDescription: boqItem?.description?.slice(0, 80) ?? null,
+              sheetName:          LEGACY_SHEET,
+            };
+          })
+          .filter(r => r.structureId || r.boqDescription || r.plannedQty > 0);
+
+        return { rows: outRows, warnings: [] };
+      }
+
+      // ── Run the appropriate parser(s) ──────────────────────────────────────────
+      let allRows: any[] = [];
+      const allParseWarnings: string[] = [];
+      const parsedSheetNames: string[] = [];
+
+      if (presentMatrixSheets.length) {
+        for (const sn of presentMatrixSheets) {
+          const { rows: sheetRows, warnings: sheetWarnings } = parseMatrixSheet(sn);
+          allRows = allRows.concat(sheetRows);
+          allParseWarnings.push(...sheetWarnings);
+          if (sheetRows.length) parsedSheetNames.push(sn);
+        }
+      } else {
+        const { rows: legRows, warnings: legWarnings } = parseLegacySheet();
+        allRows = legRows;
+        allParseWarnings.push(...legWarnings);
+        parsedSheetNames.push(LEGACY_SHEET);
+      }
+
+      if (!allRows.length) {
+        return res.status(422).json({
+          error: "No data rows could be read from the uploaded file.",
+          warnings: allParseWarnings,
+          hint: "Check that BOQ item rows have numeric quantity values in the structure columns.",
+        });
+      }
+
+      res.json({
+        sheetNames: parsedSheetNames,
+        rows: allRows,
+        totalRows: allRows.length,
+        warnings: allParseWarnings,
+      });
     } catch (err: any) {
       console.error("POST /api/boq/projects/:id/parse-structure-schedule:", err);
       res.status(500).json({ error: `Failed to parse structure schedule: ${err?.message ?? String(err)}` });
