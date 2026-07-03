@@ -25,6 +25,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { EquipmentMasterType, EquipmentUsage, Site } from "@shared/schema";
 import { METER_TYPES } from "@shared/schema";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 export default function PlantEquipmentUsage() {
   const { toast } = useToast();
@@ -560,50 +561,24 @@ export default function PlantEquipmentUsage() {
   };
 
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
-  
-  // Calculate runtime from meter readings or time entry (meter takes priority)
-  const calculateTimeHours = (start?: string, end?: string) => {
-    if (!start || !end) return 0;
-    try {
-      const [startHour, startMin] = start.split(':').map(Number);
-      const [endHour, endMin] = end.split(':').map(Number);
-      const startMins = startHour * 60 + startMin;
-      const endMins = endHour * 60 + endMin;
-      const diff = endMins - startMins;
-      return diff > 0 ? diff / 60 : 0;
-    } catch {
-      return 0;
-    }
-  };
-  
+
+  // Shared usage/diesel calculation logic (also used by the Site DPR equipment log)
+  const liveUsage = computeEquipmentUsage(selectedEquipment as any, {
+    entryType,
+    tripBasedEntry,
+    openingReading: openingReading ? parseFloat(openingReading) : null,
+    closingReading: closingReading ? parseFloat(closingReading) : null,
+    startTime,
+    endTime,
+    numberOfTrips: numberOfTrips ? parseInt(numberOfTrips) : null,
+    tripDistance: tripDistance ? parseFloat(tripDistance) : null,
+  });
+
+  const isHourMeter = selectedEquipment?.meterType !== "odometer";
   const meterRuntime = openingReading && closingReading ? parseFloat(closingReading) - parseFloat(openingReading) : 0;
-  const timeHours = calculateTimeHours(startTime, endTime);
   const tripTotalKm = numberOfTrips && tripDistance ? parseInt(numberOfTrips) * parseFloat(tripDistance) * 2 : 0;
-  
-  // Average speed assumption for converting L/hr to L/km (for trip-based calculation)
-  const AVERAGE_SPEED_KMPH = 25; // km/hr typical for heavy vehicles/tankers
-  const isHourMeter = selectedEquipment?.meterType === "hour_meter";
-  
-  // For odometer equipment using time entry, convert hours to estimated km
-  // For hour_meter equipment, time directly gives hours
-  const timeRuntime = isHourMeter ? timeHours : timeHours * AVERAGE_SPEED_KMPH;
-  const runtime = meterRuntime > 0 ? meterRuntime : timeRuntime;
-  
-  // Expected diesel calculation:
-  // If tripBasedEntry is checked, ALWAYS use trip-based calculation (even if meter/time exists)
-  // For trip-based: convert L/hr norm to L/km using average speed
-  // L/km = L/hr ÷ km/hr
-  const norm = selectedEquipment?.consumptionNorm || 0;
-  
-  let expectedDiesel = 0;
-  if (tripBasedEntry && tripTotalKm > 0) {
-    // Trip-based: convert L/hr to L/km if equipment has hour-based norm
-    const normPerKm = isHourMeter ? norm / AVERAGE_SPEED_KMPH : norm;
-    expectedDiesel = tripTotalKm * normPerKm;
-  } else if (runtime > 0) {
-    // Meter/time based
-    expectedDiesel = runtime * norm;
-  }
+  const runtime = liveUsage.runtime;
+  const expectedDiesel = liveUsage.expectedDiesel ?? 0;
 
   const filteredUsage = usage?.filter(u => {
     if (filterDateFrom && u.date < filterDateFrom) return false;

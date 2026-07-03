@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
@@ -25,6 +25,7 @@ import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
 import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
+import { computeEquipmentUsage } from "@/lib/equipmentUsage";
 
 interface ProgressEntry {
   activity: string;
@@ -111,7 +112,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null };
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
@@ -393,6 +394,23 @@ export default function SiteEntry() {
     return t === "structure" ? "structure" : t === "road" ? "road" : null;
   }, []);
   const [workType, setWorkType] = useState<string>(lockedWorkType ?? "road");
+  const workTypeTouchedRef = useRef(!!lockedWorkType);
+
+  // Derive road-only/structure-only default (and toggle visibility) from the
+  // site's own BOQ items when the DPR wasn't opened via a locked ?type= link.
+  const boqWorkTypeHint = useMemo<"road" | "structure" | null>(() => {
+    if (!siteBoqItems.length) return null;
+    const types = new Set(siteBoqItems.map((bi) => (bi.planningWorkType === "structure" ? "structure" : "road")));
+    return types.size === 1 ? (types.values().next().value as "road" | "structure") : null;
+  }, [siteBoqItems]);
+
+  useEffect(() => {
+    if (lockedWorkType) return;
+    if (workTypeTouchedRef.current) return;
+    if (boqWorkTypeHint) setWorkType(boqWorkTypeHint);
+  }, [lockedWorkType, boqWorkTypeHint]);
+
+  const effectiveLockedWorkType = lockedWorkType ?? boqWorkTypeHint;
   const [structureItems, setStructureItems] = useState<StructureItem[]>([
     { structureType: "Culvert", structureSubType: "Pipe Culvert", structureName: "", stage: "Excavation", itemOfWork: "Excavation", quantity: null, uom: "m³", remarks: "" }
   ]);
@@ -767,20 +785,20 @@ export default function SiteEntry() {
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <CardTitle>{workType === "structure" ? "Structure Progress" : "Road Works Progress"}</CardTitle>
-            {!lockedWorkType ? (
+            {!effectiveLockedWorkType ? (
               <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                 <Button
                   size="sm"
                   variant={workType === "road" ? "default" : "ghost"}
                   className="h-7 px-3 text-sm"
-                  onClick={() => setWorkType("road")}
+                  onClick={() => { workTypeTouchedRef.current = true; setWorkType("road"); }}
                   data-testid="button-work-type-road"
                 >Road</Button>
                 <Button
                   size="sm"
                   variant={workType === "structure" ? "default" : "ghost"}
                   className="h-7 px-3 text-sm"
-                  onClick={() => setWorkType("structure")}
+                  onClick={() => { workTypeTouchedRef.current = true; setWorkType("structure"); }}
                   data-testid="button-work-type-structure"
                 >Structure</Button>
               </div>
@@ -1253,6 +1271,9 @@ export default function SiteEntry() {
         </CardHeader>
         <CardContent className="space-y-4">
           {equipment.map((entry, idx) => {
+            const selectedEquipForRow = activeEquipment.find(e => e.id === entry.equipmentId);
+            const usage = computeEquipmentUsage(selectedEquipForRow as any, entry as any);
+            const isOdometer = usage.meterType === "odometer";
             const workingHours = getWorkingHours(entry);
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
             const isTripBased = entry.entryType === "trip_based";
@@ -1420,11 +1441,11 @@ export default function SiteEntry() {
                         </div>
                       </div>
                       <div>
-                        <Label className="text-sm">Opening Hour Meter</Label>
+                        <Label className="text-sm">{isOdometer ? "Opening Odometer (km)" : "Opening Hour Meter"}</Label>
                         <Input
                           type="number"
                           step="0.1"
-                          placeholder="e.g. 1234.5"
+                          placeholder={isOdometer ? "e.g. 45230" : "e.g. 1234.5"}
                           value={entry.openingReading ?? ""}
                           onChange={(e) => {
                             const updated = [...equipment];
@@ -1435,11 +1456,11 @@ export default function SiteEntry() {
                         />
                       </div>
                       <div>
-                        <Label className="text-sm">Closing Hour Meter</Label>
+                        <Label className="text-sm">{isOdometer ? "Closing Odometer (km)" : "Closing Hour Meter"}</Label>
                         <Input
                           type="number"
                           step="0.1"
-                          placeholder="e.g. 1238.0"
+                          placeholder={isOdometer ? "e.g. 45310" : "e.g. 1238.0"}
                           value={entry.closingReading ?? ""}
                           onChange={(e) => {
                             const updated = [...equipment];
@@ -1451,14 +1472,26 @@ export default function SiteEntry() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
-                        <Label className="text-sm">Working Hours</Label>
+                        <Label className="text-sm">{isOdometer ? "KM Run" : "Working Hours"}</Label>
                         <div 
                           className="bg-primary/10 px-3 py-2 rounded border border-primary/20 font-semibold text-primary text-sm"
                           data-testid={`display-working-hours-${idx}`}
                         >
-                          {workingHours > 0 ? `${workingHours.toFixed(3)} hrs` : "-"}
+                          {usage.runtime > 0 ? `${usage.runtime.toFixed(isOdometer ? 1 : 3)} ${isOdometer ? "km" : "hrs"}` : "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground">Expected Diesel</Label>
+                        <div className="bg-muted px-3 py-2 rounded border font-semibold text-sm" data-testid={`display-expected-diesel-${idx}`}>
+                          {usage.expectedDiesel != null ? `${usage.expectedDiesel.toFixed(1)} L` : "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground">Norm</Label>
+                        <div className="bg-muted px-3 py-2 rounded border font-semibold text-sm" data-testid={`display-efficiency-${idx}`}>
+                          {usage.efficiencyLabel ?? "-"}
                         </div>
                       </div>
                       <div>
@@ -1477,6 +1510,11 @@ export default function SiteEntry() {
                         />
                       </div>
                     </div>
+                    {usage.warning && !isTripBased && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid={`warning-equipment-${idx}`}>
+                        ⚠ {usage.warning}
+                      </p>
+                    )}
                 </>
 
                 {isTripBased && (
@@ -1871,8 +1909,8 @@ export default function SiteEntry() {
         </CardContent>
       </Card>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-4 pt-4">
+      {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
+      <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:mx-0 mt-2 flex flex-wrap items-center justify-end gap-3 border-t bg-background/95 backdrop-blur px-4 py-3 sm:static sm:border-0 sm:bg-transparent sm:backdrop-blur-0 sm:px-0 sm:py-0">
         <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
         <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
           Cancel

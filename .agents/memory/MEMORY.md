@@ -5,3 +5,4 @@
 - [Mix Calculator Separation](mix-calculator-separation.md) — Calculator is a separate product (not SiteLog commercial copy); spin-out = new Repl + standalone auth + own DB
 - [Work Programme Planning Engine](work-programme-planning.md) — Full Gantt + BOM system: schema, planningEngine.ts, Layer Config, tipper fleet, unit conversion, Plan vs Actual. T005 (Equipment Master UI "Planning Output" section) still pending.
 - [BOM Aggregate Misclassification](bom-aggregate-misclassification.md) — normaliseKeyMaterialName() bug: desc-based VG-grade check must be guarded by rawIsBinder; fix is in planningEngine.ts ~line 686.
+- [DPR form dead code trap](dpr-form-dead-code.md) — DprForm.tsx/NewDpr.tsx are unrouted dead code; the real live DPR form is SiteEntry.tsx.
