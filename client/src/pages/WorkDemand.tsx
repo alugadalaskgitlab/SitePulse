@@ -4,7 +4,7 @@ import { useParams, Link, useLocation } from "wouter";
 import {
   ChevronRight, FileSpreadsheet, BookOpen, Loader2,
   Package, Wrench, Users, CalendarDays, ChevronDown, ChevronUp, Zap, PencilLine,
-  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2,
+  LayoutList, ShoppingCart, AlertTriangle, CheckCircle2, Info, Settings2, GitCompareArrows,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -504,6 +504,254 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
   });
 }
 
+// ─── Plan vs Actual Table ───────────────────────────────────────────────────
+
+interface DprLogsLite {
+  boqProjectId: number | null;
+  equipment: Array<{ boqItemId: number | null; machine: string; openingReading: number | null; closingReading: number | null; startTime: string | null; endTime: string | null; totalKm: number | null }>;
+  labour: Array<{ boqItemId: number | null; category: string; count: number }>;
+}
+
+function actualEquipmentHours(log: DprLogsLite["equipment"][number]): number {
+  if (log.openingReading != null && log.closingReading != null) {
+    const d = log.closingReading - log.openingReading;
+    if (d > 0) return d;
+  }
+  if (log.startTime && log.endTime) {
+    const [sh, sm] = log.startTime.split(":").map(Number);
+    const [eh, em] = log.endTime.split(":").map(Number);
+    if (![sh, sm, eh, em].some(Number.isNaN)) {
+      const diff = (eh * 60 + em) - (sh * 60 + sm);
+      if (diff > 0) return diff / 60;
+    }
+  }
+  return 0;
+}
+
+interface PlanVsActualItemRow {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  plannedEquipHours: number;
+  actualEquipHours: number;
+  equipBreakdown: Map<string, { planned: number; actual: number }>;
+  plannedLabourDays: number;
+  actualLabourDays: number;
+  labourBreakdown: Map<string, { planned: number; actual: number }>;
+}
+
+function computePlanVsActual(
+  items: BomInputItem[],
+  bars: BomInputBar[],
+  totalMonths: number,
+  dprs: DprLogsLite[],
+  projectId: number
+): PlanVsActualItemRow[] {
+  const rows: PlanVsActualItemRow[] = [];
+  const relevantDprs = dprs.filter((d) => d.boqProjectId === projectId);
+
+  for (const item of items) {
+    const itemBars = bars.filter((b) => b.boqItemId === item.id);
+    const planned = calculateBomDemand([item], itemBars, totalMonths);
+    const hasPlannedEquip = planned.equipment.length > 0;
+    const hasPlannedLabour = planned.labour.length > 0;
+
+    const equipBreakdown = new Map<string, { planned: number; actual: number }>();
+    for (const e of planned.equipment) equipBreakdown.set(e.equipmentName, { planned: e.totalHours, actual: 0 });
+    const labourBreakdown = new Map<string, { planned: number; actual: number }>();
+    for (const l of planned.labour) labourBreakdown.set(l.designation, { planned: l.totalDays, actual: 0 });
+
+    let actualEquipHours = 0;
+    let actualLabourDays = 0;
+    for (const dpr of relevantDprs) {
+      for (const eq of dpr.equipment) {
+        if (eq.boqItemId !== item.id) continue;
+        const hrs = actualEquipmentHours(eq);
+        actualEquipHours += hrs;
+        const key = eq.machine?.toUpperCase().trim() || "UNKNOWN";
+        const existing = [...equipBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
+        if (existing) existing[1].actual += hrs;
+        else equipBreakdown.set(eq.machine || "Unknown", { planned: 0, actual: hrs });
+      }
+      for (const lb of dpr.labour) {
+        if (lb.boqItemId !== item.id) continue;
+        actualLabourDays += lb.count;
+        const key = lb.category?.toUpperCase().trim() || "UNKNOWN";
+        const existing = [...labourBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
+        if (existing) existing[1].actual += lb.count;
+        else labourBreakdown.set(lb.category || "Unknown", { planned: 0, actual: lb.count });
+      }
+    }
+
+    if (!hasPlannedEquip && !hasPlannedLabour && actualEquipHours === 0 && actualLabourDays === 0) continue;
+
+    rows.push({
+      boqItemId: item.id,
+      itemCode: item.itemCode ?? null,
+      description: item.description,
+      unit: item.unit,
+      plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
+      actualEquipHours,
+      equipBreakdown,
+      plannedLabourDays: planned.labour.reduce((s, l) => s + l.totalDays, 0),
+      actualLabourDays,
+      labourBreakdown,
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const aCode = a.itemCode ?? "";
+    const bCode = b.itemCode ?? "";
+    if (!aCode && !bCode) return 0;
+    if (!aCode) return 1;
+    if (!bCode) return -1;
+    return aCode.localeCompare(bCode, undefined, { numeric: true });
+  });
+}
+
+function varianceBadge(planned: number, actual: number) {
+  if (planned <= 0 && actual <= 0) return null;
+  if (planned <= 0) return (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+      Unplanned
+    </span>
+  );
+  const pct = ((actual - planned) / planned) * 100;
+  const over = pct > 5;
+  const under = pct < -5;
+  const color = over ? "bg-red-50 text-red-700 border-red-200" : under ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  return (
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold border ${color}`}>
+      {pct > 0 ? "+" : ""}{fmtQty(pct, 0)}%
+    </span>
+  );
+}
+
+function PlanVsActualTable({
+  items,
+  bars,
+  totalMonths,
+  dprs,
+  projectId,
+}: {
+  items: BomInputItem[];
+  bars: BomInputBar[];
+  totalMonths: number;
+  dprs: DprLogsLite[];
+  projectId: number;
+}) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const rows = useMemo(
+    () => computePlanVsActual(items, bars, totalMonths, dprs, projectId),
+    [items, bars, totalMonths, dprs, projectId]
+  );
+
+  if (!rows.length) {
+    return <EmptyState label="No planned or actual equipment/labour data found for this project yet." />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-800 flex items-start gap-2">
+        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <span>
+          Actuals are aggregated from DPR equipment and labour rows explicitly linked to a work item (via the
+          "Link to Work Item" selector on the DPR entry screen). Material actuals are not yet linked to BOQ items
+          and are excluded from this comparison.
+        </span>
+      </div>
+      <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
+        <table className="text-sm border-collapse w-full min-w-[820px]">
+          <thead>
+            <tr style={{ background: "#0F5F64" }}>
+              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[240px]" style={{ background: "#0F5F64" }}>Item</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Equip Hrs</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Equip Hrs</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Labour Days</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Labour Days</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const isExpanded = expanded.has(row.boqItemId);
+              return (
+                <Fragment key={row.boqItemId}>
+                  <tr
+                    className={`border-b border-slate-100 cursor-pointer transition-colors ${isExpanded ? "bg-teal-50/60" : "hover:bg-slate-50"}`}
+                    onClick={() => setExpanded((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(row.boqItemId)) next.delete(row.boqItemId); else next.add(row.boqItemId);
+                      return next;
+                    })}
+                    data-testid={`pva-row-${row.boqItemId}`}
+                  >
+                    <td className={`px-3 py-2 sticky left-0 z-10 ${isExpanded ? "bg-teal-50" : "bg-white"}`}>
+                      <div className="flex items-center gap-1.5">
+                        {isExpanded ? <ChevronUp className="w-3 h-3 text-teal-500 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-slate-400 flex-shrink-0" />}
+                        {row.itemCode && <span className="font-mono text-[11px] text-slate-400">[{row.itemCode}]</span>}
+                        <span className="font-medium text-slate-700 truncate">{shortItemName(row.description)}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">{fmtQty(row.plannedEquipHours, 1)}</td>
+                    <td className="px-2 py-2 text-right font-mono font-semibold text-blue-700">{fmtQty(row.actualEquipHours, 1)}</td>
+                    <td className="px-2 py-2 text-right">{varianceBadge(row.plannedEquipHours, row.actualEquipHours)}</td>
+                    <td className="px-2 py-2 text-right font-mono">{fmtQty(row.plannedLabourDays, 1)}</td>
+                    <td className="px-2 py-2 text-right font-mono font-semibold text-purple-700">{fmtQty(row.actualLabourDays, 1)}</td>
+                    <td className="px-2 py-2 text-right">{varianceBadge(row.plannedLabourDays, row.actualLabourDays)}</td>
+                  </tr>
+                  {isExpanded && (
+                    <tr className="bg-teal-50/30">
+                      <td colSpan={7} className="px-4 py-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-semibold text-blue-700 mb-1.5 flex items-center gap-1"><Wrench className="w-3 h-3" /> Equipment (hrs)</p>
+                            {row.equipBreakdown.size === 0 ? (
+                              <p className="text-xs text-slate-400">No equipment planned or logged.</p>
+                            ) : (
+                              <div className="rounded-lg border border-blue-100 bg-white divide-y divide-slate-50">
+                                {[...row.equipBreakdown.entries()].map(([name, v]) => (
+                                  <div key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                                    <span className="flex-1 min-w-0 truncate text-slate-700">{name}</span>
+                                    <span className="font-mono text-slate-500">{fmtQty(v.planned, 1)} planned</span>
+                                    <span className="font-mono font-semibold text-blue-700">{fmtQty(v.actual, 1)} actual</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-purple-700 mb-1.5 flex items-center gap-1"><Users className="w-3 h-3" /> Labour (days)</p>
+                            {row.labourBreakdown.size === 0 ? (
+                              <p className="text-xs text-slate-400">No labour planned or logged.</p>
+                            ) : (
+                              <div className="rounded-lg border border-purple-100 bg-white divide-y divide-slate-50">
+                                {[...row.labourBreakdown.entries()].map(([name, v]) => (
+                                  <div key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                                    <span className="flex-1 min-w-0 truncate text-slate-700">{name}</span>
+                                    <span className="font-mono text-slate-500">{fmtQty(v.planned, 1)} planned</span>
+                                    <span className="font-mono font-semibold text-purple-700">{fmtQty(v.actual, 1)} actual</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand; unprogrammedDescriptions: Set<string> }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const rows = useMemo(() => computeItemDemand(demand, unprogrammedDescriptions), [demand, unprogrammedDescriptions]);
@@ -850,6 +1098,19 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId) && activeTab === "procurement",
   });
 
+  // Actuals for Plan vs Actual: reuse the existing (read-only) DPR listing
+  // endpoint, filtered client-side to this project's equipment/labour rows
+  // that were explicitly linked to a work item.
+  const { data: dprsWithDetails = [], isLoading: dprsLoading } = useQuery<DprLogsLite[]>({
+    queryKey: ["/api/dprs/with-details"],
+    queryFn: async () => {
+      const res = await fetch(`/api/dprs/with-details`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch DPRs");
+      return res.json();
+    },
+    enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
+  });
+
   const demand = useMemo((): BomDemand | null => {
     if (!bomData || !project) return null;
     const { items, bars } = bomData;
@@ -1061,6 +1322,9 @@ export default function WorkDemand() {
               <TabsTrigger value="by-item" className="flex items-center gap-1.5" data-testid="tab-by-item">
                 <LayoutList className="w-3.5 h-3.5" /> By Item
               </TabsTrigger>
+              <TabsTrigger value="plan-vs-actual" className="flex items-center gap-1.5" data-testid="tab-plan-vs-actual">
+                <GitCompareArrows className="w-3.5 h-3.5" /> Plan vs Actual
+              </TabsTrigger>
               <TabsTrigger value="procurement" className="flex items-center gap-1.5" data-testid="tab-procurement">
                 <ShoppingCart className="w-3.5 h-3.5" /> Procurement
                 {shortageAlertCount > 0 && (
@@ -1145,6 +1409,24 @@ export default function WorkDemand() {
             <TabsContent value="by-item" className="mt-3">
               <SectionHeader icon={LayoutList} title="Demand by BOQ Item" />
               <ItemWiseTable demand={demand} unprogrammedDescriptions={unprogrammedDescriptions} />
+            </TabsContent>
+
+            <TabsContent value="plan-vs-actual" className="mt-3">
+              <SectionHeader icon={GitCompareArrows} title="Plan vs Actual — Equipment &amp; Labour" />
+              {dprsLoading && (
+                <div className="flex justify-center py-10 text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading actuals…
+                </div>
+              )}
+              {!dprsLoading && bomData && (
+                <PlanVsActualTable
+                  items={bomData.items}
+                  bars={bomData.bars ?? []}
+                  totalMonths={project.totalMonths ?? 12}
+                  dprs={dprsWithDetails}
+                  projectId={projectId}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="procurement" className="mt-3">

@@ -26,6 +26,7 @@ import { PERSONNEL_ROLES } from "@shared/schema";
 import { STRUCTURE_TYPES, STRUCTURE_ITEMS, getSubTypes, getStages } from "@shared/structureHierarchy";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { computeEquipmentUsage } from "@/lib/equipmentUsage";
+import { calculateBomDemand, fmtQty, type BomInputItem, type BomInputBar, type BomDemand } from "@shared/planningEngine";
 
 interface ProgressEntry {
   activity: string;
@@ -63,6 +64,10 @@ interface EquipmentEntry {
   tripDistance: number | null;
   totalKm: number | null;
   waterQuantity: number | null;
+  // Phase 3: optional link to the planned BOQ item / structure this usage is
+  // charged against, for planned vs actual comparison.
+  boqItemId: number | null;
+  structureId: string | null;
 }
 
 interface LabourEntry {
@@ -71,6 +76,10 @@ interface LabourEntry {
   count: number;
   task: string;
   contractor: string;
+  // Phase 3: optional link to the planned BOQ item / structure this deployment
+  // is charged against, for planned vs actual comparison.
+  boqItemId: number | null;
+  structureId: string | null;
 }
 
 interface MaterialEntry {
@@ -334,6 +343,43 @@ export default function SiteEntry() {
     enabled: !!siteBoqProjectId,
   });
 
+  // Phase 3: BOM recipe data (materials/equipment/labour per BOQ item) used to
+  // surface "planned for this item" while entering actuals. Read-only reuse of
+  // the existing BOM & Demand endpoint — no new backend logic.
+  const { data: bomData } = useQuery<{ items: BomInputItem[]; bars: BomInputBar[] }>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "bom"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/bom`, { credentials: "include" });
+      return res.ok ? res.json() : { items: [], bars: [] };
+    },
+    enabled: !!siteBoqProjectId,
+  });
+
+  // Planned key materials / equipment / labour for a single BOQ item (optionally
+  // scoped to one structure location), computed with the same engine used on the
+  // BOM & Demand page — just filtered down to one item + its bars.
+  const getPlannedDemandForItem = (boqItemId: number | null | undefined, structureId?: string | null) => {
+    if (boqItemId == null || !bomData?.items?.length) return null;
+    const item = bomData.items.find((i) => i.id === boqItemId);
+    if (!item) return null;
+    let itemBars = bomData.bars.filter((b) => b.boqItemId === boqItemId);
+    if (structureId) {
+      const barsWithStructure = programmeBars.filter((b) => b.boqItemId === boqItemId && b.structureId === structureId);
+      if (barsWithStructure.length) {
+        itemBars = barsWithStructure.map((b) => ({
+          boqItemId: b.boqItemId,
+          chainageFrom: b.chainageFrom,
+          chainageTo: b.chainageTo,
+          plannedQty: b.plannedQty,
+          isQtyOverride: true,
+        }));
+      }
+    }
+    const result = calculateBomDemand([item], itemBars, 60);
+    if (!result.materials.length && !result.equipment.length && !result.labour.length) return null;
+    return result;
+  };
+
   const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
     queryKey: ["/api/boq/projects", siteBoqProjectId, "plan-vs-actual", header.date],
     queryFn: async () => {
@@ -554,11 +600,11 @@ export default function SiteEntry() {
   ]);
 
   const [equipment, setEquipment] = useState<EquipmentEntry[]>([
-    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }
+    { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }
   ]);
 
   const [labour, setLabour] = useState<LabourEntry[]>([
-    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }
+    { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
   ]);
 
   // Materials are now managed separately in the Materials Received tab
@@ -715,9 +761,9 @@ export default function SiteEntry() {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
     } else if (section === 'equipment') {
-      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null }]);
+      setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }]);
     } else if (section === 'labour') {
-      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "" }]);
+      setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
     }
   };
 
@@ -1731,6 +1777,46 @@ export default function SiteEntry() {
                   </div>
                 </div>
 
+                {siteBoqItems.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                      <Select
+                        value={entry.boqItemId ? String(entry.boqItemId) : "__none__"}
+                        onValueChange={(val) => {
+                          const updated = [...equipment];
+                          updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                          setEquipment(updated);
+                        }}
+                      >
+                        <SelectTrigger data-testid={`select-equipment-boqitem-${idx}`}>
+                          <SelectValue placeholder="Not linked" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Not linked</SelectItem>
+                          {siteBoqItems.map((bi) => (
+                            <SelectItem key={bi.id} value={String(bi.id)}>
+                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {entry.boqItemId != null && (() => {
+                      const plan = getPlannedDemandForItem(entry.boqItemId);
+                      const planRow = plan?.equipment.find((e) => e.equipmentName.toUpperCase() === (entry.machine || "").toUpperCase());
+                      if (!planRow) return null;
+                      return (
+                        <div className="flex items-end">
+                          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5" data-testid={`text-planned-equipment-${idx}`}>
+                            Planned: {fmtQty(planRow.totalHours, 1)} hrs total for {planRow.equipmentName}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 <>
                     <p className="text-sm font-semibold text-muted-foreground border-b pb-1">
                       {entry.entryType === "hourly" ? "Hourly Hire — Time Entry" : "Time / Meter Entry"}
@@ -2135,6 +2221,45 @@ export default function SiteEntry() {
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
+              {siteBoqItems.length > 0 && (
+                <div className="col-span-2 md:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                    <Select
+                      value={entry.boqItemId ? String(entry.boqItemId) : "__none__"}
+                      onValueChange={(val) => {
+                        const updated = [...labour];
+                        updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                        setLabour(updated);
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-labour-boqitem-${idx}`}>
+                        <SelectValue placeholder="Not linked" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Not linked</SelectItem>
+                        {siteBoqItems.map((bi) => (
+                          <SelectItem key={bi.id} value={String(bi.id)}>
+                            {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {entry.boqItemId != null && (() => {
+                    const plan = getPlannedDemandForItem(entry.boqItemId);
+                    const planRow = plan?.labour.find((l) => l.designation.toUpperCase() === (entry.category || "").toUpperCase());
+                    if (!planRow) return null;
+                    return (
+                      <div className="flex items-end">
+                        <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5" data-testid={`text-planned-labour-${idx}`}>
+                          Planned: {fmtQty(planRow.totalDays, 1)} person-days total for {planRow.designation}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">

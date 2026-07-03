@@ -102,6 +102,11 @@ export const equipmentLogs = pgTable("equipment_logs", {
   amountPaid: real("amount_paid"), // Total amount paid for diesel
   // Water tanker tracking
   waterQuantity: real("water_quantity"), // Water delivered in liters
+  // Phase 3 Plan vs Actual linkage: optional link to the BOQ item / imported
+  // structure location this usage is charged against, for planned vs actual
+  // comparison. Nullable — most equipment rows remain unlinked.
+  boqItemId: integer("boq_item_id"),
+  structureId: text("structure_id"),
 });
 
 // Labour Log
@@ -113,6 +118,11 @@ export const labourLogs = pgTable("labour_logs", {
   count: integer("count").notNull(),
   task: text("task"), // Task/work performed by the labour
   contractor: text("contractor"), // Labour contractor/gang name
+  // Phase 3 Plan vs Actual linkage: optional link to the BOQ item / imported
+  // structure location this deployment is charged against, for planned vs
+  // actual comparison. Nullable — most labour rows remain unlinked.
+  boqItemId: integer("boq_item_id"),
+  structureId: text("structure_id"),
 });
 
 // Materials Log
@@ -127,6 +137,11 @@ export const materialLogs = pgTable("material_logs", {
   vehicleNumber: text("vehicle_number"),
   location: text("location"), // Location/task of unloading
   receiptNumber: text("receipt_number"), // Receipt number for received materials
+  // Phase 3 Plan vs Actual linkage: optional link to the BOQ item / imported
+  // structure location this consumption is charged against, for planned vs
+  // actual comparison. Nullable — most material rows remain unlinked.
+  boqItemId: integer("boq_item_id"),
+  structureId: text("structure_id"),
 });
 
 // Site Purchases (direct purchases at site - diesel for cleaning, small items, etc.)

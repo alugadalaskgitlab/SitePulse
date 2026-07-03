@@ -7,3 +7,4 @@
 - [BOM Aggregate Misclassification](bom-aggregate-misclassification.md) — normaliseKeyMaterialName() bug: desc-based VG-grade check must be guarded by rawIsBinder; fix is in planningEngine.ts ~line 686.
 - [DPR form dead code trap](dpr-form-dead-code.md) — DprForm.tsx/NewDpr.tsx are unrouted dead code; the real live DPR form is SiteEntry.tsx.
 - [SiteEntry showPreview early-return trap](siteentry-preview-early-return.md) — any confirm dialog wired through handleSubmit must render in both the showPreview and main return branches, or it's unreachable from Preview.
+- [DPR Plan vs Actual linkage](dpr-plan-vs-actual-linkage.md) — materialLogs in SiteEntry.tsx are dead code (always empty); only equipment/labour logs got boqItemId linkage, materials excluded from plan-vs-actual by design.
