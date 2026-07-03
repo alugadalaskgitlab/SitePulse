@@ -1,14 +1,18 @@
 ---
 name: SiteEntry showPreview early-return trap
-description: A confirm/warning dialog triggered from handleSubmit in SiteEntry.tsx must be rendered in both the showPreview and main JSX return branches.
+description: A confirm/warning dialog triggered from handleSubmit in SiteEntry.tsx must be rendered in both the showPreview and main render branches, and cross-entity balance aggregation must match the true planning granularity.
 ---
 
-`SiteEntry.tsx` has an early `if (showPreview) return <SitePreview ... />` before the component's main JSX tree. `handleSubmit` (passed as `onSubmit` to both `SitePreview` and the main form) can set state intending to show a confirmation dialog (e.g. an over-balance warning) — but if that dialog's JSX only lives in the main return branch, it never renders when the user submits from the Preview screen, making the warning state unreachable from that path.
+`SiteEntry.tsx` has an early-return branch that renders a preview screen before the component's main JSX tree. Any confirm/warning dialog driven by the shared submit handler must be rendered in *both* branches, or it becomes unreachable whenever the user submits from that early-return path.
 
-**Why:** Discovered while adding a non-blocking over-balance confirmation dialog for DPR programme-linked entry (Phase 2) — the dialog was appended near the end of the main render tree, invisible whenever `showPreview` was true.
+**Why:** Discovered while adding an over-balance confirmation dialog — it was only present in the main render branch and silently never appeared when submitting via Preview.
 
-**How to apply:** Any new confirm/warning dialog wired through `handleSubmit` (or similar shared submit handlers) in `SiteEntry.tsx` must be extracted into a shared JSX variable/component and rendered in *both* the `showPreview` early-return branch and the main return branch.
+**How to apply:** Extract such dialogs into a shared JSX variable and render it in every return path of the component, not just the "normal" one.
 
-## Structure-level Plan vs Actual granularity
+## Match aggregation granularity to the planning model
 
-`/api/boq/projects/:id/plan-vs-actual` aggregates actuals per BOQ item **project-wide**, not per structure. When a BOQ item is planned at multiple structures (e.g. "RCC M25" at Culvert-1 and Culvert-2 via `work_program_bars.structureId`), a per-structure previous-actual/balance needs its own aggregation — done client-side in `SiteEntry.tsx` by reusing the existing (already unfiltered) `/api/dprs/with-details` endpoint and summing `dprStructureItems` rows client-side by `${boqItemId}::${structureId}`, scoped to `boqProjectId` and `date < header.date`. This required adding a persisted `structureId` column on `dpr_structure_items` (set from the client's `programmeStructureId` selection) — without it, saved rows can't be attributed back to a specific structure for future aggregation. No new backend routes were added; only an existing read endpoint was reused plus a passthrough column.
+When a value can be planned at a finer granularity than the primary linkage key (e.g. the same catalog/BOQ item planned separately at multiple physical locations), a single project-wide or item-wide aggregate is not sufficient for previous/cumulative/balance calculations — it must be scoped to the actual planned unit, and that scoping key must be persisted on the saved record so future aggregation can find it again.
+
+**Why:** An item-wide balance silently double-counts or misattributes progress across separate planned locations that happen to share the same catalog reference.
+
+**How to apply:** Before computing "previous actual" or "balance" for a linked entry, check whether the planning source can plan the same reference at more than one location/instance — if so, the persisted record must carry that location key, and aggregation must group by (reference + location), not just reference.
