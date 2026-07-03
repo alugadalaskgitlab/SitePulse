@@ -5,7 +5,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -104,7 +104,38 @@ interface StructureItem {
   boqItemId?: number | null;
   dprConversionFactor?: number | null;
   remarks: string;
+  // Client-side only: links this row to an imported Structure Schedule location
+  // (work_program_bars.structureId) so the BOQ item list can be narrowed to the
+  // items actually planned at that structure. Not sent to the backend.
+  programmeStructureId?: string | null;
 }
+
+// Programme/BOQ data shapes used to link DPR rows to the Work Programme (Phase 2)
+type ProgrammeBar = {
+  id: number;
+  boqItemId: number;
+  reachLabel: string | null;
+  chainageFrom: number | null;
+  chainageTo: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  plannedQty: number;
+  planningMode: string | null;
+  structureId: string | null;
+  structureLocType: string | null;
+  boqSubItem: string | null;
+};
+
+type PlanVsActualRow = {
+  boqItemId: number;
+  itemCode: string | null;
+  description: string;
+  unit: string;
+  currentQty: number;
+  totalPlanned: number;
+  totalActual: number;
+  percentComplete: number;
+};
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
 const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
@@ -210,6 +241,7 @@ export default function SiteEntry() {
   const { appendOrigin } = useOrigin();
   const backLink = appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
+  const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
@@ -288,6 +320,101 @@ export default function SiteEntry() {
     },
     enabled: !!siteBoqProjectId,
   });
+
+  // ── Phase 2: Programme-linked DPR entry ────────────────────────────────
+  // Reuses the existing Work Programme + Plan vs Actual read endpoints (no new
+  // backend logic) so DPR rows can be tied to a planned BOQ item / structure
+  // location, with planned/previous/balance quantities shown inline.
+  const { data: programmeBars = [] } = useQuery<ProgrammeBar[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "programme"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/programme`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteBoqProjectId,
+  });
+
+  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRow[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "plan-vs-actual", header.date],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/plan-vs-actual?asOf=${header.date}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteBoqProjectId && !!header.date,
+  });
+
+  const planVsActualByItem = useMemo(() => {
+    const m = new Map<number, PlanVsActualRow>();
+    planVsActualRows.forEach((r) => m.set(r.boqItemId, r));
+    return m;
+  }, [planVsActualRows]);
+
+  // Planned/previous/balance for a BOQ item, "as of" the DPR's date. Balance is
+  // project-level (BOQ qty - cumulative actual so far), matching the same figure
+  // shown on the BOM & Demand / Plan-vs-Actual pages.
+  const balanceInfo = (boqItemId: number | null | undefined) => {
+    if (boqItemId == null) return null;
+    const row = planVsActualByItem.get(boqItemId);
+    if (!row) return null;
+    const balance = Math.round((row.currentQty - row.totalActual) * 1000) / 1000;
+    return { ...row, balance };
+  };
+
+  // Road programme bars covering the DPR's date (excludes imported structure-location bars).
+  const activeRoadBars = useMemo(() => {
+    return programmeBars.filter((b) => {
+      if (b.planningMode === "structure_location") return false;
+      if (!b.startDate || !b.endDate) return true; // no calendar dates on the bar → can't tell, don't flag as unplanned
+      return header.date >= b.startDate && header.date <= b.endDate;
+    });
+  }, [programmeBars, header.date]);
+
+  const activeRoadBarsByItem = useMemo(() => {
+    const m = new Map<number, ProgrammeBar[]>();
+    activeRoadBars.forEach((b) => {
+      const list = m.get(b.boqItemId) ?? [];
+      list.push(b);
+      m.set(b.boqItemId, list);
+    });
+    return m;
+  }, [activeRoadBars]);
+
+  const hasRoadProgramme = useMemo(
+    () => programmeBars.some((b) => b.planningMode !== "structure_location"),
+    [programmeBars],
+  );
+
+  // Structure-schedule locations imported via the Structure Schedule Import wizard.
+  const structureLocations = useMemo(() => {
+    const m = new Map<string, { structureId: string; structureLocType: string | null; bars: ProgrammeBar[] }>();
+    programmeBars.forEach((b) => {
+      if (b.planningMode !== "structure_location" || !b.structureId) return;
+      const entry = m.get(b.structureId) ?? { structureId: b.structureId, structureLocType: b.structureLocType, bars: [] };
+      entry.bars.push(b);
+      m.set(b.structureId, entry);
+    });
+    return Array.from(m.values());
+  }, [programmeBars]);
+
+  // Renders inline Planned / Done-so-far / Balance chips for a linked BOQ item,
+  // flagging (non-blocking) when the given quantity would push actual past balance.
+  const renderBalanceChips = (boqItemId: number | null | undefined, qty: number | null) => {
+    const info = balanceInfo(boqItemId);
+    if (!info) return null;
+    const over = qty != null && qty > info.balance + 0.0001;
+    return (
+      <div className={`text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${over ? "text-amber-700" : "text-slate-500"}`}>
+        <span>Planned: {info.currentQty} {info.unit}</span>
+        <span>Done so far: {info.totalActual} {info.unit}</span>
+        <span className={over ? "font-semibold" : ""}>Balance: {info.balance} {info.unit}</span>
+        {over && (
+          <span className="inline-flex items-center gap-1 font-semibold" data-testid="badge-over-balance">
+            <AlertTriangle className="w-3 h-3" /> Exceeds balance
+          </span>
+        )}
+      </div>
+    );
+  };
 
   // Structure BOQ-item helpers — link each structure DPR row to the right BOQ line.
   const STRUCTURE_KW = /culvert|bridge|\brcc\b|\bpsc\b|\brob\b|\bvup\b|\blup\b|girder|abutment|\bpier\b|\bdeck\b|\bbox\b|\bslab\b|\bpile\b|retaining|breast\s*wall|\bdrain\b|\bcd\b\s*work|head\s*wall|wing\s*wall|parapet|foundation|footing|protection\s*work|excavation|back\s*fill/i;
@@ -638,6 +765,27 @@ export default function SiteEntry() {
     setShowPreview(true);
   };
 
+  // Non-blocking check: warns (with a confirm step) when a row's quantity would
+  // push the linked BOQ item's cumulative actual past its planned balance.
+  const getOverBalanceWarnings = (): string[] => {
+    const warnings: string[] = [];
+    const rows: Array<{ boqItemId: number | null | undefined; qty: number | null }> =
+      workType === "structure"
+        ? structureItems.map((s) => ({ boqItemId: s.boqItemId, qty: s.quantity }))
+        : progress.map((p) => ({ boqItemId: p.boqItemId, qty: p.quantity ?? calculateQuantity(p) }));
+    rows.forEach((r) => {
+      if (r.boqItemId == null || r.qty == null) return;
+      const info = balanceInfo(r.boqItemId);
+      if (!info) return;
+      if (r.qty > info.balance + 0.0001) {
+        const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
+        const label = boqItem?.itemCode || boqItem?.itemName || boqItem?.description || "This item";
+        warnings.push(`${label}: entering ${r.qty} ${info.unit} exceeds the remaining balance of ${info.balance} ${info.unit}`);
+      }
+    });
+    return warnings;
+  };
+
   const handleSubmit = () => {
     if (workType !== "structure") {
       for (let i = 0; i < progress.length; i++) {
@@ -661,6 +809,11 @@ export default function SiteEntry() {
           return;
         }
       }
+    }
+    const warnings = getOverBalanceWarnings();
+    if (warnings.length > 0) {
+      setOverBalanceWarnings(warnings);
+      return;
     }
     createMutation.mutate();
   };
@@ -687,14 +840,49 @@ export default function SiteEntry() {
     };
   };
 
+  const overBalanceDialog = (
+    <Dialog open={!!overBalanceWarnings} onOpenChange={(open) => { if (!open) setOverBalanceWarnings(null); }}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="w-5 h-5" /> Over Planned Balance
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-2 text-sm">
+          <p className="text-muted-foreground">
+            The following entries exceed the remaining planned balance. You can still save this report if this is intentional (e.g. re-measurement or programme revision).
+          </p>
+          <ul className="list-disc pl-5 space-y-1" data-testid="list-over-balance-warnings">
+            {(overBalanceWarnings ?? []).map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOverBalanceWarnings(null)} data-testid="button-cancel-over-balance">Cancel</Button>
+          <Button
+            onClick={() => {
+              setOverBalanceWarnings(null);
+              createMutation.mutate();
+            }}
+            data-testid="button-confirm-over-balance"
+          >
+            Save Anyway
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (showPreview) {
     return (
-      <SitePreview
-        data={getPreviewData()}
-        onBack={() => setShowPreview(false)}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending}
-      />
+      <>
+        <SitePreview
+          data={getPreviewData()}
+          onBack={() => setShowPreview(false)}
+          onSubmit={handleSubmit}
+          isSubmitting={createMutation.isPending}
+        />
+        {overBalanceDialog}
+      </>
     );
   }
 
@@ -903,11 +1091,49 @@ export default function SiteEntry() {
                     </Select>
                     {isOtherItem && <Input placeholder="Specify item…" value={item.itemOfWork !== "Other" ? item.itemOfWork : ""} onChange={(e) => updateField("itemOfWork", e.target.value || "Other")} data-testid={`input-structure-item-other-${idx}`} />}
                   </div>
+                  {structureLocations.length > 0 && (
+                  <div className="sm:col-span-2 md:col-span-4 space-y-1">
+                    <Label className="text-sm">Structure (from imported schedule)</Label>
+                    <Select
+                      value={item.programmeStructureId ?? "__none__"}
+                      onValueChange={(val) => {
+                        const structureId = val === "__none__" ? null : val;
+                        setStructureItems((prev) =>
+                          prev.map((s, i) =>
+                            i === idx
+                              ? { ...s, programmeStructureId: structureId, boqItemId: null }
+                              : s,
+                          ),
+                        );
+                      }}
+                    >
+                      <SelectTrigger data-testid={`select-structure-programme-${idx}`}>
+                        <SelectValue placeholder="Select a structure…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Manual entry (no schedule match) —</SelectItem>
+                        {structureLocations.map((s) => (
+                          <SelectItem key={s.structureId} value={s.structureId}>
+                            {s.structureId}{s.structureLocType ? ` (${s.structureLocType})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  )}
                   {siteBoqItems.length > 0 && (
                   <div className="sm:col-span-2 md:col-span-4 space-y-1">
                     <Label className="text-sm">BOQ Item (Plan vs Actual link)</Label>
                     <BillItemPicker
-                      items={siteBoqItems}
+                      items={
+                        item.programmeStructureId
+                          ? siteBoqItems.filter((bi) =>
+                              structureLocations
+                                .find((s) => s.structureId === item.programmeStructureId)
+                                ?.bars.some((b) => b.boqItemId === bi.id),
+                            )
+                          : structureBoqItemsFor(item)
+                      }
                       value={item.boqItemId ?? null}
                       testidPrefix={`structure-${idx}`}
                       onChange={(id, it) => {
@@ -920,6 +1146,12 @@ export default function SiteEntry() {
                         );
                       }}
                     />
+                    {renderBalanceChips(item.boqItemId, item.quantity)}
+                    {structureLocations.length > 0 && item.programmeStructureId == null && item.boqItemId != null && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-structure-${idx}`}>
+                        <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no structure schedule match
+                      </span>
+                    )}
                   </div>
                   )}
                   <div>
@@ -1035,7 +1267,39 @@ export default function SiteEntry() {
                           setProgress(updated);
                         }}
                       />
-                    ) : (
+                    ) : null}
+                    {siteBoqItems.length > 0 && entry.boqItemId != null && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {activeRoadBarsByItem.get(entry.boqItemId)!.map((bar) => (
+                          <Button
+                            key={bar.id}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-xs px-2"
+                            onClick={() => {
+                              const updated = [...progress];
+                              if (bar.chainageFrom != null) updated[idx].chainageFrom = String(bar.chainageFrom);
+                              if (bar.chainageTo != null) updated[idx].chainageTo = String(bar.chainageTo);
+                              const calc = calculateLengthFromChainage(updated[idx].chainageFrom, updated[idx].chainageTo);
+                              if (calc !== null) updated[idx].length = calc;
+                              updated[idx].quantity = calculateQuantity(updated[idx]);
+                              setProgress(updated);
+                            }}
+                            data-testid={`button-prefill-bar-${bar.id}`}
+                          >
+                            Use {bar.reachLabel || `Ch ${bar.chainageFrom ?? "?"}–${bar.chainageTo ?? "?"}`}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    {siteBoqItems.length > 0 && entry.boqItemId != null && hasRoadProgramme && (activeRoadBarsByItem.get(entry.boqItemId)?.length ?? 0) === 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-progress-${idx}`}>
+                        <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no active programme for {header.date}
+                      </span>
+                    )}
+                    {siteBoqItems.length > 0 && renderBalanceChips(entry.boqItemId, entry.quantity ?? calculateQuantity(entry))}
+                    {siteBoqItems.length === 0 && (
                       <Input
                         placeholder="Activity name"
                         value={entry.activity}
@@ -1981,6 +2245,8 @@ export default function SiteEntry() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {overBalanceDialog}
     </div>
   );
 }
