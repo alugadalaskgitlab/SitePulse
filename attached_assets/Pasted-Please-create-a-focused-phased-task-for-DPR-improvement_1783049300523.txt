@@ -1,0 +1,208 @@
+Please create a focused phased task for DPR improvements.
+
+Important product direction:
+DPRs will mostly be entered by site engineers / supervisors on mobile phones at site. So the DPR entry UI must be mobile-first, fast, simple and pleasant to use.
+
+The form should not feel like a long desktop data-entry form.
+
+Design principle:
+- less typing
+- more dropdowns / chips / quick selections
+- progressive sections
+- card-based entry rows
+- large touch-friendly buttons
+- minimal horizontal scrolling
+- clear validation
+- easy Save Draft / Submit
+- preserve unsaved form state where possible
+- fast mobile performance
+
+The DPR module should feel easier than WhatsApp + notebook + Excel.
+
+Please split this into phases.
+
+PHASE 1 — Mobile DPR UX + navigation locking + equipment meter logic
+
+A. DPR navigation and work-type locking
+
+1. If user clicks New Road DPR tile:
+   - open /site/new?type=road
+   - lock workType = road
+   - hide Structure tab/button
+
+2. If user clicks New Structure DPR tile:
+   - open /site/new?type=structure
+   - lock workType = structure
+   - hide Road tab/button
+
+3. If project is road-only:
+   - default to Road DPR
+   - hide Structure option
+
+4. If project is structure-only / bridge-only:
+   - default to Structure DPR
+   - hide Road option
+
+5. If project has both road and structure work:
+   - allow both, or keep separate dashboard tiles.
+
+6. After saving:
+   - return to DPR list
+   - show clear Road / Structure badges in the list.
+
+B. Mobile-first DPR form layout
+
+1. Use collapsible cards instead of wide table-style entry.
+2. Keep Date, Site, Engineer and DPR Type simple at the top.
+3. Use sticky or easily reachable Save Draft / Submit buttons.
+4. Add Row should be easy to access on mobile.
+5. Avoid tiny delete/edit icons without clear labels.
+6. Use badges:
+   - Road
+   - Structure
+   - Planned
+   - Unplanned
+   - Over balance
+   - Needs review
+7. Use simple warnings:
+   - “Today qty exceeds balance”
+   - “KM not entered — using time fallback”
+   - “This item is not in programme”
+
+C. Equipment usage logic — site DPR and plant equipment usage
+
+Use equipment master meterType to decide calculation method.
+
+1. Hour-based machines:
+   Examples: excavator, JCB, grader, roller, paver, loader, crane, compressor, generator.
+   - Primary: closing hour meter - opening hour meter.
+   - Fallback: end time - start time.
+   - Diesel norm: L/hr.
+   - Efficiency: diesel per hour / expected vs actual.
+
+2. KM-based vehicles:
+   Examples: tipper, tractor, tanker, pickup, water tanker, transport vehicle.
+   - Primary: closing KM - opening KM.
+   - Secondary: trips × one-way distance × 2.
+   - Fallback: end time - start time only if KM/trip data is missing.
+   - Diesel norm: km/L or L/km as configured.
+   - Efficiency should be distance-based, not hour-based.
+
+3. Form labels should change based on meterType:
+   - hour_meter → Opening Hour Meter / Closing Hour Meter
+   - odometer or km_meter → Opening KM / Closing KM
+   - trip_based → No. of Trips / One-way Distance / Total KM
+
+4. Site Equipment Log and Plant Equipment Usage should use the same helper:
+   computeEquipmentUsage(equipment, entry)
+
+Return:
+   - usageBasis
+   - hoursWorked
+   - totalKm
+   - expectedDiesel
+   - efficiencyLabel
+   - efficiencyValue
+   - warning if fallback was used
+
+5. For vehicles:
+   - if KM readings are missing, use trips × distance.
+   - if trips are also missing, fallback to time.
+   - show warning: “KM not entered — using time fallback.”
+
+6. For hour-meter equipment:
+   - if hour meter readings are missing, fallback to start/end time.
+   - show warning: “Hour meter not entered — using time fallback.”
+
+PHASE 2 — Programme-linked Road DPR and Structure DPR
+
+D. Structure DPR improvement
+
+Structure DPR should use imported structure schedule / programme bars.
+
+1. When workType = structure and BOQ project exists:
+   - fetch structure_import programme bars.
+   - allow user to select structure_id / structure name first.
+   - then show BOQ items planned for that structure.
+
+2. Structure DPR row should contain:
+   - structure_id
+   - structure_type
+   - chainage
+   - boq_item_id
+   - BOQ code
+   - BOQ description
+   - UOM
+   - planned quantity
+   - previous cumulative actual
+   - today quantity
+   - cumulative actual
+   - balance quantity
+   - remarks
+
+3. If imported programme rows exist:
+   - user should select structure
+   - select planned BOQ item
+   - enter today qty
+
+4. If no imported structure schedule exists:
+   - allow existing manual structure entry as fallback.
+
+5. DPR actual quantity must update Plan vs Actual against the matching programme/BOQ item.
+
+6. If today quantity exceeds balance:
+   - show warning, but allow with confirmation.
+
+E. Road DPR improvement
+
+Road DPR should use road programme bars where available.
+
+1. When workType = road and BOQ project exists:
+   - show planned road items/reaches active for the DPR date or month.
+   - allow user to select BOQ item / programme bar / reach.
+   - prefill chainage, UOM and balance where possible.
+
+2. Road DPR row should contain:
+   - boq_item_id
+   - programme_bar_id if available
+   - BOQ code / description
+   - chainage from/to
+   - side
+   - UOM
+   - planned qty
+   - previous actual
+   - today qty
+   - cumulative actual
+   - balance
+
+3. Quantity calculation should remain based on BOQ UOM:
+   - SQM: L × W
+   - CUM: L × W × T
+   - RMT: L
+   - MT/NOS: manual quantity
+
+4. If no programme bar exists, allow manual BOQ item selection, but mark it:
+   “Unplanned DPR entry”
+
+PHASE 3 — Planned vs Actual consumption linkage
+
+This can be planned after Phase 1 and Phase 2.
+
+1. DPR should optionally show planned demand for selected BOQ item / structure / reach:
+   - key materials required
+   - planned equipment
+   - planned labour
+
+2. DPR should record actual:
+   - material consumed / issued
+   - equipment used
+   - labour deployed
+
+3. Reports should compare:
+   - planned material vs actual consumed
+   - planned equipment hours/km vs actual
+   - planned labour vs actual
+   - productivity achieved
+
+Scope control:
+Do not change Work Programme, BOM, Structure Import, Stock, IRN/PI or Dashboard calculations in Phase 1 except navigation links needed for DPR.
