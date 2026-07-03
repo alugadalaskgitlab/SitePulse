@@ -384,6 +384,50 @@ export default function SiteEntry() {
     [programmeBars],
   );
 
+  // Structure-level actuals: /plan-vs-actual only aggregates per BOQ item across the
+  // whole project, but a structure schedule can plan the same BOQ item at multiple
+  // structures (e.g. "RCC M25" at Culvert-1 and Culvert-2). To track balance per
+  // structure we reuse the existing (read-only) /api/dprs/with-details endpoint and
+  // aggregate previously-saved structure items ourselves — no new backend route.
+  const { data: allDprsWithDetails = [] } = useQuery<Array<{ boqProjectId: number | null; date: string; structureItems: Array<{ boqItemId: number | null; structureId: string | null; quantity: number | null; dprConversionFactor: number | null }> }>>({
+    queryKey: ["/api/dprs/with-details"],
+    queryFn: async () => {
+      const res = await fetch(`/api/dprs/with-details`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteBoqProjectId,
+  });
+
+  const structureActualByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!siteBoqProjectId) return m;
+    allDprsWithDetails
+      .filter((d) => d.boqProjectId === siteBoqProjectId && d.date < header.date)
+      .forEach((d) => {
+        (d.structureItems || []).forEach((si) => {
+          if (si.boqItemId == null || !si.structureId || si.quantity == null) return;
+          const key = `${si.boqItemId}::${si.structureId}`;
+          const contribution = si.quantity * (si.dprConversionFactor ?? 1);
+          m.set(key, Math.round(((m.get(key) ?? 0) + contribution) * 1000) / 1000);
+        });
+      });
+    return m;
+  }, [allDprsWithDetails, siteBoqProjectId, header.date]);
+
+  // Planned/previous/balance scoped to a specific structure + BOQ item pair, using
+  // the bar's own plannedQty (per-structure) rather than the project-wide BOQ total.
+  const structureBalanceInfo = (structureId: string | null | undefined, boqItemId: number | null | undefined) => {
+    if (!structureId || boqItemId == null) return null;
+    const loc = structureLocations.find((s) => s.structureId === structureId);
+    const bar = loc?.bars.find((b) => b.boqItemId === boqItemId);
+    if (!bar) return null;
+    const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
+    const unit = boqItem?.unit ?? "";
+    const totalActual = structureActualByKey.get(`${boqItemId}::${structureId}`) ?? 0;
+    const balance = Math.round((bar.plannedQty - totalActual) * 1000) / 1000;
+    return { currentQty: bar.plannedQty, totalActual, balance, unit };
+  };
+
   // Structure-schedule locations imported via the Structure Schedule Import wizard.
   const structureLocations = useMemo(() => {
     const m = new Map<string, { structureId: string; structureLocType: string | null; bars: ProgrammeBar[] }>();
@@ -398,8 +442,14 @@ export default function SiteEntry() {
 
   // Renders inline Planned / Done-so-far / Balance chips for a linked BOQ item,
   // flagging (non-blocking) when the given quantity would push actual past balance.
-  const renderBalanceChips = (boqItemId: number | null | undefined, qty: number | null) => {
-    const info = balanceInfo(boqItemId);
+  // Pass `overrideInfo` (e.g. from structureBalanceInfo) to scope to a specific
+  // structure/bar instead of the project-wide BOQ item total.
+  const renderBalanceChips = (
+    boqItemId: number | null | undefined,
+    qty: number | null,
+    overrideInfo?: { currentQty: number; totalActual: number; balance: number; unit: string } | null,
+  ) => {
+    const info = overrideInfo !== undefined ? overrideInfo : balanceInfo(boqItemId);
     if (!info) return null;
     const over = qty != null && qty > info.balance + 0.0001;
     return (
@@ -723,7 +773,12 @@ export default function SiteEntry() {
         workType,
         boqProjectId: header.boqProjectId ?? undefined,
         progress: workType === "structure" ? [] : progressWithCalc,
-        structureItems: workType === "structure" ? structureItems.filter(s => s.structureType && s.itemOfWork) : [],
+        structureItems: workType === "structure"
+          ? structureItems.filter(s => s.structureType && s.itemOfWork).map(s => ({
+              ...s,
+              structureId: s.programmeStructureId ?? null,
+            }))
+          : [],
         equipment: normalizedEquipment,
         labour,
         materials,
@@ -769,18 +824,19 @@ export default function SiteEntry() {
   // push the linked BOQ item's cumulative actual past its planned balance.
   const getOverBalanceWarnings = (): string[] => {
     const warnings: string[] = [];
-    const rows: Array<{ boqItemId: number | null | undefined; qty: number | null }> =
+    const rows: Array<{ boqItemId: number | null | undefined; qty: number | null; structureId?: string | null }> =
       workType === "structure"
-        ? structureItems.map((s) => ({ boqItemId: s.boqItemId, qty: s.quantity }))
+        ? structureItems.map((s) => ({ boqItemId: s.boqItemId, qty: s.quantity, structureId: s.programmeStructureId }))
         : progress.map((p) => ({ boqItemId: p.boqItemId, qty: p.quantity ?? calculateQuantity(p) }));
     rows.forEach((r) => {
       if (r.boqItemId == null || r.qty == null) return;
-      const info = balanceInfo(r.boqItemId);
+      const info = r.structureId ? structureBalanceInfo(r.structureId, r.boqItemId) : balanceInfo(r.boqItemId);
       if (!info) return;
       if (r.qty > info.balance + 0.0001) {
         const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
         const label = boqItem?.itemCode || boqItem?.itemName || boqItem?.description || "This item";
-        warnings.push(`${label}: entering ${r.qty} ${info.unit} exceeds the remaining balance of ${info.balance} ${info.unit}`);
+        const scope = r.structureId ? ` at ${r.structureId}` : "";
+        warnings.push(`${label}${scope}: entering ${r.qty} ${info.unit} exceeds the remaining balance of ${info.balance} ${info.unit}`);
       }
     });
     return warnings;
@@ -1146,7 +1202,11 @@ export default function SiteEntry() {
                         );
                       }}
                     />
-                    {renderBalanceChips(item.boqItemId, item.quantity)}
+                    {renderBalanceChips(
+                      item.boqItemId,
+                      item.quantity,
+                      item.programmeStructureId ? structureBalanceInfo(item.programmeStructureId, item.boqItemId) : undefined,
+                    )}
                     {structureLocations.length > 0 && item.programmeStructureId == null && item.boqItemId != null && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 mt-1" data-testid={`badge-unplanned-structure-${idx}`}>
                         <AlertTriangle className="w-3 h-3" /> Unplanned DPR entry — no structure schedule match

@@ -65,6 +65,9 @@ export const dprStructureItems = pgTable("dpr_structure_items", {
   // Plan vs Actual link: the BOQ line this structure item reports against.
   boqItemId: integer("boq_item_id"),
   dprConversionFactor: real("dpr_conversion_factor"),
+  // Phase 2 programme linkage: the imported Structure Schedule location
+  // (work_program_bars.structureId) this row was entered against, if any.
+  structureId: text("structure_id"),
 });
 
 // Equipment Log
