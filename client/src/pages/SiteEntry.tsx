@@ -400,7 +400,13 @@ export default function SiteEntry() {
   // site's own BOQ items when the DPR wasn't opened via a locked ?type= link.
   const boqWorkTypeHint = useMemo<"road" | "structure" | null>(() => {
     if (!siteBoqItems.length) return null;
-    const types = new Set(siteBoqItems.map((bi) => (bi.planningWorkType === "structure" ? "structure" : "road")));
+    // Only infer a lock when every item is EXPLICITLY classified. An item with a
+    // missing/null planningWorkType is "unclassified", not "road" — treating it
+    // as road by default would wrongly lock mixed/unclassified projects to Road.
+    if (siteBoqItems.some((bi) => bi.planningWorkType !== "road" && bi.planningWorkType !== "structure")) {
+      return null;
+    }
+    const types = new Set(siteBoqItems.map((bi) => bi.planningWorkType));
     return types.size === 1 ? (types.values().next().value as "road" | "structure") : null;
   }, [siteBoqItems]);
 
@@ -1272,7 +1278,7 @@ export default function SiteEntry() {
         <CardContent className="space-y-4">
           {equipment.map((entry, idx) => {
             const selectedEquipForRow = activeEquipment.find(e => e.id === entry.equipmentId);
-            const usage = computeEquipmentUsage(selectedEquipForRow as any, entry as any);
+            const usage = computeEquipmentUsage(selectedEquipForRow, entry);
             const isOdometer = usage.meterType === "odometer";
             const workingHours = getWorkingHours(entry);
             const isTimeMeter = !entry.entryType || entry.entryType === "time_meter" || entry.entryType === "hourly";
@@ -1510,7 +1516,7 @@ export default function SiteEntry() {
                         />
                       </div>
                     </div>
-                    {usage.warning && !isTripBased && (
+                    {usage.warning && (
                       <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid={`warning-equipment-${idx}`}>
                         ⚠ {usage.warning}
                       </p>

@@ -563,7 +563,7 @@ export default function PlantEquipmentUsage() {
   const selectedEquipment = equipment?.find(e => e.id === parseInt(equipmentId));
 
   // Shared usage/diesel calculation logic (also used by the Site DPR equipment log)
-  const liveUsage = computeEquipmentUsage(selectedEquipment as any, {
+  const liveUsage = computeEquipmentUsage(selectedEquipment, {
     entryType,
     tripBasedEntry,
     openingReading: openingReading ? parseFloat(openingReading) : null,
