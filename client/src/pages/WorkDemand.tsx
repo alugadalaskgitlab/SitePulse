@@ -506,10 +506,24 @@ function computeItemDemand(demand: BomDemand, unprogrammedDescriptions: Set<stri
 
 // ─── Plan vs Actual Table ───────────────────────────────────────────────────
 
+interface ProgrammeBarLite {
+  id: number;
+  boqItemId: number;
+  planningMode: string | null;
+  structureId: string | null;
+  structureLocType: string | null;
+}
+
 interface DprLogsLite {
   boqProjectId: number | null;
-  equipment: Array<{ boqItemId: number | null; machine: string; openingReading: number | null; closingReading: number | null; startTime: string | null; endTime: string | null; totalKm: number | null }>;
-  labour: Array<{ boqItemId: number | null; category: string; count: number }>;
+  equipment: Array<{ boqItemId: number | null; structureId: string | null; machine: string; openingReading: number | null; closingReading: number | null; startTime: string | null; endTime: string | null; totalKm: number | null }>;
+  labour: Array<{ boqItemId: number | null; structureId: string | null; category: string; count: number }>;
+  materials: Array<{ boqItemId: number | null; structureId: string | null; material: string; quantity: number | null; uom: string | null }>;
+}
+
+interface PlanVsActualRowLite {
+  boqItemId: number;
+  totalActual: number;
 }
 
 function actualEquipmentHours(log: DprLogsLite["equipment"][number]): number {
@@ -528,6 +542,15 @@ function actualEquipmentHours(log: DprLogsLite["equipment"][number]): number {
   return 0;
 }
 
+interface StructureBreakdownEntry {
+  structureId: string;
+  label: string;
+  actualEquipHours: number;
+  actualEquipKm: number;
+  actualLabourDays: number;
+  materials: Map<string, { actual: number; uom: string }>;
+}
+
 interface PlanVsActualItemRow {
   boqItemId: number;
   itemCode: string | null;
@@ -535,10 +558,16 @@ interface PlanVsActualItemRow {
   unit: string;
   plannedEquipHours: number;
   actualEquipHours: number;
-  equipBreakdown: Map<string, { planned: number; actual: number }>;
+  actualEquipKm: number;
+  equipBreakdown: Map<string, { planned: number; actual: number; actualKm: number }>;
   plannedLabourDays: number;
   actualLabourDays: number;
   labourBreakdown: Map<string, { planned: number; actual: number }>;
+  materialBreakdown: Map<string, { planned: number; actual: number; uom: string }>;
+  structureBreakdown: Map<string, StructureBreakdownEntry>;
+  actualQtyCompleted: number;
+  productivityPerEquipHour: number | null;
+  productivityPerLabourDay: number | null;
 }
 
 function computePlanVsActual(
@@ -546,33 +575,61 @@ function computePlanVsActual(
   bars: BomInputBar[],
   totalMonths: number,
   dprs: DprLogsLite[],
-  projectId: number
+  projectId: number,
+  programmeBars: ProgrammeBarLite[],
+  actualQtyByItem: Map<number, number>
 ): PlanVsActualItemRow[] {
   const rows: PlanVsActualItemRow[] = [];
   const relevantDprs = dprs.filter((d) => d.boqProjectId === projectId);
+
+  const structureLabel = (boqItemId: number, structureId: string | null): { key: string; label: string } => {
+    if (!structureId) return { key: "__unlinked__", label: "Not linked to a structure/reach" };
+    const bar = programmeBars.find((b) => b.boqItemId === boqItemId && b.structureId === structureId);
+    return { key: structureId, label: bar?.structureLocType ? `${structureId} (${bar.structureLocType})` : structureId };
+  };
 
   for (const item of items) {
     const itemBars = bars.filter((b) => b.boqItemId === item.id);
     const planned = calculateBomDemand([item], itemBars, totalMonths);
     const hasPlannedEquip = planned.equipment.length > 0;
     const hasPlannedLabour = planned.labour.length > 0;
+    const hasPlannedMaterial = planned.materials.length > 0;
 
-    const equipBreakdown = new Map<string, { planned: number; actual: number }>();
-    for (const e of planned.equipment) equipBreakdown.set(e.equipmentName, { planned: e.totalHours, actual: 0 });
+    const equipBreakdown = new Map<string, { planned: number; actual: number; actualKm: number }>();
+    for (const e of planned.equipment) equipBreakdown.set(e.equipmentName, { planned: e.totalHours, actual: 0, actualKm: 0 });
     const labourBreakdown = new Map<string, { planned: number; actual: number }>();
     for (const l of planned.labour) labourBreakdown.set(l.designation, { planned: l.totalDays, actual: 0 });
+    const materialBreakdown = new Map<string, { planned: number; actual: number; uom: string }>();
+    for (const m of planned.materials) materialBreakdown.set(m.materialName.toUpperCase().trim(), { planned: m.totalQty, actual: 0, uom: m.uom });
+
+    const structureBreakdown = new Map<string, StructureBreakdownEntry>();
+    const getStructureEntry = (structureId: string | null) => {
+      const { key, label } = structureLabel(item.id, structureId);
+      let entry = structureBreakdown.get(key);
+      if (!entry) {
+        entry = { structureId: key, label, actualEquipHours: 0, actualEquipKm: 0, actualLabourDays: 0, materials: new Map() };
+        structureBreakdown.set(key, entry);
+      }
+      return entry;
+    };
 
     let actualEquipHours = 0;
+    let actualEquipKm = 0;
     let actualLabourDays = 0;
     for (const dpr of relevantDprs) {
       for (const eq of dpr.equipment) {
         if (eq.boqItemId !== item.id) continue;
         const hrs = actualEquipmentHours(eq);
+        const km = eq.totalKm ?? 0;
         actualEquipHours += hrs;
+        actualEquipKm += km;
         const key = eq.machine?.toUpperCase().trim() || "UNKNOWN";
         const existing = [...equipBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
-        if (existing) existing[1].actual += hrs;
-        else equipBreakdown.set(eq.machine || "Unknown", { planned: 0, actual: hrs });
+        if (existing) { existing[1].actual += hrs; existing[1].actualKm += km; }
+        else equipBreakdown.set(eq.machine || "Unknown", { planned: 0, actual: hrs, actualKm: km });
+        const se = getStructureEntry(eq.structureId);
+        se.actualEquipHours += hrs;
+        se.actualEquipKm += km;
       }
       for (const lb of dpr.labour) {
         if (lb.boqItemId !== item.id) continue;
@@ -581,10 +638,26 @@ function computePlanVsActual(
         const existing = [...labourBreakdown.entries()].find(([name]) => name.toUpperCase().trim() === key);
         if (existing) existing[1].actual += lb.count;
         else labourBreakdown.set(lb.category || "Unknown", { planned: 0, actual: lb.count });
+        const se = getStructureEntry(lb.structureId);
+        se.actualLabourDays += lb.count;
+      }
+      for (const mat of dpr.materials) {
+        if (mat.boqItemId !== item.id) continue;
+        const qty = mat.quantity ?? 0;
+        const key = mat.material?.toUpperCase().trim() || "UNKNOWN";
+        const existing = materialBreakdown.get(key);
+        if (existing) existing.actual += qty;
+        else materialBreakdown.set(key, { planned: 0, actual: qty, uom: mat.uom || "" });
+        const se = getStructureEntry(mat.structureId);
+        const smExisting = se.materials.get(key);
+        if (smExisting) smExisting.actual += qty;
+        else se.materials.set(key, { actual: qty, uom: mat.uom || "" });
       }
     }
 
-    if (!hasPlannedEquip && !hasPlannedLabour && actualEquipHours === 0 && actualLabourDays === 0) continue;
+    if (!hasPlannedEquip && !hasPlannedLabour && !hasPlannedMaterial && actualEquipHours === 0 && actualLabourDays === 0 && materialBreakdown.size === 0) continue;
+
+    const actualQtyCompleted = actualQtyByItem.get(item.id) ?? 0;
 
     rows.push({
       boqItemId: item.id,
@@ -593,10 +666,16 @@ function computePlanVsActual(
       unit: item.unit,
       plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
       actualEquipHours,
+      actualEquipKm,
       equipBreakdown,
       plannedLabourDays: planned.labour.reduce((s, l) => s + l.totalDays, 0),
       actualLabourDays,
       labourBreakdown,
+      materialBreakdown,
+      structureBreakdown,
+      actualQtyCompleted,
+      productivityPerEquipHour: actualEquipHours > 0 ? actualQtyCompleted / actualEquipHours : null,
+      productivityPerLabourDay: actualLabourDays > 0 ? actualQtyCompleted / actualLabourDays : null,
     });
   }
 
@@ -634,21 +713,25 @@ function PlanVsActualTable({
   totalMonths,
   dprs,
   projectId,
+  programmeBars,
+  actualQtyByItem,
 }: {
   items: BomInputItem[];
   bars: BomInputBar[];
   totalMonths: number;
   dprs: DprLogsLite[];
   projectId: number;
+  programmeBars: ProgrammeBarLite[];
+  actualQtyByItem: Map<number, number>;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const rows = useMemo(
-    () => computePlanVsActual(items, bars, totalMonths, dprs, projectId),
-    [items, bars, totalMonths, dprs, projectId]
+    () => computePlanVsActual(items, bars, totalMonths, dprs, projectId, programmeBars, actualQtyByItem),
+    [items, bars, totalMonths, dprs, projectId, programmeBars, actualQtyByItem]
   );
 
   if (!rows.length) {
-    return <EmptyState label="No planned or actual equipment/labour data found for this project yet." />;
+    return <EmptyState label="No planned or actual equipment/labour/material data found for this project yet." />;
   }
 
   return (
@@ -656,27 +739,31 @@ function PlanVsActualTable({
       <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-800 flex items-start gap-2">
         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
         <span>
-          Actuals are aggregated from DPR equipment and labour rows explicitly linked to a work item (via the
-          "Link to Work Item" selector on the DPR entry screen). Material actuals are not yet linked to BOQ items
-          and are excluded from this comparison.
+          Actuals are aggregated from DPR equipment, labour and material rows explicitly linked to a work item (via the
+          "Link to Work Item" selector on the DPR entry screen). Expand a row to see the structure/reach-level split and
+          productivity achieved (progress qty completed per equipment hour / labour day).
         </span>
       </div>
       <div className="overflow-auto rounded-xl border max-h-[70vh] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-[#0F5F64]">
-        <table className="text-sm border-collapse w-full min-w-[820px]">
+        <table className="text-sm border-collapse w-full min-w-[1080px]">
           <thead>
             <tr style={{ background: "#0F5F64" }}>
               <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[240px]" style={{ background: "#0F5F64" }}>Item</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Equip Hrs</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Equip Hrs</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Actual Km</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Planned Labour Days</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Actual Labour Days</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Variance</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Materials</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Productivity</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => {
               const isExpanded = expanded.has(row.boqItemId);
+              const materialCount = row.materialBreakdown.size;
               return (
                 <Fragment key={row.boqItemId}>
                   <tr
@@ -697,17 +784,36 @@ function PlanVsActualTable({
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{fmtQty(row.plannedEquipHours, 1)}</td>
                     <td className="px-2 py-2 text-right font-mono font-semibold text-blue-700">{fmtQty(row.actualEquipHours, 1)}</td>
+                    <td className="px-2 py-2 text-right font-mono text-slate-500">{row.actualEquipKm > 0 ? fmtQty(row.actualEquipKm, 1) : "—"}</td>
                     <td className="px-2 py-2 text-right">{varianceBadge(row.plannedEquipHours, row.actualEquipHours)}</td>
                     <td className="px-2 py-2 text-right font-mono">{fmtQty(row.plannedLabourDays, 1)}</td>
                     <td className="px-2 py-2 text-right font-mono font-semibold text-purple-700">{fmtQty(row.actualLabourDays, 1)}</td>
                     <td className="px-2 py-2 text-right">{varianceBadge(row.plannedLabourDays, row.actualLabourDays)}</td>
+                    <td className="px-2 py-2 text-right">
+                      {materialCount > 0 ? (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          {materialCount} tracked
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono text-[11px] text-slate-600">
+                      {row.productivityPerEquipHour != null && (
+                        <div>{fmtQty(row.productivityPerEquipHour, 2)} {row.unit}/eq-hr</div>
+                      )}
+                      {row.productivityPerLabourDay != null && (
+                        <div>{fmtQty(row.productivityPerLabourDay, 2)} {row.unit}/lab-day</div>
+                      )}
+                      {row.productivityPerEquipHour == null && row.productivityPerLabourDay == null && "—"}
+                    </td>
                   </tr>
                   {isExpanded && (
                     <tr className="bg-teal-50/30">
-                      <td colSpan={7} className="px-4 py-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <td colSpan={10} className="px-4 py-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
-                            <p className="text-xs font-semibold text-blue-700 mb-1.5 flex items-center gap-1"><Wrench className="w-3 h-3" /> Equipment (hrs)</p>
+                            <p className="text-xs font-semibold text-blue-700 mb-1.5 flex items-center gap-1"><Wrench className="w-3 h-3" /> Equipment (hrs / km)</p>
                             {row.equipBreakdown.size === 0 ? (
                               <p className="text-xs text-slate-400">No equipment planned or logged.</p>
                             ) : (
@@ -717,6 +823,7 @@ function PlanVsActualTable({
                                     <span className="flex-1 min-w-0 truncate text-slate-700">{name}</span>
                                     <span className="font-mono text-slate-500">{fmtQty(v.planned, 1)} planned</span>
                                     <span className="font-mono font-semibold text-blue-700">{fmtQty(v.actual, 1)} actual</span>
+                                    {v.actualKm > 0 && <span className="font-mono text-slate-400">{fmtQty(v.actualKm, 1)} km</span>}
                                   </div>
                                 ))}
                               </div>
@@ -738,6 +845,55 @@ function PlanVsActualTable({
                               </div>
                             )}
                           </div>
+                          <div>
+                            <p className="text-xs font-semibold text-amber-700 mb-1.5 flex items-center gap-1"><Package className="w-3 h-3" /> Materials</p>
+                            {row.materialBreakdown.size === 0 ? (
+                              <p className="text-xs text-slate-400">No material planned or logged.</p>
+                            ) : (
+                              <div className="rounded-lg border border-amber-100 bg-white divide-y divide-slate-50">
+                                {[...row.materialBreakdown.entries()].map(([name, v]) => (
+                                  <div key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                                    <span className="flex-1 min-w-0 truncate text-slate-700">{name}</span>
+                                    {v.planned > 0 && <span className="font-mono text-slate-500">{fmtQty(v.planned, 1)} planned</span>}
+                                    <span className="font-mono font-semibold text-amber-700">{fmtQty(v.actual, 1)} {v.uom} actual</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-xs font-semibold text-teal-700 mb-1.5 flex items-center gap-1"><GitCompareArrows className="w-3 h-3" /> By Structure / Reach</p>
+                          {row.structureBreakdown.size === 0 ? (
+                            <p className="text-xs text-slate-400">No structure/reach-linked actuals logged.</p>
+                          ) : (
+                            <div className="overflow-auto rounded-lg border border-teal-100 bg-white">
+                              <table className="text-xs w-full">
+                                <thead>
+                                  <tr className="bg-teal-50 text-teal-800">
+                                    <th className="text-left px-3 py-1.5 font-semibold">Structure / Reach</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Equip Hrs</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Equip Km</th>
+                                    <th className="text-right px-3 py-1.5 font-semibold">Labour Days</th>
+                                    <th className="text-left px-3 py-1.5 font-semibold">Materials</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[...row.structureBreakdown.values()].map((s) => (
+                                    <tr key={s.structureId} className="border-t border-slate-50">
+                                      <td className="px-3 py-1.5 text-slate-700">{s.label}</td>
+                                      <td className="px-3 py-1.5 text-right font-mono">{s.actualEquipHours > 0 ? fmtQty(s.actualEquipHours, 1) : "—"}</td>
+                                      <td className="px-3 py-1.5 text-right font-mono">{s.actualEquipKm > 0 ? fmtQty(s.actualEquipKm, 1) : "—"}</td>
+                                      <td className="px-3 py-1.5 text-right font-mono">{s.actualLabourDays > 0 ? fmtQty(s.actualLabourDays, 1) : "—"}</td>
+                                      <td className="px-3 py-1.5 text-slate-600">
+                                        {s.materials.size === 0 ? "—" : [...s.materials.entries()].map(([name, v]) => `${name}: ${fmtQty(v.actual, 1)} ${v.uom}`).join(", ")}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1111,6 +1267,34 @@ export default function WorkDemand() {
     enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
   });
 
+  // Structure/reach labels for the Plan vs Actual structure-level breakdown
+  // (same programme-bar data used on the DPR entry screen's structure selector).
+  const { data: programmeBars = [] } = useQuery<ProgrammeBarLite[]>({
+    queryKey: ["/api/boq/projects", projectId, "programme"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/programme`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
+  });
+
+  // Actual progress qty completed per item — used for the productivity metric
+  // (qty completed per equipment hour / labour day).
+  const { data: planVsActualRows = [] } = useQuery<PlanVsActualRowLite[]>({
+    queryKey: ["/api/boq/projects", projectId, "plan-vs-actual"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${projectId}/plan-vs-actual`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
+  });
+
+  const actualQtyByItem = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const r of planVsActualRows) m.set(r.boqItemId, r.totalActual);
+    return m;
+  }, [planVsActualRows]);
+
   const demand = useMemo((): BomDemand | null => {
     if (!bomData || !project) return null;
     const { items, bars } = bomData;
@@ -1425,6 +1609,8 @@ export default function WorkDemand() {
                   totalMonths={project.totalMonths ?? 12}
                   dprs={dprsWithDetails}
                   projectId={projectId}
+                  programmeBars={programmeBars}
+                  actualQtyByItem={actualQtyByItem}
                 />
               )}
             </TabsContent>

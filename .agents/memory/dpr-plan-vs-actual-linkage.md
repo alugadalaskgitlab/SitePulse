@@ -1,15 +1,14 @@
 ---
 name: DPR Plan vs Actual linkage (Phase 3)
-description: How planned vs actual comparison for equipment/labour was wired into DPR entry and BOM & Demand, and why materials were excluded.
+description: How planned vs actual comparison for equipment/labour/materials was wired into DPR entry and BOM & Demand, including structure/reach grouping and productivity.
 ---
 
 ## What exists
-- `equipmentLogs` and `labourLogs` (in `shared/schema.ts`) carry nullable `boqItemId` + `structureId` columns so a DPR usage row can optionally be tied back to a Work Programme BOQ item / structure location.
-- SiteEntry.tsx (the live DPR form) exposes an optional "Link to Work Item" selector on equipment and labour rows, with an inline "Planned: X" chip computed via `calculateBomDemand` scoped to that single item + its programme bars.
-- WorkDemand.tsx (BOM & Demand page) has a "Plan vs Actual" tab that aggregates linked equipment hours (from opening/closing meter or start/end time) and labour days (row `count`) per BOQ item, compared against `calculateBomDemand` planned totals for that item, with variance badges and an expandable per-equipment/per-designation breakdown.
+- `equipmentLogs`, `labourLogs`, and `materialLogs` (in `shared/schema.ts`) all carry nullable `boqItemId` + `structureId` columns so a DPR usage/consumption row can optionally be tied back to a Work Programme BOQ item and, within that item, a specific structure/reach location (`work_program_bars.structureId` where `planningMode === "structure_location"`).
+- SiteEntry.tsx (the live DPR form) exposes an optional "Link to Work Item" selector plus a "Structure / Reach (optional)" selector on equipment, labour, AND materials rows, with an inline "Planned: X" chip computed via `calculateBomDemand`/`getPlannedDemandForItem(boqItemId, structureId)` scoped to that item (+ structure override). Materials Consumed/Issued is a real, functional card on the DPR form (previously dead code with an always-empty `materials` array — it now has full CRUD, autosave draft restore, and submit filtering on non-empty `material`).
+- WorkDemand.tsx (BOM & Demand page) "Plan vs Actual" tab aggregates, per BOQ item: equipment hours + km, labour days, and material quantities (planned via `calculateBomDemand`, actual via linked DPR rows), plus a **productivity metric** (actual progress qty completed — from the existing `/api/boq/projects/:id/plan-vs-actual` endpoint's `totalActual` — divided by actual equipment hours / labour days) and an expandable **structure/reach-level breakdown table** (equip hours/km, labour days, materials) built by cross-referencing each linked row's `structureId` against `programmeBars` (fetched from `/api/boq/projects/:id/programme`) for a human label.
 
-## Why materials were excluded
-**Materials are NOT captured on the DPR form at all** — `SiteEntry.tsx`'s `materials` state array is permanently empty (dead code); real material entry happens in `SiteMaterialTrips.tsx` / `SiteMaterialsReceived.tsx`, which are keyed by site name string and have no BOQ project/item linkage. Reviving that flow to support BOQ-item linkage was judged out of proportion to this task's scope, so `materialLogs` got the same `boqItemId`/`structureId` columns for schema completeness, but the Plan vs Actual UI explicitly notes materials aren't compared yet.
-
-**Why:** avoid silently showing an always-empty/misleading "actual materials" column; be explicit about the gap instead.
-**How to apply:** if a future task wants real material plan-vs-actual, the real work is reviving/re-linking the SiteMaterialTrips flow to BOQ items — not just reading `materialLogs`.
+## Key implementation notes
+- Equipment KM has no planned baseline in the BOM engine (`BomEquipmentRow` only has `totalHours`) — the report only shows *actual* KM (from `totalKm`, itself derived from `numberOfTrips × tripDistance × 2` for trip-based entries or a direct value), with no variance badge for it.
+- Structure/reach rows with no `structureId` linkage are grouped under an explicit "Not linked to a structure/reach" bucket rather than silently dropped, so users can see how much actual data still isn't attributed at that granularity.
+- Material actual/planned matching is done by uppercase-trimmed material/component name, mirroring the same pattern already used for equipment (`machine`) and labour (`category`) breakdowns.

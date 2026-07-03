@@ -91,7 +91,13 @@ interface MaterialEntry {
   supplier: string;
   location: string;
   receiptNumber: string;
+  // Phase 3: optional link to the planned BOQ item / structure this material
+  // consumption/issue is charged against, for planned vs actual comparison.
+  boqItemId: number | null;
+  structureId: string | null;
 }
+
+const MATERIAL_TYPE_OPTIONS = ["Received", "Issued"];
 
 interface SitePurchaseEntry {
   itemDescription: string;
@@ -607,8 +613,11 @@ export default function SiteEntry() {
     { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }
   ]);
 
-  // Materials are now managed separately in the Materials Received tab
-  const [materials] = useState<MaterialEntry[]>([]);
+  // Actual material consumption/issue captured against a work item, for Plan
+  // vs Actual comparison. Bulk material deliveries by vehicle trip continue to
+  // be tracked separately in the Materials Received tab; this section is for
+  // recording what was actually consumed/issued against a planned BOQ item.
+  const [materials, setMaterials] = useState<MaterialEntry[]>([]);
 
   const [sitePurchases, setSitePurchases] = useState<SitePurchaseEntry[]>([]);
 
@@ -662,6 +671,7 @@ export default function SiteEntry() {
     if (data.structureItems) setStructureItems(data.structureItems);
     setEquipment(data.equipment);
     setLabour(data.labour);
+    if (data.materials) setMaterials(data.materials);
     if (data.sitePurchases) setSitePurchases(data.sitePurchases);
   }, []);
 
@@ -757,24 +767,34 @@ export default function SiteEntry() {
     return Object.values(grouped);
   };
 
-  const addRow = (section: 'progress' | 'equipment' | 'labour') => {
+  const addRow = (section: 'progress' | 'equipment' | 'labour' | 'materials') => {
     if (section === 'progress') {
       setProgress([...progress, { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }]);
     } else if (section === 'equipment') {
       setEquipment([...equipment, { machine: "", vehicleNo: "", operator: "", task: "", entryType: "time_meter", startTime: "", endTime: "", openingReading: null, closingReading: null, diesel: null, equipmentId: null, dieselSource: "plant_stock", fuelStation: "", billNumber: "", amountPaid: null, numberOfTrips: null, tripDistance: null, totalKm: null, waterQuantity: null, boqItemId: null, structureId: null }]);
     } else if (section === 'labour') {
       setLabour([...labour, { category: "Skilled", gender: "Male", count: 0, task: "", contractor: "", boqItemId: null, structureId: null }]);
+    } else if (section === 'materials') {
+      setMaterials([...materials, { type: "Issued", material: "", quantity: null, uom: "", vehicleNumber: "", supplier: "", location: "", receiptNumber: "", boqItemId: null, structureId: null }]);
     }
   };
 
-  const removeRow = (section: 'progress' | 'equipment' | 'labour', index: number) => {
+  const removeRow = (section: 'progress' | 'equipment' | 'labour' | 'materials', index: number) => {
     if (section === 'progress' && progress.length > 1) {
       setProgress(progress.filter((_, i) => i !== index));
     } else if (section === 'equipment' && equipment.length > 1) {
       setEquipment(equipment.filter((_, i) => i !== index));
     } else if (section === 'labour' && labour.length > 1) {
       setLabour(labour.filter((_, i) => i !== index));
+    } else if (section === 'materials') {
+      setMaterials(materials.filter((_, i) => i !== index));
     }
+  };
+
+  const updateMaterial = (index: number, field: keyof MaterialEntry, value: any) => {
+    const updated = [...materials];
+    (updated[index] as any)[field] = value;
+    setMaterials(updated);
   };
 
   const addSitePurchase = () => {
@@ -827,7 +847,7 @@ export default function SiteEntry() {
           : [],
         equipment: normalizedEquipment,
         labour,
-        materials,
+        materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
         clientTimestamp,
       });
@@ -1786,6 +1806,7 @@ export default function SiteEntry() {
                         onValueChange={(val) => {
                           const updated = [...equipment];
                           updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                          updated[idx].structureId = null;
                           setEquipment(updated);
                         }}
                       >
@@ -1802,8 +1823,40 @@ export default function SiteEntry() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {(() => {
+                      if (entry.boqItemId == null) return null;
+                      const structuresForItem = structureLocations.filter((s) =>
+                        s.bars.some((b) => b.boqItemId === entry.boqItemId),
+                      );
+                      if (structuresForItem.length === 0) return null;
+                      return (
+                        <div>
+                          <Label className="text-sm text-muted-foreground">Structure / Reach (optional)</Label>
+                          <Select
+                            value={entry.structureId ?? "__none__"}
+                            onValueChange={(val) => {
+                              const updated = [...equipment];
+                              updated[idx].structureId = val === "__none__" ? null : val;
+                              setEquipment(updated);
+                            }}
+                          >
+                            <SelectTrigger data-testid={`select-equipment-structure-${idx}`}>
+                              <SelectValue placeholder="All / not specified" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">All / not specified</SelectItem>
+                              {structuresForItem.map((s) => (
+                                <SelectItem key={s.structureId} value={s.structureId}>
+                                  {s.structureId}{s.structureLocType ? ` (${s.structureLocType})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })()}
                     {entry.boqItemId != null && (() => {
-                      const plan = getPlannedDemandForItem(entry.boqItemId);
+                      const plan = getPlannedDemandForItem(entry.boqItemId, entry.structureId);
                       const planRow = plan?.equipment.find((e) => e.equipmentName.toUpperCase() === (entry.machine || "").toUpperCase());
                       if (!planRow) return null;
                       return (
@@ -2230,6 +2283,7 @@ export default function SiteEntry() {
                       onValueChange={(val) => {
                         const updated = [...labour];
                         updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                        updated[idx].structureId = null;
                         setLabour(updated);
                       }}
                     >
@@ -2246,8 +2300,40 @@ export default function SiteEntry() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {(() => {
+                    if (entry.boqItemId == null) return null;
+                    const structuresForItem = structureLocations.filter((s) =>
+                      s.bars.some((b) => b.boqItemId === entry.boqItemId),
+                    );
+                    if (structuresForItem.length === 0) return null;
+                    return (
+                      <div>
+                        <Label className="text-sm text-muted-foreground">Structure / Reach (optional)</Label>
+                        <Select
+                          value={entry.structureId ?? "__none__"}
+                          onValueChange={(val) => {
+                            const updated = [...labour];
+                            updated[idx].structureId = val === "__none__" ? null : val;
+                            setLabour(updated);
+                          }}
+                        >
+                          <SelectTrigger data-testid={`select-labour-structure-${idx}`}>
+                            <SelectValue placeholder="All / not specified" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">All / not specified</SelectItem>
+                            {structuresForItem.map((s) => (
+                              <SelectItem key={s.structureId} value={s.structureId}>
+                                {s.structureId}{s.structureLocType ? ` (${s.structureLocType})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })()}
                   {entry.boqItemId != null && (() => {
-                    const plan = getPlannedDemandForItem(entry.boqItemId);
+                    const plan = getPlannedDemandForItem(entry.boqItemId, entry.structureId);
                     const planRow = plan?.labour.find((l) => l.designation.toUpperCase() === (entry.category || "").toUpperCase());
                     if (!planRow) return null;
                     return (
@@ -2265,6 +2351,164 @@ export default function SiteEntry() {
           <Button size="sm" variant="outline" className="w-full border-dashed" onClick={() => addRow('labour')} data-testid="button-add-labour-bottom">
             <Plus className="w-4 h-4 mr-1" /> Add Row
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Materials Consumed/Issued (linked to work item for Plan vs Actual) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-teal-600">Materials Consumed / Issued</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => addRow('materials')} data-testid="button-add-material-top">
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {materials.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">No materials recorded. Click "Add" to record material consumed or issued against a work item. (Bulk deliveries by vehicle trip are still tracked separately in Materials Received.)</p>
+          ) : (
+            materials.map((m, idx) => (
+              <div key={idx} className="p-4 bg-muted/30 rounded-lg relative space-y-3">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-0 top-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeRow('materials', idx)}
+                  data-testid={`button-remove-material-${idx}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                  <div>
+                    <Label>Type</Label>
+                    <Select value={m.type} onValueChange={(v) => updateMaterial(idx, 'type', v)}>
+                      <SelectTrigger data-testid={`select-material-type-${idx}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MATERIAL_TYPE_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Material</Label>
+                    <Input
+                      placeholder="e.g. WMM / VG-30 / Cement"
+                      value={m.material}
+                      onChange={(e) => updateMaterial(idx, 'material', e.target.value.toUpperCase())}
+                      className="uppercase"
+                      data-testid={`input-material-name-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label>Quantity</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={m.quantity ?? ''}
+                      onChange={(e) => updateMaterial(idx, 'quantity', e.target.value ? parseFloat(e.target.value) : null)}
+                      data-testid={`input-material-qty-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label>UOM</Label>
+                    <Input
+                      placeholder="MT/CUM"
+                      value={m.uom}
+                      onChange={(e) => updateMaterial(idx, 'uom', e.target.value.toUpperCase())}
+                      className="uppercase"
+                      data-testid={`input-material-uom-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label>Location/Task</Label>
+                    <Input
+                      placeholder="Where used"
+                      value={m.location}
+                      onChange={(e) => updateMaterial(idx, 'location', e.target.value.toUpperCase())}
+                      className="uppercase"
+                      data-testid={`input-material-location-${idx}`}
+                    />
+                  </div>
+                </div>
+                {siteBoqItems.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-sm text-muted-foreground">Link to Work Item (optional)</Label>
+                      <Select
+                        value={m.boqItemId ? String(m.boqItemId) : "__none__"}
+                        onValueChange={(val) => {
+                          const updated = [...materials];
+                          updated[idx].boqItemId = val === "__none__" ? null : Number(val);
+                          updated[idx].structureId = null;
+                          setMaterials(updated);
+                        }}
+                      >
+                        <SelectTrigger data-testid={`select-material-boqitem-${idx}`}>
+                          <SelectValue placeholder="Not linked" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Not linked</SelectItem>
+                          {siteBoqItems.map((bi) => (
+                            <SelectItem key={bi.id} value={String(bi.id)}>
+                              {bi.itemCode ? `[${bi.itemCode}] ` : ""}{bi.itemName || bi.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(() => {
+                      if (m.boqItemId == null) return null;
+                      const structuresForItem = structureLocations.filter((s) =>
+                        s.bars.some((b) => b.boqItemId === m.boqItemId),
+                      );
+                      if (structuresForItem.length === 0) return null;
+                      return (
+                        <div>
+                          <Label className="text-sm text-muted-foreground">Structure / Reach (optional)</Label>
+                          <Select
+                            value={m.structureId ?? "__none__"}
+                            onValueChange={(val) => {
+                              const updated = [...materials];
+                              updated[idx].structureId = val === "__none__" ? null : val;
+                              setMaterials(updated);
+                            }}
+                          >
+                            <SelectTrigger data-testid={`select-material-structure-${idx}`}>
+                              <SelectValue placeholder="All / not specified" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">All / not specified</SelectItem>
+                              {structuresForItem.map((s) => (
+                                <SelectItem key={s.structureId} value={s.structureId}>
+                                  {s.structureId}{s.structureLocType ? ` (${s.structureLocType})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })()}
+                    {m.boqItemId != null && (() => {
+                      const plan = getPlannedDemandForItem(m.boqItemId, m.structureId);
+                      const planRow = plan?.materials.find((mm) => mm.materialName.toUpperCase() === (m.material || "").toUpperCase());
+                      if (!planRow) return null;
+                      return (
+                        <div className="flex items-end">
+                          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5" data-testid={`text-planned-material-${idx}`}>
+                            Planned: {fmtQty(planRow.totalQty, 2)} {planRow.uom} total for {planRow.materialName}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {materials.length > 0 && (
+            <Button variant="outline" className="w-full border-dashed" onClick={() => addRow('materials')} data-testid="button-add-material-bottom">
+              <Plus className="w-4 h-4 mr-1" /> Add Material
+            </Button>
+          )}
         </CardContent>
       </Card>
 
