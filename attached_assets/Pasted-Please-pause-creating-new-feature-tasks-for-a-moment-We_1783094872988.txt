@@ -1,0 +1,120 @@
+Please pause creating new feature tasks for a moment.
+
+We need to freeze the SitePulse product architecture before more task-wise changes.
+
+Current problem:
+The app is becoming reactive. We are fixing BOQ mapping, structure import, DPR, BOM, HMP, Plan vs Actual separately, but they all need one common execution-control model.
+
+Product goal:
+SitePulse should be useful for road, bridge, culvert, irrigation, canal, structure and plant-based infrastructure contractors.
+
+But it should not blindly guess everything. It should classify the work, choose the right planning mode, use SDB/SNL norms where applicable, use imported schedules where item-wise quantities are needed, and then link programme → demand → procurement/stock → DPR actuals → Plan vs Actual.
+
+Please prepare a technical architecture note before coding further.
+
+Required architecture:
+
+1. Work sector classification
+Every BOQ item should be classified into a sector:
+- Road linear
+- Earthwork
+- Pavement
+- Drainage
+- Culvert / cross drainage
+- Bridge / major structure
+- Retaining wall / protection work
+- Canal / irrigation linear
+- Canal structures
+- Buildings / miscellaneous civil
+- Road furniture / signage
+- Electrical / miscellaneous
+- Plant production linked item
+
+2. Planning mode per BOQ item
+Each BOQ item should have a planning mode:
+- road_reach
+- structure_location
+- canal_reach
+- imported_schedule
+- plant_production
+- manual_planning
+- not_plannable_without_input
+
+3. SDB/SNL mapping
+BOQ items should map to SDB/SNL norms only within compatible sectors.
+Do not do blind fuzzy matching across all SDBs.
+Use source, sector, item description, UOM, method and work situation as much as possible.
+If no safe match exists, mark as Needs Review.
+
+4. Structure planning
+For culverts, slab culverts, box culverts, minor bridges and major bridges:
+- item-wise quantities should primarily come from Structure Schedule Import.
+- App should not calculate structure quantities from chainage alone.
+- If imported dates are absent, app should offer auto-sequence imported quantities using stage order, productivity/default duration and available fronts.
+- Missing structure items should remain “Not programmed — structure quantity required.”
+
+5. Canal / irrigation planning
+Canal works should become first-class, not forced into Road or Drainage.
+Canal linear items should plan by canal reach/chainage.
+Canal structures should use location/item-wise schedule similar to structures.
+If SDB PDF has missing canal/cross-drainage items, importer/mapping should identify the gap.
+
+6. BOM and Resource Demand
+Separate:
+- Procurement BOM / key materials
+- Full SDB/SNL resource analysis
+- Equipment demand
+- Labour demand
+Do not mix incidental SDB materials into procurement BOM unless marked as procurement-relevant.
+
+7. Procurement / Stock / IRN / PI
+Demand should drive material priority:
+- required by date
+- planned demand
+- available stock
+- pending PI/PO
+- issued quantity
+- shortage
+- priority alert
+
+8. DPR linkage
+DPR should not be just free entry.
+Road DPR should link to BOQ item + programme reach.
+Structure DPR should link to structure_id + BOQ item + imported programme bar.
+Canal DPR should link to canal reach or canal structure.
+Plant DPR should link to production batch/mix/recipe.
+
+9. Plan vs Actual
+Keep contractor-style Plan vs Actual:
+- UOM
+- BOQ rate
+- BOQ qty
+- BOQ value
+- Planned till date
+- Planned value
+- Actual till date from DPR
+- Actual amount
+- BOQ balance
+- Status
+
+The improvement is to make DPR actuals properly feed this report.
+
+10. HMP / RMC / plant control
+Plant modules should show:
+- production quantity
+- recipe/JMF consumption
+- actual bitumen/aggregate/LDO consumption
+- stock impact
+- variance
+- pending production vs work demand
+- material shortage alerts
+
+Before creating more tasks, please give me:
+A. What is already implemented.
+B. What is partially implemented.
+C. What is missing.
+D. Recommended phased roadmap.
+E. Which files/modules are involved.
+F. What should be Phase 1, Phase 2, Phase 3.
+
+Do not code yet. First give the architecture and phased plan.
