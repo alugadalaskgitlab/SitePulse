@@ -187,7 +187,7 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
-  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom } = parseQueryParams();
+  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom, prefillBoqProjectId } = parseQueryParams();
   const prefillLabel = FROM_MAP[fromParam] ?? "";
   const isLocked = !!prefillLabel && !editId;
   const backHref = returnTo || "/finance/hub";
@@ -251,6 +251,29 @@ export default function IrnRaisePage() {
     },
   });
   const activeSites = sites.filter((s) => s.isActive !== false);
+
+  // Task #1240 — project context pass-through: when arriving from a
+  // shortage/demand link with ?boqProjectId=, resolve the BOQ project's
+  // linked site and auto-fill Site/Location + surface the project name so
+  // the requester has the same project context they clicked from.
+  const { data: prefillProject } = useQuery<{ id: number; name: string; siteId: number | null }>({
+    queryKey: ["/api/boq/projects", prefillBoqProjectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${prefillBoqProjectId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Project not found");
+      return res.json();
+    },
+    enabled: !!prefillBoqProjectId,
+  });
+
+  const [projectSiteFillApplied, setProjectSiteFillApplied] = useState(false);
+  useEffect(() => {
+    if (!prefillProject || projectSiteFillApplied || editId) return;
+    if (prefillProject.siteId != null && form.getValues("siteId") == null) {
+      form.setValue("siteId", prefillProject.siteId);
+    }
+    setProjectSiteFillApplied(true);
+  }, [prefillProject, projectSiteFillApplied, editId, form]);
 
   const { data: plantMats = [] } = useQuery<PlantMat[]>({
     queryKey: ["/api/plant-module/materials"],
@@ -434,6 +457,12 @@ export default function IrnRaisePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {prefillProject && (
+                  <p className="text-xs text-amber-700 flex items-center gap-1" data-testid="text-prefill-project">
+                    <ClipboardList className="h-3 w-3" />
+                    Project: {prefillProject.name}
+                  </p>
+                )}
               </div>
             </div>
 

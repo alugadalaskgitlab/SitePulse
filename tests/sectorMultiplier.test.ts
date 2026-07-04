@@ -68,4 +68,24 @@ describe("getSectorMultiplier — cross-book SDB fallback", () => {
     expect(getSectorMultiplier("pipe_culvert", "")).toBe(0.7);
     expect(getSectorMultiplier("pipe_culvert", undefined)).toBe(0.7);
   });
+
+  // ── MISCELLANEOUS ("SDB MISCELLANEOUS" source book) ─────────────────────────
+
+  it("MISCELLANEOUS is a penalized secondary match for structure/protection categories", () => {
+    for (const cat of ["pipe_culvert", "retaining_wall", "bridge_structure", "reinforcement", "drainage"] as const) {
+      const m = getSectorMultiplier(cat, "MISCELLANEOUS");
+      expect(m).toBeGreaterThan(0);
+      expect(m).toBeLessThan(1);
+    }
+  });
+
+  it("MISCELLANEOUS is excluded (0) for pure road categories with no fallback", () => {
+    expect(getSectorMultiplier("earthwork", "MISCELLANEOUS")).toBe(0);
+    expect(getSectorMultiplier("road_furniture", "MISCELLANEOUS")).toBe(0);
+    expect(getSectorMultiplier("electrical_misc", "MISCELLANEOUS")).toBe(0);
+  });
+
+  it("MISCELLANEOUS and IRRIGATION receive the same penalized fallback weight", () => {
+    expect(getSectorMultiplier("bridge_structure", "MISCELLANEOUS")).toBe(getSectorMultiplier("bridge_structure", "IRRIGATION"));
+  });
 });

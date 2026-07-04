@@ -685,6 +685,14 @@ export default function PurchaseIndents() {
     };
   })();
 
+  // Task #1240 — project context pass-through: resolve ?boqProjectId= to the
+  // BOQ project's linked site so the PI form (like IRN) auto-fills Site and
+  // surfaces the project name to the requester.
+  const prefillBoqProjectId = (() => {
+    const sp = new URLSearchParams(searchString);
+    return sp.get("boqProjectId") || "";
+  })();
+
   const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
@@ -718,6 +726,27 @@ export default function PurchaseIndents() {
   const [formRemarks, setFormRemarks] = useState("");
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(fromIrnId ? null : defaultRaisedFrom);
+
+  // Task #1240 — project context pass-through: resolve the BOQ project
+  // linked to ?boqProjectId= and auto-fill the PI's Site once, mirroring
+  // the same behavior added to the IRN form.
+  const { data: prefillProject } = useQuery<{ id: number; name: string; siteId: number | null }>({
+    queryKey: ["/api/boq/projects", prefillBoqProjectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${prefillBoqProjectId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Project not found");
+      return res.json();
+    },
+    enabled: !!prefillBoqProjectId,
+  });
+  const [projectSiteFillApplied, setProjectSiteFillApplied] = useState(false);
+  useEffect(() => {
+    if (!prefillProject || projectSiteFillApplied) return;
+    if (prefillProject.siteId != null && formSiteId == null) {
+      setFormSiteId(prefillProject.siteId);
+    }
+    setProjectSiteFillApplied(true);
+  }, [prefillProject, projectSiteFillApplied, formSiteId]);
   const [formItems, setFormItems] = useState<ItemRow[]>([
     prefill
       ? { description: prefill.material, spec: "", partNo: "", qty: prefill.qty, uom: prefill.uom, purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }
@@ -2562,6 +2591,12 @@ export default function PurchaseIndents() {
                     placeholder="Select location"
                     data-testid="select-site"
                   />
+                  {prefillProject && (
+                    <p className="text-xs text-amber-700 flex items-center gap-1 mt-1" data-testid="text-prefill-project">
+                      <ClipboardList className="h-3 w-3" />
+                      Project: {prefillProject.name}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-sm uppercase">PROPOSED BY</Label>

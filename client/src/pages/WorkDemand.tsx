@@ -14,9 +14,11 @@ import {
   calculateBomDemand,
   monthLabel,
   fmtQty,
+  derivePlanningMode,
   type BomDemand,
   type BomInputItem,
   type BomInputBar,
+  type EffectivePlanningMode,
 } from "@shared/planningEngine";
 import { shortItemName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
@@ -513,6 +515,8 @@ interface ProgrammeBarLite {
   planningMode: string | null;
   structureId: string | null;
   structureLocType: string | null;
+  source?: string | null;
+  reachLabel?: string | null;
 }
 
 interface DprLogsLite {
@@ -914,9 +918,49 @@ function EquipLabourPlanVsActualTable({
   );
 }
 
-function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand; unprogrammedDescriptions: Set<string> }) {
+// Task #1240 — read-only display labels for EffectivePlanningMode. Never used
+// to gate any workflow logic, purely a badge in the By Item tab.
+const PLANNING_MODE_LABEL: Record<EffectivePlanningMode, string> = {
+  road_reach: "Road Reach",
+  structure_location: "Structure",
+  imported_schedule: "Imported",
+  manual_planning: "Manual",
+  not_plannable_without_input: "No Bars",
+};
+const PLANNING_MODE_STYLE: Record<EffectivePlanningMode, string> = {
+  road_reach: "bg-sky-50 text-sky-700 border-sky-200",
+  structure_location: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  imported_schedule: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  manual_planning: "bg-amber-50 text-amber-700 border-amber-200",
+  not_plannable_without_input: "bg-slate-100 text-slate-500 border-slate-200",
+};
+
+function ItemWiseTable({
+  demand,
+  unprogrammedDescriptions,
+  items = [],
+  programmeBars = [],
+}: {
+  demand: BomDemand;
+  unprogrammedDescriptions: Set<string>;
+  items?: BomInputItem[];
+  programmeBars?: ProgrammeBarLite[];
+}) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const rows = useMemo(() => computeItemDemand(demand, unprogrammedDescriptions), [demand, unprogrammedDescriptions]);
+
+  // Task #1240 — surface the effective planning mode per BOQ item (how it
+  // entered the work programme: road reach / structure / imported / manual).
+  // Purely a display badge; does not change bar data or demand math.
+  const planningModeByKey = useMemo(() => {
+    const map = new Map<string, EffectivePlanningMode>();
+    for (const it of items) {
+      const key = (it.itemCode ?? "") + "|" + it.description;
+      const itemBars = programmeBars.filter((b) => b.boqItemId === it.id);
+      map.set(key, derivePlanningMode(itemBars));
+    }
+    return map;
+  }, [items, programmeBars]);
 
   if (!rows.length) return <EmptyState label="No item demand. Add recipes and work programme bars first." />;
 
@@ -954,6 +998,19 @@ function ItemWiseTable({ demand, unprogrammedDescriptions }: { demand: BomDemand
                 {row.compositeLabel}
               </span>
             )}
+            {(() => {
+              const mode = planningModeByKey.get(id);
+              if (!mode) return null;
+              return (
+                <span
+                  className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold border flex-shrink-0 ${PLANNING_MODE_STYLE[mode]}`}
+                  title="How this item entered the work programme"
+                  data-testid={`badge-planning-mode-${id}`}
+                >
+                  {PLANNING_MODE_LABEL[mode]}
+                </span>
+              );
+            })()}
           </div>
           <span className="text-xs font-mono text-teal-700 bg-teal-50 border border-teal-100 rounded px-1.5 py-0.5 flex-shrink-0">
             {fmtQty(row.workQty, 1)} {row.unit || "unit"}
@@ -1314,7 +1371,8 @@ export default function WorkDemand() {
       const res = await fetch(`/api/boq/projects/${projectId}/programme`, { credentials: "include" });
       return res.ok ? res.json() : [];
     },
-    enabled: !isNaN(projectId) && activeTab === "plan-vs-actual",
+    // Also needed on "by-item" to derive the per-item planning-mode badge (Task #1240).
+    enabled: !isNaN(projectId) && (activeTab === "plan-vs-actual" || activeTab === "by-item"),
   });
 
   // Actual progress qty completed per item — used for the productivity metric
@@ -1631,7 +1689,7 @@ export default function WorkDemand() {
 
             <TabsContent value="by-item" className="mt-3">
               <SectionHeader icon={LayoutList} title="Demand by BOQ Item" />
-              <ItemWiseTable demand={demand} unprogrammedDescriptions={unprogrammedDescriptions} />
+              <ItemWiseTable demand={demand} unprogrammedDescriptions={unprogrammedDescriptions} items={bomData?.items ?? []} programmeBars={programmeBars} />
             </TabsContent>
 
             <TabsContent value="plan-vs-actual" className="mt-3">

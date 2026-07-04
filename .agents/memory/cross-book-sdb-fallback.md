@@ -5,9 +5,14 @@ description: Rule for allowing one SNL/SDB sector-book to act as a fallback sour
 
 `server/snlAutoMapper.ts`'s `BOQ_CATEGORY_SECTORS` / `getSectorMultiplier()`
 controls which SDB "sector books" (ROAD, STRUCTURES, BRIDGE, DRAINAGE,
-IRRIGATION, ELECTRICAL, BUILDING…) are eligible candidates for a given BOQ
-work category (road_pavement, pipe_culvert, retaining_wall, bridge_structure,
-reinforcement, drainage, road_furniture, electrical_misc, unknown_misc).
+IRRIGATION, MISCELLANEOUS, ELECTRICAL, BUILDING…) are eligible candidates for
+a given BOQ work category (road_pavement, pipe_culvert, retaining_wall,
+bridge_structure, reinforcement, drainage, road_furniture, electrical_misc,
+unknown_misc). Note: the real sector *value* stored for the "SDB
+MISCELLANEOUS" source book row is the literal string `MISCELLANEOUS`, not
+`MISC` — check `snl_sources`/`snl_items.sector` in the DB rather than
+guessing an abbreviation when asked to widen fallback matching to a "misc"
+book.
 
 When widening this to let a category borrow from a book it doesn't normally
 use (e.g. letting structure-type categories fall back to IRRIGATION-book SDB
