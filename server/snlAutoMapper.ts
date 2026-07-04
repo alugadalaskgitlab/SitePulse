@@ -238,11 +238,15 @@ export function classifyBoqItem(description: string): BoqWorkCategory {
 const BOQ_CATEGORY_SECTORS: Record<BoqWorkCategory, { primary: Set<string>; secondary: Set<string> }> = {
   road_pavement:    { primary: new Set(["ROAD", "ROADS"]), secondary: new Set(["STRUCTURES", "STRUCTURE"]) },
   earthwork:        { primary: new Set(["ROAD", "ROADS"]), secondary: new Set([]) },
+  // Task #1240: IRRIGATION added as FALLBACK-ONLY (secondary, penalized) for
+  // structure-type categories so SDB items with no road/structure-book match
+  // can still surface a candidate (still gated by needs_review/unmapped
+  // safety net downstream). IRRIGATION is never primary for these categories.
   drainage:         { primary: new Set(["ROAD", "ROADS", "DRAINAGE"]), secondary: new Set(["IRRIGATION", "STRUCTURES", "STRUCTURE"]) },
-  pipe_culvert:     { primary: new Set(["ROAD", "ROADS", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["DRAINAGE"]) },
-  retaining_wall:   { primary: new Set(["STRUCTURES", "STRUCTURE", "ROAD", "ROADS"]), secondary: new Set([]) },
-  bridge_structure: { primary: new Set(["BRIDGE", "BRIDGES", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["ROAD", "ROADS"]) },
-  reinforcement:    { primary: new Set(["STRUCTURES", "STRUCTURE", "BRIDGE", "BRIDGES", "ROAD", "ROADS"]), secondary: new Set([]) },
+  pipe_culvert:     { primary: new Set(["ROAD", "ROADS", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["DRAINAGE", "IRRIGATION"]) },
+  retaining_wall:   { primary: new Set(["STRUCTURES", "STRUCTURE", "ROAD", "ROADS"]), secondary: new Set(["IRRIGATION"]) },
+  bridge_structure: { primary: new Set(["BRIDGE", "BRIDGES", "STRUCTURES", "STRUCTURE"]), secondary: new Set(["ROAD", "ROADS", "IRRIGATION"]) },
+  reinforcement:    { primary: new Set(["STRUCTURES", "STRUCTURE", "BRIDGE", "BRIDGES", "ROAD", "ROADS"]), secondary: new Set(["IRRIGATION"]) },
   road_furniture:   { primary: new Set(["ROAD", "ROADS"]), secondary: new Set([]) },
   electrical_misc:  { primary: new Set(["ELECTRICAL", "ROAD", "ROADS"]), secondary: new Set([]) },
   unknown_misc:     { primary: new Set(["ROAD", "ROADS", "STRUCTURES", "STRUCTURE", "BRIDGE", "BRIDGES", "DRAINAGE"]),

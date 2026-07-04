@@ -297,6 +297,61 @@ export function calculateMonthlyDistribution(
   return result;
 }
 
+// ─── Planning Mode (Task #1240 — additive, read-only classification) ─────────
+// Derives a display-only "effective planning mode" for a BOQ item's bars,
+// WITHOUT rewriting any stored data. Existing stored planningMode values
+// (null | "structure_location") are respected as-is; this only fills in a
+// label for the UI when the stored value is null/ambiguous. It never mutates
+// the database and must not be used to gate any workflow logic.
+export type EffectivePlanningMode =
+  | "road_reach"
+  | "structure_location"
+  | "imported_schedule"
+  | "manual_planning"
+  | "not_plannable_without_input";
+
+export interface PlanningModeBarInput {
+  planningMode?: string | null;
+  source?: string | null;
+  reachLabel?: string | null;
+}
+
+const AUTO_GENERATED_LABEL_RE = /^(Full Length|Structures|Bridges|Reach \d+|Struct\. Front \d+|Bridge Grp \d+)$/;
+
+/**
+ * Classifies how a single BOQ item entered the work programme, for display
+ * purposes only (e.g. a badge in the "By Item" demand tab). Does not alter
+ * any persisted planningMode value.
+ */
+export function derivePlanningMode(bars: PlanningModeBarInput[]): EffectivePlanningMode {
+  if (!bars || bars.length === 0) return "not_plannable_without_input";
+
+  // Any bar explicitly marked structure_location → whole item is structure-planned.
+  if (bars.some((b) => b.planningMode === "structure_location")) return "structure_location";
+
+  // Any other non-null/non-legacy planningMode value is passed through as-is
+  // (forward-compatible with future explicit values written by the app).
+  const explicit = bars.find((b) => b.planningMode && b.planningMode !== "structure_location");
+  if (explicit?.planningMode === "imported_schedule" || explicit?.planningMode === "manual_planning") {
+    return explicit.planningMode;
+  }
+
+  // Bars imported from an external schedule (not the structure wizard, not
+  // auto-sequenced, not hand-labelled) — identified by source values used by
+  // schedule-import flows.
+  if (bars.some((b) => b.source === "import" || b.source === "schedule_import")) return "imported_schedule";
+
+  // Hand-placed bars: source === "manual" with a custom (non-auto-generated) label.
+  if (bars.some((b) => b.source === "manual" && b.reachLabel && !AUTO_GENERATED_LABEL_RE.test(b.reachLabel))) {
+    return "manual_planning";
+  }
+
+  // Default: auto-sequenced / auto-generated road-style chainage stretches,
+  // or legacy bars with no source recorded (treated as road_reach for
+  // backward compatibility — matches historical behaviour).
+  return "road_reach";
+}
+
 // ─── Bar Split ────────────────────────────────────────────────────────────────
 
 export interface PlanBar {
@@ -1803,4 +1858,95 @@ export function fmtQty(n: number, decimals = 1): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   });
+}
+
+// ─── Time-phased shortage-check (Task #1240 — additive, read-only) ───────────
+// Pure, side-effect-free computation extracted from
+// GET /api/boq/projects/:id/shortage-check so the month-by-month running
+// balance / suggestion logic can be unit-tested independently of the DB.
+
+export interface ShortageMaterialDemand {
+  materialName: string;
+  uom: string;
+  totalQty: number;
+  /** month index (1-based) -> demand qty for that month */
+  monthlyQty: Record<number, number>;
+}
+
+export interface ShortageMonthlyBreakdown {
+  month: number;
+  demand: number;
+  shortfall: number;
+  isCurrentOrPast: boolean;
+}
+
+export type ShortageSuggestion = "adequate" | "monitor" | "raise_irn" | "raise_pi";
+
+export interface ShortageRowResult {
+  materialName: string;
+  uom: string;
+  totalDemand: number;
+  monthlyDemand: Record<number, number>;
+  currentStock: number;
+  stockMatched: boolean;
+  pendingProcurement: number;
+  shortfall: number;
+  nearTermShortfall: number;
+  monthlyBreakdown: ShortageMonthlyBreakdown[];
+  suggestion: ShortageSuggestion;
+}
+
+/**
+ * Computes a single material's time-phased shortage row: current stock +
+ * pending PI/IRN procurement is drawn down month-by-month against demand
+ * (chronological running balance), then netted against total demand to
+ * classify a suggested action. Never mutates any input.
+ */
+export function computeShortageRow(
+  matRow: ShortageMaterialDemand,
+  currentStock: number,
+  stockMatched: boolean,
+  pendingProcurement: number,
+  currentMonth: number,
+): ShortageRowResult {
+  const months = Object.keys(matRow.monthlyQty).map(Number).sort((a, b) => a - b);
+  let runningAvailable = currentStock + pendingProcurement;
+  const monthlyBreakdown: ShortageMonthlyBreakdown[] = [];
+  for (const m of months) {
+    const monthDemand = matRow.monthlyQty[m] ?? 0;
+    const monthShortfall = Math.max(0, monthDemand - Math.max(0, runningAvailable));
+    runningAvailable -= monthDemand;
+    monthlyBreakdown.push({ month: m, demand: monthDemand, shortfall: monthShortfall, isCurrentOrPast: m <= currentMonth });
+  }
+
+  const netAvailable = currentStock + pendingProcurement;
+  const shortfall = Math.max(0, matRow.totalQty - netAvailable);
+  const nearTermShortfall = monthlyBreakdown
+    .filter((mb) => mb.isCurrentOrPast)
+    .reduce((sum, mb) => sum + mb.shortfall, 0);
+
+  let suggestion: ShortageSuggestion;
+  if (shortfall <= 0) {
+    suggestion = "adequate";
+  } else if (nearTermShortfall <= 0 && shortfall <= matRow.totalQty * 0.1) {
+    suggestion = "monitor";
+  } else if (matRow.totalQty <= 500) {
+    suggestion = "raise_irn";
+  } else {
+    suggestion = "raise_pi";
+  }
+
+  return {
+    materialName: matRow.materialName,
+    uom: matRow.uom,
+    totalDemand: matRow.totalQty,
+    monthlyDemand: matRow.monthlyQty,
+    currentStock,
+    stockMatched,
+    pendingProcurement,
+    shortfall,
+    nearTermShortfall,
+    monthlyBreakdown,
+    suggestion,
+  };
 }

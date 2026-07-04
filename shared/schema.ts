@@ -2454,11 +2454,20 @@ export const workProgramBars = pgTable("work_program_bars", {
   notes: text("notes"),
   // "auto-sequence" = created by the auto-sequencer; "manual" = hand-placed. Used for non-destructive reruns.
   source: text("source").default("manual"),
-  // ── Structure-location bars (planningMode = "structure_location") ─────────
-  // These are imported via the Structure Schedule Import wizard rather than
-  // auto-generated from chainage splits. Each row represents one BOQ sub-item
-  // at one physical structure location.
-  planningMode: text("planning_mode"),               // null | "structure_location"
+  // ── Planning mode (Task #1240 — additive, non-breaking) ────────────────────
+  // Historically this column only ever stored null | "structure_location".
+  // It is being expanded (additively, no reclassification of existing rows)
+  // to describe how a bar/item entered the programme:
+  //   - null                          → legacy/road bars (treated as "road_reach")
+  //   - "structure_location"          → imported via Structure Schedule Import wizard
+  //   - "road_reach"                  → road-style chainage stretch (new explicit value)
+  //   - "imported_schedule"           → imported from an external schedule/CSV, not structure wizard
+  //   - "manual_planning"             → hand-placed bar with a custom label
+  //   - "not_plannable_without_input" → BOQ item that could not be auto-planned (needs user input)
+  // Existing rows are NEVER rewritten by this expansion — `derivePlanningMode()`
+  // in shared/planningEngine.ts computes the *effective* mode for display when
+  // the stored value is null, so old data keeps working unchanged.
+  planningMode: text("planning_mode"),               // null | one of PLANNING_MODES (see below)
   structureId: text("structure_id"),                 // e.g. "Bridge at Km 195.400"
   structureLocType: text("structure_loc_type"),      // bridge | culvert | retaining_wall | …
   structureChainageKm: real("structure_chainage_km"), // absolute chainage (km)
@@ -2609,6 +2618,19 @@ export type BoqRevisionItem = typeof boqRevisionItems.$inferSelect;
 export type InsertBoqRevisionItem = z.infer<typeof insertBoqRevisionItemSchema>;
 export type WorkProgramBar = typeof workProgramBars.$inferSelect;
 export type InsertWorkProgramBar = z.infer<typeof insertWorkProgramBarSchema>;
+
+// Task #1240 — additive expansion of the planning_mode vocabulary. Existing
+// stored values (null | "structure_location") remain valid; the new values
+// are only ever *derived* for display (see derivePlanningMode in
+// shared/planningEngine.ts) or written on newly created bars going forward.
+export const PLANNING_MODES = [
+  "road_reach",
+  "structure_location",
+  "imported_schedule",
+  "manual_planning",
+  "not_plannable_without_input",
+] as const;
+export type PlanningMode = typeof PLANNING_MODES[number];
 export type BoqItemEquipmentRow = typeof boqItemEquipment.$inferSelect;
 export type InsertBoqItemEquipment = z.infer<typeof insertBoqItemEquipmentSchema>;
 export type BoqItemLabourRow = typeof boqItemLabour.$inferSelect;

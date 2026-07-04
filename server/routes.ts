@@ -20,7 +20,7 @@ import { createDprRequestSchema, createPlantReportRequestSchema, insertAdminNoti
 import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
-import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, type LayerConfig } from "@shared/planningEngine";
+import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -10552,17 +10552,22 @@ export async function registerRoutes(
     }
   });
 
-  // Material shortage intelligence — compares WP demand vs current stock
+  // Material shortage intelligence — compares WP demand vs current stock.
+  // Task #1240: extended to be time-phased (month-by-month, not just a single
+  // total-qty comparison) and to net out material already covered by pending
+  // PI/IRN procurement, without altering the existing PI/IRN schemas/workflow.
   app.get("/api/boq/projects/:id/shortage-check", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
       const project = await storage.getBoqProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
 
-      const [{ expandedItems, bars }, allStockBalances, allMaterials] = await Promise.all([
+      const [{ expandedItems, bars }, allStockBalances, allMaterials, allIndents, allIrns] = await Promise.all([
         computeProjectBom(projectId),
         storage.getStockBalances(), // all parties
         storage.getPlantMaterials(),
+        storage.getPurchaseIndents(),
+        storage.getInternalRequisitions(),
       ]);
 
       // Build name → current stock lookup (sum across all parties)
@@ -10579,45 +10584,64 @@ export async function registerRoutes(
         }
       }
 
+      // Build name → pending procurement qty lookup. "Pending" = raised but not
+      // yet fully purchased/rejected/cancelled. This is read-only netting for
+      // the shortage view only — it never mutates PI/IRN records.
+      const TERMINAL_PI_STATUSES = new Set(["purchased", "not_purchased", "cancelled"]);
+      const pendingByName = new Map<string, number>();
+      const addPending = (name: string | null | undefined, qty: number) => {
+        if (!name || !(qty > 0)) return;
+        const key = name.trim().toLowerCase();
+        pendingByName.set(key, (pendingByName.get(key) ?? 0) + qty);
+      };
+      for (const pi of allIndents) {
+        if (pi.status === "rejected" || pi.status === "closed") continue;
+        for (const item of pi.items ?? []) {
+          const itemStatus = (item.purchaseStatus ?? "").toLowerCase();
+          if (TERMINAL_PI_STATUSES.has(itemStatus)) continue;
+          const remaining = (item.approvedQty ?? item.qty) - (item.totalPurchasedQty ?? 0);
+          addPending(item.description ?? (item as any).material, remaining);
+        }
+      }
+      for (const irn of allIrns) {
+        if (irn.status === "rejected" || irn.status === "closed") continue;
+        for (const item of irn.items ?? []) {
+          if (item.itemStatus !== "queued_procurement") continue;
+          const remaining = (item.procureQty ?? item.qty) - (item.actualIssuedQty ?? 0);
+          addPending(item.material, remaining);
+        }
+      }
+
       // Compute demand from the RESOLVED items (template/RMC-derived materials drive
       // the numbers, not the legacy saved SDB rows).
       const demand = expandedItems.length && bars.length
         ? calculateBomDemand(expandedItems as any, bars, project.totalMonths ?? 12)
         : { materials: [], equipment: [], labour: [] };
 
-      // Build shortage rows
+      // Determine current project month (same convention as Plan vs Actual) so
+      // month-by-month shortage can flag near-term risk separately from
+      // aggregate totals.
+      const startDate = project.startDate ? new Date(project.startDate) : null;
+      let currentMonth = 1;
+      if (startDate) {
+        const diffMonths = (Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        currentMonth = Math.max(1, Math.ceil(diffMonths));
+      }
+
+      // Build shortage rows — time-phased: current stock covers the earliest
+      // months first (running balance), pending procurement is netted against
+      // remaining demand before flagging a shortfall.
       const shortageRows = demand.materials.map(matRow => {
         const nameKey = matRow.materialName.trim().toLowerCase();
         const stock = stockByName.get(nameKey);
         const currentStock = stock?.balance ?? 0;
         const stockMatched = stockByName.has(nameKey);
-        const shortfall = Math.max(0, matRow.totalQty - currentStock);
-
-        let suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi";
-        if (shortfall <= 0) {
-          suggestion = "adequate";
-        } else if (shortfall <= matRow.totalQty * 0.1) {
-          suggestion = "monitor";
-        } else if (matRow.totalQty <= 500) {
-          suggestion = "raise_irn";
-        } else {
-          suggestion = "raise_pi";
-        }
-
-        return {
-          materialName: matRow.materialName,
-          uom: matRow.uom,
-          totalDemand: matRow.totalQty,
-          monthlyDemand: matRow.monthlyQty,
-          currentStock,
-          stockMatched,
-          shortfall,
-          suggestion,
-        };
+        const pendingProcurement = pendingByName.get(nameKey) ?? 0;
+        return computeShortageRow(matRow, currentStock, stockMatched, pendingProcurement, currentMonth);
       });
 
-      // Sort: shortage first, then adequate
-      shortageRows.sort((a, b) => b.shortfall - a.shortfall);
+      // Sort: near-term/actionable shortage first, then aggregate shortage, then adequate
+      shortageRows.sort((a, b) => (b.nearTermShortfall - a.nearTermShortfall) || (b.shortfall - a.shortfall));
 
       res.json({
         projectId,
@@ -10625,6 +10649,7 @@ export async function registerRoutes(
         rows: shortageRows,
         hasBars: bars.length > 0,
         hasRecipes: expandedItems.some(it => it.materials.length > 0),
+        currentMonth,
       });
     } catch (err) {
       console.error("GET /api/boq/projects/:id/shortage-check:", err);

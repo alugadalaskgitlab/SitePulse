@@ -34,6 +34,7 @@ import {
 } from "@shared/planningEngine";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
 import { shortItemName } from "@/lib/itemName";
+import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type {
   BoqProject,
   BoqItemWithCategory,
@@ -1826,91 +1827,39 @@ function MonthlyPlanView({
 }
 
 // ─── Plan vs Actual ───────────────────────────────────────────────────────────
+// Task #1240: this page now renders the SHARED PlanVsActualTable component
+// (client/src/components/PlanVsActualTable.tsx) so it stays perfectly in
+// sync with WorkDemand.tsx's Plan vs Actual tab — both are fed by the same
+// `/api/boq/projects/:id/plan-vs-actual` endpoint via one component.
 
-function PlanVsActualView({ projectId }: { projectId: number }) {
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["/api/boq/projects", projectId, "plan-vs-actual"],
+// ─── Shortage Indicator (Task #1240) ───────────────────────────────────────
+// Proactive, read-only badge outside the demand page — surfaces near-term
+// material shortfalls (current-month-or-earlier) right on the Work Programme
+// header so users don't have to open the BOM & Demand page to notice risk.
+function ShortageIndicatorBadge({ projectId }: { projectId: number }) {
+  const { data } = useQuery<{ rows: { nearTermShortfall?: number; shortfall: number }[] }>({
+    queryKey: ["/api/boq/projects", projectId, "shortage-check"],
     queryFn: async () => {
-      const res = await fetch(`/api/boq/projects/${projectId}/plan-vs-actual`, { credentials: "include" });
+      const res = await fetch(`/api/boq/projects/${projectId}/shortage-check`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
   });
 
-  if (isLoading) return <div className="py-8 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…</div>;
-  if (!rows.length) return <div className="py-8 text-center text-muted-foreground text-sm">No planned items yet.</div>;
+  const nearTermCount = data?.rows?.filter(r => (r.nearTermShortfall ?? 0) > 0).length ?? 0;
+  if (!nearTermCount) return null;
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[220px]" style={{ background: "#0F5F64" }}>BOQ Item</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">BOQ Qty</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Planned to Date</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Actual to Date</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">BOQ Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Planned Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[110px]">Actual Value (₹)</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">% Complete</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Last Activity</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row: any) => (
-            <tr key={row.boqItemId} className="border-b border-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/30">
-              <td className="px-3 py-2 sticky left-0 bg-white dark:bg-gray-950 z-10 text-slate-700 dark:text-slate-300 max-w-[320px]">
-                <HoverCard openDelay={120} closeDelay={40}>
-                  <HoverCardTrigger asChild>
-                    <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
-                      {row.itemCode ? `[${row.itemCode}] ` : ""}{row.description}
-                    </span>
-                  </HoverCardTrigger>
-                  <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
-                    {row.itemCode && (
-                      <span className="font-mono text-xs text-teal-700">{row.itemCode}</span>
-                    )}
-                    <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
-                      {row.description}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {fmtQty(row.currentQty, 1)} {row.unit}
-                    </p>
-                  </HoverCardContent>
-                </HoverCard>
-              </td>
-              <td className="px-2 py-2 text-right font-mono">{fmtQty(row.currentQty, 1)} {row.unit}</td>
-              <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.totalPlanned, 1)}</td>
-              <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.totalActual, 1)}</td>
-              <td className="px-2 py-2 text-right font-mono text-slate-600">{fmtQty(row.boqAmount, 0)}</td>
-              <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(row.plannedAmount, 0)}</td>
-              <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(row.actualAmount, 0)}</td>
-              <td className="px-2 py-2 text-right">
-                <span className={`font-semibold ${
-                  row.percentComplete >= 100 ? "text-emerald-700"
-                  : row.percentComplete >= 80 ? "text-teal-700"
-                  : row.percentComplete >= 50 ? "text-amber-700"
-                  : "text-red-700"
-                }`}>
-                  {fmtQty(row.percentComplete, 1)}%
-                </span>
-              </td>
-              <td className="px-2 py-2 text-right text-muted-foreground">{row.lastActivityDate ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 font-semibold bg-slate-50 dark:bg-slate-800/40">
-            <td className="px-3 py-2 sticky left-0 bg-slate-50 dark:bg-slate-800/40">Total</td>
-            <td></td><td></td><td></td>
-            <td className="px-2 py-2 text-right font-mono">{fmtQty(rows.reduce((s: number, r: any) => s + (r.boqAmount || 0), 0), 0)}</td>
-            <td className="px-2 py-2 text-right font-mono text-blue-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.plannedAmount || 0), 0), 0)}</td>
-            <td className="px-2 py-2 text-right font-mono text-teal-700">{fmtQty(rows.reduce((s: number, r: any) => s + (r.actualAmount || 0), 0), 0)}</td>
-            <td></td><td></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+    <Link href={`/work-program/${projectId}/demand?tab=procurement`}>
+      <a
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2.5 py-1 hover:bg-red-100 transition-colors"
+        data-testid="badge-shortage-indicator"
+      >
+        <AlertTriangle className="w-3.5 h-3.5" />
+        {nearTermCount} material{nearTermCount > 1 ? "s" : ""} at risk this month
+      </a>
+    </Link>
   );
 }
 
@@ -2417,7 +2366,10 @@ export default function WorkProgramme() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work Programme</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Work Programme</h1>
+            <ShortageIndicatorBadge projectId={projectId} />
+          </div>
           <p className="text-sm text-muted-foreground mt-0.5">
             {effectiveProject?.name}
             {effectiveProject?.contractNo ? ` · ${effectiveProject.contractNo}` : ""}
@@ -2842,7 +2794,7 @@ export default function WorkProgramme() {
           </TabsContent>
 
           <TabsContent value="pva">
-            <PlanVsActualView projectId={projectId} />
+            <PlanVsActualTable projectId={projectId} />
           </TabsContent>
         </Tabs>
       )}

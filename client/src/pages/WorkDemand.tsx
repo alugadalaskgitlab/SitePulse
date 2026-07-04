@@ -19,6 +19,7 @@ import {
   type BomInputBar,
 } from "@shared/planningEngine";
 import { shortItemName } from "@/lib/itemName";
+import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type { BoqProject } from "@shared/schema";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -707,7 +708,12 @@ function varianceBadge(planned: number, actual: number) {
   );
 }
 
-function PlanVsActualTable({
+// Task #1240: renamed from PlanVsActualTable to avoid colliding with the
+// shared contractor-style PlanVsActualTable component (see
+// client/src/components/PlanVsActualTable.tsx). This one is the
+// deeper equipment/labour/material productivity breakdown, kept as a
+// secondary section beneath the shared table on the Plan vs Actual tab.
+function EquipLabourPlanVsActualTable({
   items,
   bars,
   totalMonths,
@@ -1081,7 +1087,10 @@ interface ShortageRow {
   totalDemand: number;
   currentStock: number;
   stockMatched: boolean;
+  pendingProcurement?: number;
   shortfall: number;
+  nearTermShortfall?: number;
+  monthlyBreakdown?: { month: number; demand: number; shortfall: number; isCurrentOrPast: boolean }[];
   suggestion: "adequate" | "monitor" | "raise_irn" | "raise_pi";
 }
 
@@ -1089,9 +1098,24 @@ interface ShortageData {
   rows: ShortageRow[];
   hasBars: boolean;
   hasRecipes: boolean;
+  currentMonth?: number;
 }
 
-function SuggestionBadge({ suggestion }: { suggestion: ShortageRow["suggestion"] }) {
+// Task #1240: pass material/qty/uom context through to the IRN/PI creation
+// forms (pass-through only — no change to IRN/PI schemas or approval workflow).
+function buildProcureLink(row: ShortageRow, projectId: number): string {
+  const qty = Math.max(0, row.shortfall > 0 ? row.shortfall : row.totalDemand);
+  const params = new URLSearchParams({
+    material: row.materialName,
+    qty: String(Math.round(qty * 1000) / 1000),
+    uom: row.uom ?? "",
+    boqProjectId: String(projectId),
+  });
+  return params.toString();
+}
+
+function SuggestionBadge({ row, projectId }: { row: ShortageRow; projectId: number }) {
+  const suggestion = row.suggestion;
   if (suggestion === "adequate") return (
     <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
       <CheckCircle2 className="w-3 h-3" /> Adequate
@@ -1102,17 +1126,18 @@ function SuggestionBadge({ suggestion }: { suggestion: ShortageRow["suggestion"]
       <Info className="w-3 h-3" /> Monitor stock
     </span>
   );
+  const qs = buildProcureLink(row, projectId);
   return (
     <div className="flex flex-wrap gap-1">
       {suggestion === "raise_irn" && (
-        <Link href="/irn/new">
+        <Link href={`/irn/new?${qs}`}>
           <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 hover:bg-orange-100 transition-colors">
             <ShoppingCart className="w-3 h-3" /> Raise IRN
           </a>
         </Link>
       )}
       {suggestion === "raise_pi" && (
-        <Link href="/plant/purchase-indents">
+        <Link href={`/plant/purchase-indents?${qs}`}>
           <a className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-100 transition-colors">
             <ShoppingCart className="w-3 h-3" /> Raise PI
           </a>
@@ -1169,7 +1194,9 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Total Demand</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Current Stock</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Pending PI/IRN</th>
               <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Shortfall</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Near-term Risk</th>
               <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px]">Action</th>
             </tr>
           </thead>
@@ -1193,11 +1220,17 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
                 <td className={`px-2 py-2 text-right font-mono font-semibold ${row.currentStock > 0 ? "text-slate-700" : "text-slate-300"}`}>
                   {row.stockMatched ? fmtQty(row.currentStock, 1) : "—"}
                 </td>
+                <td className="px-2 py-2 text-right font-mono text-blue-700">
+                  {row.pendingProcurement ? fmtQty(row.pendingProcurement, 1) : "—"}
+                </td>
                 <td className={`px-2 py-2 text-right font-mono font-semibold ${row.shortfall > 0 ? "text-red-700" : "text-emerald-600"}`}>
                   {row.shortfall > 0 ? fmtQty(row.shortfall, 1) : "—"}
                 </td>
+                <td className={`px-2 py-2 text-right font-mono font-semibold ${(row.nearTermShortfall ?? 0) > 0 ? "text-red-700" : "text-slate-300"}`}>
+                  {(row.nearTermShortfall ?? 0) > 0 ? fmtQty(row.nearTermShortfall!, 1) : "—"}
+                </td>
                 <td className="px-3 py-2">
-                  <SuggestionBadge suggestion={row.suggestion} />
+                  <SuggestionBadge row={row} projectId={projectId} />
                 </td>
               </tr>
             ))}
@@ -1214,7 +1247,13 @@ export default function WorkDemand() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState("materials");
+  // Task #1240: honour ?tab= so the proactive shortage badge on the Work
+  // Programme page can deep-link straight into the procurement sub-tab.
+  const initialTab = (() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t === "procurement" || t === "plan-vs-actual" ? t : "materials";
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const { data: project } = useQuery<BoqProject>({
     queryKey: ["/api/boq/projects", projectId],
@@ -1596,23 +1635,27 @@ export default function WorkDemand() {
             </TabsContent>
 
             <TabsContent value="plan-vs-actual" className="mt-3">
-              <SectionHeader icon={GitCompareArrows} title="Plan vs Actual — Equipment &amp; Labour" />
+              <SectionHeader icon={GitCompareArrows} title="Plan vs Actual" />
+              <PlanVsActualTable projectId={projectId} />
               {dprsLoading && (
                 <div className="flex justify-center py-10 text-muted-foreground">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading actuals…
                 </div>
               )}
-              {!dprsLoading && bomData && (
-                <PlanVsActualTable
-                  items={bomData.items}
-                  bars={bomData.bars ?? []}
-                  totalMonths={project.totalMonths ?? 12}
-                  dprs={dprsWithDetails}
-                  projectId={projectId}
-                  programmeBars={programmeBars}
-                  actualQtyByItem={actualQtyByItem}
-                />
-              )}
+              <div className="mt-6">
+                <SectionHeader icon={GitCompareArrows} title="Equipment &amp; Labour Productivity" />
+                {!dprsLoading && bomData && (
+                  <EquipLabourPlanVsActualTable
+                    items={bomData.items}
+                    bars={bomData.bars ?? []}
+                    totalMonths={project.totalMonths ?? 12}
+                    dprs={dprsWithDetails}
+                    projectId={projectId}
+                    programmeBars={programmeBars}
+                    actualQtyByItem={actualQtyByItem}
+                  />
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="procurement" className="mt-3">

@@ -670,7 +670,22 @@ export default function PurchaseIndents() {
     return null;
   })();
 
-  const [view, setView] = useState<ViewMode>(() => (fromIrnId ? "form" : "list"));
+  // Task #1240 — pass-through only: prefills the first item row from a
+  // shortage/demand link (material/qty/uom). Does not alter the PI schema
+  // or approval workflow.
+  const prefill = (() => {
+    const sp = new URLSearchParams(searchString);
+    const material = sp.get("material");
+    if (!material) return null;
+    const qtyRaw = sp.get("qty");
+    return {
+      material,
+      qty: qtyRaw ? Number(qtyRaw) : 1,
+      uom: sp.get("uom") || "NOS",
+    };
+  })();
+
+  const [view, setView] = useState<ViewMode>(() => (fromIrnId || prefill ? "form" : "list"));
   const [selectedIndentId, setSelectedIndentId] = useState<number | null>(null);
   const [sourceIrnId, setSourceIrnId] = useState<number | null>(fromIrnId);
 
@@ -704,7 +719,9 @@ export default function PurchaseIndents() {
   const [formSiteId, setFormSiteId] = useState<number | null>(null);
   const [formRaisedFrom, setFormRaisedFrom] = useState<string | null>(fromIrnId ? null : defaultRaisedFrom);
   const [formItems, setFormItems] = useState<ItemRow[]>([
-    { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null },
+    prefill
+      ? { description: prefill.material, spec: "", partNo: "", qty: prefill.qty, uom: prefill.uom, purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null }
+      : { description: "", spec: "", partNo: "", qty: 1, uom: "NOS", purpose: "PLANT", priority: "normal", materialId: null, estRate: null, estAmount: null, requiredBy: null, procurementRoute: null },
   ]);
   const [formPiType, setFormPiType] = useState<"stores" | "material">("stores");
 

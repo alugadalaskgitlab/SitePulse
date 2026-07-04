@@ -34,10 +34,17 @@ const FROM_MAP: Record<string, string> = {
 function parseQueryParams() {
   const params = new URLSearchParams(window.location.search);
   const editIdRaw = params.get("editId");
+  const qtyRaw = params.get("qty");
   return {
     fromParam: params.get("from") ?? "",
     returnTo: params.get("returnTo") ?? "",
     editId: editIdRaw ? Number(editIdRaw) : null,
+    // Task #1240 — pass-through only: prefills the first line item from a
+    // shortage/demand link. Does not change the IRN schema or workflow.
+    prefillMaterial: params.get("material") ?? "",
+    prefillQty: qtyRaw ? Number(qtyRaw) : null,
+    prefillUom: params.get("uom") ?? "",
+    prefillBoqProjectId: params.get("boqProjectId") ?? "",
   };
 }
 
@@ -180,7 +187,7 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
-  const { fromParam, returnTo, editId } = parseQueryParams();
+  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom } = parseQueryParams();
   const prefillLabel = FROM_MAP[fromParam] ?? "";
   const isLocked = !!prefillLabel && !editId;
   const backHref = returnTo || "/finance/hub";
@@ -202,7 +209,15 @@ export default function IrnRaisePage() {
       raisedBy: user?.fullName?.toUpperCase() ?? user?.email ?? "",
       siteId: null,
       remarks: "",
-      items: [{ material: "", materialId: null, qty: 0, uom: "MT", urgency: "normal", purpose: "", needByDate: "" }],
+      items: [{
+        material: prefillMaterial || "",
+        materialId: null,
+        qty: prefillQty ?? 0,
+        uom: prefillUom || "MT",
+        urgency: "normal",
+        purpose: prefillMaterial ? "Work programme shortage — procurement" : "",
+        needByDate: "",
+      }],
     },
   });
 
