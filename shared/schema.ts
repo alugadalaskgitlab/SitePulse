@@ -2475,6 +2475,12 @@ export const workProgramBars = pgTable("work_program_bars", {
   durationDays: integer("duration_days"),            // planned duration in working days (stored for traceability)
   boqSubItem: text("boq_sub_item"),                  // sub-item code from Excel (e.g. "2.1a")
   boqExcelRow: integer("boq_excel_row"),             // original Excel row for traceability
+  // ── Structure auto-sequencing (imported structure quantities scheduled by the app) ──
+  stage: text("stage"),                              // construction stage key, e.g. "excavation" | "pcc" | "rcc_foundation" | …
+  sequenceOrder: integer("sequence_order"),          // order of this bar within its structureId group
+  durationSource: text("duration_source"),           // 'imported' | 'productivity' | 'default' — how duration was derived
+  needsReview: boolean("needs_review").default(false), // true when a default (non-productivity) duration was used
+  scheduled: boolean("scheduled").default(true),     // false = imported without a valid date, not yet placed on the programme
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("work_program_bars_project_idx").on(t.boqProjectId),

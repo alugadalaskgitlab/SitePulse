@@ -39,6 +39,16 @@ description: Full Gantt + BOM planning system ported into SitePulse. Schema, eng
 ## Pending
 - **T005**: Equipment Master UI — "Planning Output" section in the equipment edit dialog (standardOutputs field, outputUnit, outputTheoretical, outputEfficiency). Storage/routes already exist for planningEquipmentTypes; UI form needs the output fields wired up.
 
+## Structure bar auto-sequencing (separate from road auto-sequence)
+
+`shared/structureSequencing.ts` is a purpose-built sequencer for imported per-location structure bars (culverts, bridges, etc.) — it is NOT an extension of the existing road/linear auto-sequence system (`autoSequenceMutation` / `/api/boq/projects/:id/auto-sequence`), which explicitly excludes structure items via `disableStructureFronts`.
+
+**Why a separate engine:** structure quantities are imported as source of truth and must never be recomputed from BOQ/chainage the way road bars are; sequencing only needs to place bars in time (group by structureId, order by construction-stage sequence, stagger fronts by structure type), not recompute quantities.
+
+**Why missing dates no longer silently default to Month 1:** doing so is what caused ~200 structure bars to stack at startMonth=1 in production. The import route now returns HTTP 409 with `{requiresDecision, missingDateRows, totalRows}` when rows lack a valid date, and the client shows a 3-way choice (import as unscheduled / auto-sequence now / cancel) instead of silently placing bars.
+
+**How to apply:** `workProgramBars` has `stage`, `sequenceOrder`, `durationSource`, `needsReview`, `scheduled` columns for this system. Bars with `scheduled=false` are surfaced via an "Auto-sequence imported structure bars" toolbar button in `WorkProgramme.tsx` that calls `POST /api/boq/projects/:id/auto-sequence-structures`.
+
 ## Key design decisions
 
 **Why layerConfig is jsonb on boq_items (not a separate table):**

@@ -21,6 +21,7 @@ import { db } from "./db";
 import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc } from "drizzle-orm";
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
+import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -11074,11 +11075,16 @@ export async function registerRoutes(
         const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
         if (!json.length) return { rows: [], warnings: [`Sheet "${LEGACY_SHEET}" is empty.`] };
 
+        // Normalize a header name for comparison: lowercase and strip everything
+        // but letters/digits. This makes "start_date", "start date", "Start Date"
+        // and camelCase "startDate" all match the same alias.
+        function normHeader(s: string): string {
+          return s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+        }
         function colStr(row: Record<string, unknown>, ...aliases: string[]): string {
           for (const alias of aliases) {
-            const key = Object.keys(row).find(
-              k => k.trim().toLowerCase().replace(/\s+/g, "_") === alias.toLowerCase(),
-            );
+            const target = normHeader(alias);
+            const key = Object.keys(row).find(k => normHeader(k) === target);
             if (key) return String(row[key] ?? "");
           }
           return "";
@@ -11087,9 +11093,21 @@ export async function registerRoutes(
           const v = parseFloat(colStr(row, ...aliases).replace(/,/g, ""));
           return isNaN(v) ? 0 : v;
         }
+        // Converts an Excel serial date number (days since 1899-12-30, with the
+        // well-known 1900 leap-year bug) to an ISO "YYYY-MM-DD" string.
+        function excelSerialToIso(serial: number): string {
+          const ms = Math.round((serial - 25569) * 86400 * 1000);
+          return new Date(ms).toISOString().slice(0, 10);
+        }
         function colDate(row: Record<string, unknown>, ...aliases: string[]): string {
           const v = colStr(row, ...aliases).trim();
+          if (!v) return "";
           if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+          // Plain numeric value → Excel serial date (only plausible date range).
+          if (/^\d+(\.\d+)?$/.test(v)) {
+            const serial = Number(v);
+            if (serial > 20000 && serial < 80000) return excelSerialToIso(serial);
+          }
           const parts = v.split(/[\/-]/);
           if (parts.length === 3) {
             const [a, b, c] = parts.map(Number);
@@ -11173,6 +11191,121 @@ export async function registerRoutes(
     }
   });
 
+  // ── Structure Schedule Auto-sequencing ───────────────────────────────────────
+  // Sequences imported structure_location bars (grouped by structureId, ordered
+  // by construction stage, staggered across per-structure-type "fronts") for
+  // bars that have no usable date yet (scheduled = false) or were flagged
+  // needsReview. Imported plannedQty is never touched. Shared by the
+  // "Auto-sequence imported structure bars" button and the import-time
+  // "auto_sequence" decision.
+  async function runStructureAutoSequence(
+    projectId: number,
+    opts: { barIds?: number[]; scope?: "unscheduled" | "all" } = {},
+  ): Promise<{ updated: number; structures: number; fronts: number; needsReviewCount: number }> {
+    const project = await storage.getBoqProject(projectId) as any;
+    const pSettings = await storage.getBoqProgramSettings(projectId) as any;
+    const projectStartDate: string | null = pSettings?.projectStartDate ?? null;
+    if (!projectStartDate) {
+      throw new Error("Project start date must be set before auto-sequencing structures.");
+    }
+    const totalMonths: number = project?.totalMonths ?? 18;
+    const workingDaysPerMonth: number = pSettings?.workingDaysPerMonth ?? 25;
+    const workingHoursPerDay: number = pSettings?.workingHoursPerDay ?? 8;
+    const productivitySettings = pSettings
+      ? { mode: (pSettings.productivityMode ?? "snl") as "snl" | "company" | "project", overrides: pSettings.productivityOverrides ?? null }
+      : null;
+
+    const allBars = await storage.getWorkProgramBars(projectId) as any[];
+    let targetBars = allBars.filter((b: any) => b.planningMode === "structure_location");
+    if (opts.barIds?.length) {
+      const idSet = new Set(opts.barIds);
+      targetBars = targetBars.filter((b: any) => idSet.has(b.id));
+    } else if (opts.scope !== "all") {
+      targetBars = targetBars.filter((b: any) => b.scheduled === false || b.needsReview === true);
+    }
+    if (!targetBars.length) return { updated: 0, structures: 0, fronts: 0, needsReviewCount: 0 };
+
+    const allItems = await storage.getBoqItems(projectId) as any[];
+    const itemById = new Map(allItems.map((it: any) => [it.id, it]));
+
+    const equipmentByBoqItemId = new Map<number, EquipmentInput[]>();
+    for (const b of targetBars) {
+      if (equipmentByBoqItemId.has(b.boqItemId)) continue;
+      const eq = await storage.getBoqItemEquipment(b.boqItemId);
+      equipmentByBoqItemId.set(b.boqItemId, (eq ?? []).map((e: any) => ({
+        name: e.equipmentName,
+        outputUnit: e.outputUnit ?? null,
+        outputTheoretical: e.outputTheoretical ?? null,
+        outputEfficiency: e.outputEfficiency ?? null,
+        standardOutputs: e.standardOutputs ?? null,
+        qtyPerBoqUnit: e.qtyPerBoqUnit != null ? Number(e.qtyPerBoqUnit) : null,
+        count: e.count ?? 1,
+      })));
+    }
+
+    const sequenceableBars: SequenceableBar[] = targetBars.map((b: any) => {
+      const item = itemById.get(b.boqItemId);
+      const hasValidImportedDate = b.startDate && /^\d{4}-\d{2}-\d{2}/.test(b.startDate) && b.scheduled !== false;
+      return {
+        id: b.id,
+        boqItemId: b.boqItemId,
+        structureId: b.structureId ?? null,
+        structureLocType: b.structureLocType ?? null,
+        structureChainageKm: b.structureChainageKm ?? null,
+        chainageFrom: b.chainageFrom ?? null,
+        plannedQty: b.plannedQty ?? 0,
+        unit: item?.unit ?? null,
+        description: item?.description ?? null,
+        durationDays: b.durationDays ?? null,
+        startDate: hasValidImportedDate ? b.startDate : null,
+        boqExcelRow: b.boqExcelRow ?? null,
+      };
+    });
+
+    const { results, structures, fronts, needsReviewCount } = autoSequenceStructureBars({
+      bars: sequenceableBars,
+      projectStartDate,
+      workingDaysPerMonth,
+      totalMonths,
+      equipmentByBoqItemId,
+      workingHoursPerDay,
+      productivitySettings,
+    });
+
+    let updated = 0;
+    for (const r of results) {
+      await storage.updateWorkProgramBar(r.barId, {
+        startMonth: r.startMonth,
+        endMonth: r.endMonth,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        durationDays: r.durationDays,
+        stage: r.stage,
+        sequenceOrder: r.sequenceOrder,
+        durationSource: r.durationSource,
+        needsReview: r.needsReview,
+        scheduled: true,
+      } as any);
+      updated++;
+    }
+
+    return { updated, structures, fronts, needsReviewCount };
+  }
+
+  // Standalone endpoint: "Auto-sequence imported structure bars" button.
+  app.post("/api/boq/projects/:id/auto-sequence-structures", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const projectId = parseInt(req.params.id);
+      const scope: "unscheduled" | "all" = req.body?.scope === "all" ? "all" : "unscheduled";
+      const summary = await runStructureAutoSequence(projectId, { scope });
+      res.json(summary);
+    } catch (err: any) {
+      console.error("auto-sequence-structures:", err);
+      res.status(500).json({ error: `Failed to auto-sequence structures: ${err?.message ?? String(err)}` });
+    }
+  });
+
   // ── Structure Schedule Import ────────────────────────────────────────────────
   // Accepts pre-matched rows from the parse-structure-schedule endpoint (or any
   // JSON row array). Creates one work_program_bar per matched row with
@@ -11181,7 +11314,7 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const { rows, mode = "append" } = req.body as {
+      const { rows, mode = "append", onMissingDates } = req.body as {
         rows: Array<{
           structureId: string;
           structureType: string;
@@ -11199,10 +11332,30 @@ export async function registerRoutes(
           boqItemId?: number;
         }>;
         mode?: "append" | "replace";
+        // How to handle rows with no usable start date. When omitted and such
+        // rows exist, the route returns a 409 asking the client to decide.
+        onMissingDates?: "unscheduled" | "auto_sequence" | "cancel";
       };
 
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ error: "rows array is required and must not be empty" });
+      }
+
+      // Pre-scan for rows with no valid, parseable start date. Quantities are
+      // always imported as-is (source of truth) — this only decides how such
+      // rows get placed on the Gantt.
+      const isValidIsoDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}/.test(s);
+      const rowsMissingDates = rows.filter(r => r.plannedQty > 0 && !isValidIsoDate(r.startDate)).length;
+      if (rowsMissingDates > 0 && !onMissingDates) {
+        return res.status(409).json({
+          requiresDecision: true,
+          missingDateRows: rowsMissingDates,
+          totalRows: rows.length,
+          message: `${rowsMissingDates} of ${rows.length} row(s) have no valid start date. Choose how to place them.`,
+        });
+      }
+      if (onMissingDates === "cancel") {
+        return res.status(200).json({ cancelled: true, created: 0, skipped: 0 });
       }
 
       // Load all BOQ items for fallback matching
@@ -11224,6 +11377,7 @@ export async function registerRoutes(
       const warnings: string[] = [];
       // Track imported qty per BOQ item for over-planned detection
       const importedQtyByItemId = new Map<number, number>();
+      const createdBarIds: number[] = [];
 
       const project = await storage.getBoqProject(projectId) as any;
       const pSettings = await storage.getBoqProgramSettings(projectId) as any;
@@ -11315,13 +11469,17 @@ export async function registerRoutes(
         importedQtyByItemId.set(boqItem.id, (importedQtyByItemId.get(boqItem.id) ?? 0) + (r.plannedQty ?? 0));
 
         // Compute startMonth / endMonth from startDate + durationDays.
-        // Missing or unparseable start_date is explicitly warned (not silently defaulted).
+        // Missing or unparseable start_date is never silently defaulted to Month 1 —
+        // the row is imported with its planned quantity intact but marked unscheduled
+        // (placeholder position) so it can be placed by "Auto-sequence" instead.
         let startMonth = 1;
         let endMonth   = 1.1;
         const hasValidDate = r.startDate && /^\d{4}-\d{2}-\d{2}/.test(r.startDate);
+        let scheduled = true;
         if (!hasValidDate) {
           missingDateRows++;
-          warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): missing or invalid start_date — bar placed at Month 1. Provide start_date (YYYY-MM-DD) for correct Gantt position.`);
+          scheduled = false;
+          warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): no valid start_date — imported as unscheduled. Use "Auto-sequence imported structure bars" to place it.`);
         }
         if (hasValidDate && projectStartDate) {
           try {
@@ -11337,7 +11495,8 @@ export async function registerRoutes(
             startMonth = +startMonth.toFixed(3);
             endMonth   = +endMonth.toFixed(3);
           } catch (dateErr) {
-            warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): could not parse start_date "${r.startDate}" — bar placed at Month 1.`);
+            scheduled = false;
+            warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): could not parse start_date "${r.startDate}" — imported as unscheduled.`);
           }
         }
 
@@ -11350,7 +11509,7 @@ export async function registerRoutes(
           : null;
 
         try {
-          await storage.upsertWorkProgramBar({
+          const savedBar = await storage.upsertWorkProgramBar({
             boqProjectId: projectId,
             boqItemId: boqItem.id,
             reachLabel: r.structureId,
@@ -11363,6 +11522,9 @@ export async function registerRoutes(
             plannedQty: r.plannedQty ?? 0,
             source: "structure_import",
             planningMode: "structure_location",
+            scheduled,
+            durationSource: scheduled ? "imported" : null,
+            needsReview: !scheduled,
             structureId: r.structureId,
             structureLocType: r.structureType,
             structureChainageKm: r.chainageKm,
@@ -11375,10 +11537,22 @@ export async function registerRoutes(
             notes: r.remarks ?? null,
           } as any);
           created++;
+          if (savedBar?.id != null) createdBarIds.push(savedBar.id);
           results.push({ row: i + 1, status: "created", structureId: r.structureId });
         } catch (e: any) {
           results.push({ row: i + 1, status: "skipped", structureId: r.structureId, reason: e?.message ?? String(e) });
           skipped++;
+        }
+      }
+
+      // If the client asked to auto-sequence unscheduled rows right away, do it
+      // now for just the bars created in this import.
+      let autoSequenceSummary: { updated: number; structures: number; fronts: number; needsReviewCount: number } | null = null;
+      if (onMissingDates === "auto_sequence" && createdBarIds.length) {
+        try {
+          autoSequenceSummary = await runStructureAutoSequence(projectId, { barIds: createdBarIds });
+        } catch (e: any) {
+          warnings.push(`Auto-sequence after import failed: ${e?.message ?? String(e)}`);
         }
       }
 
@@ -11412,6 +11586,7 @@ export async function registerRoutes(
         uomMismatchRows,
         missingDateRows,
         overPlannedItems,
+        autoSequenceSummary,
         warnings: warnings.slice(0, 50), // cap at 50 to keep response small
         results,
       });

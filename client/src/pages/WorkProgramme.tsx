@@ -865,6 +865,7 @@ function StructureImportWizard({
   const [parsedSheetNames, setParsedSheetNames] = useState<string[]>([]);
   const [mode, setMode] = useState<"append" | "replace">("append");
   const [parsing, setParsing] = useState(false);
+  const [missingDatesInfo, setMissingDatesInfo] = useState<{ missingDateRows: number; totalRows: number } | null>(null);
 
   function reset() {
     setStep(1);
@@ -873,6 +874,7 @@ function StructureImportWizard({
     setParseWarnings([]);
     setParsedSheetNames([]);
     setParsing(false);
+    setMissingDatesInfo(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -914,35 +916,59 @@ function StructureImportWizard({
   }
 
   const importMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/import-structure`, {
-        rows: rows.map(r => ({
-          structureId:    r.structureId,
-          structureType:  r.structureType,
-          chainageKm:     r.chainageKm,
-          boqItemCode:    r.boqItemCode,
-          boqSubItem:     r.boqSubItem,
-          boqExcelRow:    r.boqExcelRow || undefined,
-          boqDescription: r.boqDescription,
-          plannedQty:     r.plannedQty,
-          uom:            r.uom,
-          startDate:      r.startDate || undefined,
-          durationDays:   r.durationDays || undefined,
-          remarks:        r.remarks || undefined,
-          boqItemId:      r.boqItemId,
-        })),
-        mode,
+    mutationFn: async (onMissingDates?: "unscheduled" | "auto_sequence" | "cancel") => {
+      const res = await fetch(`/api/boq/projects/${projectId}/import-structure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          rows: rows.map(r => ({
+            structureId:    r.structureId,
+            structureType:  r.structureType,
+            chainageKm:     r.chainageKm,
+            boqItemCode:    r.boqItemCode,
+            boqSubItem:     r.boqSubItem,
+            boqExcelRow:    r.boqExcelRow || undefined,
+            boqDescription: r.boqDescription,
+            plannedQty:     r.plannedQty,
+            uom:            r.uom,
+            startDate:      r.startDate || undefined,
+            durationDays:   r.durationDays || undefined,
+            remarks:        r.remarks || undefined,
+            boqItemId:      r.boqItemId,
+          })),
+          mode,
+          onMissingDates,
+        }),
       });
-      return res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data?.requiresDecision) {
+        return { requiresDecision: true, missingDateRows: data.missingDateRows, totalRows: data.totalRows };
+      }
+      if (!res.ok) throw new Error(data?.error ?? `Server error ${res.status}`);
+      return data;
     },
-    onSuccess: (data: { created: number; skipped: number; total: number; warnings?: string[]; unmatchedBoqRows?: number; uomMismatchRows?: number; overPlannedItems?: unknown[] }) => {
+    onSuccess: (data: {
+      requiresDecision?: boolean; missingDateRows?: number; totalRows?: number; cancelled?: boolean;
+      created?: number; skipped?: number; total?: number; warnings?: string[]; unmatchedBoqRows?: number;
+      uomMismatchRows?: number; overPlannedItems?: unknown[];
+      autoSequenceSummary?: { updated: number; structures: number; fronts: number; needsReviewCount: number } | null;
+    }) => {
+      if (data.requiresDecision) {
+        setMissingDatesInfo({ missingDateRows: data.missingDateRows ?? 0, totalRows: data.totalRows ?? 0 });
+        return;
+      }
+      if (data.cancelled) return;
       onImported();
       onOpenChange(false);
       reset();
-      const parts: string[] = [`${data.created} bars created`];
+      const parts: string[] = [`${data.created ?? 0} bars created`];
       if (data.skipped) parts.push(`${data.skipped} skipped`);
       if (data.uomMismatchRows) parts.push(`${data.uomMismatchRows} UOM mismatch(es)`);
       if (data.overPlannedItems?.length) parts.push(`${data.overPlannedItems.length} over-planned BOQ item(s)`);
+      if (data.autoSequenceSummary) {
+        parts.push(`${data.autoSequenceSummary.updated} auto-sequenced across ${data.autoSequenceSummary.structures} structure(s)`);
+      }
       toast({
         title: "Structure schedule imported",
         description: parts.join(", ") + (data.warnings?.length ? ` — ${data.warnings.length} warning(s)` : ""),
@@ -1118,6 +1144,49 @@ function StructureImportWizard({
                 No rows could be matched to BOQ items — check that BOQ item codes in the file match those in this project.
               </div>
             )}
+
+            {missingDatesInfo && (
+              <div className="rounded-md bg-amber-50 border border-amber-300 p-3 text-sm text-amber-800 space-y-2">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" />
+                  {missingDatesInfo.missingDateRows} of {missingDatesInfo.totalRows} row(s) have no usable start date
+                </p>
+                <p className="text-xs text-amber-700">
+                  Quantities will still be imported as-is. Choose how to place these bars on the programme:
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => importMutation.mutate("unscheduled")}
+                    disabled={importMutation.isPending}
+                    data-testid="button-import-as-unscheduled"
+                  >
+                    Import as unscheduled
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={() => importMutation.mutate("auto_sequence")}
+                    disabled={importMutation.isPending}
+                    data-testid="button-import-auto-sequence"
+                  >
+                    Auto-sequence now
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-amber-700"
+                    onClick={() => { importMutation.mutate("cancel"); setMissingDatesInfo(null); }}
+                    disabled={importMutation.isPending}
+                    data-testid="button-import-cancel-decision"
+                  >
+                    Cancel import
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1125,11 +1194,11 @@ function StructureImportWizard({
           <Button variant="outline" size="sm" onClick={() => { if (step === 2) setStep(1); else onOpenChange(false); }}>
             {step === 2 ? "← Back" : "Cancel"}
           </Button>
-          {step === 2 && matchedCount > 0 && (
+          {step === 2 && matchedCount > 0 && !missingDatesInfo && (
             <Button
               size="sm"
               className="bg-violet-600 hover:bg-violet-700 text-white"
-              onClick={() => importMutation.mutate()}
+              onClick={() => importMutation.mutate(undefined)}
               disabled={importMutation.isPending}
               data-testid="button-confirm-structure-import"
             >
@@ -1942,6 +2011,7 @@ function StartDateBanner({ projectId }: { projectId: number }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WorkProgramme() {
+  const { toast } = useToast();
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id);
   const [activeTab, setActiveTab] = useState("gantt");
@@ -2357,6 +2427,28 @@ export default function WorkProgramme() {
     });
   }, [items, bars, structureImportItemIds]);
 
+  const unscheduledStructureBars = useMemo(
+    () => bars.filter(b => (b as any).planningMode === "structure_location" && ((b as any).scheduled === false || (b as any).needsReview === true)),
+    [bars],
+  );
+
+  const rescheduleStructuresMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-sequence-structures`, { scope: "unscheduled" });
+      return res.json();
+    },
+    onSuccess: async (data: { updated: number; structures: number; fronts: number; needsReviewCount: number }) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      toast({
+        title: "Structure bars sequenced",
+        description: `${data.updated} bar(s) placed across ${data.structures} structure(s) / ${data.fronts} front(s)`
+          + (data.needsReviewCount ? ` — ${data.needsReviewCount} used default durations (needs review)` : ""),
+      });
+    },
+    onError: (err: any) =>
+      toast({ title: "Auto-sequence failed", description: String(err?.message ?? err), variant: "destructive" }),
+  });
+
   const isLoading = itemsLoading || barsLoading;
 
   return (
@@ -2463,6 +2555,22 @@ export default function WorkProgramme() {
             >
               <Building2 className="w-4 h-4 mr-1" />
               Import Structures
+            </Button>
+          )}
+          {unscheduledStructureBars.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-amber-400 text-amber-800 hover:bg-amber-50"
+              onClick={() => rescheduleStructuresMutation.mutate()}
+              disabled={rescheduleStructuresMutation.isPending}
+              data-testid="button-auto-sequence-structures"
+              title="Places imported structure bars (culverts, bridges) that have no usable date onto the programme — grouped by structure, ordered by construction stage, using SDB/SNL productivity or stage defaults for duration."
+            >
+              {rescheduleStructuresMutation.isPending
+                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                : <Building2 className="w-4 h-4 mr-1" />}
+              Auto-sequence imported structure bars ({unscheduledStructureBars.length})
             </Button>
           )}
           {hasStrayStructureBars && (
