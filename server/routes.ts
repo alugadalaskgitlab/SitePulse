@@ -22,7 +22,7 @@ import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc 
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
-import { isStructureTypeLabel, isChainageLabel } from "@shared/structureImportLabels";
+import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -10902,9 +10902,10 @@ export async function registerRoutes(
       // Preferred: matrix-format sheets (one column per structure, BOQ items as rows).
       // Fallback: legacy flat format — one row per structure×item, sheet named
       // "Structure_Schedule_Import".
+      // Frozen 4-sheet Structure Schedule Import format (V1 planning boundary):
+      // only these exact sheet names are recognised as structure/location schedules.
       const MATRIX_SHEETS = [
-        "Culverts", "Minor_Bridges", "Major_Bridges",
-        "Structures", "Bridges", "Cross_Drainage",
+        "Culverts", "Drains_Retaining_Walls", "Minor_Bridges", "Major_Bridges",
       ];
       const LEGACY_SHEET = "Structure_Schedule_Import";
 
@@ -10915,8 +10916,8 @@ export async function registerRoutes(
         return res.status(422).json({
           error: "No recognised structure schedule sheet found in this workbook.",
           availableSheets: wb.SheetNames,
-          hint: `Name your sheet(s) after structure types: ${MATRIX_SHEETS.join(", ")} — ` +
-                `or use the legacy flat format with a sheet named "${LEGACY_SHEET}".`,
+          hint: `Use the frozen Structure Schedule Import format with sheet(s) named: ${MATRIX_SHEETS.join(", ")} — ` +
+                `or the legacy flat format with a sheet named "${LEGACY_SHEET}".`,
         });
       }
 
@@ -10953,9 +10954,17 @@ export async function registerRoutes(
       // Sheet layout:
       //   Row 1  (header):      BOQ Code | BOQ Sub Item | BOQ Description | UOM | <structId1> | <structId2> …
       //   Row 2  (meta):        Structure Type | | | | <type1> | <type2> …
-      //   Row 3  (meta):        Chainage Km    | | | | <km1>   | <km2>   …
-      //   Rows 4+ (data):       <code> | <sub> | <desc> | <uom> | <qty1> | <qty2> …
+      //   Row 3  (meta):        Chainage From  | | | | <from1> | <from2> …
+      //   Row 4  (meta):        Chainage To    | | | | <to1>   | <to2>   … (optional for point items)
+      //   Rows 5+ (data):       <code> | <sub> | <desc> | <uom> | <qty1> | <qty2> …
       //   Empty qty cells → skip that structure×item combination.
+      //
+      // Chainage is NEVER silently defaulted to 0: a structure column with no
+      // resolvable "Chainage From" value is left with chainageFromKm = null and
+      // every row for that column is flagged chainageMissing = true, which the
+      // write path turns into needsReview = true instead of a fabricated 0.00 km.
+      // Point items (e.g. dissipation chambers) may omit "Chainage To" entirely —
+      // chainageToKm then falls back to chainageFromKm for that column.
 
       function parseMatrixSheet(sheetName: string): { rows: any[]; warnings: string[] } {
         const ws = wb.Sheets[sheetName];
@@ -10982,18 +10991,20 @@ export async function registerRoutes(
           return { rows: [], warnings: localWarnings };
         }
 
-        // Read metadata rows (Structure Type, Chainage Km) immediately after the header.
-        // Header text is normalized (lowercased, non-alphanumeric stripped) before
-        // matching so variants like "Chainage (Km)" or "Chainage in Km" are still
-        // recognized — same approach as normHeader() in the legacy parser below.
-        // See shared/structureImportLabels.ts for the matching logic + tests.
+        // Read metadata rows (Structure Type, Chainage From, Chainage To) immediately
+        // after the header. Header text is normalized (lowercased, non-alphanumeric
+        // stripped) before matching so variants like "Chainage (Km)" or "Chainage in Km"
+        // are still recognized — same approach as normHeader() in the legacy parser
+        // below. See shared/structureImportLabels.ts for the matching logic + tests.
         const structTypes: string[] = new Array(structIds.length).fill("");
-        const chainages: number[]   = new Array(structIds.length).fill(0);
+        const chainageFromKm: (number | null)[] = new Array(structIds.length).fill(null);
+        const chainageToKm: (number | null)[]   = new Array(structIds.length).fill(null);
         let dataStart = hdrIdx + 1;
         let foundStructureTypeRow = false;
-        let foundChainageRow = false;
+        let foundChainageFromRow = false;
+        let foundChainageToRow = false;
 
-        for (let ri = hdrIdx + 1; ri < Math.min(hdrIdx + 6, raw.length); ri++) {
+        for (let ri = hdrIdx + 1; ri < Math.min(hdrIdx + 7, raw.length); ri++) {
           const c0Raw = String(raw[ri][0] ?? "");
           if (isStructureTypeLabel(c0Raw)) {
             foundStructureTypeRow = true;
@@ -11001,25 +11012,49 @@ export async function registerRoutes(
               if (c - 4 < structIds.length) structTypes[c - 4] = String(raw[ri][c] ?? "").trim();
             }
             dataStart = Math.max(dataStart, ri + 1);
-          } else if (isChainageLabel(c0Raw)) {
-            foundChainageRow = true;
+          } else if (isChainageToLabel(c0Raw)) {
+            // Checked before isChainageFromLabel() since "Chainage To" is more specific
+            // and isChainageFromLabel() would otherwise never see it (mutually exclusive
+            // prefixes, but keep the more specific check first for clarity/safety).
+            foundChainageToRow = true;
             for (let c = 4; c < raw[ri].length; c++) {
               if (c - 4 < structIds.length) {
-                const v = parseFloat(String(raw[ri][c] ?? "").replace(/,/g, ""));
-                chainages[c - 4] = isNaN(v) ? 0 : v;
+                const cellStr = String(raw[ri][c] ?? "").trim();
+                if (cellStr) {
+                  const v = parseFloat(cellStr.replace(/,/g, ""));
+                  chainageToKm[c - 4] = isNaN(v) ? null : v;
+                }
+              }
+            }
+            dataStart = Math.max(dataStart, ri + 1);
+          } else if (isChainageFromLabel(c0Raw)) {
+            foundChainageFromRow = true;
+            for (let c = 4; c < raw[ri].length; c++) {
+              if (c - 4 < structIds.length) {
+                const cellStr = String(raw[ri][c] ?? "").trim();
+                if (cellStr) {
+                  const v = parseFloat(cellStr.replace(/,/g, ""));
+                  chainageFromKm[c - 4] = isNaN(v) ? null : v;
+                }
               }
             }
             dataStart = Math.max(dataStart, ri + 1);
           }
         }
         if (!foundStructureTypeRow) {
-          localWarnings.push(`Sheet "${sheetName}": no "Structure Type" row found in the first 5 rows after the header — structure types were left blank for all columns.`);
+          localWarnings.push(`Sheet "${sheetName}": no "Structure Type" row found in the first 6 rows after the header — structure types were left blank for all columns.`);
         }
-        if (!foundChainageRow) {
-          localWarnings.push(`Sheet "${sheetName}": no "Chainage" row found in the first 5 rows after the header — chainages were imported as 0 for all columns. Check that the sheet has a row starting with a "Chainage" label directly below the header.`);
+        if (!foundChainageFromRow) {
+          localWarnings.push(`Sheet "${sheetName}": no "Chainage From" row found in the first 6 rows after the header — chainage was NOT imported (left blank, not defaulted to 0) and every row was marked for review.`);
+        }
+        // Point items (e.g. dissipation chambers) are allowed to omit "Chainage To" —
+        // fall back to chainageFrom for that column instead of warning per-column.
+        for (let i = 0; i < structIds.length; i++) {
+          if (chainageToKm[i] == null) chainageToKm[i] = chainageFromKm[i];
         }
 
         const outRows: any[] = [];
+        const missingChainageStructIds = new Set<string>();
 
         for (let ri = dataStart; ri < raw.length; ri++) {
           const row = raw[ri];
@@ -11046,7 +11081,10 @@ export async function registerRoutes(
             if (isNaN(qty) || qty <= 0) continue;
 
             const structType = structTypes[colIdx] ?? "";
-            const chainageKm = chainages[colIdx] ?? 0;
+            const chFrom = chainageFromKm[colIdx];
+            const chTo = chainageToKm[colIdx];
+            const chainageMissing = chFrom == null;
+            if (chainageMissing) missingChainageStructIds.add(structId);
 
             // BC / wearing-coat against pipe culverts — warn but allow
             if (BC_PATTERN.test(boqDesc) && PIPE_CULVERT_PATTERN.test(structType)) {
@@ -11060,7 +11098,9 @@ export async function registerRoutes(
               rowIdx: ri + 2,
               structureId:  structId,
               structureType: structType,
-              chainageKm,
+              chainageFromKm: chFrom,
+              chainageToKm: chTo,
+              chainageMissing,
               boqItemCode:  boqCode,
               boqSubItem,
               boqExcelRow:  ri + 2,
@@ -11077,6 +11117,13 @@ export async function registerRoutes(
               sheetName,
             });
           }
+        }
+
+        if (missingChainageStructIds.size) {
+          localWarnings.push(
+            `Sheet "${sheetName}": no chainage found for structure(s) ${Array.from(missingChainageStructIds).join(", ")} — ` +
+            `imported with blank chainage (not defaulted to 0) and marked "needs review".`,
+          );
         }
 
         return { rows: outRows, warnings: localWarnings };
@@ -11333,7 +11380,10 @@ export async function registerRoutes(
         rows: Array<{
           structureId: string;
           structureType: string;
-          chainageKm: number;
+          chainageKm?: number;
+          chainageFromKm?: number | null;
+          chainageToKm?: number | null;
+          chainageMissing?: boolean;
           boqItemCode?: string;
           boqSubItem?: string;
           boqExcelRow?: number;
@@ -11422,11 +11472,22 @@ export async function registerRoutes(
           continue;
         }
 
+        // Unified chainage: new matrix rows carry chainageFromKm/chainageToKm/chainageMissing;
+        // legacy flat-sheet rows only carry a single chainageKm — treat that as both
+        // from and to (point value) for backward compatibility. Missing chainage is
+        // NEVER defaulted to 0 — it stays null and the row is marked needsReview below.
+        const rowChainageFrom: number | null = r.chainageFromKm ?? r.chainageKm ?? null;
+        const rowChainageTo: number | null = r.chainageToKm ?? r.chainageKm ?? rowChainageFrom;
+        const rowChainageMissing: boolean = r.chainageMissing === true || rowChainageFrom == null;
+
         // Chainage range validation (soft warning, not a skip)
-        if (projChFrom != null && projChTo != null && r.chainageKm != null) {
-          if (r.chainageKm < projChFrom - 0.1 || r.chainageKm > projChTo + 0.1) {
-            warnings.push(`Row ${i + 1} (${r.structureId}): chainage ${r.chainageKm} km is outside project range ${projChFrom}–${projChTo} km`);
+        if (projChFrom != null && projChTo != null && rowChainageFrom != null) {
+          if (rowChainageFrom < projChFrom - 0.1 || rowChainageFrom > projChTo + 0.1) {
+            warnings.push(`Row ${i + 1} (${r.structureId}): chainage ${rowChainageFrom} km is outside project range ${projChFrom}–${projChTo} km`);
           }
+        }
+        if (rowChainageMissing) {
+          warnings.push(`Row ${i + 1} (${r.structureId ?? "?"}): no chainage found — imported with blank chainage (not defaulted to 0) and marked "needs review".`);
         }
 
         // Resolve BOQ item — 4-level priority matching the parse endpoint:
@@ -11528,8 +11589,8 @@ export async function registerRoutes(
             boqProjectId: projectId,
             boqItemId: boqItem.id,
             reachLabel: r.structureId,
-            chainageFrom: r.chainageKm,
-            chainageTo: r.chainageKm,
+            chainageFrom: rowChainageFrom,
+            chainageTo: rowChainageTo,
             startMonth,
             endMonth,
             startDate: r.startDate ?? null,
@@ -11539,12 +11600,12 @@ export async function registerRoutes(
             planningMode: "structure_location",
             scheduled,
             durationSource: scheduled ? "imported" : null,
-            needsReview: !scheduled,
+            needsReview: !scheduled || rowChainageMissing,
             structureId: r.structureId,
             structureLocType: r.structureType,
-            structureChainageKm: r.chainageKm,
-            relativeChainageKm: (r.chainageKm != null && project?.chainageFrom != null)
-              ? Math.round((r.chainageKm - project.chainageFrom) * 1000) / 1000
+            structureChainageKm: rowChainageFrom,
+            relativeChainageKm: (rowChainageFrom != null && project?.chainageFrom != null)
+              ? Math.round((rowChainageFrom - project.chainageFrom) * 1000) / 1000
               : null,
             durationDays: r.durationDays ?? null,
             boqSubItem: r.boqSubItem ?? null,

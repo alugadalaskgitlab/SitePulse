@@ -18,3 +18,17 @@ export function isStructureTypeLabel(rawCell: string): boolean {
 export function isChainageLabel(rawCell: string): boolean {
   return normalizeHeaderLabel(rawCell).startsWith("chainage");
 }
+
+// The frozen 4-sheet Structure Schedule Import format uses two separate
+// metadata rows — "Chainage From" and "Chainage To" — instead of a single
+// "Chainage" row. isChainageFromLabel() also matches a bare "Chainage" row
+// (no "From"/"To" suffix) for backward compatibility with older single-row
+// sheets, treating that single value as the "from" (point) chainage.
+export function isChainageFromLabel(rawCell: string): boolean {
+  const n = normalizeHeaderLabel(rawCell);
+  return n.startsWith("chainagefrom") || n === "chainage";
+}
+
+export function isChainageToLabel(rawCell: string): boolean {
+  return normalizeHeaderLabel(rawCell).startsWith("chainageto");
+}

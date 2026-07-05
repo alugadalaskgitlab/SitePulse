@@ -68,10 +68,12 @@ function getCatColor(idx: number) { return CAT_COLORS[idx % CAT_COLORS.length]; 
 
 // ─── Coverage Badge ─────────────────────────────────────────────────────────────
 
-function CoverageBadge({ planned, boqQty, unit }: { planned: number; boqQty: number; unit: string }) {
+function CoverageBadge({ planned, boqQty, unit, planningWorkType }: { planned: number; boqQty: number; unit: string; planningWorkType?: string }) {
   if (planned === 0) return (
     <span className="inline-flex text-[12px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
-      Not programmed
+      {planningWorkType === "structure"
+        ? "Not programmed — schedule/location required."
+        : "Not programmed"}
     </span>
   );
   const diff = planned - boqQty;
@@ -828,7 +830,10 @@ interface StructureScheduleRow {
   rowIdx: number;
   structureId: string;
   structureType: string;
-  chainageKm: number;
+  chainageKm?: number;
+  chainageFromKm?: number | null;
+  chainageToKm?: number | null;
+  chainageMissing?: boolean;
   boqItemCode: string;
   boqSubItem: string;
   boqExcelRow: number;
@@ -926,6 +931,9 @@ function StructureImportWizard({
             structureId:    r.structureId,
             structureType:  r.structureType,
             chainageKm:     r.chainageKm,
+            chainageFromKm: r.chainageFromKm,
+            chainageToKm:   r.chainageToKm,
+            chainageMissing: r.chainageMissing,
             boqItemCode:    r.boqItemCode,
             boqSubItem:     r.boqSubItem,
             boqExcelRow:    r.boqExcelRow || undefined,
@@ -1110,7 +1118,18 @@ function StructureImportWizard({
                       )}
                       <td className="px-2 py-1 border-b truncate max-w-[110px]" title={r.structureId}>{r.structureId || "—"}</td>
                       <td className="px-2 py-1 border-b truncate max-w-[80px]">{r.structureType || "—"}</td>
-                      <td className="px-2 py-1 border-b font-mono">{r.chainageKm > 0 ? r.chainageKm.toFixed(3) : "—"}</td>
+                      <td className="px-2 py-1 border-b font-mono">
+                        {r.chainageMissing || (r.chainageFromKm == null && !r.chainageKm)
+                          ? <span className="text-amber-600 font-semibold" title="No chainage found — will be imported as needs-review">⚠ missing</span>
+                          : (() => {
+                              const from = r.chainageFromKm ?? r.chainageKm ?? null;
+                              const to = r.chainageToKm ?? from;
+                              if (from == null) return "—";
+                              return to != null && to !== from
+                                ? `${from.toFixed(3)}–${to.toFixed(3)}`
+                                : from.toFixed(3);
+                            })()}
+                      </td>
                       <td className="px-2 py-1 border-b font-mono">{r.boqItemCode || "—"}</td>
                       <td className="px-2 py-1 border-b truncate max-w-[140px]" title={r.boqDescription}>{r.boqDescription || "—"}</td>
                       <td className="px-2 py-1 border-b font-mono whitespace-nowrap">{r.plannedQty > 0 ? fmtQty(r.plannedQty, 2) : "—"} {r.uom}</td>
@@ -1567,7 +1586,7 @@ function InlineGanttTable({
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
                             <span className="text-[12px] text-muted-foreground flex-shrink-0">{fmt(item.currentQty)} {item.unit}</span>
-                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} />
+                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} planningWorkType={(item as any).planningWorkType} />
                             {!hasEquipment && (
                               <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0">
                                 <Info className="w-2.5 h-2.5" /> no equipment
@@ -1651,7 +1670,7 @@ function InlineGanttTable({
                           <span className="text-[12px] text-slate-500 font-semibold">
                             Total: {fmtQty(totalPlanned, 1)} {item.unit}
                           </span>
-                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} />
+                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} planningWorkType={(item as any).planningWorkType} />
                         </div>
                         <div style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0 }} />
                       </div>

@@ -1,0 +1,57 @@
+We need to simplify and freeze the planning boundary for Road + Structures V1.
+
+The app should not try to auto-plan every protective/miscellaneous item without the required design/location data.
+
+Final V1 planning rule:
+
+1. Road linear items:
+   - plan by road reach/chainage.
+
+2. Structure/location items:
+   - plan only from the frozen 4-sheet Structure Schedule Import:
+     a) Culverts
+     b) Drains_Retaining_Walls
+     c) Minor_Bridges
+     d) Major_Bridges
+
+3. Protective/drainage/miscellaneous items like chute drains, dissipation chambers, turfing, pitching, weep holes, filter media, retaining walls, etc.:
+   - plan only if included in the relevant structure/drain/bridge schedule sheet with chainage/location and quantity.
+   - do not auto-spread them across road reaches.
+   - if not scheduled, mark as:
+     “Not programmed — schedule/location required.”
+
+4. Do not try to infer chute drain / dissipation chamber locations automatically from BOQ alone.
+   Those require embankment height, FRL/ground level differences, drainage design and location data, which the BOQ alone does not provide.
+
+5. Skip all unscheduled structure/protection/miscellaneous items from Auto-generate and Auto-sequence.
+   They should not create Reach 1 / Reach 2 / full-road bars.
+
+6. Fix the Structure Schedule Import parser:
+   - It must read the frozen 4-sheet format only:
+     Culverts
+     Drains_Retaining_Walls
+     Minor_Bridges
+     Major_Bridges
+   - Columns A-D:
+     BOQ Code, BOQ Sub Item, BOQ Description, UOM
+   - Columns E onward:
+     one structure/location per column
+   - Metadata rows:
+     Structure Type
+     Chainage From
+     Chainage To
+   - Chainage From / To must be saved into programme bars.
+   - If chainage is missing, do not default to 0.00 silently. Show import warning and mark row as needs review.
+
+7. For drains/protection works:
+   - chainage_from and chainage_to must be supported.
+   - For point items like dissipation chambers, allow chainage_from = chainage_to or chainage_to blank, but preserve the chainage.
+
+8. Auto-sequence imported structure bars should use the imported chainage and quantity as source of truth.
+   It should not reset chainage to 0.00.
+
+Expected:
+- Structure bars should show actual PC/SC/BC/DR/MB/MJB chainages, not 0.00 km.
+- Road items are auto-planned normally.
+- Only items present in the 4 schedule sheets are planned as structure/location items.
+- Unscheduled protective/miscellaneous items remain “Not programmed — schedule/location required.”

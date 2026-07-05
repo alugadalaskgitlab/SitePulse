@@ -13,3 +13,4 @@
 - [Equipment master purpose-blind unit gaps](equipment-master-purpose-blindness.md) — planning_equipment_types.standard_outputs lacks purpose-scoped SDB units (e.g. Tipper disposal), silently dropping equipment from Gantt bottleneck calc.
 - [Equipment output gap prompt](equipment-output-gap-prompt.md) — never fabricate an SDB suggestion across mismatched units; surface a gap prompt with manual entry instead of silently dropping equipment from duration calc.
 - [Sticky thead cross-browser bug](sticky-thead-cross-browser-bug.md) — sticky headers need an explicit `max-h`+`overflow-auto` scroll container with `top-0`; `overflow-x-auto`-only + `top-N` silently never sticks.
+- [Road + Structures V1 planning boundary](road-structure-planning-boundary-v1.md) — structure/protective items plan only from frozen Structure Schedule Import, never auto-spread by chainage; unclassified work types leak into road planning as null→"road".

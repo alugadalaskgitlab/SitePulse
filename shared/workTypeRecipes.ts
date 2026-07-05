@@ -25,7 +25,12 @@ export type WorkType =
   | "stone_pitching"
   | "pipe_culvert"
   | "reinforcement"
-  | "waterproofing_structure";
+  | "waterproofing_structure"
+  | "chute_drain"
+  | "dissipation_chamber"
+  | "turfing"
+  | "weep_holes"
+  | "retaining_wall_structure";
 
 /**
  * Maps each work type to its planning category.
@@ -54,6 +59,11 @@ export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
   pipe_culvert:           "structure",
   reinforcement:          "structure",
   waterproofing_structure: "structure",
+  chute_drain:            "structure",
+  dissipation_chamber:    "structure",
+  turfing:                "structure",
+  weep_holes:             "structure",
+  retaining_wall_structure: "structure",
 };
 
 interface EquipmentLine {
@@ -114,6 +124,11 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   if (/\bgsb\b|granular\s*sub[-\s]*base/i.test(d)) return "gsb";
   if (/wet\s*mix\s*macadam|\bwmm\b/i.test(d)) return "wmm";
 
+  // ── Retaining wall — checked BEFORE concrete classification so RCC/PCC
+  // retaining walls are not swept into generic "rcc"/"pcc" (they must stay in the
+  // "structure" planning category and be excluded from road-reach auto-generation).
+  if (/retaining\s*wall/i.test(d)) return "retaining_wall_structure";
+
   // ── Concrete (order matters: pqc > dlc > rcc > pcc) ────────────────────────
   if (/\bpqc\b|pavement\s*quality\s*concrete/i.test(d)) return "pqc";
   if (/\bdlc\b|dry\s*lean\s*concrete/i.test(d)) return "dlc";
@@ -172,6 +187,17 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
 
   // ── Waterproofing treatments ─────────────────────────────────────────────────
   if (/waterproof|bituminous\s*paint|coal\s*tar|epoxy.*coat|curing\s*compound/i.test(d)) return "waterproofing_structure";
+
+  // ── Protective / miscellaneous structure-adjacent items (V1 planning boundary) ──
+  // These may only be planned from the frozen Structure Schedule Import (chainage +
+  // qty scheduled there) — never auto-spread across road reaches. Checked before the
+  // generic masonry fallback so they don't get mis-swept into "drain_masonry".
+  if (/chute\s*drain/i.test(d)) return "chute_drain";
+  if (/dissipat\w*\s*(chamber|pad|structure|basin)/i.test(d)) return "dissipation_chamber";
+  if (/turfing|turf\s*work|sodding/i.test(d)) return "turfing";
+  if (/weep\s*hole/i.test(d)) return "weep_holes";
+  // (retaining_wall_structure is classified earlier, before the concrete checks —
+  // see the "Retaining wall" block above.)
 
   // ── Minor civil / masonry ────────────────────────────────────────────────────
   if (/masonry|brick\s*work|stone\s*work|drain.*wall|head\s*wall|wing\s*wall/i.test(d)) return "drain_masonry";
@@ -501,6 +527,54 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
     labour: [
       { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.05, count: 2 },
       { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.05, count: 2 },
+    ],
+  },
+
+  // ── Chute drain (RM or CUM) — protective drainage, only planned from Structure
+  // Schedule Import when scheduled with chainage + qty. Mason-intensive minor RCC/masonry.
+  chute_drain: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.3, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.3, count: 3 },
+    ],
+  },
+
+  // ── Dissipation chamber / energy-dissipation pad (Nos or CUM) — point structure.
+  dissipation_chamber: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 1, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 1, count: 3 },
+    ],
+  },
+
+  // ── Turfing / sodding (SQM) — manual slope protection.
+  turfing: {
+    equipment: [],
+    labour: [
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.05, count: 4 },
+    ],
+  },
+
+  // ── Weep holes (Nos or RM) — small drainage openings in structures/walls.
+  weep_holes: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.1, count: 1 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.1, count: 1 },
+    ],
+  },
+
+  // ── Retaining wall (structure category) — only planned from Structure Schedule
+  // Import (Drains_Retaining_Walls sheet); never auto-spread across road reaches.
+  retaining_wall_structure: {
+    equipment: [
+      { name: "Water Tanker (6000 L)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.1, count: 1 },
+    ],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.4, count: 4 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.4, count: 4 },
     ],
   },
 };

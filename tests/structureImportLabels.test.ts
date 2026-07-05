@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { isStructureTypeLabel, isChainageLabel, normalizeHeaderLabel } from "../shared/structureImportLabels";
+import {
+  isStructureTypeLabel,
+  isChainageLabel,
+  isChainageFromLabel,
+  isChainageToLabel,
+  normalizeHeaderLabel,
+} from "../shared/structureImportLabels";
 
 describe("structureImportLabels", () => {
   describe("normalizeHeaderLabel", () => {
@@ -44,6 +50,41 @@ describe("structureImportLabels", () => {
     it("does not match unrelated labels", () => {
       expect(isStructureTypeLabel("Chainage")).toBe(false);
       expect(isStructureTypeLabel("BOQ Code")).toBe(false);
+    });
+  });
+
+  describe("isChainageFromLabel", () => {
+    it("matches 'Chainage From' variants", () => {
+      expect(isChainageFromLabel("Chainage From")).toBe(true);
+      expect(isChainageFromLabel("Chainage_From")).toBe(true);
+      expect(isChainageFromLabel("Chainage From (Km)")).toBe(true);
+      expect(isChainageFromLabel("CHAINAGE FROM")).toBe(true);
+    });
+
+    it("also matches a bare 'Chainage' row for backward compatibility", () => {
+      expect(isChainageFromLabel("Chainage")).toBe(true);
+      expect(isChainageFromLabel(" Chainage ")).toBe(true);
+    });
+
+    it("does not match 'Chainage To' or unrelated labels", () => {
+      expect(isChainageFromLabel("Chainage To")).toBe(false);
+      expect(isChainageFromLabel("Structure Type")).toBe(false);
+      expect(isChainageFromLabel("BOQ Code")).toBe(false);
+    });
+  });
+
+  describe("isChainageToLabel", () => {
+    it("matches 'Chainage To' variants", () => {
+      expect(isChainageToLabel("Chainage To")).toBe(true);
+      expect(isChainageToLabel("Chainage_To")).toBe(true);
+      expect(isChainageToLabel("Chainage To (Km)")).toBe(true);
+      expect(isChainageToLabel("CHAINAGE TO")).toBe(true);
+    });
+
+    it("does not match 'Chainage From', bare 'Chainage', or unrelated labels", () => {
+      expect(isChainageToLabel("Chainage From")).toBe(false);
+      expect(isChainageToLabel("Chainage")).toBe(false);
+      expect(isChainageToLabel("Structure Type")).toBe(false);
     });
   });
 });
