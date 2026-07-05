@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import {
@@ -1629,18 +1629,6 @@ function MonthlyPlanView({
   items: BoqItemWithCategory[];
   bars: WorkProgramBarWithItem[];
 }) {
-  const headerRowRef = useRef<HTMLTableRowElement>(null);
-  const [headerRowHeight, setHeaderRowHeight] = useState(36);
-  useLayoutEffect(() => {
-    if (!headerRowRef.current) return;
-    const el = headerRowRef.current;
-    const measure = () => setHeaderRowHeight(el.getBoundingClientRect().height);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   const totalMonths = project.totalMonths ?? 12;
   const maxMonth = useMemo(() => {
     const fromBars = bars.length ? Math.ceil(Math.max(...bars.map(b => b.endMonth))) : 0;
@@ -1721,18 +1709,17 @@ function MonthlyPlanView({
             positioning directly on a <thead> element is also unreliable
             across browsers (Firefox/Safari can fail to clip body rows
             underneath it); sticking each <th> individually works
-            consistently in every browser. The sticky category-band <tr>
-            below uses `top: headerRowHeight` — measured live via a
-            ResizeObserver on the header <tr> (not hardcoded), so it always
-            stacks flush beneath the header inside the same scroll
-            container even if header row height changes (font, padding,
-            wrapping). Its z-index (15) is intentionally between the header
-            (20/30) and the body's sticky left-column cells (10): the
-            category band must render above a data row's frozen left
-            column as it scrolls past, or a sliver of that row bleeds
-            through the band. */}
+            consistently in every browser. The category-band <tr> (colored
+            bill/category divider rows in the body) is intentionally NOT
+            sticky — an earlier attempt made it sticky under the header,
+            but stacking a second sticky row directly beneath already-sticky
+            <th>s caused it to render on top of / slice through whichever
+            data row happened to be scrolling past at that exact position,
+            since the two sticky elements don't hand off cleanly. Keeping
+            the category band in normal flow avoids that overlap entirely;
+            it now simply scrolls past like a normal row. */}
         <thead>
-          <tr ref={headerRowRef} style={{ background: "#0F5F64" }}>
+          <tr style={{ background: "#0F5F64" }}>
             <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>
               BOQ Item
             </th>
@@ -1755,7 +1742,7 @@ function MonthlyPlanView({
             if (!catHasBars) return null;
 
             return [
-              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12`, position: "sticky", top: headerRowHeight, zIndex: 15 }}>
+              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12` }}>
                 <td
                   colSpan={3 + maxMonth + 1}
                   className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider"
