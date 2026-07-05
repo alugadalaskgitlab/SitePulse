@@ -49,6 +49,8 @@ description: Full Gantt + BOM planning system ported into SitePulse. Schema, eng
 
 **How to apply:** `workProgramBars` has `stage`, `sequenceOrder`, `durationSource`, `needsReview`, `scheduled` columns for this system. Bars with `scheduled=false` are surfaced via an "Auto-sequence imported structure bars" toolbar button in `WorkProgramme.tsx` that calls `POST /api/boq/projects/:id/auto-sequence-structures`.
 
+**Trap: `storage.getWorkProgramBars()` uses an explicit column select, not `select()`** — any new column added to `workProgramBars` (e.g. `stage`/`scheduled`/`needsReview`) must also be added to that explicit select list, or every consumer silently sees `undefined` for it (the auto-sequence "unscheduled" scope filter matched zero rows for this exact reason even though the DB columns and UI were all correct).
+
 ## Key design decisions
 
 **Why layerConfig is jsonb on boq_items (not a separate table):**
