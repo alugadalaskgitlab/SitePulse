@@ -1243,24 +1243,33 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border">
+      <div className="overflow-auto rounded-xl border max-h-[70vh]">
         <table className="text-sm border-collapse w-full" style={{ minWidth: 600 }}>
-          {/* Sticky is applied per-<th> (not on <thead> itself) at top-14 (56px,
-              below main nav), using page-level scroll. Sticky positioning on a
-              <thead> element is unreliable across browsers (Firefox/Safari can
-              fail to clip body rows underneath it), which was causing the first
-              data row to bleed through the header on scroll. Sticking each
-              <th> individually works consistently in every browser. */}
+          {/* Sticky is applied per-<th> (not on <thead> itself) at top-0,
+              relative to the max-h-[70vh]/overflow-auto wrapper div, which is
+              the actual scrolling container (consistent with the other
+              demand tables in this file, e.g. Materials/Equipment/Labour).
+              IMPORTANT: an `overflow-x-auto`-only wrapper (no explicit
+              max-height) does NOT reliably create a working sticky scroll
+              context — browsers force its overflow-y to "auto" too, but with
+              no height constraint it never actually scrolls internally, so a
+              `top-14`-style offset (meant for page-level scroll) never
+              sticks and body rows bleed above the header. Always pair
+              sticky headers with an explicit `max-h-[...]` + `overflow-auto`
+              wrapper and `top-0`. Sticky positioning directly on a <thead>
+              element is also unreliable across browsers (Firefox/Safari can
+              fail to clip body rows underneath it); sticking each <th>
+              individually works consistently in every browser. */}
           <thead>
             <tr style={{ background: "#0F5F64" }}>
-              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-14 z-30 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Unit</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Current Stock</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Pending PI/IRN</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Shortfall</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Near-term Risk</th>
-              <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Action</th>
+              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Current Stock</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Pending PI/IRN</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Shortfall</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Near-term Risk</th>
+              <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Action</th>
             </tr>
           </thead>
           <tbody>

@@ -1693,26 +1693,39 @@ function MonthlyPlanView({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className="overflow-auto rounded-xl border max-h-[70vh]">
       <table className="text-sm border-collapse" style={{ minWidth: 200 + maxMonth * 64 + 80 }}>
-        {/* Sticky is applied per-<th> (not on <thead> itself) at top-14 (56px,
-            below main nav), using page-level scroll. Sticky positioning on a
-            <thead> element is unreliable across browsers (Firefox/Safari can
-            fail to clip body rows underneath it); sticking each <th>
-            individually works consistently in every browser. */}
+        {/* Sticky is applied per-<th> (not on <thead> itself) at top-0,
+            relative to the max-h-[70vh]/overflow-auto wrapper div, which is
+            the actual scrolling container (consistent with the demand
+            tables in WorkDemand.tsx). IMPORTANT: an `overflow-x-auto`-only
+            wrapper (no explicit max-height) does NOT reliably create a
+            working sticky scroll context — browsers force its overflow-y to
+            "auto" too, but with no height constraint it never actually
+            scrolls internally, so a `top-14`-style offset (meant for
+            page-level scroll) never sticks and body rows bleed above the
+            header. Always pair sticky headers with an explicit
+            `max-h-[...]` + `overflow-auto` wrapper and `top-0`. Sticky
+            positioning directly on a <thead> element is also unreliable
+            across browsers (Firefox/Safari can fail to clip body rows
+            underneath it); sticking each <th> individually works
+            consistently in every browser. The sticky category-band <tr>
+            below uses `top: CAT_ROW_TOP_PX` (the pixel height of this
+            header row) so it stacks directly beneath the header inside the
+            same scroll container. */}
         <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-14 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-0 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>
               BOQ Item
             </th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[72px] whitespace-nowrap sticky top-14 z-20" style={{ background: "#0F5F64" }}>BOQ Qty</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Unit</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[72px] whitespace-nowrap sticky top-0 z-20" style={{ background: "#0F5F64" }}>BOQ Qty</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Unit</th>
             {months.map(m => (
-              <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[64px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>
+              <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[64px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>
                 {monthLabel(m, project.startDate)}
               </th>
             ))}
-            <th className="px-3 py-2 font-semibold text-white text-right min-w-[80px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Total</th>
+            <th className="px-3 py-2 font-semibold text-white text-right min-w-[80px] sticky top-0 z-20" style={{ background: "#0F5F64" }}>Total</th>
           </tr>
         </thead>
         <tbody>
@@ -1724,7 +1737,7 @@ function MonthlyPlanView({
             if (!catHasBars) return null;
 
             return [
-              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12`, position: "sticky", top: 92, zIndex: 5 }}>
+              <tr key={`cat-${cat}`} style={{ backgroundColor: `${color}12`, position: "sticky", top: 36, zIndex: 5 }}>
                 <td
                   colSpan={3 + maxMonth + 1}
                   className="px-3 py-1.5 text-[12px] font-bold uppercase tracking-wider"
