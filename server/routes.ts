@@ -10784,6 +10784,10 @@ export async function registerRoutes(
             outputTheoretical: e.outputTheoretical ?? null,
             outputEfficiency: e.outputEfficiency ?? null,
             standardOutputs: e.standardOutputs ?? null,
+            // Item-specific hrs/BOQ-unit rate — last-resort output source so contractor/custom
+            // equipment or SDB equipment used for a unit the master doesn't define still
+            // contributes to the bottleneck instead of silently dropping out.
+            qtyPerBoqUnit: e.qtyPerBoqUnit != null ? Number(e.qtyPerBoqUnit) : null,
             count: e.count ?? 1,
           }));
           const dur = calculateAutoDurationFull(
@@ -11634,6 +11638,21 @@ export async function registerRoutes(
       res.json(await storage.getSnlItems(parseInt(req.params.id), category, sector));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch SNL items" });
+    }
+  });
+
+  // Real-SDB output-rate suggestion for the recipe editor's "missing output" prompt.
+  // Only returns a value when the BOQ item is mapped to an SNL norm whose own unit
+  // matches the item's unit — never fabricates a cross-unit conversion.
+  app.get("/api/boq/items/:id/equipment-output-suggestion", async (req, res) => {
+    try {
+      const boqItemId = parseInt(req.params.id);
+      const equipmentName = (req.query.equipmentName as string) || "";
+      if (!equipmentName.trim()) return res.status(400).json({ error: "equipmentName required" });
+      const suggestions = await storage.getSdbEquipmentOutputSuggestions(boqItemId, equipmentName);
+      res.json(suggestions);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch output suggestion" });
     }
   });
 

@@ -11,3 +11,4 @@
 - [Route logic testability](route-logic-testability.md) — extract pure calculation logic out of Express route handlers into shared/*.ts before writing tests; route bodies with DB calls inline aren't unit-testable.
 - [Cross-book SDB fallback](cross-book-sdb-fallback.md) — secondary-sector fallback (e.g. IRRIGATION for structure categories) must stay strictly penalized/never-primary and category-scoped, or it silently promotes wrong-book matches.
 - [Equipment master purpose-blind unit gaps](equipment-master-purpose-blindness.md) — planning_equipment_types.standard_outputs lacks purpose-scoped SDB units (e.g. Tipper disposal), silently dropping equipment from Gantt bottleneck calc.
+- [Equipment output gap prompt](equipment-output-gap-prompt.md) — never fabricate an SDB suggestion across mismatched units; surface a gap prompt with manual entry instead of silently dropping equipment from duration calc.

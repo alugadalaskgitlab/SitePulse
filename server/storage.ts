@@ -304,6 +304,7 @@ import {
 import { eq, desc, and, gte, lte, gt, lt, ne, notInArray, inArray, or, sql, asc, isNull, isNotNull, ilike, getTableColumns, exists } from "drizzle-orm";
 import { format } from "date-fns";
 import { canonicalizeMachineType } from "@shared/canonicalize";
+import { normaliseUnit } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
 import { suggestWorkCategory } from "@shared/boqWorkCategories";
@@ -20020,6 +20021,56 @@ export class DatabaseStorage implements IStorage {
   async getBoqItem(id: number): Promise<BoqItem | null> {
     const [row] = await db.select().from(boqItems).where(eq(boqItems.id, id)).limit(1);
     return row ?? null;
+  }
+
+  // Looks up a real SDB (SNL) equipment-output norm to suggest as a starting value when
+  // the recipe editor detects no output rate for an equipment+unit combo. Only returns a
+  // suggestion when the BOQ item is already mapped to an SNL norm AND that norm's own unit
+  // matches the BOQ item's unit (no fabricated cross-unit conversion). Returns [] otherwise.
+  async getSdbEquipmentOutputSuggestions(
+    boqItemId: number,
+    equipmentName: string,
+  ): Promise<Array<{ spec: string | null; purpose: string | null; outputPerHr: number; unit: string; snlItemCode: string }>> {
+    const item = await this.getBoqItem(boqItemId);
+    if (!item) return [];
+
+    const mapping = await this.getSnlMapping(boqItemId);
+    if (!mapping) return [];
+
+    const snlItem = await this.getSnlItem(mapping.snlItemId);
+    if (!snlItem) return [];
+
+    // Only trust the suggestion when the SDB norm's own unit matches the BOQ item's unit —
+    // never fabricate a cross-unit conversion here.
+    if (normaliseUnit(snlItem.unit) !== normaliseUnit(item.unit)) return [];
+
+    const needle = equipmentName.trim().toLowerCase();
+    const rows = snlItem.equipment.filter((e) => {
+      const et = e.equipmentType.trim().toLowerCase();
+      return et === needle || et.includes(needle) || needle.includes(et);
+    });
+
+    const suggestions: Array<{ spec: string | null; purpose: string | null; outputPerHr: number; unit: string; snlItemCode: string }> = [];
+    for (const e of rows) {
+      let outputPerHr: number | null = null;
+      if (e.quantityPerShift && e.quantityPerShift > 0 && e.shiftOutputRef && e.shiftOutputRef > 0) {
+        // Real SDB shift norm: shiftOutputRef is the shift's total output achieved using
+        // quantityPerShift units of this equipment, over an 8-hr shift.
+        outputPerHr = e.shiftOutputRef / e.quantityPerShift / 8;
+      } else if (e.derivedPerUnit && e.derivedPerUnit > 0) {
+        outputPerHr = 1 / e.derivedPerUnit;
+      }
+      if (outputPerHr && outputPerHr > 0) {
+        suggestions.push({
+          spec: e.equipmentSpec ?? null,
+          purpose: e.purpose ?? null,
+          outputPerHr,
+          unit: snlItem.unit,
+          snlItemCode: snlItem.itemCode,
+        });
+      }
+    }
+    return suggestions;
   }
 
   async importBoqItems(

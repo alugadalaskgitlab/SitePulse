@@ -663,13 +663,34 @@ function EquipmentTab({
     thicknessMm: layerConfig?.thicknessMm ?? null,
   };
 
-  // Calculate converted outputs per row + find bottleneck
+  // Calculate converted outputs per row + find bottleneck.
+  // Every row (including "Enter manually" / custom equipment) is included: when the
+  // master has no standardOutputs match for this unit, the row's own qtyPerBoqUnit is
+  // used as a last-resort output source so custom/contractor equipment still counts
+  // toward the Gantt bottleneck instead of being silently dropped.
   const convertedOutputs = useMemo(() => {
     return rows.map((row) => {
       const planType = row.planningEquipTypeId !== "__manual__" ? masterList.find((m) => m.id === parseInt(row.planningEquipTypeId)) : null;
-      if (!planType) return null;
-      const eq = { outputUnit: null, outputTheoretical: null, outputEfficiency: null, standardOutputs: planType.standardOutputs, count: parseInt(row.count) || 1 };
+      const eq = {
+        outputUnit: null,
+        outputTheoretical: null,
+        outputEfficiency: null,
+        standardOutputs: planType?.standardOutputs ?? null,
+        qtyPerBoqUnit: row.qtyPerBoqUnit ? parseFloat(row.qtyPerBoqUnit) : null,
+        count: parseInt(row.count) || 1,
+      };
       return getEffectiveOutputPerHrConverted(eq, boqUnit, ctx);
+    });
+  }, [rows, masterList, boqUnit, ctx.densityTPerCum, ctx.thicknessMm]);
+
+  // Rows with a real master (or master+conversion) output source for this unit — used to
+  // decide whether a row is genuinely missing an output ("gap") vs. already covered.
+  const hasMasterOutput = useMemo(() => {
+    return rows.map((row) => {
+      const planType = row.planningEquipTypeId !== "__manual__" ? masterList.find((m) => m.id === parseInt(row.planningEquipTypeId)) : null;
+      if (!planType) return false;
+      const eq = { outputUnit: null, outputTheoretical: null, outputEfficiency: null, standardOutputs: planType.standardOutputs, qtyPerBoqUnit: null, count: parseInt(row.count) || 1 };
+      return getEffectiveOutputPerHrConverted(eq, boqUnit, ctx).outputPerHr > 0;
     });
   }, [rows, masterList, boqUnit, ctx.densityTPerCum, ctx.thicknessMm]);
 
@@ -764,21 +785,29 @@ function EquipmentTab({
                 {co.convertedVia === "converted" && (
                   <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-blue-600 border-blue-300">unit-converted</Badge>
                 )}
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-[12px] px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors"
-                  title={`Auto-fill: 1 ÷ ${fmtQty(co.outputPerHr, 2)} = ${(1 / co.outputPerHr).toFixed(5)} hr/${boqUnit}`}
-                  onClick={() => { updateRow(row.key, "qtyPerBoqUnit", (1 / co.outputPerHr).toFixed(5)); setDirty(true); }}
-                  data-testid={`button-autofill-equip-${row.key}`}
-                >
-                  <Zap className="w-2.5 h-2.5" /> Auto-fill
-                </button>
+                {co.convertedVia === "manual" && (
+                  <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-slate-600 border-slate-300">your rate</Badge>
+                )}
+                {co.convertedVia !== "manual" && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-[12px] px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors"
+                    title={`Auto-fill: 1 ÷ ${fmtQty(co.outputPerHr, 2)} = ${(1 / co.outputPerHr).toFixed(5)} hr/${boqUnit}`}
+                    onClick={() => { updateRow(row.key, "qtyPerBoqUnit", (1 / co.outputPerHr).toFixed(5)); setDirty(true); }}
+                    data-testid={`button-autofill-equip-${row.key}`}
+                  >
+                    <Zap className="w-2.5 h-2.5" /> Auto-fill
+                  </button>
+                )}
               </div>
             )}
-            {planType && !(planType.standardOutputs?.length) && (
-              <div className="flex items-center gap-1 text-[12px] text-amber-600">
-                <Info className="w-3 h-3" /> No standard outputs — duration auto-calc unavailable.
-              </div>
+            {(!co || co.outputPerHr <= 0) && !hasMasterOutput[idx] && !row.qtyPerBoqUnit.trim() && (
+              <MissingOutputPrompt
+                boqItemId={boqItemId}
+                equipmentName={row.equipmentName || planType?.name || ""}
+                boqUnit={boqUnit}
+                onApply={(val) => { updateRow(row.key, "qtyPerBoqUnit", String(val)); setDirty(true); }}
+              />
             )}
           </div>
         );
@@ -865,6 +894,96 @@ function EquipmentTab({
         </div>
         <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} className="bg-teal-700 hover:bg-teal-800 text-white text-sm h-7" data-testid="button-save-equip-recipe">
           {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Missing-Output Gap Prompt ─────────────────────────────────────────────────
+// Shown when an equipment row (master-matched or custom/manual) has no computable
+// output for the item's BOQ unit AND no rate has been entered yet. Looks up a real SDB
+// norm to pre-suggest a starting value (only when the item is mapped to an SNL norm
+// whose own unit matches — never fabricated); the user must confirm/type the value
+// themselves either way.
+function MissingOutputPrompt({
+  boqItemId, equipmentName, boqUnit, onApply,
+}: {
+  boqItemId: number;
+  equipmentName: string;
+  boqUnit: string;
+  onApply: (qtyPerBoqUnit: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [manualHrs, setManualHrs] = useState("");
+
+  const { data: suggestions = [], isLoading, isFetched } = useQuery<Array<{ spec: string | null; purpose: string | null; outputPerHr: number; unit: string; snlItemCode: string }>>({
+    queryKey: ["/api/boq/items", boqItemId, "equipment-output-suggestion", equipmentName],
+    queryFn: async () => {
+      if (!equipmentName.trim()) return [];
+      const res = await fetch(`/api/boq/items/${boqItemId}/equipment-output-suggestion?equipmentName=${encodeURIComponent(equipmentName)}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: open && !!equipmentName.trim(),
+    staleTime: 60_000,
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="flex items-center gap-1 text-[12px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors"
+        onClick={() => setOpen(true)}
+        data-testid="button-missing-output-prompt"
+      >
+        <AlertTriangle className="w-3 h-3" /> No output rate for this unit — click to set
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded border border-amber-300 bg-amber-50/50 p-2 space-y-2">
+      <p className="text-[12px] text-amber-800">
+        No output rate found for <strong>{equipmentName || "this equipment"}</strong> in <strong>{boqUnit}</strong>.
+        Enter it below so this piece of equipment counts toward the Gantt duration calc.
+      </p>
+      {isLoading && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Checking SDB norms…</p>}
+      {isFetched && suggestions.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-teal-700">Suggested from real SDB norm{suggestions.length > 1 ? "s" : ""} ({suggestions[0].snlItemCode}):</p>
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              className="w-full flex items-center justify-between gap-2 text-[12px] px-2 py-1 rounded bg-white border border-teal-200 text-teal-700 hover:bg-teal-50 transition-colors text-left"
+              onClick={() => { setManualHrs((1 / s.outputPerHr).toFixed(5)); }}
+              data-testid={`button-sdb-suggestion-${i}`}
+            >
+              <span>{fmtQty(s.outputPerHr, 2)} {s.unit}/hr{s.spec ? ` — ${s.spec}` : ""}{s.purpose ? ` (${s.purpose})` : ""}</span>
+              <span className="text-slate-400">use →</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {isFetched && suggestions.length === 0 && (
+        <p className="text-[11px] text-muted-foreground">No matching SDB norm found — enter your own rate below.</p>
+      )}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <Label className="text-[11px]">HRS / {boqUnit.toUpperCase()}</Label>
+          <Input type="number" step="0.001" className="h-8 text-sm" value={manualHrs} onChange={(e) => setManualHrs(e.target.value)} placeholder="e.g. 0.00075" data-testid="input-missing-output-hrs" />
+        </div>
+        <Button
+          size="sm"
+          className="h-8 bg-teal-700 hover:bg-teal-800 text-white text-[12px]"
+          disabled={!manualHrs.trim() || !(parseFloat(manualHrs) > 0)}
+          onClick={() => { onApply(parseFloat(manualHrs)); setOpen(false); }}
+          data-testid="button-apply-missing-output"
+        >
+          Use this rate
+        </Button>
+        <Button size="sm" variant="outline" className="h-8 text-[12px]" onClick={() => setOpen(false)} data-testid="button-cancel-missing-output">
+          Cancel
         </Button>
       </div>
     </div>

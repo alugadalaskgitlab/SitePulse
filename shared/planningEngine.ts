@@ -48,12 +48,20 @@ export interface EquipmentProductivity {
   outputTheoretical: number | null;
   outputEfficiency: number | null;
   standardOutputs?: Array<{ unit: string; outputPerHr: number }> | null;
+  // Item-specific hrs-per-BOQ-unit rate (manual entry, SNL import, or contractor-supplied
+  // custom equipment). Already scoped to the item's own BOQ unit, so it's used as a
+  // last-resort output source when the generic equipment master has no matching output
+  // for the target unit — this is what lets contractor/custom equipment (or SDB equipment
+  // used for a unit the master doesn't cover) count in the Gantt bottleneck instead of
+  // silently dropping out.
+  qtyPerBoqUnit?: number | null;
   count: number; // machines deployed
 }
 
 /**
  * Returns effective output per hour for a piece of equipment for a given unit.
- * standardOutputs (multi-unit override) takes priority over theoretical × efficiency.
+ * standardOutputs (multi-unit override) takes priority over theoretical × efficiency,
+ * which in turn takes priority over the item-specific qtyPerBoqUnit fallback.
  */
 export function getEffectiveOutputPerHr(
   eq: EquipmentProductivity,
@@ -80,6 +88,13 @@ export function getEffectiveOutputPerHr(
   ) {
     const eff = eq.outputEfficiency ?? 0.75;
     return eq.outputTheoretical * eff * eq.count;
+  }
+
+  // Last resort: item-specific rate (hrs per BOQ unit). No unit-matching needed since
+  // it's already scoped to the item's own unit — covers contractor/custom equipment and
+  // SDB equipment used for a unit the generic master doesn't define.
+  if (eq.qtyPerBoqUnit && eq.qtyPerBoqUnit > 0) {
+    return (1 / eq.qtyPerBoqUnit) * eq.count;
   }
 
   return 0;
@@ -1164,7 +1179,7 @@ export function getUnitConversionFactor(
 export interface ConvertedOutput {
   outputPerHr: number;
   nativeUnit: string | null;
-  convertedVia: "exact" | "converted" | "none";
+  convertedVia: "exact" | "converted" | "manual" | "none";
 }
 
 /**
@@ -1176,8 +1191,9 @@ export function getEffectiveOutputPerHrConverted(
   targetUnit: string,
   ctx: UnitConversionContext,
 ): ConvertedOutput {
-  // Exact match first
-  const exact = getEffectiveOutputPerHr(eq, targetUnit);
+  // Exact match first (standardOutputs / theoretical×efficiency only — exclude the
+  // qtyPerBoqUnit fallback here so it can be reported separately as "manual" below).
+  const exact = getEffectiveOutputPerHr({ ...eq, qtyPerBoqUnit: null }, targetUnit);
   if (exact > 0) return { outputPerHr: exact, nativeUnit: targetUnit, convertedVia: "exact" };
 
   // Try each standardOutput with conversion
@@ -1199,6 +1215,13 @@ export function getEffectiveOutputPerHrConverted(
       const eff = eq.outputEfficiency ?? 0.75;
       return { outputPerHr: eq.outputTheoretical * eff * eq.count * factor, nativeUnit: eq.outputUnit, convertedVia: "converted" };
     }
+  }
+
+  // Last resort: item-specific qtyPerBoqUnit rate — already scoped to the item's own
+  // unit, no conversion needed. Reported as "manual" so callers can distinguish it from
+  // a genuine master-derived output.
+  if (eq.qtyPerBoqUnit && eq.qtyPerBoqUnit > 0) {
+    return { outputPerHr: (1 / eq.qtyPerBoqUnit) * eq.count, nativeUnit: targetUnit, convertedVia: "manual" };
   }
 
   return { outputPerHr: 0, nativeUnit: null, convertedVia: "none" };
