@@ -51,6 +51,8 @@ description: Full Gantt + BOM planning system ported into SitePulse. Schema, eng
 
 **Trap: `storage.getWorkProgramBars()` uses an explicit column select, not `select()`** — any new column added to `workProgramBars` (e.g. `stage`/`scheduled`/`needsReview`) must also be added to that explicit select list, or every consumer silently sees `undefined` for it (the auto-sequence "unscheduled" scope filter matched zero rows for this exact reason even though the DB columns and UI were all correct).
 
+**Trap: structure matrix import silently defaults to 0 on any header-label mismatch, with no warning** — `parseMatrixSheet`'s "Structure Type"/"Chainage" row detection previously used strict anchored regexes; a header like "Chainage (Km)" failed to match and every chainage silently became 0 (207 bars in production). Fixed by normalizing label text (lowercase, strip non-alphanumerics, `.startsWith()`) via `shared/structureImportLabels.ts`, and by pushing an explicit warning when a label row genuinely can't be found within the lookahead window. **Why it matters generally:** any parser that silently defaults a numeric field to 0 instead of surfacing "couldn't find X" is a landmine — prefer loud warnings over silent defaults for import parsers.
+
 ## Key design decisions
 
 **Why layerConfig is jsonb on boq_items (not a separate table):**

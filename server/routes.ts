@@ -22,6 +22,7 @@ import { isNull, inArray as drizzleInArray, sql, and, or, eq, gt, gte, lte, asc 
 import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
+import { isStructureTypeLabel, isChainageLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
@@ -10981,19 +10982,27 @@ export async function registerRoutes(
           return { rows: [], warnings: localWarnings };
         }
 
-        // Read metadata rows (Structure Type, Chainage Km) immediately after the header
+        // Read metadata rows (Structure Type, Chainage Km) immediately after the header.
+        // Header text is normalized (lowercased, non-alphanumeric stripped) before
+        // matching so variants like "Chainage (Km)" or "Chainage in Km" are still
+        // recognized — same approach as normHeader() in the legacy parser below.
+        // See shared/structureImportLabels.ts for the matching logic + tests.
         const structTypes: string[] = new Array(structIds.length).fill("");
         const chainages: number[]   = new Array(structIds.length).fill(0);
         let dataStart = hdrIdx + 1;
+        let foundStructureTypeRow = false;
+        let foundChainageRow = false;
 
         for (let ri = hdrIdx + 1; ri < Math.min(hdrIdx + 6, raw.length); ri++) {
-          const c0 = String(raw[ri][0] ?? "").trim().toLowerCase();
-          if (/^structure[\s_]?type$/i.test(c0)) {
+          const c0Raw = String(raw[ri][0] ?? "");
+          if (isStructureTypeLabel(c0Raw)) {
+            foundStructureTypeRow = true;
             for (let c = 4; c < raw[ri].length; c++) {
               if (c - 4 < structIds.length) structTypes[c - 4] = String(raw[ri][c] ?? "").trim();
             }
             dataStart = Math.max(dataStart, ri + 1);
-          } else if (/^chainage[\s_]?(km|from)?$/i.test(c0)) {
+          } else if (isChainageLabel(c0Raw)) {
+            foundChainageRow = true;
             for (let c = 4; c < raw[ri].length; c++) {
               if (c - 4 < structIds.length) {
                 const v = parseFloat(String(raw[ri][c] ?? "").replace(/,/g, ""));
@@ -11002,6 +11011,12 @@ export async function registerRoutes(
             }
             dataStart = Math.max(dataStart, ri + 1);
           }
+        }
+        if (!foundStructureTypeRow) {
+          localWarnings.push(`Sheet "${sheetName}": no "Structure Type" row found in the first 5 rows after the header — structure types were left blank for all columns.`);
+        }
+        if (!foundChainageRow) {
+          localWarnings.push(`Sheet "${sheetName}": no "Chainage" row found in the first 5 rows after the header — chainages were imported as 0 for all columns. Check that the sheet has a row starting with a "Chainage" label directly below the header.`);
         }
 
         const outRows: any[] = [];
