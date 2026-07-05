@@ -23,7 +23,7 @@ import { getVolumeAtDepth, getUsableVolume, BITUMEN_DENSITY_KG_PER_LITER } from 
 import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, computeShortageRow, type LayerConfig } from "@shared/planningEngine";
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
-import { classifyWorkType, STANDARD_CONCRETE_DESIGNS } from "@shared/workTypeRecipes";
+import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -9815,9 +9815,6 @@ export async function registerRoutes(
   // (source="manual" with a custom, non-auto-generated label) are NEVER deleted
   // silently — they are returned as `needsConfirmation` and only removed when the
   // caller re-POSTs with their ids in `confirmBarIds`.
-  const STRUCTURE_CATEGORY_RE = /culvert|bridge|minor\s*bridge|major\s*bridge|drainage\s*and\s*protection|retaining\s*wall/i;
-  const STRUCTURE_KEYWORD_RE = /foundation\s*excavat|\bbearing\b(?!\s*capacity)|\bpot\b|\bptfe\b|tar\s*paper|expansion\s*joint|drainage?\s*spout|weep\s*hole|bridge\s*numbering|bridge\s*painting|approach\s*slab|\babutment\b|\bpier\b|substructure|superstructure|filter\s*media.*abutment|wing\s*wall|head\s*wall|retaining\s*wall/i;
-
   app.post("/api/boq/projects/:id/programme/clean-structure-bars", async (req, res) => {
     try {
       const boqProjectId = parseInt(req.params.id);
@@ -9837,11 +9834,7 @@ export async function registerRoutes(
 
       const structureItemIds = new Set([
         ...(items as any[])
-          .filter((it) =>
-            it.planningWorkType === "structure" ||
-            STRUCTURE_CATEGORY_RE.test(it.categoryName ?? "") ||
-            STRUCTURE_KEYWORD_RE.test(it.description ?? ""),
-          )
+          .filter((it) => isStructureOrLocationScheduledItem(it, { hasStructureImportBar: structureImportItemIds.has(it.id) }))
           .map((it) => it.id),
         ...structureImportItemIds,
       ]);
@@ -10782,7 +10775,7 @@ export async function registerRoutes(
         );
         const structureItemIds = new Set([
           ...(items as any[])
-            .filter((it) => it.planningWorkType === "structure")
+            .filter((it) => isStructureOrLocationScheduledItem(it, { hasStructureImportBar: structureImportIds.has(it.id) }))
             .map((it) => it.id),
           ...structureImportIds,
         ]);
@@ -10810,7 +10803,10 @@ export async function registerRoutes(
       const seqItems = (items as any[])
         .filter((it) => {
           if ((it.currentQty ?? 0) <= 0) return false;
-          if (disableStructureFronts && (it.planningWorkType === "structure" || _structureImportIds.has(it.id))) return false;
+          if (
+            disableStructureFronts &&
+            isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
+          ) return false;
           return true;
         })
         .map((it) => {

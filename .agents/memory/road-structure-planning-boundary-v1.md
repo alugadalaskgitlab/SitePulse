@@ -22,6 +22,12 @@ specific scheduled structure/location.
   `shared/workTypeRecipes.ts` as `"structure"` if they can only be located via
   the Structure Schedule Import, not spread by chainage — otherwise they
   silently leak into road auto-generation as `null` → `"road"`.
+- Never gate structure/road decisions on `planningWorkType === "structure"`
+  alone in a call site — that field can be stale or unset. Use the shared
+  `isStructureOrLocationScheduledItem(item, { hasStructureImportBar })` helper
+  (also in `shared/workTypeRecipes.ts`) everywhere this decision is made
+  (Auto-generate, Auto-sequence, Clean Structure Bars, coverage/status
+  display) — see `work-programme-issue-fixes-2026-07.md` for why.
 - `classifyWorkType()` check order matters: put a specific check (e.g.
   "retaining wall") BEFORE broader material checks (e.g. RCC/PCC concrete)
   so a retaining wall built in RCC isn't swept into the generic "rcc" type.

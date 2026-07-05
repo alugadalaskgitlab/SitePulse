@@ -153,8 +153,10 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
     (/\bbearing\b/i.test(d) && !/bearing\s*capacity/i.test(d))
   ) return "bridge_bearing";
 
-  // Bridge numbering / bridge painting (identification & finishing works).
-  if (/bridge\s*(numbering|number\s*plate|name\s*plate)|painting\s*(of\s*)?(the\s*)?bridge|bridge\s*painting/i.test(d)) return "bridge_finishing";
+  // Bridge numbering / bridge painting / railing (identification & finishing works).
+  if (
+    /bridge\s*(numbering|number\s*plate|name\s*plate)|painting\s*(of\s*)?(the\s*)?bridge|bridge\s*painting|enamel\s*paint(ing)?|\bms\s*railing\b|bridge\s*railing|railing\s*(on|over|of)\s*bridge/i.test(d)
+  ) return "bridge_finishing";
 
   // Drainage spouts (bridge deck drainage, distinct from weep holes).
   if (/drainage?\s*spout|deck\s*spout|scupper/i.test(d)) return "drainage_spout";
@@ -247,6 +249,65 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   if (/masonry|brick\s*work|stone\s*work|drain.*wall|head\s*wall|wing\s*wall/i.test(d)) return "drain_masonry";
 
   return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STRUCTURE / LOCATION-SCHEDULED ITEM DETECTION
+// Shared, context-based helper used by Auto-generate, Auto-sequence, Clean
+// Structure Bars, and Work Programme coverage/status display. A stored
+// `planningWorkType` field can go stale (e.g. an item was imported before a
+// classifier fix, or planningWorkType was never set on legacy data) — so this
+// helper ALSO checks the BOQ category/section name and the item description
+// directly, every time, instead of only trusting the persisted field.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// BOQ category/section names that are always structure/location-scheduled,
+// regardless of the individual item's description.
+export const STRUCTURE_CATEGORY_RE =
+  /culvert|bridge|minor\s*bridge|major\s*bridge|drainage\s*and\s*protection|retaining\s*wall|cross\s*drainage|\bstructures?\b/i;
+
+// Description/context keywords that mark an item as structure/location-scheduled
+// even when it sits in a category that isn't obviously a "structure" section
+// (e.g. a generic "Civil Works" category containing a bridge bearing line item).
+export const STRUCTURE_KEYWORD_RE =
+  /foundation\s*excavat|excavat.*(foundation|bridge|culvert|structure|drain|retaining\s*wall)|(foundation|bridge|culvert|structure|drain|retaining\s*wall).*excavat|\bbearing\b(?!\s*capacity)|\bpot\b|\bptfe\b|tar\s*paper|strip\s*seal|expansion\s*joint|modular\s*joint|drainage?\s*spout|deck\s*spout|scupper|weep\s*hole|weephole|bridge\s*numbering|bridge\s*painting|enamel\s*paint|\bms\s*railing\b|bridge\s*railing|approach\s*slab|filter\s*media.*abutment|\babutment\b|\bpier\b|substructure|superstructure|wing\s*wall|head\s*wall|retaining\s*wall/i;
+
+// Crash barrier is only structure-scheduled when tied to bridge/deck context —
+// a plain "metal beam crash barrier" along the road embankment is a road item.
+const BRIDGE_CRASH_BARRIER_RE = /crash\s*barrier|metal\s*beam\s*crash\s*barrier|\bmbcb\b/i;
+const BRIDGE_CONTEXT_RE = /\bbridge\b|\bviaduct\b|\bflyover\b|\bdeck\b/i;
+
+export interface StructureClassifiableItem {
+  planningWorkType?: string | null;
+  categoryName?: string | null;
+  description?: string | null;
+}
+
+/**
+ * Returns true if a BOQ item must be planned as a structure/location-scheduled
+ * item — i.e. never auto-split into road Reach 1/2/3/4 bars, only ever
+ * programmed via the Structure Schedule Import (or shown as
+ * "Not programmed — schedule/location required." until it is).
+ *
+ * Checks (in order, any match is sufficient):
+ *   1. It already has a structure_import bar (pass via `hasStructureImportBar`).
+ *   2. Its stored planningWorkType is already "structure".
+ *   3. Its BOQ category/section name matches a known structure section.
+ *   4. Its description matches structure-context keywords.
+ *   5. Its description mentions a crash barrier in bridge/deck context.
+ */
+export function isStructureOrLocationScheduledItem(
+  item: StructureClassifiableItem,
+  opts?: { hasStructureImportBar?: boolean },
+): boolean {
+  if (opts?.hasStructureImportBar) return true;
+  if (item.planningWorkType === "structure") return true;
+  const cat = item.categoryName ?? "";
+  const d = item.description ?? "";
+  if (STRUCTURE_CATEGORY_RE.test(cat)) return true;
+  if (STRUCTURE_KEYWORD_RE.test(d)) return true;
+  if (BRIDGE_CRASH_BARRIER_RE.test(d) && BRIDGE_CONTEXT_RE.test(d)) return true;
+  return false;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

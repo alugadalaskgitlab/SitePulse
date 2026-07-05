@@ -24,7 +24,12 @@ Rows previously used a fixed pixel `height` (ROW_H/ITEM_H) for the sticky left p
 
 **Why:** the original route could delete legitimate hand-entered bars on structure items with no way to recover them; users need a chance to review before deletion.
 
-**How to apply:** if this route's matching logic (STRUCTURE_CATEGORY_RE / STRUCTURE_KEYWORD_RE) needs new keywords, keep them in sync with the classifier's bridge-context keywords in `workTypeRecipes.ts` so the two stay consistent.
+## Structure classification must never rely on planningWorkType alone
+A single `planningWorkType === "structure"` (or a local per-route copy of the structure regexes) is not enough — the stored field goes stale on items imported before a classifier fix, or never set on legacy data. All four call sites that decide "is this item structure/location-scheduled" (Auto-generate, Auto-sequence, Clean Structure Bars, and the Work Programme coverage badge/status text) must go through one shared, context-based helper instead of duplicating regexes or trusting only the persisted field.
+
+**Why:** a follow-up bug report showed structure/bridge items (foundation excavation for bridges, strip seal joints, bridge railing/enamel painting, bearings, drainage spouts, weepholes, approach slab, filter media behind abutment) still getting split into road Reach 1-4 bars, because some call sites checked only `planningWorkType === "structure"` while others had their own local regex copy that had drifted out of sync.
+
+**How to apply:** `isStructureOrLocationScheduledItem(item, { hasStructureImportBar })` in `shared/workTypeRecipes.ts` is the single source of truth — it checks (in order) an existing structure_import bar, `planningWorkType === "structure"`, BOQ category/section name, description keywords, and bridge-context crash-barrier logic. Import and call this helper from every new call site instead of adding another local regex or another bare `planningWorkType` check. If a new structure-context keyword needs to be recognized, add it to `STRUCTURE_KEYWORD_RE`/`STRUCTURE_CATEGORY_RE` (and to `classifyWorkType`'s matching branch, for belt-and-suspenders correctness on new imports) — never to a route-local copy.
 
 ## Known pre-existing tsc noise
 The project's `tsc --noEmit` run reports many pre-existing errors unrelated to any single change: `Set`/`Map` spread requiring `--downlevelIteration` (TS2802), `Request` type mismatches in `server/routes.ts`, and various loosely-typed pages. These are longstanding and not blocking (tsx/esbuild build fine); don't treat them as regressions unless the specific edited lines are new.

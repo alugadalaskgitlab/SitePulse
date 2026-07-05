@@ -1,0 +1,96 @@
+The latest Work Programme is mostly improved, but some structure/bridge-specific items are still being planned as road reaches.
+
+Observed issues:
+1. Excavation for foundation of bridges/structures is still being divided into road Reach 1/2/3/4.
+2. Strip seal expansion joints are showing both road reach bars and structure/location bars.
+3. Bridge numbering / enamel painting is being planned as road reach work.
+4. MS railing / bridge railing is also being planned as road reach work.
+5. Similar issue may apply to bearings, tar paper, POT/PTFE bearings, drainage spouts, weepholes, approach slab, filter media behind abutment, expansion joints, crash barrier on bridges, etc.
+
+Root issue:
+The app seems to clean/skip structure bars only when:
+- planningWorkType = structure, or
+- the item already has source = structure_import bars.
+
+That is not enough.
+
+Required fix:
+
+1. Add a common helper used by:
+- Auto-generate
+- Auto-sequence
+- Clean Structure Bars
+- Work Programme coverage/status display
+
+Suggested helper:
+isStructureOrLocationScheduledItem(item)
+
+It should return true based on context, not only planningWorkType.
+
+2. It should classify these as structure/location/schedule-required items:
+
+By BOQ category/section:
+- Culverts
+- Bridges
+- Minor Bridges
+- Major Bridges
+- Drainage and Protection Works
+- Retaining Walls
+- Cross Drainage
+- Structures
+
+By item description/context:
+- excavation for foundation of structures
+- excavation for foundation of bridges
+- excavation for foundation of culverts
+- foundation excavation
+- abutment
+- pier
+- retaining wall
+- wing wall
+- head wall
+- substructure
+- superstructure
+- bridge bearing
+- tar paper bearing
+- POT bearing
+- PTFE bearing
+- strip seal joint
+- expansion joint
+- drainage spout
+- weephole / weep hole
+- bridge railing
+- MS railing
+- crash barrier on bridge
+- approach slab
+- filter media behind abutment
+- bridge numbering
+- enamel painting on bridge / structure
+
+3. These items must not be auto-generated as road reach bars.
+
+If they are not present in the imported 4-sheet schedule, show:
+“Not programmed — schedule/location required.”
+
+4. Clean Structure Bars must remove existing wrong road-style bars for these items:
+- source = auto_generate
+- source = auto-sequence
+- legacy Reach 1 / Reach 2 / Reach 3 / Reach 4 bars
+- legacy manual-looking bars with auto labels
+
+But preserve:
+- source = structure_import bars
+- genuine manual bars unless user confirms deletion
+
+5. If an item has both road reach bars and structure_import bars, remove only the road reach bars and keep structure_import.
+
+6. Chainage:
+For structure_import bars, continue to preserve imported chainage.
+If chainage shows Km 0.000, verify the parser is reading Chainage From / Chainage To from the frozen 4-sheet template.
+
+Expected result:
+- Excavation for bridge/structure foundation is not road excavation.
+- Strip seal joints appear only as bridge/location bars, not road reaches.
+- Bridge numbering/enamel painting is bridge/location-specific or schedule-required.
+- MS railing/bridge railing is bridge/location-specific or schedule-required.
+- Only true road linear items get Reach 1/2/3/4.

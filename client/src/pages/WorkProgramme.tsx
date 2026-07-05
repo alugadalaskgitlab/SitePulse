@@ -33,6 +33,7 @@ import {
   type ProductivitySettings,
 } from "@shared/planningEngine";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
+import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
 import { shortItemName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type {
@@ -68,12 +69,12 @@ function getCatColor(idx: number) { return CAT_COLORS[idx % CAT_COLORS.length]; 
 
 // ─── Coverage Badge ─────────────────────────────────────────────────────────────
 
-function CoverageBadge({ planned, boqQty, unit, planningWorkType }: { planned: number; boqQty: number; unit: string; planningWorkType?: string }) {
+function CoverageBadge({ planned, boqQty, unit, isStructureItem }: { planned: number; boqQty: number; unit: string; isStructureItem?: boolean }) {
   if (planned === 0) {
-    const full = planningWorkType === "structure"
+    const full = isStructureItem
       ? "Not programmed — schedule/location required."
       : "Not programmed";
-    const compact = planningWorkType === "structure" ? "Not programmed" : full;
+    const compact = isStructureItem ? "Not programmed" : full;
     return (
       <span
         title={full}
@@ -156,7 +157,9 @@ function StretchRow({
   const lockedDurationRef = useRef<number>(bar.endMonth - bar.startMonth);
 
   // Structure-aware mode: for bridge/CD/culvert items, qty is entered directly per location.
-  const isStructure = (item as any).planningWorkType === "structure";
+  const isStructure = isStructureOrLocationScheduledItem(item as any, {
+    hasStructureImportBar: itemBars.some(b => (b as any).source === "structure_import"),
+  });
   const [structQtyStr, setStructQtyStr] = useState(() =>
     bar.plannedQty > 0 ? String(bar.plannedQty) : "",
   );
@@ -1433,7 +1436,7 @@ function InlineGanttTable({
     const cfVal = lastBar?.chainageTo ?? 0;
     const ctVal = roadLen > 0 ? roadLen : (cfVal + 1);
     const sm = clickedMonth ?? (lastBar ? Math.ceil(lastBar.endMonth) : 1);
-    const isStructItem = (item as any).planningWorkType === "structure" || structureImportItemIds.has(item.id);
+    const isStructItem = isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) });
     const existingLen = isStructItem ? 0 : itemBars.reduce(
       (s, b) => s + Math.max(0, (b.chainageTo ?? 0) - (b.chainageFrom ?? 0)), 0,
     );
@@ -1598,7 +1601,7 @@ function InlineGanttTable({
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
                             <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {item.unit}</span>
-                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} planningWorkType={(item as any).planningWorkType} />
+                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
                             {!hasEquipment && (
                               <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
                                 <Info className="w-2.5 h-2.5" /> no equipment
@@ -1682,7 +1685,7 @@ function InlineGanttTable({
                           <span className="text-[12px] text-slate-500 font-semibold">
                             Total: {fmtQty(totalPlanned, 1)} {item.unit}
                           </span>
-                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} planningWorkType={(item as any).planningWorkType} />
+                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
                         </div>
                         <div style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0 }} />
                       </div>
@@ -2355,14 +2358,13 @@ export default function WorkProgramme() {
     const toCreate = items.filter(it =>
       !programmedIds.has(it.id) &&
       (it.currentQty ?? 0) > 0 &&
-      (it as any).planningWorkType !== "structure" &&
-      !structureImportItemIds.has(it.id),
+      !isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) }),
     );
 
     const skippedStructure = items.filter(it =>
       !programmedIds.has(it.id) &&
       (it.currentQty ?? 0) > 0 &&
-      ((it as any).planningWorkType === "structure" || structureImportItemIds.has(it.id)),
+      isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) }),
     ).length;
 
     if (toCreate.length === 0) {
@@ -2443,7 +2445,9 @@ export default function WorkProgramme() {
   // structure items — uses the same filter logic as the server endpoint.
   const hasStrayStructureBars = useMemo(() => {
     const structureItemIds = new Set([
-      ...items.filter(it => (it as any).planningWorkType === "structure").map(it => it.id),
+      ...items
+        .filter(it => isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) }))
+        .map(it => it.id),
       ...structureImportItemIds,
     ]);
     if (structureItemIds.size === 0) return false;
@@ -2575,7 +2579,7 @@ export default function WorkProgramme() {
               </Button>
             </>
           )}
-          {items.some(it => (it as any).planningWorkType === "structure") && (
+          {items.some(it => isStructureOrLocationScheduledItem(it as any, { hasStructureImportBar: structureImportItemIds.has(it.id) })) && (
             <Button
               variant="outline"
               size="sm"
