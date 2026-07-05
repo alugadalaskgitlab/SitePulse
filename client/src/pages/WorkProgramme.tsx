@@ -1695,23 +1695,24 @@ function MonthlyPlanView({
   return (
     <div className="overflow-x-auto rounded-xl border">
       <table className="text-sm border-collapse" style={{ minWidth: 200 + maxMonth * 64 + 80 }}>
-        {/* thead sticky at top-14 (56px) = below main nav, page-level scroll.
-            Using overflow-x-auto (not overflow-auto+maxHeight) so page scroll
-            is the scroll context — inner-container sticky is unreliable when
-            the page also scrolls. */}
-        <thead className="sticky top-14 z-10">
+        {/* Sticky is applied per-<th> (not on <thead> itself) at top-14 (56px,
+            below main nav), using page-level scroll. Sticky positioning on a
+            <thead> element is unreliable across browsers (Firefox/Safari can
+            fail to clip body rows underneath it); sticking each <th>
+            individually works consistently in every browser. */}
+        <thead>
           <tr style={{ background: "#0F5F64" }}>
-            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-20 min-w-[220px]" style={{ background: "#0F5F64" }}>
+            <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-14 z-30 min-w-[220px]" style={{ background: "#0F5F64" }}>
               BOQ Item
             </th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[72px] whitespace-nowrap">BOQ Qty</th>
-            <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px]">Unit</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[72px] whitespace-nowrap sticky top-14 z-20" style={{ background: "#0F5F64" }}>BOQ Qty</th>
+            <th className="px-2 py-2 font-semibold text-white text-right min-w-[60px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Unit</th>
             {months.map(m => (
-              <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[64px]">
+              <th key={m} className="px-2 py-2 font-semibold text-white text-right whitespace-nowrap min-w-[64px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>
                 {monthLabel(m, project.startDate)}
               </th>
             ))}
-            <th className="px-3 py-2 font-semibold text-white text-right min-w-[80px]">Total</th>
+            <th className="px-3 py-2 font-semibold text-white text-right min-w-[80px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Total</th>
           </tr>
         </thead>
         <tbody>

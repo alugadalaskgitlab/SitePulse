@@ -1245,16 +1245,22 @@ function ProcurementTable({ data, projectId }: { data: ShortageData; projectId: 
 
       <div className="overflow-x-auto rounded-xl border">
         <table className="text-sm border-collapse w-full" style={{ minWidth: 600 }}>
-          <thead className="sticky top-14 z-10">
+          {/* Sticky is applied per-<th> (not on <thead> itself) at top-14 (56px,
+              below main nav), using page-level scroll. Sticky positioning on a
+              <thead> element is unreliable across browsers (Firefox/Safari can
+              fail to clip body rows underneath it), which was causing the first
+              data row to bleed through the header on scroll. Sticking each
+              <th> individually works consistently in every browser. */}
+          <thead>
             <tr style={{ background: "#0F5F64" }}>
-              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 z-10 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px]">Unit</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Total Demand</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Current Stock</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px]">Pending PI/IRN</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px]">Shortfall</th>
-              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px]">Near-term Risk</th>
-              <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px]">Action</th>
+              <th className="text-left px-3 py-2 font-semibold text-white sticky left-0 top-14 z-30 min-w-[200px]" style={{ background: "#0F5F64" }}>Material</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[50px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Unit</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Total Demand</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Current Stock</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[90px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Pending PI/IRN</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[80px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Shortfall</th>
+              <th className="px-2 py-2 font-semibold text-white text-right min-w-[100px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Near-term Risk</th>
+              <th className="px-3 py-2 font-semibold text-white text-left min-w-[130px] sticky top-14 z-20" style={{ background: "#0F5F64" }}>Action</th>
             </tr>
           </thead>
           <tbody>
