@@ -7,6 +7,7 @@
 - [BOM Aggregate Misclassification](bom-aggregate-misclassification.md) — normaliseKeyMaterialName() bug: desc-based VG-grade check must be guarded by rawIsBinder; fix is in planningEngine.ts ~line 686.
 - [DPR form dead code trap](dpr-form-dead-code.md) — DprForm.tsx/NewDpr.tsx are unrouted dead code; the real live DPR form is SiteEntry.tsx.
 - [SiteEntry showPreview early-return trap](siteentry-preview-early-return.md) — any confirm dialog wired through handleSubmit must render in both the showPreview and main return branches, or it's unreachable from Preview.
+- [Work Programme fixes 2026-07](work-programme-issue-fixes-2026-07.md) — Gantt row minHeight+flex-wrap pattern; bridge-context classifier ordering; Clean Structure Bars confirmation flow.
 - [DPR Plan vs Actual linkage](dpr-plan-vs-actual-linkage.md) — equipment/labour/material logs all support boqItemId+structureId linkage; report has structure/reach breakdown, material comparison, productivity metric, equip KM (actual-only).
 - [Route logic testability](route-logic-testability.md) — extract pure calculation logic out of Express route handlers into shared/*.ts before writing tests; route bodies with DB calls inline aren't unit-testable.
 - [Cross-book SDB fallback](cross-book-sdb-fallback.md) — secondary-sector fallback (e.g. IRRIGATION for structure categories) must stay strictly penalized/never-primary and category-scoped, or it silently promotes wrong-book matches.

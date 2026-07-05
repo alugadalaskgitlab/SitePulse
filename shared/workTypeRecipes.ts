@@ -30,7 +30,13 @@ export type WorkType =
   | "dissipation_chamber"
   | "turfing"
   | "weep_holes"
-  | "retaining_wall_structure";
+  | "retaining_wall_structure"
+  | "bridge_bearing"
+  | "bridge_finishing"
+  | "drainage_spout"
+  | "expansion_joint"
+  | "approach_slab"
+  | "bridge_crash_barrier";
 
 /**
  * Maps each work type to its planning category.
@@ -64,6 +70,12 @@ export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
   turfing:                "structure",
   weep_holes:             "structure",
   retaining_wall_structure: "structure",
+  bridge_bearing:         "structure",
+  bridge_finishing:       "structure",
+  drainage_spout:         "structure",
+  expansion_joint:        "structure",
+  approach_slab:          "structure",
+  bridge_crash_barrier:   "structure",
 };
 
 interface EquipmentLine {
@@ -129,6 +141,39 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   // "structure" planning category and be excluded from road-reach auto-generation).
   if (/retaining\s*wall/i.test(d)) return "retaining_wall_structure";
 
+  // ── Bridge/structure context items — checked BEFORE concrete/excavation
+  // classification so e.g. "RCC approach slab" or "filter media behind abutment"
+  // are not swept into generic "rcc"/"excavation_structure". These items must
+  // classify by CONTEXT (never split into road Reach 1-4 bars). ────────────────
+
+  // Bridge bearings (POT/PTFE, elastomeric, tar paper under bearings).
+  // Guard "bearing" alone against false positives like "bearing capacity of soil".
+  if (
+    /pot[\s-]*ptfe|\bptfe\b|elastomeric\s*bearing|pot\s*bearing|bridge\s*bearing|bearing\s*plate|bearing\s*pedestal|tar\s*paper/i.test(d) ||
+    (/\bbearing\b/i.test(d) && !/bearing\s*capacity/i.test(d))
+  ) return "bridge_bearing";
+
+  // Bridge numbering / bridge painting (identification & finishing works).
+  if (/bridge\s*(numbering|number\s*plate|name\s*plate)|painting\s*(of\s*)?(the\s*)?bridge|bridge\s*painting/i.test(d)) return "bridge_finishing";
+
+  // Drainage spouts (bridge deck drainage, distinct from weep holes).
+  if (/drainage?\s*spout|deck\s*spout|scupper/i.test(d)) return "drainage_spout";
+
+  // Expansion joints (bridge/structure movement joints).
+  if (/expansion\s*joint|strip\s*seal\s*joint|modular\s*joint/i.test(d)) return "expansion_joint";
+
+  // Approach slabs (always bridge/structure-adjacent, never a road reach item).
+  if (/approach\s*slab/i.test(d)) return "approach_slab";
+
+  // Crash barrier — only when tied to bridge context (road crash barrier is a road item).
+  if (/crash\s*barrier|metal\s*beam\s*crash\s*barrier|\bmbcb\b/i.test(d) && /\bbridge\b|\bviaduct\b|\bflyover\b|\bdeck\b/i.test(d)) {
+    return "bridge_crash_barrier";
+  }
+
+  // Filter media / drainage layers in structures (checked before excavation_structure
+  // so e.g. "filter media behind abutment" isn't swept into excavation via "abutment").
+  if (/filter\s*media|filter\s*material|drainage\s*layer|granular\s*filter/i.test(d)) return "filter_media";
+
   // ── Concrete (order matters: pqc > dlc > rcc > pcc) ────────────────────────
   if (/\bpqc\b|pavement\s*quality\s*concrete/i.test(d)) return "pqc";
   if (/\bdlc\b|dry\s*lean\s*concrete/i.test(d)) return "dlc";
@@ -149,7 +194,7 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   // Exclude embankment items that merely cite structure excavation as a *material source*
   // (e.g. "embankment with approved materials obtained from structure excavation").
   if (
-    /foundation|footing|abutment|pier|culvert|trench|pit\s*excavat|excavat.*structure|structure.*excavat|box\s*cut/i.test(d) &&
+    /foundation|footing|abutment|pier|culvert|trench|pit\s*excavat|excavat.*structure|structure.*excavat|box\s*cut|excavat.*(bridge|drain|retaining\s*wall)|(bridge|drain|retaining\s*wall).*excavat/i.test(d) &&
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u) &&
     !/\bembankment\b/i.test(d)
   ) return "excavation_structure";
@@ -176,9 +221,6 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "backfill_structure";
 
-  // ── Filter media / drainage layers in structures ────────────────────────────
-  if (/filter\s*media|filter\s*material|drainage\s*layer|granular\s*filter/i.test(d)) return "filter_media";
-
   // ── Stone pitching (slope protection) ───────────────────────────────────────
   if (/stone\s*pitching|stone\s*apron|riprap|rip\s*rap|boulder\s*pitching/i.test(d)) return "stone_pitching";
 
@@ -196,8 +238,10 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
   if (/dissipat\w*\s*(chamber|pad|structure|basin)/i.test(d)) return "dissipation_chamber";
   if (/turfing|turf\s*work|sodding/i.test(d)) return "turfing";
   if (/weep\s*hole/i.test(d)) return "weep_holes";
-  // (retaining_wall_structure is classified earlier, before the concrete checks —
-  // see the "Retaining wall" block above.)
+  // (retaining_wall_structure and the bridge-context items — bearings, numbering/
+  // painting, drainage spouts, expansion joints, approach slabs, crash barriers,
+  // filter media — are all classified earlier, before the concrete/excavation
+  // checks. See the "Bridge/structure context items" block above.)
 
   // ── Minor civil / masonry ────────────────────────────────────────────────────
   if (/masonry|brick\s*work|stone\s*work|drain.*wall|head\s*wall|wing\s*wall/i.test(d)) return "drain_masonry";
@@ -575,6 +619,61 @@ export const WORK_TYPE_RECIPES: Record<WorkType, WorkTypeRecipe> = {
     labour: [
       { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.4, count: 4 },
       { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.4, count: 4 },
+    ],
+  },
+
+  // ── Bridge bearings (POT/PTFE, elastomeric, tar paper) — schedule-only, structure category.
+  bridge_bearing: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.5, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.5, count: 2 },
+    ],
+  },
+
+  // ── Bridge numbering / bridge painting — schedule-only, structure category.
+  bridge_finishing: {
+    equipment: [],
+    labour: [
+      { designation: "General Helper / Coolie", fallbackDaysPerUnit: 0.1, count: 2 },
+    ],
+  },
+
+  // ── Drainage spouts / deck scuppers — schedule-only, structure category.
+  drainage_spout: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.1, count: 1 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.1, count: 1 },
+    ],
+  },
+
+  // ── Expansion joints — schedule-only, structure category.
+  expansion_joint: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.3, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.3, count: 2 },
+    ],
+  },
+
+  // ── Approach slabs — schedule-only, structure category.
+  approach_slab: {
+    equipment: [
+      { name: "Water Tanker (6000 L)", preferredUnit: "CUM", fallbackHrsPerUnit: 0.1, count: 1 },
+    ],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.4, count: 3 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.4, count: 3 },
+    ],
+  },
+
+  // ── Crash barrier in bridge/viaduct/deck context — schedule-only, structure category.
+  bridge_crash_barrier: {
+    equipment: [],
+    labour: [
+      { designation: "Mason (Form-work / Concrete)", fallbackDaysPerUnit: 0.2, count: 2 },
+      { designation: "General Helper / Coolie",      fallbackDaysPerUnit: 0.2, count: 2 },
     ],
   },
 };

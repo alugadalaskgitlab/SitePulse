@@ -1,0 +1,84 @@
+The Work Programme is now mostly okay, but there are three remaining issues to fix.
+
+1. UI / display overlap
+
+In the Gantt left panel, many rows overlap:
+- long BOQ descriptions
+- structure tags
+- warning badges
+- qty/date lines
+- Add Stretch buttons
+
+Please fix the Work Programme Gantt layout:
+- increase row height dynamically for rows with imported structure bars
+- allow BOQ item names to wrap or truncate cleanly with tooltip
+- do not let warning badges overlap item names or buttons
+- keep Add Stretch button aligned
+- make structure/imported bars visually readable
+- mobile/tablet horizontal scroll should remain usable
+
+2. Structure/bridge-specific items must not become road reach bars
+
+Please strengthen classification/context logic.
+
+The app must classify by item context, not only by keywords.
+
+Examples:
+
+Roadway excavation / earthwork in cutting / embankment:
+→ road_reach
+
+Excavation for foundation of structures / bridges / culverts / retaining walls / drains:
+→ structure_location / schedule_required
+
+Bridge bearings / tar paper / POT-PTFE bearings:
+→ structure_location / schedule_required
+
+Bridge numbering / painting on bridges:
+→ structure_location / schedule_required
+
+Drainage spouts / weep holes / expansion joints / approach slab / crash barrier on bridges:
+→ structure_location / schedule_required
+
+Filter media behind abutment / retaining wall / protection work:
+→ structure_location or drains_retaining_walls schedule
+
+These items must not be split into Reach 1 / Reach 2 / Reach 3 / Reach 4 road bars.
+
+3. Cleanup duplicate road-style bars from structure items
+
+The Clean Structure Bars logic should detect structure-specific items not only by:
+- planningWorkType = structure
+- existing structure_import bars
+
+It should also detect by:
+- BOQ category/section: Culverts, Bridges, Minor Bridges, Major Bridges, Drainage and Protection Works, Retaining Walls
+- BOQ description context:
+  foundation excavation, bearing, tar paper, POT, PTFE, expansion joint, drainage spout, weep hole, bridge numbering, bridge painting, approach slab, abutment, pier, substructure, superstructure, filter media behind abutment, wing wall, head wall, retaining wall
+
+Cleanup should:
+- delete auto_generate / auto-sequence road-style bars for such items
+- preserve structure_import bars
+- preserve genuine manual bars unless user confirms deletion
+
+4. Rule for unscheduled structure/protection items
+
+If a bridge/structure/protection item is not included in the 4-sheet schedule, do not auto-plan it as road work.
+
+Show:
+“Not programmed — schedule/location required.”
+
+5. Chainage
+
+Imported structure/location bars should show actual chainage, not Km 0.000.
+Please verify parser reads:
+- Chainage From
+- Chainage To
+from the frozen 4-sheet template.
+
+Expected result:
+- Excavation for bridge/structure foundation is not planned as roadway excavation.
+- Bridge bearings, tar paper, POT/PTFE bearings, drainage spouts, weep holes, bridge numbering/painting are not spread over road reaches.
+- Only true road linear items get Reach 1/2/3/4 bars.
+- Structure/location items are planned only from the imported schedule or remain schedule-required.
+- Gantt display is clean with no overlapping text.

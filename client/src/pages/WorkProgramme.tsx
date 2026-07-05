@@ -69,30 +69,37 @@ function getCatColor(idx: number) { return CAT_COLORS[idx % CAT_COLORS.length]; 
 // ─── Coverage Badge ─────────────────────────────────────────────────────────────
 
 function CoverageBadge({ planned, boqQty, unit, planningWorkType }: { planned: number; boqQty: number; unit: string; planningWorkType?: string }) {
-  if (planned === 0) return (
-    <span className="inline-flex text-[12px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
-      {planningWorkType === "structure"
-        ? "Not programmed — schedule/location required."
-        : "Not programmed"}
-    </span>
-  );
+  if (planned === 0) {
+    const full = planningWorkType === "structure"
+      ? "Not programmed — schedule/location required."
+      : "Not programmed";
+    const compact = planningWorkType === "structure" ? "Not programmed" : full;
+    return (
+      <span
+        title={full}
+        className="inline-flex max-w-[220px] shrink truncate whitespace-nowrap text-[12px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5"
+      >
+        {compact}
+      </span>
+    );
+  }
   const diff = planned - boqQty;
   const absDiff = Math.abs(diff);
   // Treat differences < 0.5 unit as "fully covered" to avoid showing "Over/Under by 0"
   // due to floating-point rounding when the gap is smaller than display precision.
   if (absDiff < 0.5) return (
-    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
-      <CheckCircle2 className="w-3 h-3" /> Fully covered
+    <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+      <CheckCircle2 className="w-3 h-3 shrink-0" /> Fully covered
     </span>
   );
   if (diff < 0) return (
-    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-      <AlertTriangle className="w-3 h-3" /> Under by {fmtQty(absDiff)} {unit}
+    <span title={`Under by ${fmtQty(absDiff)} ${unit}`} className="inline-flex items-center gap-1 max-w-[200px] shrink truncate whitespace-nowrap text-[12px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+      <AlertTriangle className="w-3 h-3 shrink-0" /> Under by {fmtQty(absDiff)} {unit}
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
-      <AlertTriangle className="w-3 h-3" /> Over by {fmtQty(absDiff)} {unit}
+    <span title={`Over by ${fmtQty(absDiff)} ${unit}`} className="inline-flex items-center gap-1 max-w-[200px] shrink truncate whitespace-nowrap text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+      <AlertTriangle className="w-3 h-3 shrink-0" /> Over by {fmtQty(absDiff)} {unit}
     </span>
   );
 }
@@ -353,14 +360,16 @@ function StretchRow({
 
   return (
     <div
-      style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
+      style={{ display: "flex", alignItems: "stretch", minHeight: ROW_H }}
       className="border-b border-dashed border-slate-100 dark:border-slate-800"
       data-testid={`stretch-row-${bar.id}`}
     >
-      {/* ── Left sticky panel ── */}
+      {/* ── Left sticky panel. minHeight (not fixed height) + flex-wrap so chainage,
+          qty, date, badges, and toggle wrap onto a 2nd line instead of clipping/
+          overlapping at narrow widths. ── */}
       <div
-        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
-        className={`flex items-center gap-1 px-1.5 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
+        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+        className={`flex items-center gap-1 flex-wrap px-1.5 py-1 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-950 ${
           patch.isPending ? "opacity-70" : ""
         }`}
       >
@@ -723,60 +732,60 @@ function StructureLocationRow({
 
   return (
     <div
-      style={{ display: "flex", height: ROW_H, minHeight: ROW_H }}
+      style={{ display: "flex", alignItems: "stretch", minHeight: ROW_H }}
       className="border-b border-dashed border-violet-100 dark:border-violet-900/30 bg-violet-50/30 dark:bg-violet-950/10"
       data-testid={`structure-loc-row-${bar.id}`}
     >
       {/* ── Left sticky panel (read-only — re-import to change values) ── */}
       <div
-        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, overflow: "hidden", position: "sticky", left: 0, zIndex: 10 }}
-        className="flex flex-col justify-center gap-0.5 px-2 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
+        style={{ width: LEFT_W, minWidth: LEFT_W, maxWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+        className="flex flex-col justify-center gap-1 px-2 py-1.5 border-r border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/30"
       >
         {/* Row 1: icon + structure name + chainage */}
         <div className="flex items-center gap-1 min-w-0">
           <MapPin className="w-3 h-3 text-violet-500 flex-shrink-0" />
           <span
-            className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 truncate"
+            className="text-[11px] font-semibold text-violet-700 dark:text-violet-300 truncate min-w-0"
             title={b.structureId ?? ""}
           >
             {b.structureId ?? b.reachLabel ?? "—"}
           </span>
           {b.structureChainageKm != null && (
-            <span className="text-[10px] text-violet-500 font-mono flex-shrink-0 ml-auto">
+            <span className="text-[10px] text-violet-500 font-mono flex-shrink-0 ml-auto whitespace-nowrap">
               Km {Number(b.structureChainageKm).toFixed(3)}
             </span>
           )}
         </div>
-        {/* Row 2: structure type + BOQ item code + sub-item + qty */}
+        {/* Row 2: structure type + BOQ item code + sub-item + qty (wraps onto its own line rather than clipping/overlapping) */}
         <div className="flex items-center gap-1 min-w-0 flex-wrap">
           {b.structureLocType && (
-            <span className="text-[10px] bg-violet-100 text-violet-700 rounded px-1 border border-violet-200 flex-shrink-0 capitalize">
+            <span className="text-[10px] bg-violet-100 text-violet-700 rounded px-1 border border-violet-200 flex-shrink-0 capitalize max-w-[140px] truncate" title={b.structureLocType}>
               {b.structureLocType}
             </span>
           )}
           {(bar as any).itemCode && (
-            <span className="text-[10px] text-slate-500 font-mono flex-shrink-0">
+            <span className="text-[10px] text-slate-500 font-mono flex-shrink-0 max-w-[90px] truncate" title={(bar as any).itemCode}>
               {(bar as any).itemCode}
             </span>
           )}
           {b.boqSubItem && (
-            <span className="text-[10px] bg-violet-50 text-violet-600 rounded px-1 border border-violet-200 flex-shrink-0 font-mono">
+            <span className="text-[10px] bg-violet-50 text-violet-600 rounded px-1 border border-violet-200 flex-shrink-0 font-mono max-w-[80px] truncate" title={b.boqSubItem}>
               {b.boqSubItem}
             </span>
           )}
-          <span className="text-[10px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-auto">
+          <span className="text-[10px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-auto whitespace-nowrap">
             {fmtQty(bar.plannedQty, 2)} {(bar as any).unit ?? ""}
           </span>
         </div>
         {/* Row 3: start date + duration + delete */}
         <div className="flex items-center gap-1 min-w-0">
           {bar.startDate && (
-            <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
+            <span className="text-[10px] text-slate-400 font-mono flex-shrink-0 whitespace-nowrap">
               {String(bar.startDate).slice(0, 10)}
             </span>
           )}
           {b.durationDays != null && (
-            <span className="text-[10px] text-slate-400 flex-shrink-0">
+            <span className="text-[10px] text-slate-400 flex-shrink-0 whitespace-nowrap">
               {b.durationDays}d
             </span>
           )}
@@ -1550,18 +1559,21 @@ function InlineGanttTable({
 
                 return (
                   <div key={item.id} className="border-b border-slate-200 dark:border-slate-700">
-                    {/* Item header row */}
+                    {/* Item header row — minHeight only (not fixed) so long descriptions,
+                        structure tags, and warning badges can wrap onto a 2nd line instead
+                        of clipping/overlapping. Flexbox default align-items:stretch makes the
+                        right-side month cells grow to match automatically. */}
                     <div
-                      style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: ITEM_H, overflow: "hidden" }}
+                      style={{ display: "flex", alignItems: "stretch", minWidth: LEFT_W + totalRightW, minHeight: ITEM_H }}
                       className="border-b border-slate-100 dark:border-slate-800"
                     >
                       {/* Item left */}
                       <div
-                        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10, overflow: "hidden" }}
-                        className="flex items-center gap-2 px-3 bg-white dark:bg-gray-950 border-r border-slate-200 dark:border-slate-700"
+                        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-950 border-r border-slate-200 dark:border-slate-700"
                       >
-                        <div className="flex-1 min-w-0 overflow-hidden">
-                          <div className="flex items-center gap-1.5 overflow-hidden">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             {item.itemCode && (
                               <span className="text-xs font-mono text-muted-foreground flex-shrink-0">{item.itemCode}</span>
                             )}
@@ -1584,11 +1596,11 @@ function InlineGanttTable({
                               </HoverCardContent>
                             </HoverCard>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
-                            <span className="text-[12px] text-muted-foreground flex-shrink-0">{fmt(item.currentQty)} {item.unit}</span>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
+                            <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {item.unit}</span>
                             <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} planningWorkType={(item as any).planningWorkType} />
                             {!hasEquipment && (
-                              <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0">
+                              <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
                                 <Info className="w-2.5 h-2.5" /> no equipment
                               </span>
                             )}
@@ -1597,7 +1609,7 @@ function InlineGanttTable({
                         <button
                           onClick={() => addStretch(item.id)}
                           disabled={createMutation.isPending}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-700 transition-colors flex-shrink-0 font-medium"
+                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 dark:bg-teal-900/20 dark:border-teal-700 transition-colors flex-shrink-0 font-medium self-center"
                           data-testid={`button-add-stretch-${item.id}`}
                         >
                           <Plus className="w-3 h-3" />
