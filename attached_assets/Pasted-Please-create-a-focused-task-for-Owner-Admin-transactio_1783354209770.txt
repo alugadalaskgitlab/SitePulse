@@ -1,0 +1,112 @@
+Please create a focused task for Owner/Admin transaction controls and audit trail.
+
+Requirement:
+Every transaction/module/list/detail screen should expose Edit / Delete / Cancel / History actions based on permissions.
+
+Commercial rule:
+At subscription/company setup, one user should be marked as Company Owner / Primary Admin. This owner should always have full control and should not get locked out by permission toggles.
+
+1. Owner / Primary Admin
+
+Owner should always see:
+- View
+- Edit
+- Delete / Cancel / Void
+- Approve where applicable
+- Export/Print
+- History / Audit Trail
+- User Management
+- Permission Management
+
+Owner actions should also be audited.
+
+2. Admin / Division Admin / Manager / User permissions
+
+Other users should see Edit/Delete/Cancel only if their permission toggles allow it.
+
+Examples:
+- Project Admin can edit DPR/programme/site transactions if allowed.
+- Stores Admin can edit receipts/IRN/PI if allowed.
+- Plant Admin can edit plant production/fuel/bitumen logs if allowed.
+- Engineer can edit own draft/recent DPR only if allowed.
+- Store user can edit receipts only before approval/billing if allowed.
+
+3. Transaction action buttons
+
+Add/verify actions on all major transaction screens:
+- DPRs
+- Road/Structure DPR progress entries where applicable
+- Material receipts
+- Site purchases
+- IRNs
+- Purchase indents
+- Purchase orders / vendor bills where available
+- Plant production
+- HMP/RMC stock receipts
+- Equipment usage logs
+- Equipment breakdown/maintenance logs
+- Fuel/LDO/bitumen logs
+- Labour entries
+- Material issue/consumption entries
+
+Each transaction row/detail should have:
+- View
+- Edit
+- Delete / Cancel / Void
+- History / Audit Trail
+
+4. Delete vs Cancel / Void
+
+Do not silently hard-delete important submitted/approved/stock-affecting transactions.
+
+Rules:
+- Draft records: Delete allowed if permitted.
+- Submitted records: Cancel/Void with reason.
+- Approved records: only manager/admin/owner can reopen/correct/cancel.
+- Stock-affecting records: cancellation should reverse stock impact or create reversal entry.
+- Billed records: do not delete; allow correction/reversal with reason.
+- For testing/dev, owner may have hard delete only if clearly marked and audited.
+
+5. Audit trail
+
+Every create/edit/delete/cancel/approve action must create audit log entry:
+- module/transaction type
+- transaction ID
+- action
+- user ID/name
+- user role
+- timestamp
+- old values
+- new values
+- reason for edit/delete/cancel where applicable
+- stock impact if applicable
+
+Owner/admin actions must also be logged.
+
+6. UI
+
+- Show Edit/Delete/Cancel/History clearly in list rows and detail pages.
+- If user lacks permission, hide action or show disabled with tooltip.
+- Confirmation required for delete/cancel.
+- Reason required for cancel/delete of submitted, approved or stock-affecting records.
+- Owner should see these actions by default across modules.
+
+7. Backend enforcement
+
+- Enforce permissions on API routes also.
+- Do not rely only on frontend hiding.
+- Add soft-delete/cancel fields where missing:
+  isDeleted / deletedAt / deletedBy
+  status = cancelled / voided
+  cancelledAt / cancelledBy / cancellationReason
+
+8. Reports
+
+- Cancelled/deleted records should be excluded from active totals by default.
+- Owner/admin should be able to view cancelled/deleted records in audit/history.
+
+Immediate testing need:
+While we are testing the app, the owner/admin should have edit/delete/cancel/history controls visible across all transaction modules so wrong test entries can be corrected safely.
+
+Scope:
+Do not redesign modules in this task. This is transaction action visibility, permission enforcement and audit trail foundation.
