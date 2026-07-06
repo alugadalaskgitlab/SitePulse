@@ -15,6 +15,6 @@
 - [Equipment output gap prompt](equipment-output-gap-prompt.md) — never fabricate an SDB suggestion across mismatched units; surface a gap prompt with manual entry instead of silently dropping equipment from duration calc.
 - [Sticky thead cross-browser bug](sticky-thead-cross-browser-bug.md) — sticky headers need an explicit `max-h`+`overflow-auto` scroll container with `top-0`; `overflow-x-auto`-only + `top-N` silently never sticks.
 - [Road + Structures V1 planning boundary](road-structure-planning-boundary-v1.md) — structure/protective items plan only from frozen Structure Schedule Import, never auto-spread by chainage; unclassified work types leak into road planning as null→"road".
-- [Field Home + Guided Mobile DPR Flow](field-home-guided-dpr.md) — mobile engineer landing page + step-by-step DPR wrapper over existing SiteEntry.tsx logic; defaults/gating now keyed on explicit isFieldEngineer flag, not isManager.
+- [Field Home + Guided DPR Flow](field-home-guided-dpr.md) — role decides Field Home/guided DPR workspace on ALL devices; device (useDeviceType) only varies layout, never gates the workspace.
 - [isManager is a trap](is-manager-always-true.md) — auth-context's `isManager` = true for every non-admin logged-in user; never gate role-specific UI/nav on it, use isFieldEngineer or sectionVisible() instead.
 - [Common attachment system](common-attachment-system.md) — one shared attachments table/API/components for all file uploads; DPR photos use stage-then-upload-on-save since records lack an id pre-save.

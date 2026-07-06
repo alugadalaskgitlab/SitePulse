@@ -4,6 +4,7 @@ import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useDeviceType } from "@/hooks/use-device-type";
 import { useAuth } from "@/lib/auth-context";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -278,14 +279,20 @@ export default function SiteEntry() {
   // default; anyone can switch back to the classic full-page layout, and the
   // choice is remembered for the session. Managers/admins always keep the
   // classic layout unless they explicitly opt into guided mode.
+  //
+  // Role decides whether guided entry is the default (field engineers get
+  // it on every device — mobile, tablet, or desktop); device only decides
+  // how the guided steps are laid out (see `deviceType` below and
+  // `showStep`/step Card widths further down). Was keyed off `!isManager`,
+  // which is true for every non-admin authenticated user, so this never
+  // actually triggered for anyone logged in. Now keyed off the explicit
+  // isFieldEngineer flag, which defaults to false so existing users see no
+  // behavior change.
   const isMobileViewport = useIsMobile();
+  const deviceType = useDeviceType();
   const { isAdmin, isFieldEngineer } = useAuth();
   const [guidedOverride, setGuidedOverride] = useState<boolean | null>(null);
-  // Task #1247 — was keyed off `!isManager`, which is true for every
-  // non-admin authenticated user, so this never actually triggered for
-  // anyone logged in. Now keyed off the explicit isFieldEngineer flag,
-  // which defaults to false so existing users see no behavior change.
-  const defaultGuided = isMobileViewport && !isAdmin && isFieldEngineer;
+  const defaultGuided = !isAdmin && isFieldEngineer;
   const guidedMode = guidedOverride ?? defaultGuided;
   const [guidedStep, setGuidedStep] = useState(0);
   const [remarksNote, setRemarksNote] = useState("");
@@ -1170,8 +1177,14 @@ export default function SiteEntry() {
     );
   }
 
+  // Same guided workflow on every device — only the container width and
+  // step-dot density adapt: mobile stays a tight single-column wizard,
+  // tablet/desktop get a wider card layout with more context visible at once.
+  const guidedContainerClass =
+    deviceType === "mobile" ? "max-w-lg" : deviceType === "tablet" ? "max-w-3xl" : "max-w-5xl";
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20">
+    <div className={`${guidedMode ? guidedContainerClass : "max-w-5xl"} mx-auto space-y-6 pb-20`}>
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-back">
           <ChevronLeft className="w-5 h-5" />
@@ -1235,7 +1248,7 @@ export default function SiteEntry() {
             onClick={() => { setGuidedOverride(true); setGuidedStep(0); }}
             data-testid="button-switch-guided-view"
           >
-            <LayoutList className="w-3.5 h-3.5" /> Switch to guided mobile view
+            <LayoutList className="w-3.5 h-3.5" /> Switch to guided view
           </Button>
         </div>
       )}

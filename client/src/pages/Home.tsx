@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
-import { useIsMobile } from "@/hooks/use-mobile";
 import FieldHome from "@/pages/FieldHome";
 import { format } from "date-fns";
 
@@ -15,18 +14,18 @@ import { format } from "date-fns";
 export default function Home() {
   const { isAdmin, isFieldEngineer } = useAuth();
 
-  // ── Mobile-first field home (Phase 1 UX facelift) ──────────────────────
-  // Engineers on mobile land on the simplified FieldHome by default;
-  // managers/admins always keep this classic dashboard. Either side can
-  // toggle over for the session.
+  // ── Role-based work view (product rule, see field-home-guided-dpr memory) ──
+  // Role decides the default WORKSPACE; device only decides the LAYOUT within
+  // it. Engineers/field users land on Field Home on every device — mobile,
+  // tablet, or desktop — because their workflow doesn't change with their
+  // device. Managers/admins always keep the classic Dashboard. Either side
+  // can toggle over for the session via fieldOverride.
   //
   // Task #1247 — this used to key off `!isManager`, but isManager is true
   // for every non-admin authenticated user, so `!isManager` was only ever
-  // true when logged out — FieldHome never actually became the default for
-  // anyone. We now key off the explicit, admin-settable isFieldEngineer
-  // flag instead. Default is false until an admin opts a user in, so
-  // existing users see no behavior change; admins can flip isFieldEngineer
-  // on for field staff to get FieldHome by default on mobile.
+  // true when logged out. We key off the explicit, admin-settable
+  // isFieldEngineer flag instead. Default is false until an admin opts a
+  // user in, so existing users see no behavior change.
   //
   // IMPORTANT: the decision of which component to render lives in this
   // top-level wrapper, which itself calls no data-fetching hooks. This
@@ -34,9 +33,8 @@ export default function Home() {
   // a component with an early return also called useQuery hooks after that
   // return — the hook count/order must stay identical across renders of a
   // single component instance.
-  const isMobileViewport = useIsMobile();
   const [fieldOverride, setFieldOverride] = useState<boolean | null>(null);
-  const defaultField = isMobileViewport && !isAdmin && isFieldEngineer;
+  const defaultField = !isAdmin && isFieldEngineer;
   const showFieldHome = fieldOverride ?? defaultField;
 
   if (showFieldHome) {
@@ -45,17 +43,17 @@ export default function Home() {
 
   return (
     <HomeDashboard
-      isMobileViewport={isMobileViewport}
+      isFieldEngineer={isFieldEngineer}
       onSwitchToFieldView={() => setFieldOverride(true)}
     />
   );
 }
 
 function HomeDashboard({
-  isMobileViewport,
+  isFieldEngineer,
   onSwitchToFieldView,
 }: {
-  isMobileViewport: boolean;
+  isFieldEngineer: boolean;
   onSwitchToFieldView: () => void;
 }) {
   const { user, sectionVisible, isAdmin } = useAuth();
@@ -161,7 +159,7 @@ function HomeDashboard({
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">{todayDisplay}</p>
           </div>
-          {isMobileViewport && (
+          {isFieldEngineer && !isAdmin && (
             <button
               type="button"
               onClick={onSwitchToFieldView}
