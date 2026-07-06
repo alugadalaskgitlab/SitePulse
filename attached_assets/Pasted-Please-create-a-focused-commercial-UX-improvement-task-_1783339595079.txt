@@ -1,0 +1,156 @@
+Please create a focused commercial UX improvement task for DPR item selection and a reusable attachment system.
+
+Current observations:
+
+1. In DPR labour/equipment/material linking, BOQ item dropdowns list all BOQ items, but many descriptions are truncated. For example, item 3.02 shows only “Providing and Spreading...” and does not clearly show “Wet Mix Macadam”. This makes it hard for site engineers to select the correct item.
+
+2. DPR progress has a photo/activity upload placeholder, but camera/gallery upload is not active.
+
+3. Material receipts/site purchases/vendor DCs need attachment support. Site engineers receive delivery challans/DCs/receipts, sign one copy and return it. The app should allow taking a photo directly or uploading from gallery, and store it against the receipt/purchase/IRN/PI/vendor bill.
+
+4. Equipment breakdown and maintenance logs should also support attachments such as breakdown photos, repair bills, mechanic reports, spare invoices, service photos, hour-meter/odometer photos, tyre/damage photos and other evidence.
+
+Required:
+
+A. BOQ item picker improvement
+
+1. Improve all BOQ item selectors used in:
+   - Road DPR
+   - Structure DPR
+   - Labour linked BOQ item
+   - Equipment linked BOQ item
+   - Material linked BOQ item
+
+2. Display BOQ items as:
+   - BOQ code
+   - short meaningful item name
+   - UOM
+   - full description in smaller secondary text / tooltip / expandable line
+
+3. Do not show only boilerplate text like “Providing and Spreading...”.
+   Extract and preserve key activity/material names such as:
+   - Wet Mix Macadam
+   - Granular Sub Base
+   - Dense Bituminous Macadam
+   - Bituminous Concrete
+   - HYSD / TMT Reinforcement
+   - RCC M25
+   - PCC M15
+   - Pipe Culvert
+   - Stone Pitching
+   - Filter Media
+   - Strip Seal Joint
+   - POT/PTFE Bearing
+   - Drainage Spout
+   - Weep Hole
+   - MS Railing
+   - Chute Drain
+   - Energy Dissipation Chamber
+
+4. Picker should be searchable by:
+   - item code
+   - full description
+   - short name
+   - UOM
+   - structure ID / reach where applicable
+
+5. On mobile, use a bottom-sheet/search picker style if possible, not a cramped dropdown.
+
+B. Common reusable attachment system
+
+Please add a reusable attachment system that can be used across modules.
+
+Do not create separate upload/photo systems for each module.
+
+Use one common attachment table/component/service that supports:
+
+- DPR progress/activity photos
+- DPR material consumed photos
+- Site material receipts
+- Site purchases
+- IRN
+- PI
+- PO/vendor bill later
+- Plant production records later
+- HMP/RMC stock receipts
+- Equipment breakdown logs
+- Equipment maintenance/service logs
+- Equipment fuel/odometer/hour-meter proof
+- Quality test/lab reports later
+
+Each attachment should store:
+- moduleType
+- linkedRecordId
+- siteId
+- boqProjectId/projectId where available
+- boqItemId optional
+- structureId optional
+- equipmentId optional
+- materialId optional
+- file name
+- file URL/object key/storage key
+- mime type
+- caption/remarks
+- uploaded by
+- uploaded at
+
+C. DPR photo capture
+
+In DPR guided/mobile flow:
+
+1. Add “Add Photo” button in Remarks/Review step and optionally in each progress row.
+2. On mobile, allow:
+   - Take photo with camera
+   - Upload from gallery/photo library
+3. Link photo to:
+   - DPR
+   - progress row if applicable
+   - BOQ item
+   - reach/structure if available
+4. Show thumbnail preview before submit.
+5. Save attachment with DPR.
+
+D. Material receipt / DC / challan / invoice attachments
+
+For site material receipts and site purchases:
+
+1. Add “Attach DC/Challan/Invoice Photo”.
+2. Allow camera capture or gallery upload.
+3. Store attachment against the receipt/purchase record.
+4. Show attachment thumbnail/link in receipt detail and reports.
+5. Later this should help vendor billing verification.
+
+E. Equipment breakdown and maintenance attachments
+
+For equipment breakdown/maintenance/service logs:
+
+1. Add optional attachments.
+2. Allow camera capture or gallery upload.
+3. Support:
+   - breakdown photo
+   - damage photo
+   - repair estimate
+   - mechanic report
+   - spare parts invoice
+   - repair bill
+   - service photo
+   - hour-meter / odometer photo
+4. Store attachments against the equipment maintenance/breakdown record.
+5. Show attachment thumbnail/link in equipment history and reports.
+
+F. Security and storage
+
+1. Do not store large images inside the database.
+2. Store files in existing upload/object storage if available.
+3. Database should store only metadata and file path/object key.
+4. Restrict file access by project/site permissions.
+5. Compress/resize mobile photos if possible to avoid huge uploads.
+6. Validate allowed file types and size limits.
+
+Scope:
+Do not redesign Work Programme, BOM, Plan vs Actual, HMP/RMC, procurement logic or dashboards in this task.
+
+This task is only:
+1. DPR BOQ item picker usability.
+2. Reusable attachment foundation.
+3. Camera/gallery attachments for DPR, material receipts/site purchases and equipment breakdown/maintenance.
