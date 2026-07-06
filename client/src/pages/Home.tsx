@@ -1,16 +1,32 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   HardHat, FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
-  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin,
+  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin, Smartphone,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
+import { useIsMobile } from "@/hooks/use-mobile";
+import FieldHome from "@/pages/FieldHome";
 import { format } from "date-fns";
 
 
 export default function Home() {
-  const { user, sectionVisible, isAdmin } = useAuth();
+  const { user, sectionVisible, isAdmin, isManager } = useAuth();
+
+  // ── Mobile-first field home (Phase 1 UX facelift) ──────────────────────
+  // Engineers on mobile land on the simplified FieldHome by default;
+  // managers/admins always keep this classic dashboard. Either side can
+  // toggle over for the session.
+  const isMobileViewport = useIsMobile();
+  const [fieldOverride, setFieldOverride] = useState<boolean | null>(null);
+  const defaultField = isMobileViewport && !isAdmin && !isManager;
+  const showFieldHome = fieldOverride ?? defaultField;
+
+  if (showFieldHome) {
+    return <FieldHome onViewFullDashboard={() => setFieldOverride(false)} />;
+  }
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
@@ -106,11 +122,24 @@ export default function Home() {
       <div className="p-6 max-w-6xl mx-auto space-y-6">
 
         {/* ── Welcome ── */}
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">
-            Welcome back{firstName ? `, ${firstName}` : ""}
-          </h2>
-          <p className="text-sm text-slate-500 mt-0.5">{todayDisplay}</p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Welcome back{firstName ? `, ${firstName}` : ""}
+            </h2>
+            <p className="text-sm text-slate-500 mt-0.5">{todayDisplay}</p>
+          </div>
+          {isMobileViewport && (
+            <button
+              type="button"
+              onClick={() => setFieldOverride(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 border border-slate-200 rounded-full px-3 py-1.5 flex-shrink-0"
+              data-testid="button-switch-field-view"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Field view
+            </button>
+          )}
         </div>
 
         {/* ── Stat cards ── */}

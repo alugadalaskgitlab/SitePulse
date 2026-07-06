@@ -27,6 +27,8 @@ export const dprs = pgTable("dprs", {
   // Explicit link to the BOQ project this DPR reports against.
   // Prevents orphaned progress entries when a site has multiple BOQ projects.
   boqProjectId: integer("boq_project_id"),
+  // Free-text remarks captured from the mobile guided DPR flow (Phase 1 UX facelift).
+  remarks: text("remarks"),
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),
 }));

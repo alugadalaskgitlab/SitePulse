@@ -3,9 +3,11 @@ import { useLocation } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/lib/auth-context";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Eye, Loader2, UserPlus, X, Shield, AlertTriangle, Check, Camera, LayoutList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -250,6 +252,18 @@ function shortItemName(full?: string | null): string {
   return s;
 }
 
+// Steps for the mobile-first guided DPR flow (Phase 1 UX facelift). Each step
+// maps to one or more of the existing form sections below — no new business
+// logic, just a different presentation shell around the same state/handlers.
+const GUIDED_STEPS = [
+  { key: "setup", label: "Today's Work" },
+  { key: "activity", label: "Work Item & Qty" },
+  { key: "labour", label: "Labour" },
+  { key: "equipment", label: "Equipment" },
+  { key: "materials", label: "Materials" },
+  { key: "review", label: "Remarks & Submit" },
+] as const;
+
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -257,6 +271,21 @@ export default function SiteEntry() {
   const backLink = appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
   const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
+
+  // ── Guided mobile mode (Phase 1 UX facelift) ──────────────────────────
+  // Engineers on mobile land on a simplified one-step-at-a-time flow by
+  // default; anyone can switch back to the classic full-page layout, and the
+  // choice is remembered for the session. Managers/admins always keep the
+  // classic layout unless they explicitly opt into guided mode.
+  const isMobileViewport = useIsMobile();
+  const { isAdmin, isManager } = useAuth();
+  const [guidedOverride, setGuidedOverride] = useState<boolean | null>(null);
+  const defaultGuided = isMobileViewport && !isAdmin && !isManager;
+  const guidedMode = guidedOverride ?? defaultGuided;
+  const [guidedStep, setGuidedStep] = useState(0);
+  const [remarksNote, setRemarksNote] = useState("");
+  const showStep = (n: number) => !guidedMode || guidedStep === n;
+  const goToStep = (n: number) => setGuidedStep(Math.max(0, Math.min(GUIDED_STEPS.length - 1, n)));
 
   // Fetch equipment master for unified equipment tracking
   const { data: equipmentMaster } = useQuery<EquipmentMasterType[]>({
@@ -849,6 +878,7 @@ export default function SiteEntry() {
         labour,
         materials: materials.filter(m => m.material),
         sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
+        remarks: remarksNote.trim() || undefined,
         clientTimestamp,
       });
       return response.json();
@@ -1028,7 +1058,58 @@ export default function SiteEntry() {
         />
       )}
 
+      {guidedMode && (
+        <div className="space-y-3" data-testid="guided-flow-shell">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {GUIDED_STEPS.map((s, i) => (
+                <div
+                  key={s.key}
+                  className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold border ${
+                    i === guidedStep
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : i < guidedStep
+                      ? "bg-primary/15 text-primary border-primary/30"
+                      : "bg-muted text-muted-foreground border-transparent"
+                  }`}
+                  data-testid={`guided-step-dot-${i}`}
+                >
+                  {i < guidedStep ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                </div>
+              ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-xs text-muted-foreground"
+              onClick={() => setGuidedOverride(false)}
+              data-testid="button-switch-classic-view"
+            >
+              <LayoutList className="w-3.5 h-3.5" /> Classic view
+            </Button>
+          </div>
+          <p className="text-sm font-semibold text-foreground" data-testid="text-guided-step-label">
+            Step {guidedStep + 1} of {GUIDED_STEPS.length}: {GUIDED_STEPS[guidedStep].label}
+          </p>
+        </div>
+      )}
+
+      {!guidedMode && (
+        <div className="flex justify-end -mt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs text-muted-foreground"
+            onClick={() => { setGuidedOverride(true); setGuidedStep(0); }}
+            data-testid="button-switch-guided-view"
+          >
+            <LayoutList className="w-3.5 h-3.5" /> Switch to guided mobile view
+          </Button>
+        </div>
+      )}
+
       {/* Header Section */}
+      {showStep(0) && (
       <Card>
         <CardHeader>
           <CardTitle>Report Details</CardTitle>
@@ -1095,8 +1176,10 @@ export default function SiteEntry() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Activity Progress */}
+      {showStep(1) && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -1656,8 +1739,10 @@ export default function SiteEntry() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Equipment Log */}
+      {showStep(3) && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Equipment Log</CardTitle>
@@ -2173,8 +2258,10 @@ export default function SiteEntry() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
       {/* Labour Strength */}
+      {showStep(2) && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Labour Strength</CardTitle>
@@ -2353,8 +2440,10 @@ export default function SiteEntry() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
       {/* Materials Consumed/Issued (linked to work item for Plan vs Actual) */}
+      {showStep(4) && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Materials Consumed / Issued</CardTitle>
@@ -2511,8 +2600,10 @@ export default function SiteEntry() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Site Purchases */}
+      {/* Site Purchases — kept in classic view only; guided flow keeps materials focused */}
+      {!guidedMode && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-teal-600">Site Purchases</CardTitle>
@@ -2607,17 +2698,76 @@ export default function SiteEntry() {
           )}
         </CardContent>
       </Card>
+      )}
+
+      {/* Remarks & Review — guided flow only, final step before submit */}
+      {guidedMode && showStep(5) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Remarks & Review</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label>Remarks (optional)</Label>
+              <Textarea
+                value={remarksNote}
+                onChange={(e) => setRemarksNote(e.target.value)}
+                placeholder="Any notes about today's work, delays, issues..."
+                rows={4}
+                data-testid="input-remarks"
+              />
+            </div>
+            <div>
+              <Label className="mb-2 block">Photo</Label>
+              <button
+                type="button"
+                className="w-full border-2 border-dashed rounded-lg py-8 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:bg-muted/40 transition-colors"
+                data-testid="button-add-photo-placeholder"
+                onClick={() => toast({ title: "Coming soon", description: "Photo attachments will be available in a future update." })}
+              >
+                <Camera className="w-6 h-6" />
+                <span className="text-sm">Add photo (coming soon)</span>
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Review your entries using the step dots above, then tap Preview Report to finish.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Buttons - sticky on mobile so Save/Preview stay reachable while scrolling a long form */}
       <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:mx-0 mt-2 flex flex-wrap items-center justify-end gap-3 border-t bg-background/95 backdrop-blur px-4 py-3 sm:static sm:border-0 sm:bg-transparent sm:backdrop-blur-0 sm:px-0 sm:py-0">
         <AutoSaveIndicator lastSavedAt={lastSavedAt} isDirty={isDirty} className="mr-auto" />
-        <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
-          Cancel
-        </Button>
-        <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
-          <Eye className="w-4 h-4" />
-          Preview Report
-        </Button>
+        {guidedMode ? (
+          <>
+            {guidedStep > 0 && (
+              <Button variant="outline" onClick={() => goToStep(guidedStep - 1)} className="gap-1" data-testid="button-guided-prev">
+                <ChevronLeft className="w-4 h-4" /> Back
+              </Button>
+            )}
+            {guidedStep < GUIDED_STEPS.length - 1 ? (
+              <Button onClick={() => goToStep(guidedStep + 1)} className="gap-1" data-testid="button-guided-next">
+                Next <ChevronRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
+                <Eye className="w-4 h-4" />
+                Preview Report
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
+              Cancel
+            </Button>
+            <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
+              <Eye className="w-4 h-4" />
+              Preview Report
+            </Button>
+          </>
+        )}
       </div>
 
       <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>

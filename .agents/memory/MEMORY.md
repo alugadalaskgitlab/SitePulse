@@ -15,3 +15,4 @@
 - [Equipment output gap prompt](equipment-output-gap-prompt.md) — never fabricate an SDB suggestion across mismatched units; surface a gap prompt with manual entry instead of silently dropping equipment from duration calc.
 - [Sticky thead cross-browser bug](sticky-thead-cross-browser-bug.md) — sticky headers need an explicit `max-h`+`overflow-auto` scroll container with `top-0`; `overflow-x-auto`-only + `top-N` silently never sticks.
 - [Road + Structures V1 planning boundary](road-structure-planning-boundary-v1.md) — structure/protective items plan only from frozen Structure Schedule Import, never auto-spread by chainage; unclassified work types leak into road planning as null→"road".
+- [Field Home + Guided Mobile DPR Flow](field-home-guided-dpr.md) — mobile engineer landing page + step-by-step DPR wrapper over existing SiteEntry.tsx logic; no real `role` field, uses isAdmin/isManager heuristic.
