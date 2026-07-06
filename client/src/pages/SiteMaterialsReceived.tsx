@@ -14,6 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix",
@@ -245,6 +246,7 @@ export default function SiteMaterialsReceived() {
                       <th className="text-left p-2 border text-sm">Receipt No.</th>
                       <th className="text-center p-2 border text-sm">Work Type</th>
                       <th className="text-center p-2 border text-sm">Source</th>
+                      <th className="text-left p-2 border text-sm">Photos</th>
                       <th className="text-center p-2 border text-sm w-10"></th>
                     </tr>
                   </thead>
@@ -277,6 +279,19 @@ export default function SiteMaterialsReceived() {
                             <span className={`text-[12px] font-semibold px-1.5 py-0.5 rounded ${trip.source === "trip" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
                               {trip.source === "trip" ? "TRIP" : "EQUIP"}
                             </span>
+                          )}
+                        </td>
+                        <td className="p-2 border">
+                          {trip.source === "trip" ? (
+                            <AttachmentGallery
+                              moduleType="site_material_trip"
+                              linkedRecordId={trip.id}
+                              allowDelete={false}
+                              emptyText="-"
+                              className="flex flex-wrap gap-1 w-24"
+                            />
+                          ) : (
+                            <span className="text-[12px] text-muted-foreground">-</span>
                           )}
                         </td>
                         <td className="p-2 border text-center">

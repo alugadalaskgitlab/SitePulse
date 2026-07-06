@@ -2942,6 +2942,7 @@ export const attachmentModuleTypes = [
   "vendor_bill",
   "plant_production",
   "hmp_rmc_stock_receipt",
+  "site_material_trip",
   "equipment_breakdown",
   "equipment_maintenance",
   "equipment_fuel_proof",

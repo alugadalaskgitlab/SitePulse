@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { format } from "date-fns";
-import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package } from "lucide-react";
+import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { SiteMaterialTrip, Site } from "@shared/schema";
 import { useFeatureFlags } from "@/lib/featureFlags";
+import { useUpload } from "@/hooks/use-upload";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -56,6 +58,47 @@ export default function SiteMaterialTrips() {
     notes: "",
   });
 
+  // Photos are staged locally while creating a new trip (no DB id yet to
+  // link an attachment to), then uploaded in one batch once the trip is saved.
+  const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
+  const { uploadFile } = useUpload();
+
+  const addStagedPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const valid = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE) {
+        toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" });
+        return false;
+      }
+      if (!f.type.startsWith("image/") && f.type !== "application/pdf") {
+        toast({ title: "Unsupported file", description: `${f.name} must be an image or PDF.`, variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+    setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  const removeStagedPhoto = (idx: number) => setStagedPhotos((prev) => prev.filter((_, i) => i !== idx));
+  const uploadStagedPhotos = async (tripId: number) => {
+    for (const file of stagedPhotos) {
+      const uploadResponse = await uploadFile(file);
+      if (!uploadResponse) continue;
+      try {
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "site_material_trip",
+          linkedRecordId: tripId,
+          fileName: file.name,
+          objectPath: uploadResponse.objectPath,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        });
+      } catch {
+        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      }
+    }
+  };
+
   const buildTripsUrl = () => {
     const params = new URLSearchParams();
     if (dateFilter) {
@@ -73,13 +116,22 @@ export default function SiteMaterialTrips() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof newTrip) => {
-      return apiRequest("POST", "/api/site-material-trips", {
+      const res = await apiRequest("POST", "/api/site-material-trips", {
         ...data,
         quantity: parseFloat(data.quantity) || 0,
       });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (trip: any) => {
+      if (stagedPhotos.length > 0 && trip?.id) {
+        await uploadStagedPhotos(trip.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", "site_material_trip", trip.id] });
+      }
+      setStagedPhotos([]);
       queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      queryClient.invalidateQueries({ predicate: (q) =>
+        typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/materials-received")
+      });
       toast({ title: "Trip Logged", description: "Material trip has been recorded successfully." });
       setNewTrip({
         date: today,
@@ -323,6 +375,58 @@ export default function SiteMaterialTrips() {
                   </Button>
                 </div>
               </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm">Attachments <span className="text-muted-foreground">(receipt/challan photo)</span></Label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  id="trip-photo-camera"
+                  data-testid="input-trip-photo-camera"
+                  onChange={(e) => { addStagedPhotos(e.target.files); e.target.value = ""; }}
+                />
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  className="hidden"
+                  id="trip-photo-gallery"
+                  data-testid="input-trip-photo-gallery"
+                  onChange={(e) => { addStagedPhotos(e.target.files); e.target.value = ""; }}
+                />
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => document.getElementById("trip-photo-camera")?.click()} data-testid="button-trip-photo-camera">
+                    <Camera className="w-4 h-4" /> Camera
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => document.getElementById("trip-photo-gallery")?.click()} data-testid="button-trip-photo-gallery">
+                    <ImagePlus className="w-4 h-4" /> Gallery
+                  </Button>
+                </div>
+                {stagedPhotos.length > 0 && (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-w-xl">
+                    {stagedPhotos.map((file, idx) => (
+                      <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-trip-photo-${idx}`}>
+                        {file.type.startsWith("image/") ? (
+                          <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex items-center justify-center h-full w-full text-xs text-center p-1 truncate">{file.name}</div>
+                        )}
+                        <button
+                          type="button"
+                          className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
+                          onClick={() => removeStagedPhoto(idx)}
+                          data-testid={`button-remove-staged-trip-photo-${idx}`}
+                        >
+                          <X className="h-3.5 w-3.5 text-destructive" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Photos are uploaded once you save the trip.</p>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -393,6 +497,7 @@ export default function SiteMaterialTrips() {
                       <th className="text-right p-2">Qty</th>
                       <th className="text-left p-2">UOM</th>
                       <th className="text-left p-2">Location</th>
+                      <th className="text-left p-2">Photos</th>
                       <th className="text-center p-2">Action</th>
                     </tr>
                   </thead>
@@ -407,6 +512,15 @@ export default function SiteMaterialTrips() {
                         <td className="p-2 text-right font-mono">{trip.quantity?.toFixed(3)}</td>
                         <td className="p-2">{trip.uom}</td>
                         <td className="p-2">{trip.location || '-'}</td>
+                        <td className="p-2">
+                          <AttachmentGallery
+                            moduleType="site_material_trip"
+                            linkedRecordId={trip.id}
+                            allowDelete={false}
+                            emptyText="-"
+                            className="flex flex-wrap gap-1 w-24"
+                          />
+                        </td>
                         <td className="p-2 text-center">
                           <Button 
                             variant="ghost" 
