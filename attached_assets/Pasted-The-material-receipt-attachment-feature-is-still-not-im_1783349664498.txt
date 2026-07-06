@@ -1,0 +1,57 @@
+The material receipt attachment feature is still not implemented correctly.
+
+I checked the current Material Receipts page. The code imports AttachmentUploader / AttachmentGallery, but the attachment UI is still gated behind editingReceipt. That means the user can attach photos only after editing an existing receipt, not while creating a receipt.
+
+This does not solve the actual requirement.
+
+Required fix:
+
+1. In Material Receipt create form, add attachment capture/upload directly beside or near:
+   - Challan / DN No.
+   - Invoice No.
+   - Receipt No. / GRN No.
+
+2. During new receipt creation, allow the user to:
+   - take photo using camera
+   - upload from gallery/photo library
+   - upload PDF/image if available
+
+3. Since the receipt ID does not exist before save:
+   - stage selected files locally while the form is open
+   - after POST /api/plant-module/material-receipts succeeds and returns receipt.id
+   - upload staged files using moduleType = material_receipt and linkedRecordId = receipt.id
+   - then clear staged files
+
+4. Show staged photo thumbnails before Save Receipt.
+
+5. After save, the receipt list/report should show attachment thumbnail/link against that receipt row, not only inside edit mode.
+
+6. In expanded receipt details, show:
+   - Challan No.
+   - Invoice No.
+   - attached DC/challan/invoice photos
+   - uploaded by / uploaded at if available
+
+7. This should work on mobile:
+   - camera capture
+   - gallery upload
+
+8. Do not store images in the database. Use the common attachment system/storage and store only metadata/object key.
+
+9. Please verify this in the actual create-flow:
+   - New Receipt
+   - enter challan no.
+   - attach challan photo
+   - save receipt
+   - reopen receipt list
+   - photo should be visible against that receipt
+
+Also please verify other places where you claimed attachments were completed:
+- DPR report photos
+- Equipment maintenance/breakdown create flow
+- Site purchases
+- IRN
+- PI
+- plant production
+
+If any are still edit-only or not visible in reports, please state clearly and create follow-up tasks.

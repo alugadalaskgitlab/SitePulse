@@ -80,6 +80,18 @@ export function AttachmentGallery({
                 </div>
               )}
             </a>
+            {(att.uploadedByName || att.uploadedAt) && (
+              <div
+                className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] leading-tight px-1 py-0.5 truncate"
+                data-testid={`text-attachment-meta-${att.id}`}
+              >
+                {att.uploadedByName && <span>{att.uploadedByName}</span>}
+                {att.uploadedByName && att.uploadedAt && <span> · </span>}
+                {att.uploadedAt && (
+                  <span>{new Date(att.uploadedAt).toLocaleDateString()}</span>
+                )}
+              </div>
+            )}
             {allowDelete && (
               <button
                 type="button"

@@ -994,6 +994,70 @@ export default function PlantMaterialReceipts() {
                 </div>
               </div>
 
+              {editingReceipt ? (
+                <div className="space-y-1.5">
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <AttachmentUploader
+                    moduleType="material_receipt"
+                    linkedRecordId={editingReceipt.id}
+                    materialId={materialId ? Number(materialId) : null}
+                  />
+                  <AttachmentGallery moduleType="material_receipt" linkedRecordId={editingReceipt.id} />
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <input
+                    ref={receiptCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    data-testid="input-receipt-photo-camera"
+                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptCameraInputRef.current) receiptCameraInputRef.current.value = ""; }}
+                  />
+                  <input
+                    ref={receiptGalleryInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    className="hidden"
+                    data-testid="input-receipt-photo-gallery"
+                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptGalleryInputRef.current) receiptGalleryInputRef.current.value = ""; }}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptCameraInputRef.current?.click()} data-testid="button-receipt-photo-camera">
+                      <Camera className="w-4 h-4" /> Camera
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptGalleryInputRef.current?.click()} data-testid="button-receipt-photo-gallery">
+                      <ImagePlus className="w-4 h-4" /> Gallery
+                    </Button>
+                  </div>
+                  {stagedPhotos.length > 0 && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {stagedPhotos.map((file, idx) => (
+                        <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-receipt-photo-${idx}`}>
+                          {file.type.startsWith("image/") ? (
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex items-center justify-center h-full w-full text-xs text-center p-1 truncate">{file.name}</div>
+                          )}
+                          <button
+                            type="button"
+                            className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
+                            onClick={() => removeStagedReceiptPhoto(idx)}
+                            data-testid={`button-remove-staged-receipt-photo-${idx}`}
+                          >
+                            <X className="h-3.5 w-3.5 text-destructive" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Photos are uploaded once you save the receipt.</p>
+                </div>
+              )}
+
               {/* Indent Ref — searchable combobox + status card */}
               {(() => {
                 const approvedPIs = allPurchaseIndents.filter(pi => pi.status === "approved" || pi.status === "ordered");
@@ -1118,70 +1182,6 @@ export default function PlantMaterialReceipts() {
                   </div>
                 );
               })()}
-
-              {editingReceipt ? (
-                <div className="space-y-1.5">
-                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
-                  <AttachmentUploader
-                    moduleType="material_receipt"
-                    linkedRecordId={editingReceipt.id}
-                    materialId={materialId ? Number(materialId) : null}
-                  />
-                  <AttachmentGallery moduleType="material_receipt" linkedRecordId={editingReceipt.id} />
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
-                  <input
-                    ref={receiptCameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    data-testid="input-receipt-photo-camera"
-                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptCameraInputRef.current) receiptCameraInputRef.current.value = ""; }}
-                  />
-                  <input
-                    ref={receiptGalleryInputRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    multiple
-                    className="hidden"
-                    data-testid="input-receipt-photo-gallery"
-                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptGalleryInputRef.current) receiptGalleryInputRef.current.value = ""; }}
-                  />
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptCameraInputRef.current?.click()} data-testid="button-receipt-photo-camera">
-                      <Camera className="w-4 h-4" /> Camera
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptGalleryInputRef.current?.click()} data-testid="button-receipt-photo-gallery">
-                      <ImagePlus className="w-4 h-4" /> Gallery
-                    </Button>
-                  </div>
-                  {stagedPhotos.length > 0 && (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {stagedPhotos.map((file, idx) => (
-                        <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-receipt-photo-${idx}`}>
-                          {file.type.startsWith("image/") ? (
-                            <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <div className="flex items-center justify-center h-full w-full text-xs text-center p-1 truncate">{file.name}</div>
-                          )}
-                          <button
-                            type="button"
-                            className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
-                            onClick={() => removeStagedReceiptPhoto(idx)}
-                            data-testid={`button-remove-staged-receipt-photo-${idx}`}
-                          >
-                            <X className="h-3.5 w-3.5 text-destructive" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">Photos are uploaded once you save the receipt.</p>
-                </div>
-              )}
 
               <div className="space-y-1.5">
                 <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">

@@ -2972,7 +2972,7 @@ export const insertAttachmentSchema = createInsertSchema(attachments).omit({
   id: true,
   uploadedAt: true,
 });
-export type Attachment = typeof attachments.$inferSelect;
+export type Attachment = typeof attachments.$inferSelect & { uploadedByName?: string | null };
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
 
 // ============================================

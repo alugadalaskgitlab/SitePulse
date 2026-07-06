@@ -9056,11 +9056,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]> {
-    return db
-      .select()
+    const rows = await db
+      .select({
+        attachment: attachments,
+        uploadedByName: users.fullName,
+      })
       .from(attachments)
+      .leftJoin(users, eq(attachments.uploadedBy, users.id))
       .where(and(eq(attachments.moduleType, moduleType), eq(attachments.linkedRecordId, linkedRecordId)))
       .orderBy(desc(attachments.uploadedAt));
+    return rows.map((r) => ({ ...r.attachment, uploadedByName: r.uploadedByName ?? null })) as any;
   }
 
   async deleteAttachment(id: number): Promise<boolean> {
