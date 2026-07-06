@@ -14,7 +14,9 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus, History, Ban } from "lucide-react";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { useUpload } from "@/hooks/use-upload";
@@ -526,6 +528,9 @@ export default function PlantMaterialReceipts() {
   const handleDeleteClick = (receiptId: number) => {
     setDeleteConfirmId(receiptId);
   };
+
+  const [cancelReceiptId, setCancelReceiptId] = useState<number | null>(null);
+  const [historyReceiptId, setHistoryReceiptId] = useState<number | null>(null);
 
   const handleExportExcelClick = () => exportToExcel();
   const handleExportPdfClick = () => exportToPDF();
@@ -1382,16 +1387,24 @@ export default function PlantMaterialReceipts() {
                                   <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
                                 )}
                               </div>
-                              {canEdit && (
-                                <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                                  <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
-                                    <Edit className="w-4 h-4" />
-                                  </Button>
-                                  <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
-                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                  </Button>
-                                </div>
-                              )}
+                              <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                <Button size="icon" variant="ghost" onClick={() => setHistoryReceiptId(receipt.id)} data-testid={`button-history-receipt-${receipt.id}`} title="History">
+                                  <History className="w-4 h-4 text-muted-foreground" />
+                                </Button>
+                                {canEdit && (
+                                  <>
+                                    <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => setCancelReceiptId(receipt.id)} data-testid={`button-cancel-receipt-${receipt.id}`} title="Cancel">
+                                      <Ban className="w-4 h-4 text-amber-600" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(receipt.id)} data-testid={`button-delete-receipt-${receipt.id}`}>
+                                      <Trash2 className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                             {isExpanded && (
                               <div className="px-4 pb-4 pt-3 border-t border-border/50">
@@ -1511,6 +1524,21 @@ export default function PlantMaterialReceipts() {
           )}
         </CardContent>
       </Card>
+
+      <CancelDialog
+        open={cancelReceiptId !== null}
+        onOpenChange={(v) => !v && setCancelReceiptId(null)}
+        cancelUrl={`/api/plant-module/material-receipts/${cancelReceiptId}/cancel`}
+        recordLabel={`Material Receipt #${cancelReceiptId}`}
+        invalidateQueryKeys={["/api/plant-module/material-receipts"]}
+      />
+      <HistoryDialog
+        open={historyReceiptId !== null}
+        onOpenChange={(v) => !v && setHistoryReceiptId(null)}
+        module="material_receipts"
+        transactionId={historyReceiptId}
+        recordLabel={`Material Receipt #${historyReceiptId}`}
+      />
     </div>
   );
 }

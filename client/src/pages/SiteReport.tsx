@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home, ShoppingCart } from "lucide-react";
+import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { ReportHeader } from "@/components/ReportHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +38,8 @@ export default function SiteReport() {
   const backLink = appendOrigin("/site/dashboard");
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -162,6 +166,26 @@ export default function SiteReport() {
             >
               <Edit className="w-4 h-4" />
               Edit
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setShowHistory(true)}
+            data-testid="button-history"
+          >
+            <History className="w-4 h-4" />
+            History
+          </Button>
+          {canEdit && (
+            <Button
+              variant="outline"
+              className="gap-2 text-amber-600 hover:text-amber-700"
+              onClick={() => setShowCancel(true)}
+              data-testid="button-cancel-dpr"
+            >
+              <Ban className="w-4 h-4" />
+              Cancel
             </Button>
           )}
           {canDelete && (
@@ -612,6 +636,21 @@ export default function SiteReport() {
           </CardContent>
         </Card>
       )}
+
+      <CancelDialog
+        open={showCancel}
+        onOpenChange={setShowCancel}
+        cancelUrl={`/api/dprs/${id}/cancel`}
+        recordLabel={`DPR for ${dpr.site} (${dpr.date})`}
+        invalidateQueryKeys={["/api/dprs", ["/api/dprs", id]]}
+      />
+      <HistoryDialog
+        open={showHistory}
+        onOpenChange={setShowHistory}
+        module="dprs"
+        transactionId={id}
+        recordLabel={`DPR for ${dpr.site} (${dpr.date})`}
+      />
     </div>
   );
 }

@@ -1,5 +1,8 @@
 import { db } from "./db";
 import {
+  auditLogs,
+  type AuditLog,
+  type InsertAuditLog,
   dprs,
   progressEntries,
   dprStructureItems,
@@ -447,6 +450,15 @@ function isLdoOrDieselMaterial(name: string): boolean {
 }
 
 export interface IStorage {
+  // Owner/Admin transaction controls & audit trail
+  logAudit(entry: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(module: string, transactionId: number): Promise<AuditLog[]>;
+  cancelDpr(id: number, userId: number, reason: string): Promise<Dpr | undefined>;
+  cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined>;
+  cancelSitePurchase(id: number, userId: number, reason: string): Promise<any>;
+  cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined>;
+  cancelEquipmentMaintenanceLog(id: number, userId: number, reason: string): Promise<EquipmentMaintenanceLog | undefined>;
+
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]>;
   getDprsWithDetails(): Promise<DprWithDetails[]>;
@@ -504,6 +516,7 @@ export interface IStorage {
   hasEquipmentUsageHistory(id: number): Promise<boolean>;
   
   // Plant Module Phase-1 - Transactions
+  getMaterialReceipt(id: number): Promise<MaterialReceipt | undefined>;
   getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]>;
   createMaterialReceipt(receipt: InsertMaterialReceipt): Promise<MaterialReceipt>;
   updateMaterialReceipt(id: number, receipt: Partial<InsertMaterialReceipt>): Promise<MaterialReceipt | undefined>;
@@ -1562,10 +1575,66 @@ function execDmlRowCount(result: unknown, context = "db.execute DML"): number {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]> {
+  // === Owner/Admin transaction controls & audit trail ===
+  async logAudit(entry: InsertAuditLog): Promise<AuditLog> {
+    const [row] = await db.insert(auditLogs).values(entry).returning();
+    return row;
+  }
+
+  async getAuditLogs(module: string, transactionId: number): Promise<AuditLog[]> {
+    return await db.select().from(auditLogs)
+      .where(and(eq(auditLogs.module, module), eq(auditLogs.transactionId, transactionId)))
+      .orderBy(desc(auditLogs.createdAt));
+  }
+
+  async cancelDpr(id: number, userId: number, reason: string): Promise<Dpr | undefined> {
+    const [updated] = await db.update(dprs)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(dprs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined> {
+    const [updated] = await db.update(materialReceipts)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(materialReceipts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async cancelSitePurchase(id: number, userId: number, reason: string): Promise<any> {
+    const [updated] = await db.update(sitePurchases)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(sitePurchases.id, id))
+      .returning();
+    return updated;
+  }
+
+  async cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined> {
+    const [updated] = await db.update(siteMaterialTrips)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(siteMaterialTrips.id, id))
+      .returning();
+    return updated;
+  }
+
+  async cancelEquipmentMaintenanceLog(id: number, userId: number, reason: string): Promise<EquipmentMaintenanceLog | undefined> {
+    const [updated] = await db.update(equipmentMaintenanceLogs)
+      .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(equipmentMaintenanceLogs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<Dpr[]> {
     let conditions = [];
     
     conditions.push(eq(dprs.isSuperseded, false));
+    if (!filters?.includeCancelled) {
+      conditions.push(eq(dprs.isCancelled, false));
+      conditions.push(eq(dprs.isDeleted, false));
+    }
     if (filters?.site) conditions.push(eq(dprs.site, filters.site));
     if (filters?.engineer) conditions.push(eq(dprs.engineer, filters.engineer));
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
@@ -2871,11 +2940,20 @@ export class DatabaseStorage implements IStorage {
   // ============================================
 
   // Material Receipts
-  async getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string }): Promise<MaterialReceipt[]> {
+  async getMaterialReceipt(id: number): Promise<MaterialReceipt | undefined> {
+    const [row] = await db.select().from(materialReceipts).where(eq(materialReceipts.id, id));
+    return row;
+  }
+
+  async getMaterialReceipts(filters?: { partyId?: number; dateFrom?: string; dateTo?: string; includeCancelled?: boolean }): Promise<MaterialReceipt[]> {
     let conditions = [];
     if (filters?.partyId) conditions.push(eq(materialReceipts.partyId, filters.partyId));
     if (filters?.dateFrom) conditions.push(gte(materialReceipts.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(materialReceipts.date, filters.dateTo));
+    if (!filters?.includeCancelled) {
+      conditions.push(eq(materialReceipts.isCancelled, false));
+      conditions.push(eq(materialReceipts.isDeleted, false));
+    }
     
     return db.select().from(materialReceipts)
       .where(conditions.length ? and(...conditions) : undefined)
@@ -7729,7 +7807,7 @@ export class DatabaseStorage implements IStorage {
   // Site Material Trips (Quick Entry)
   // ============================================
   
-  async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string }): Promise<any[]> {
+  async getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string; includeCancelled?: boolean }): Promise<any[]> {
     let conditions: any[] = [
       or(eq(dprs.isSuperseded, false), isNull(dprs.isSuperseded)),
     ];
@@ -7737,6 +7815,10 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dateFrom) conditions.push(gte(dprs.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(dprs.date, filters.dateTo));
     if (filters?.workType) conditions.push(eq(dprs.workType, filters.workType));
+    if (!filters?.includeCancelled) {
+      conditions.push(eq(sitePurchases.isCancelled, false));
+      conditions.push(eq(sitePurchases.isDeleted, false));
+    }
     
     const results = await db.select({
       id: sitePurchases.id,
@@ -7747,6 +7829,8 @@ export class DatabaseStorage implements IStorage {
       vendor: sitePurchases.vendor,
       billNo: sitePurchases.billNo,
       amount: sitePurchases.amount,
+      isCancelled: sitePurchases.isCancelled,
+      cancellationReason: sitePurchases.cancellationReason,
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
@@ -7838,13 +7922,17 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
     if (filters?.material) conditions.push(eq(siteMaterialTrips.material, filters.material));
     if (filters?.dateFrom) conditions.push(gte(siteMaterialTrips.date, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(siteMaterialTrips.date, filters.dateTo));
+    if (!filters?.includeCancelled) {
+      conditions.push(eq(siteMaterialTrips.isCancelled, false));
+      conditions.push(eq(siteMaterialTrips.isDeleted, false));
+    }
     if (filters?.permittedSiteNames !== undefined) {
       if (filters.permittedSiteNames.length === 0) return [];
       conditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
@@ -18748,13 +18836,17 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<EquipmentMaintenanceLogWithDetails[]> {
+  async getMaintenanceLogs(filters?: { equipmentId?: number; eventType?: string; status?: string; dateFrom?: string; dateTo?: string; includeCancelled?: boolean }): Promise<EquipmentMaintenanceLogWithDetails[]> {
     const conds: any[] = [];
     if (filters?.equipmentId) conds.push(eq(equipmentMaintenanceLogs.equipmentId, filters.equipmentId));
     if (filters?.eventType) conds.push(eq(equipmentMaintenanceLogs.eventType, filters.eventType));
     if (filters?.status) conds.push(eq(equipmentMaintenanceLogs.status, filters.status));
     if (filters?.dateFrom) conds.push(gte(equipmentMaintenanceLogs.date, filters.dateFrom));
     if (filters?.dateTo) conds.push(lte(equipmentMaintenanceLogs.date, filters.dateTo));
+    if (!filters?.includeCancelled) {
+      conds.push(eq(equipmentMaintenanceLogs.isCancelled, false));
+      conds.push(eq(equipmentMaintenanceLogs.isDeleted, false));
+    }
 
     const logs = await db.select().from(equipmentMaintenanceLogs)
       .where(conds.length ? and(...conds) : undefined)

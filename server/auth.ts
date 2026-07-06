@@ -183,12 +183,12 @@ export async function setUserPermissions(userId: number, matrix: PermissionMatri
 }
 
 export function userHasPermission(
-  userOrAdmin: { isAdmin: boolean },
+  userOrAdmin: { isAdmin: boolean; isOwner?: boolean },
   matrix: PermissionMatrix,
   section: SectionKey,
   action: Action,
 ): boolean {
-  if (userOrAdmin.isAdmin) return true;
+  if (userOrAdmin.isAdmin || userOrAdmin.isOwner) return true;
   const sec = matrix[section];
   if (!sec) return false;
   return !!sec[action];

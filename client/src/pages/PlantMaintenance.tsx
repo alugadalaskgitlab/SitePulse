@@ -19,7 +19,9 @@ import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { useUpload } from "@/hooks/use-upload";
 import type { EquipmentMasterType, StoreItem, StoreStockBalance } from "@shared/schema";
-import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil, Camera, ImagePlus } from "lucide-react";
+import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil, Camera, ImagePlus, History, Ban } from "lucide-react";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { format } from "date-fns";
 
 type Part = { storeItemId: number; qty: number; uom: string };
@@ -597,6 +599,8 @@ function LogCard({
   const [partItemId, setPartItemId] = useState("");
   const [partQty, setPartQty] = useState("");
   const [partUom, setPartUom] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async () => { await apiRequest("DELETE", `/api/maintenance/logs/${log.id}`); },
@@ -738,6 +742,14 @@ function LogCard({
                     <Plus className="w-3 h-3" /> Add Part
                   </Button>
                 )}
+                <Button type="button" variant="outline" size="sm" className="gap-1 h-7" onClick={() => setHistoryOpen(true)} data-testid={`button-history-log-${log.id}`}>
+                  <History className="w-3 h-3" /> History
+                </Button>
+                {canEdit && (
+                  <Button type="button" variant="outline" size="sm" className="gap-1 h-7 text-amber-600 hover:text-amber-700" onClick={() => setCancelOpen(true)} data-testid={`button-cancel-log-${log.id}`}>
+                    <Ban className="w-3 h-3" /> Cancel
+                  </Button>
+                )}
                 {canDelete && (
                   <Button type="button" variant="ghost" size="sm" className="gap-1 h-7 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)} data-testid={`button-delete-log-${log.id}`}>
                     <Trash2 className="w-3 h-3" /> Delete
@@ -803,6 +815,22 @@ function LogCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CancelDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        cancelUrl={`/api/maintenance/logs/${log.id}/cancel`}
+        recordLabel={`Maintenance Log #${log.id} (${log.equipmentName})`}
+        invalidateQueryKeys={["/api/maintenance/logs", "/api/maintenance/health-summary", "/api/maintenance/open-count"]}
+        onCancelled={onRefresh}
+      />
+      <HistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        module="equipment_maintenance_logs"
+        transactionId={log.id}
+        recordLabel={`Maintenance Log #${log.id}`}
+      />
     </>
   );
 }

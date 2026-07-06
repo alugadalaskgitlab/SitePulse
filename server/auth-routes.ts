@@ -701,19 +701,22 @@ export function assertAdmin(req: Request, res: Response): boolean {
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (!req.authUser.isAdmin) {
+  if (!req.authUser.isAdmin && !req.authUser.isOwner) {
     res.status(403).json({ error: "admin_required" });
     return false;
   }
   return true;
 }
 
+// Company Owner / Primary Admin: always has full control across every
+// module and is never locked out by permission toggles (see spec: Owner
+// section). Checked alongside isAdmin in every assert* helper below.
 export function assertEdit(req: Request, res: Response, section: SectionKey): boolean {
   if (!req.authUser) {
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
   const m = req.authPermissions;
   if (!m || !m[section] || !m[section].edit) {
     res.status(403).json({ error: "forbidden", section, action: "edit" });
@@ -727,7 +730,7 @@ export function assertCreate(req: Request, res: Response, section: SectionKey): 
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
   const m = req.authPermissions;
   if (!m || !m[section] || !m[section].create) {
     res.status(403).json({ error: "forbidden", section, action: "create" });
@@ -741,7 +744,7 @@ export function assertView(req: Request, res: Response, section: SectionKey): bo
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
   const m = req.authPermissions;
   if (!m || !m[section] || !m[section].view) {
     res.status(403).json({ error: "forbidden", section, action: "view" });
@@ -755,13 +758,21 @@ export function assertApprove(req: Request, res: Response, section: SectionKey):
     res.status(401).json({ error: "not_authenticated" });
     return false;
   }
-  if (req.authUser.isAdmin) return true;
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
   const m = req.authPermissions;
   if (!m || !m[section] || !m[section].approve) {
     res.status(403).json({ error: "forbidden", section, action: "approve" });
     return false;
   }
   return true;
+}
+
+// Delete/Cancel gate for the 5 priority transaction modules (spec §7).
+// Owner/Admin always pass; others need the section's `edit` permission
+// (delete/cancel is treated as an edit-tier action, consistent with how
+// these routes already gate updates).
+export function assertDeleteOrCancel(req: Request, res: Response, section: SectionKey): boolean {
+  return assertEdit(req, res, section);
 }
 
 export function currentUserName(req: Request): string {

@@ -39,6 +39,7 @@ import {
   assertAuthed,
   assertCreate,
   assertApprove,
+  assertDeleteOrCancel,
   currentUserName,
 } from "./auth-routes";
 import { registerManagementReportRoutes } from "./management-report";
@@ -467,10 +468,45 @@ export async function registerRoutes(
       if (!assertAdmin(req, res)) return;
       const id = Number(req.params.id);
       await storage.deleteSiteMaterialTrip(id);
+      await storage.logAudit({
+        module: "site_material_trips",
+        transactionId: id,
+        action: "delete",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("Error deleting site material trip:", err);
       res.status(500).json({ message: "Failed to delete site material trip" });
+    }
+  });
+
+  // Cancel a site material trip (stock-affecting: flagged for reversal, not hard-deleted)
+  app.post("/api/site-material-trips/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "site_materials")) return;
+      const id = Number(req.params.id);
+      const reason = String(req.body?.reason || "").trim();
+      if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
+      const updated = await storage.cancelSiteMaterialTrip(id, req.authUser!.id, reason);
+      if (!updated) return res.status(404).json({ message: "Site material trip not found" });
+      await storage.logAudit({
+        module: "site_material_trips",
+        transactionId: id,
+        action: "cancel",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        newValues: updated,
+        reason,
+        stockImpact: "Trip cancelled; reverse via stock ledger reassignment/transfer tool if already posted",
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/site-material-trips/:id/cancel:", err);
+      res.status(500).json({ message: "Failed to cancel site material trip" });
     }
   });
 
@@ -747,14 +783,49 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ message: "Site purchase not found" });
       }
+      await storage.logAudit({
+        module: "site_purchases",
+        transactionId: id,
+        action: "update",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        newValues: validatedData,
+      });
       sendPushToSection("site_materials", "Site Purchase Updated", `Purchase #${id} updated by admin`, "/site-reports").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err?.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid data format" });
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       }
       console.error("Error updating site purchase:", err);
       res.status(500).json({ message: "Failed to update site purchase" });
+    }
+  });
+
+  app.post("/api/site-purchases/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "site_materials")) return;
+      const id = Number(req.params.id);
+      const reason = String(req.body?.reason || "").trim();
+      if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
+      const updated = await storage.cancelSitePurchase(id, req.authUser!.id, reason);
+      if (!updated) return res.status(404).json({ message: "Site purchase not found" });
+      await storage.logAudit({
+        module: "site_purchases",
+        transactionId: id,
+        action: "cancel",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        newValues: updated,
+        reason,
+      });
+      sendPushToSection("site_materials", "Site Purchase Cancelled", `Purchase #${id} cancelled`, "/site-reports").catch(() => {});
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/site-purchases/:id/cancel:", err);
+      res.status(500).json({ message: "Failed to cancel site purchase" });
     }
   });
 
@@ -1206,6 +1277,15 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "DPR not found" });
       }
+      await storage.logAudit({
+        module: "dprs",
+        transactionId: id,
+        action: "delete",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: dprToDelete ?? null,
+      });
       await storage.createNotification({ type: "warning", title: "DPR Deleted", message: `DPR for ${dprToDelete?.site || 'unknown'} (${dprToDelete?.date || ''}) was deleted by admin`, isRead: 0 });
       sendPushToSection("site_dprs", "DPR Deleted", `${dprToDelete?.site || 'unknown'} - ${dprToDelete?.date || ''}`, "/site-reports").catch(() => {});
       res.status(204).send();
@@ -1217,6 +1297,35 @@ export async function registerRoutes(
         });
       }
       res.status(500).json({ message: "Failed to delete DPR" });
+    }
+  });
+
+  // Cancel DPR (submitted/approved records: cancel with reason instead of hard delete)
+  app.post("/api/dprs/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "site_dprs")) return;
+      const id = Number(req.params.id);
+      const reason = String(req.body?.reason || "").trim();
+      if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
+      const before = await storage.getDpr(id);
+      if (!before) return res.status(404).json({ message: "DPR not found" });
+      const updated = await storage.cancelDpr(id, req.authUser!.id, reason);
+      await storage.logAudit({
+        module: "dprs",
+        transactionId: id,
+        action: "cancel",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before,
+        newValues: updated ?? null,
+        reason,
+      });
+      sendPushToSection("site_dprs", "DPR Cancelled", `DPR for ${before.site} (${before.date}) was cancelled`, "/site-reports").catch(() => {});
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/dprs/:id/cancel:", err);
+      res.status(500).json({ message: "Failed to cancel DPR" });
     }
   });
 
@@ -1696,12 +1805,54 @@ export async function registerRoutes(
   app.delete("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deleteMaterialReceipt(Number(req.params.id));
+      const id = Number(req.params.id);
+      const before = await storage.getMaterialReceipt(id);
+      const deleted = await storage.deleteMaterialReceipt(id);
       if (!deleted) return res.status(404).json({ message: "Receipt not found" });
+      await storage.logAudit({
+        module: "material_receipts",
+        transactionId: id,
+        action: "delete",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before ?? null,
+        stockImpact: "Receipt deleted; verify stock ledger balance for this material",
+      });
       sendPushToSection("plant_materials", "Material Receipt Deleted", `Receipt #${req.params.id} deleted`, "/plant").catch(() => {});
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete material receipt" });
+    }
+  });
+
+  // Cancel a material receipt (stock-affecting: flagged for reversal, not hard-deleted)
+  app.post("/api/plant-module/material-receipts/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "plant_materials")) return;
+      const id = Number(req.params.id);
+      const reason = String(req.body?.reason || "").trim();
+      if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
+      const before = await storage.getMaterialReceipt(id);
+      if (!before) return res.status(404).json({ message: "Receipt not found" });
+      const updated = await storage.cancelMaterialReceipt(id, req.authUser!.id, reason);
+      await storage.logAudit({
+        module: "material_receipts",
+        transactionId: id,
+        action: "cancel",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before,
+        newValues: updated ?? null,
+        reason,
+        stockImpact: "Receipt cancelled; requires manual reversal in stock ledger if already posted",
+      });
+      sendPushToSection("plant_materials", "Material Receipt Cancelled", `Receipt #${id} cancelled`, "/plant").catch(() => {});
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/plant-module/material-receipts/:id/cancel:", err);
+      res.status(500).json({ message: "Failed to cancel material receipt" });
     }
   });
 
@@ -8517,12 +8668,71 @@ export async function registerRoutes(
   app.delete("/api/maintenance/logs/:id", async (req, res) => {
     try {
       if (!assertAdmin(req, res)) return;
-      const deleted = await storage.deleteMaintenanceLog(Number(req.params.id));
+      const id = Number(req.params.id);
+      const before = await storage.getMaintenanceLog(id);
+      const deleted = await storage.deleteMaintenanceLog(id);
       if (!deleted) return res.status(404).json({ error: "Not found" });
+      await storage.logAudit({
+        module: "equipment_maintenance_logs",
+        transactionId: id,
+        action: "delete",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before ?? null,
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/maintenance/logs/:id:", err);
       res.status(500).json({ error: "Failed to delete maintenance log" });
+    }
+  });
+
+  // Cancel a maintenance log (submitted/approved records: cancel with reason instead of hard delete)
+  app.post("/api/maintenance/logs/:id/cancel", async (req, res) => {
+    try {
+      if (!assertDeleteOrCancel(req, res, "plant_equipment")) return;
+      const id = Number(req.params.id);
+      const reason = String(req.body?.reason || "").trim();
+      if (!reason) return res.status(400).json({ error: "Cancellation reason is required" });
+      const before = await storage.getMaintenanceLog(id);
+      if (!before) return res.status(404).json({ error: "Not found" });
+      const updated = await storage.cancelEquipmentMaintenanceLog(id, req.authUser!.id, reason);
+      await storage.logAudit({
+        module: "equipment_maintenance_logs",
+        transactionId: id,
+        action: "cancel",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before,
+        newValues: updated ?? null,
+        reason,
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/maintenance/logs/:id/cancel:", err);
+      res.status(500).json({ error: "Failed to cancel maintenance log" });
+    }
+  });
+
+  // ============================================
+  // GENERIC AUDIT TRAIL (Owner/Admin transaction controls)
+  // ============================================
+
+  app.get("/api/audit-logs", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ error: "not_authenticated" });
+      const module = String(req.query.module || "");
+      const transactionId = Number(req.query.transactionId);
+      if (!module || !transactionId || Number.isNaN(transactionId)) {
+        return res.status(400).json({ error: "module and transactionId are required" });
+      }
+      const logs = await storage.getAuditLogs(module, transactionId);
+      res.json(logs);
+    } catch (err) {
+      console.error("GET /api/audit-logs:", err);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
     }
   });
 

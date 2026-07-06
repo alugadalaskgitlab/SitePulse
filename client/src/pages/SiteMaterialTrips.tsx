@@ -2,7 +2,9 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { format } from "date-fns";
-import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X } from "lucide-react";
+import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban } from "lucide-react";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,6 +168,9 @@ export default function SiteMaterialTrips() {
       toast({ title: "Error", description: "Failed to delete trip.", variant: "destructive" });
     },
   });
+
+  const [cancelTripId, setCancelTripId] = useState<number | null>(null);
+  const [historyTripId, setHistoryTripId] = useState<number | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -522,15 +527,35 @@ export default function SiteMaterialTrips() {
                           />
                         </td>
                         <td className="p-2 text-center">
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => deleteMutation.mutate(trip.id)}
-                            disabled={deleteMutation.isPending}
-                            data-testid={`button-delete-trip-${trip.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setHistoryTripId(trip.id)}
+                              data-testid={`button-history-trip-${trip.id}`}
+                              title="History"
+                            >
+                              <History className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setCancelTripId(trip.id)}
+                              data-testid={`button-cancel-trip-${trip.id}`}
+                              title="Cancel"
+                            >
+                              <Ban className="w-4 h-4 text-amber-600" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => deleteMutation.mutate(trip.id)}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-trip-${trip.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -541,6 +566,21 @@ export default function SiteMaterialTrips() {
           </CardContent>
         </Card>
       </div>
+
+      <CancelDialog
+        open={cancelTripId !== null}
+        onOpenChange={(v) => !v && setCancelTripId(null)}
+        cancelUrl={`/api/site-material-trips/${cancelTripId}/cancel`}
+        recordLabel={`Material Trip #${cancelTripId}`}
+        invalidateQueryKeys={["/api/site-material-trips"]}
+      />
+      <HistoryDialog
+        open={historyTripId !== null}
+        onOpenChange={(v) => !v && setHistoryTripId(null)}
+        module="site_material_trips"
+        transactionId={historyTripId}
+        recordLabel={`Material Trip #${historyTripId}`}
+      />
     </div>
   );
 }

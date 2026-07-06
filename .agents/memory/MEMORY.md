@@ -18,3 +18,4 @@
 - [Field Home + Guided DPR Flow](field-home-guided-dpr.md) — role decides Field Home/guided DPR workspace on ALL devices; device (useDeviceType) only varies layout, never gates the workspace.
 - [isManager is a trap](is-manager-always-true.md) — auth-context's `isManager` = true for every non-admin logged-in user; never gate role-specific UI/nav on it, use isFieldEngineer or sectionVisible() instead.
 - [Common attachment system](common-attachment-system.md) — one shared attachments table/API/components for all file uploads; DPR photos use stage-then-upload-on-save since records lack an id pre-save.
+- [Owner/audit/cancel foundation](owner-audit-cancel-foundation.md) — Owner bypass baked into assert* helpers; generic auditLogs table; cancel-vs-delete split reused via shared CancelDialog/HistoryDialog across all transaction modules.

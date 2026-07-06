@@ -23,6 +23,9 @@ export type AuthUser = {
   email: string;
   fullName: string;
   isAdmin: boolean;
+  // Company Owner / Primary Admin — always has full control across every
+  // module regardless of permission toggles, and cannot be locked out.
+  isOwner: boolean;
   isActive: boolean;
   // Task #1247 — explicit, admin-settable "Engineer / field user" flag,
   // independent of the broken isManager boolean (kept unchanged for its
@@ -42,6 +45,9 @@ type AuthContextType = {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  // Company Owner / Primary Admin — bypasses permission checks like isAdmin,
+  // and always retains User Management + Permission Management access.
+  isOwner: boolean;
   // true when a non-admin user is authenticated (all non-admin session users are managers)
   isManager: boolean;
   // true when the user is explicitly flagged as an Engineer/field user by an
@@ -133,27 +139,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const sectionCan = (section: SectionKey, action: Action): boolean => {
       if (!u) return false;
-      if (u.isAdmin) return true;
+      if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
       return !!row && !!row[action];
     };
 
     const sectionVisible = (section: SectionKey): boolean => {
       if (!u) return false;
-      if (u.isAdmin) return true;
+      if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
       return !!row && (row.view || row.create || row.edit || row.delete || row.view_reports || row.export || row.approve);
     };
 
     const canApprove = (section: SectionKey): boolean => {
       if (!u) return false;
-      if (u.isAdmin) return true;
+      if (u.isAdmin || u.isOwner) return true;
       const row = perms[section];
       return !!row && !!row.approve;
     };
 
-    const canManagePermissions = !!u?.isAdmin || !!u?.canManagePermissions;
-    const permissionManagerScope = u?.isAdmin
+    const canManagePermissions = !!u?.isAdmin || !!u?.isOwner || !!u?.canManagePermissions;
+    const permissionManagerScope = (u?.isAdmin || u?.isOwner)
       ? "full"
       : (u?.permissionManagerScope as "full" | "partial" | null) ?? null;
 
@@ -163,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading: meQuery.isLoading,
       isAuthenticated: !!u,
       isAdmin: !!u?.isAdmin,
+      isOwner: !!u?.isOwner,
       isManager: !!u && !u.isAdmin,
       isFieldEngineer: !!u?.isFieldEngineer,
       canManagePermissions,

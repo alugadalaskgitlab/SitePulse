@@ -5,6 +5,45 @@ import { relations, sql } from "drizzle-orm";
 
 // === TABLE DEFINITIONS ===
 
+// Owner/Admin transaction controls & audit trail (spec: cancel/void without
+// hard-deleting submitted/approved/stock-affecting records). Spread into any
+// transaction table that needs Delete-vs-Cancel semantics.
+const cancellationFields = {
+  isDeleted: boolean("is_deleted").notNull().default(false),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: integer("deleted_by"),
+  isCancelled: boolean("is_cancelled").notNull().default(false),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: integer("cancelled_by"),
+  cancellationReason: text("cancellation_reason"),
+};
+
+// Generic cross-module audit trail. Every create/edit/delete/cancel/approve
+// action on a transaction should write one row here (see server/storage.ts
+// logAudit()). Deliberately module-agnostic (module + transactionId) instead
+// of one audit table per module, so History UI can be a single reusable
+// component across the whole app.
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  module: text("module").notNull(), // e.g. "dpr", "material_receipt", "site_purchase"
+  transactionId: integer("transaction_id").notNull(),
+  action: text("action").notNull(), // "create" | "edit" | "delete" | "cancel" | "approve" | "reopen"
+  userId: integer("user_id"),
+  userName: text("user_name").notNull(),
+  userRole: text("user_role"), // "owner" | "admin" | "manager" | "engineer" etc, snapshot at time of action
+  oldValues: jsonb("old_values"),
+  newValues: jsonb("new_values"),
+  reason: text("reason"),
+  stockImpact: text("stock_impact"), // free-text note on stock/ledger effect, if any
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  moduleTxnIdx: index("audit_logs_module_txn_idx").on(table.module, table.transactionId),
+}));
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
 // Main DPR Header
 export const dprs = pgTable("dprs", {
   id: serial("id").primaryKey(),
@@ -29,6 +68,7 @@ export const dprs = pgTable("dprs", {
   boqProjectId: integer("boq_project_id"),
   // Free-text remarks captured from the mobile guided DPR flow (Phase 1 UX facelift).
   remarks: text("remarks"),
+  ...cancellationFields,
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),
 }));
@@ -156,6 +196,7 @@ export const sitePurchases = pgTable("site_purchases", {
   vendor: text("vendor"),
   billNo: text("bill_no"),
   amount: real("amount"),
+  ...cancellationFields,
 });
 
 // DPR Version History (for manager edits as copies)
@@ -356,6 +397,7 @@ export const materialReceipts = pgTable("material_receipts", {
   notes: text("notes"),
   plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
+  ...cancellationFields,
 }, (table) => ({
   dateIdx: index("material_receipts_date_idx").on(table.date),
 }));
@@ -597,6 +639,7 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   enteredBy: text("entered_by"), // Supervisor name
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
+  ...cancellationFields,
 }, (table) => ({
   dateIdx: index("site_material_trips_date_idx").on(table.date),
 }));
@@ -1951,6 +1994,11 @@ export const users = pgTable("users", {
   // Admins bypass per-section permission checks (still go through device
   // approval). The bootstrap admin starts with isAdmin=true.
   isAdmin: boolean("is_admin").notNull().default(false),
+  // Company Owner / Primary Admin — always has full control across every
+  // module regardless of permission toggles, and cannot be locked out.
+  // Distinct from isAdmin so multiple admins can be permission-limited while
+  // exactly one (or a small set of) owners always retain full access.
+  isOwner: boolean("is_owner").notNull().default(false),
   // Allows unlocking previously-saved records on sections where the user
   // also has edit permission. Audited via record_unlock_log.
   canUnlockRecords: boolean("can_unlock_records").notNull().default(false),
@@ -2194,6 +2242,7 @@ export const equipmentMaintenanceLogs = pgTable("equipment_maintenance_logs", {
   resolvedAt: date("resolved_at"),
   autoIssueId: integer("auto_issue_id"), // FK → store_issues (auto-created)
   createdAt: timestamp("created_at").defaultNow(),
+  ...cancellationFields,
 }, (t) => ({
   dateIdx: index("eml_date_idx").on(t.date),
   equipmentIdx: index("eml_equipment_idx").on(t.equipmentId),

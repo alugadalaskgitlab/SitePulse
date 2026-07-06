@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Link, useSearch } from "wouter";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X } from "lucide-react";
+import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X, History, Ban } from "lucide-react";
+import CancelDialog from "@/components/CancelDialog";
+import HistoryDialog from "@/components/HistoryDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +62,8 @@ export default function SitePurchasesReport() {
     { shouldHydrate: !urlHasFilterParams },
   );
 
+  const [cancelItem, setCancelItem] = useState<SitePurchaseItem | null>(null);
+  const [historyItem, setHistoryItem] = useState<SitePurchaseItem | null>(null);
   const [editingItem, setEditingItem] = useState<SitePurchaseItem | null>(null);
   const [editForm, setEditForm] = useState({
     itemDescription: "",
@@ -269,7 +273,7 @@ export default function SitePurchasesReport() {
                       <th className="text-left p-2 font-medium">UOM</th>
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Reported By</th>
-                      <th className="text-center p-2 font-medium">Edit</th>
+                      <th className="text-center p-2 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -299,18 +303,40 @@ export default function SitePurchasesReport() {
                         <td className="p-2 text-right">{p.amount ? p.amount.toFixed(3) : "-"}</td>
                         <td className="p-2">{p.engineer}</td>
                         <td className="p-2 text-center">
-                          {p.source !== 'diesel' ? (
+                          <div className="flex items-center justify-center gap-1">
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => openEdit(p)}
-                              data-testid={`button-edit-purchase-${p.id}`}
+                              onClick={() => setHistoryItem(p)}
+                              data-testid={`button-history-purchase-${p.id}`}
+                              title="History"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <History className="w-4 h-4 text-muted-foreground" />
                             </Button>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
+                            {p.source !== 'diesel' ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEdit(p)}
+                                  data-testid={`button-edit-purchase-${p.id}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setCancelItem(p)}
+                                  data-testid={`button-cancel-purchase-${p.id}`}
+                                  title="Cancel"
+                                >
+                                  <Ban className="w-4 h-4 text-amber-600" />
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -418,6 +444,21 @@ export default function SitePurchasesReport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CancelDialog
+        open={!!cancelItem}
+        onOpenChange={(v) => !v && setCancelItem(null)}
+        cancelUrl={`/api/site-purchases/${cancelItem?.id}/cancel`}
+        recordLabel={cancelItem ? `Purchase: ${cancelItem.itemDescription} (${cancelItem.site}, ${cancelItem.date})` : ""}
+        invalidateQueryKeys={["/api/site-purchases"]}
+      />
+      <HistoryDialog
+        open={!!historyItem}
+        onOpenChange={(v) => !v && setHistoryItem(null)}
+        module="site_purchases"
+        transactionId={historyItem?.id ?? null}
+        recordLabel={historyItem ? `Purchase: ${historyItem.itemDescription}` : undefined}
+      />
     </div>
   );
 }
