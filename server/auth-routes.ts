@@ -83,6 +83,7 @@ const createUserSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   fullName: z.string().min(1),
   isAdmin: z.boolean().optional(),
+  isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
 }).superRefine((d, ctx) => {
@@ -99,6 +100,7 @@ const patchUserSchema = z.object({
   phone: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
+  isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   sessionPolicy: z.enum(["strict", "sticky"]).optional(),
   canManagePermissions: z.boolean().optional(),

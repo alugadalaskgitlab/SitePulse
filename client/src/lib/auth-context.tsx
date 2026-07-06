@@ -24,6 +24,11 @@ export type AuthUser = {
   fullName: string;
   isAdmin: boolean;
   isActive: boolean;
+  // Task #1247 — explicit, admin-settable "Engineer / field user" flag,
+  // independent of the broken isManager boolean (kept unchanged for its
+  // many existing call sites). Drives FieldHome/guided-DPR defaults and
+  // role labels.
+  isFieldEngineer: boolean;
   sessionPolicy: "strict" | "sticky";
   canManagePermissions: boolean;
   permissionManagerScope: "full" | "partial" | null;
@@ -39,6 +44,10 @@ type AuthContextType = {
   isAdmin: boolean;
   // true when a non-admin user is authenticated (all non-admin session users are managers)
   isManager: boolean;
+  // true when the user is explicitly flagged as an Engineer/field user by an
+  // admin. Independent of isManager; do NOT use isManager-derived logic to
+  // infer this.
+  isFieldEngineer: boolean;
   // true if this user can manage permissions (admin or permission manager flag)
   canManagePermissions: boolean;
   // "full" | "partial" — only meaningful when canManagePermissions is true
@@ -155,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!u,
       isAdmin: !!u?.isAdmin,
       isManager: !!u && !u.isAdmin,
+      isFieldEngineer: !!u?.isFieldEngineer,
       canManagePermissions,
       permissionManagerScope,
       sectionCan,

@@ -1960,6 +1960,12 @@ export const users = pgTable("users", {
   // their own permission set so they can't grant more than they have).
   canManagePermissions: boolean("can_manage_permissions").notNull().default(false),
   permissionManagerScope: text("permission_manager_scope").default("partial"),
+  // Task #1247 — explicit, admin-settable "Engineer / field user" flag.
+  // Independent of isAdmin/isManager (the latter's broken semantics — see
+  // auth-context.tsx — are intentionally left untouched by this field). Used
+  // to drive FieldHome default routing, the guided-DPR default, and role
+  // labels without disturbing any existing isManager-gated behavior.
+  isFieldEngineer: boolean("is_field_engineer").notNull().default(false),
   // Admin-controlled flag: when true this user's subscribed devices receive
   // push (and later SMS) notifications. Default off so new users are not
   // disturbed until the admin opts them in.

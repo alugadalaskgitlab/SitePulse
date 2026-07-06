@@ -13,12 +13,20 @@ import { format } from "date-fns";
 
 
 export default function Home() {
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isFieldEngineer } = useAuth();
 
   // ── Mobile-first field home (Phase 1 UX facelift) ──────────────────────
   // Engineers on mobile land on the simplified FieldHome by default;
   // managers/admins always keep this classic dashboard. Either side can
   // toggle over for the session.
+  //
+  // Task #1247 — this used to key off `!isManager`, but isManager is true
+  // for every non-admin authenticated user, so `!isManager` was only ever
+  // true when logged out — FieldHome never actually became the default for
+  // anyone. We now key off the explicit, admin-settable isFieldEngineer
+  // flag instead. Default is false until an admin opts a user in, so
+  // existing users see no behavior change; admins can flip isFieldEngineer
+  // on for field staff to get FieldHome by default on mobile.
   //
   // IMPORTANT: the decision of which component to render lives in this
   // top-level wrapper, which itself calls no data-fetching hooks. This
@@ -28,7 +36,7 @@ export default function Home() {
   // single component instance.
   const isMobileViewport = useIsMobile();
   const [fieldOverride, setFieldOverride] = useState<boolean | null>(null);
-  const defaultField = isMobileViewport && !isAdmin && !isManager;
+  const defaultField = isMobileViewport && !isAdmin && isFieldEngineer;
   const showFieldHome = fieldOverride ?? defaultField;
 
   if (showFieldHome) {

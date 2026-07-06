@@ -32,7 +32,7 @@ interface NavItem {
 }
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
-  const { user, isAdmin, isManager, logout, sectionVisible } = useAuth();
+  const { user, isAdmin, isManager, isFieldEngineer, logout, sectionVisible } = useAuth();
   const { rmcEnabled, companyName } = useFeatureFlags();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -83,7 +83,12 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   });
   const pendingIrnCount = pendingIrns?.length ?? 0;
 
-  const roleLabel = isAdmin ? "Admin" : isManager ? "Manager" : "Engineer";
+  // Task #1247 — isManager is true for every non-admin authenticated user
+  // (see auth-context.tsx), so the old `isManager ? "Manager" : "Engineer"`
+  // branch never actually resolved to "Engineer". Use the explicit
+  // isFieldEngineer flag for the label instead; canSeeEstimator below is
+  // deliberately left keyed on isManager to preserve existing access.
+  const roleLabel = isAdmin ? "Admin" : isFieldEngineer ? "Engineer" : "Manager";
   const initials = user?.fullName
     ? user.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : user?.email?.slice(0, 2).toUpperCase() ?? "?";

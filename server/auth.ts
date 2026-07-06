@@ -240,6 +240,7 @@ export async function createUserRow(input: {
   password: string;
   fullName: string;
   isAdmin?: boolean;
+  isFieldEngineer?: boolean;
   notificationsEnabled?: boolean;
   sessionPolicy?: SessionPolicy;
 }): Promise<User> {
@@ -251,6 +252,7 @@ export async function createUserRow(input: {
     fullName: input.fullName.trim(),
     isActive: true,
     isAdmin: !!input.isAdmin,
+    isFieldEngineer: !!input.isFieldEngineer,
     notificationsEnabled: !!input.notificationsEnabled,
     sessionPolicy: input.sessionPolicy ?? "strict",
   }).returning();
@@ -273,6 +275,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   phone: string | null;
   isActive: boolean;
   isAdmin: boolean;
+  isFieldEngineer: boolean;
   notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
   canManagePermissions: boolean;
@@ -284,6 +287,7 @@ export async function updateUserProfile(userId: number, patch: Partial<{
   if (patch.phone !== undefined) update.phone = patch.phone ? patch.phone.trim() : null;
   if (patch.isActive !== undefined) update.isActive = patch.isActive;
   if (patch.isAdmin !== undefined) update.isAdmin = patch.isAdmin;
+  if (patch.isFieldEngineer !== undefined) update.isFieldEngineer = patch.isFieldEngineer;
   if (patch.notificationsEnabled !== undefined) update.notificationsEnabled = patch.notificationsEnabled;
   if (patch.sessionPolicy !== undefined) update.sessionPolicy = patch.sessionPolicy;
   if (patch.canManagePermissions !== undefined) update.canManagePermissions = patch.canManagePermissions;

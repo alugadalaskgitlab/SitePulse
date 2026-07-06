@@ -65,6 +65,7 @@ type SafeUser = {
   phone: string | null;
   fullName: string;
   isAdmin: boolean;
+  isFieldEngineer: boolean;
   isActive: boolean;
   notificationsEnabled: boolean;
   sessionPolicy: SessionPolicy;
@@ -323,6 +324,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isFieldEngineer, setIsFieldEngineer] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [policy, setPolicy] = useState<SessionPolicy>("strict");
 
@@ -334,6 +336,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
         fullName: fullName.trim(),
         password,
         isAdmin,
+        isFieldEngineer,
         notificationsEnabled,
         sessionPolicy: policy,
       });
@@ -376,6 +379,10 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
           </div>
           <div className="flex items-center justify-between">
+            <Label htmlFor="isFieldEngineer">Engineer / field user</Label>
+            <Switch id="isFieldEngineer" checked={isFieldEngineer} onCheckedChange={setIsFieldEngineer} data-testid="switch-new-field-engineer" />
+          </div>
+          <div className="flex items-center justify-between">
             <Label htmlFor="notifEnabled">Push notifications</Label>
             <Switch id="notifEnabled" checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} data-testid="switch-new-notif" />
           </div>
@@ -416,6 +423,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
   const [email, setEmail] = useState(target?.email ?? "");
   const [phone, setPhone] = useState(target?.phone ?? "");
   const [isAdminVal, setIsAdminVal] = useState(target?.isAdmin ?? false);
+  const [isFieldEngineerVal, setIsFieldEngineerVal] = useState(target?.isFieldEngineer ?? false);
   const [notifEnabled, setNotifEnabled] = useState(target?.notificationsEnabled ?? false);
   const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
   const [canMgmtPerms, setCanMgmtPerms] = useState(target?.canManagePermissions ?? false);
@@ -433,6 +441,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
     const targetPhone = target.phone ?? "";
     if (trimmedPhone !== targetPhone) patch.phone = trimmedPhone || null;
     if (isAdminVal !== target.isAdmin) patch.isAdmin = isAdminVal;
+    if (isFieldEngineerVal !== target.isFieldEngineer) patch.isFieldEngineer = isFieldEngineerVal;
     if (notifEnabled !== target.notificationsEnabled) patch.notificationsEnabled = notifEnabled;
     if (policy !== target.sessionPolicy) patch.sessionPolicy = policy;
     if (canMgmtPerms !== target.canManagePermissions) patch.canManagePermissions = canMgmtPerms;
@@ -484,6 +493,10 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
               <Switch id="edit-isAdmin" checked={isAdminVal} onCheckedChange={setIsAdminVal} data-testid="switch-edit-admin" />
             </div>
           )}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="edit-isFieldEngineer">Engineer / field user</Label>
+            <Switch id="edit-isFieldEngineer" checked={isFieldEngineerVal} onCheckedChange={setIsFieldEngineerVal} data-testid="switch-edit-field-engineer" />
+          </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="edit-notif">Push notifications</Label>
             <Switch id="edit-notif" checked={notifEnabled} onCheckedChange={setNotifEnabled} data-testid="switch-edit-notif" />

@@ -278,9 +278,13 @@ export default function SiteEntry() {
   // choice is remembered for the session. Managers/admins always keep the
   // classic layout unless they explicitly opt into guided mode.
   const isMobileViewport = useIsMobile();
-  const { isAdmin, isManager } = useAuth();
+  const { isAdmin, isFieldEngineer } = useAuth();
   const [guidedOverride, setGuidedOverride] = useState<boolean | null>(null);
-  const defaultGuided = isMobileViewport && !isAdmin && !isManager;
+  // Task #1247 — was keyed off `!isManager`, which is true for every
+  // non-admin authenticated user, so this never actually triggered for
+  // anyone logged in. Now keyed off the explicit isFieldEngineer flag,
+  // which defaults to false so existing users see no behavior change.
+  const defaultGuided = isMobileViewport && !isAdmin && isFieldEngineer;
   const guidedMode = guidedOverride ?? defaultGuided;
   const [guidedStep, setGuidedStep] = useState(0);
   const [remarksNote, setRemarksNote] = useState("");
@@ -616,16 +620,37 @@ export default function SiteEntry() {
   const [newPersonnelName, setNewPersonnelName] = useState("");
   const [newPersonnelRole, setNewPersonnelRole] = useState("Engineer");
   const [newPersonnelPhone, setNewPersonnelPhone] = useState("");
+  // Task #1247 — tracks which "+ New Personnel" trigger opened the dialog so
+  // the newly created person can be auto-attached to that exact target on
+  // success, instead of just closing the dialog with no linkage. `null`
+  // means no specific target (dialog opened generically) — in that case we
+  // just refresh the list, matching the previous behavior.
+  type PersonnelAddTarget = { kind: "header" } | { kind: "progressRow"; idx: number };
+  const [personnelAddTarget, setPersonnelAddTarget] = useState<PersonnelAddTarget | null>(null);
 
   const createPersonnelMutation = useMutation({
     mutationFn: (data: { name: string; role: string; phone?: string }) =>
-      apiRequest("POST", "/api/personnel", data),
-    onSuccess: () => {
+      apiRequest("POST", "/api/personnel", data).then((r) => r.json()),
+    onSuccess: (created: Personnel) => {
       queryClient.invalidateQueries({ queryKey: ["/api/personnel"] });
       setAddPersonnelOpen(false);
       setNewPersonnelName("");
       setNewPersonnelRole("Engineer");
       setNewPersonnelPhone("");
+      const target = personnelAddTarget;
+      setPersonnelAddTarget(null);
+      if (target?.kind === "header") {
+        setHeader((h) => ({ ...h, engineer: `${created.name.toUpperCase()} - ${created.role.toUpperCase()}` }));
+      } else if (target?.kind === "progressRow") {
+        setProgress((prev) => {
+          const updated = [...prev];
+          const row = updated[target.idx];
+          if (row && !row.personnelIds.includes(created.id)) {
+            updated[target.idx] = { ...row, personnelIds: [...row.personnelIds, created.id] };
+          }
+          return updated;
+        });
+      }
       toast({ title: "Personnel added" });
     },
   });
@@ -1159,7 +1184,7 @@ export default function SiteEntry() {
                 type="button"
                 size="icon"
                 variant="outline"
-                onClick={() => setAddPersonnelOpen(true)}
+                onClick={() => { setPersonnelAddTarget({ kind: "header" }); setAddPersonnelOpen(true); }}
                 title="Add new personnel"
                 data-testid="button-add-engineer-personnel"
               >
@@ -1706,6 +1731,7 @@ export default function SiteEntry() {
                   value=""
                   onValueChange={(val) => {
                     if (val === "__add_new__") {
+                      setPersonnelAddTarget({ kind: "progressRow", idx });
                       setAddPersonnelOpen(true);
                       return;
                     }
@@ -2770,7 +2796,13 @@ export default function SiteEntry() {
         )}
       </div>
 
-      <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
+      <Dialog
+        open={addPersonnelOpen}
+        onOpenChange={(open) => {
+          setAddPersonnelOpen(open);
+          if (!open) setPersonnelAddTarget(null);
+        }}
+      >
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Add New Personnel</DialogTitle>
@@ -2809,7 +2841,7 @@ export default function SiteEntry() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddPersonnelOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setAddPersonnelOpen(false); setPersonnelAddTarget(null); }}>Cancel</Button>
             <Button
               disabled={!newPersonnelName.trim() || createPersonnelMutation.isPending}
               onClick={() => createPersonnelMutation.mutate({
