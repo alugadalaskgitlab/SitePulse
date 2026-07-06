@@ -1,0 +1,138 @@
+The DPR photo upload from Review Report is working, but the attachment feature must be completed across transaction screens and reports.
+
+Current issue:
+Material Receipt at site does not have photo/camera attachment beside Receipt/Challan No. Also, photos uploaded should be visible inside the related report/receipt/purchase/maintenance/billing screen, not only stored separately.
+
+Required:
+
+A. Complete common attachment usage across modules
+
+Use the same reusable attachment system for:
+- DPR progress/activity photos
+- DPR material consumed photos
+- Site Material Receipt
+- Site Purchases
+- Purchase Indents where applicable
+- Purchase Orders / vendor bills later
+- IRN
+- Equipment breakdown logs
+- Equipment maintenance/service logs
+- Plant production / stock receipt records later
+
+B. Material Receipt attachments
+
+In Site Material Receipt / Material Receipt form:
+
+1. Add attachment upload beside or near:
+   - Receipt No.
+   - Challan No.
+   - DC No.
+   - Invoice No. where applicable
+
+2. Allow:
+   - take photo using camera
+   - upload from gallery/photo library
+   - upload PDF/image if available
+
+3. Store attachment against that specific material receipt record.
+
+4. Attachment metadata should include:
+   - moduleType = MATERIAL_RECEIPT
+   - linkedRecordId = materialReceiptId
+   - siteId
+   - projectId / boqProjectId if available
+   - materialId / material name
+   - supplier/vendor
+   - challanNo / receiptNo if available
+   - caption/remarks
+   - uploadedBy
+   - uploadedAt
+
+5. Show thumbnail/link immediately after upload.
+
+C. Site Purchase attachments
+
+In Site Purchase form:
+
+1. Add attachment upload for:
+   - bill photo
+   - invoice photo
+   - receipt photo
+   - payment proof if any
+
+2. Store against site purchase record:
+   moduleType = SITE_PURCHASE
+
+3. Show attachment inside purchase detail/list/report.
+
+D. Equipment maintenance/breakdown attachments
+
+In equipment breakdown / maintenance / service logs:
+
+1. Add optional attachments for:
+   - breakdown photo
+   - damage photo
+   - mechanic report
+   - service report
+   - repair estimate
+   - spare parts invoice
+   - repair bill
+   - hour-meter / odometer photo
+
+2. Store against the equipment maintenance/breakdown record:
+   moduleType = EQUIPMENT_MAINTENANCE or EQUIPMENT_BREAKDOWN
+
+3. Show attachments in equipment history and maintenance reports.
+
+E. Reports and billing visibility
+
+Attachments must be visible in the related report, not only in a separate attachment list.
+
+1. DPR Report:
+   - show DPR photos against DPR/progress item.
+
+2. Material Receipt Report:
+   - show challan/DC/invoice thumbnail/link against each receipt row.
+
+3. Site Purchase Report:
+   - show bill/invoice attachment against each purchase row.
+
+4. Equipment Maintenance Report:
+   - show breakdown/repair attachments against each maintenance record.
+
+5. Vendor Billing support:
+   Add or plan a Vendor Receipt Proof view/report where billing/stores can filter:
+   - vendor/supplier
+   - project/site
+   - material
+   - date range
+   - billed/unbilled if available
+
+   The report should show:
+   - receipt date
+   - receipt/challan/DC no.
+   - material
+   - quantity
+   - vehicle no.
+   - received by
+   - attachment thumbnail/link
+   - billing status if available later
+
+Purpose:
+When stores/billing prepares vendor bills, they should be able to see the receipt entries and supporting challan/DC/invoice photos in the same place.
+
+F. UI requirements
+
+1. On mobile, use camera/gallery upload.
+2. On desktop, allow file upload.
+3. Show thumbnail preview.
+4. Allow opening full image/PDF.
+5. Allow adding caption.
+6. Respect site/project permissions.
+7. Do not store large files directly in the database.
+8. Store only metadata and storage key/path in DB.
+
+Scope:
+Do not redesign Work Programme, BOM, Plan vs Actual, HMP/RMC logic or dashboards in this task.
+
+This task is to complete reusable attachments across DPR, material receipts, site purchases, equipment maintenance and make attachments visible in the relevant reports/billing views.

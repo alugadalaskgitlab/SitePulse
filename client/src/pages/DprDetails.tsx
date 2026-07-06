@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType, Site } from "@shared/schema";
 
 export default function DprDetails() {
@@ -494,6 +495,21 @@ export default function DprDetails() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Site Photos */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Site Photos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AttachmentGallery
+            moduleType="dpr_progress"
+            linkedRecordId={dpr.id}
+            allowDelete={canEdit}
+            emptyText="No photos attached to this report."
+          />
         </CardContent>
       </Card>
     </div>

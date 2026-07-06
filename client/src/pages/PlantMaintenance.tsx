@@ -17,8 +17,9 @@ import { useOrigin } from "@/hooks/use-origin";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { useUpload } from "@/hooks/use-upload";
 import type { EquipmentMasterType, StoreItem, StoreStockBalance } from "@shared/schema";
-import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil, Camera, ImagePlus } from "lucide-react";
 import { format } from "date-fns";
 
 type Part = { storeItemId: number; qty: number; uom: string };
@@ -178,13 +179,58 @@ function LogForm({
   const [partItemId, setPartItemId] = useState("");
   const [partQty, setPartQty] = useState("");
   const [partUom, setPartUom] = useState("");
+  // Photos are staged locally while creating a new log (no DB id yet to link
+  // an attachment to), then uploaded in one batch once the log is saved.
+  const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
+  const { uploadFile } = useUpload();
+
+  const addStagedPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const valid = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE) {
+        toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" });
+        return false;
+      }
+      if (!f.type.startsWith("image/") && f.type !== "application/pdf") {
+        toast({ title: "Unsupported file", description: `${f.name} must be an image or PDF.`, variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+    setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  const removeStagedPhoto = (idx: number) => setStagedPhotos((prev) => prev.filter((_, i) => i !== idx));
+  const uploadStagedPhotos = async (logId: number, logEventType: string) => {
+    for (const file of stagedPhotos) {
+      const uploadResponse = await uploadFile(file);
+      if (!uploadResponse) continue;
+      try {
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: logEventType === "breakdown" ? "equipment_breakdown" : "equipment_maintenance",
+          linkedRecordId: logId,
+          equipmentId: equipmentId ? Number(equipmentId) : null,
+          fileName: file.name,
+          objectPath: uploadResponse.objectPath,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        });
+      } catch {
+        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      }
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (body: any) => {
       const res = await apiRequest("POST", "/api/maintenance/logs", body);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (log: any) => {
+      if (stagedPhotos.length > 0 && log?.id) {
+        await uploadStagedPhotos(log.id, eventType);
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", eventType === "breakdown" ? "equipment_breakdown" : "equipment_maintenance", log.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/health-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/maintenance/open-count"] });
@@ -304,6 +350,57 @@ function LogForm({
       <div className="space-y-1">
         <Label>Remarks</Label>
         <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Additional notes..." data-testid="textarea-maint-remarks" />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Attachments <span className="text-muted-foreground text-sm">(photos of the issue / work done)</span></Label>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          id="maint-photo-camera"
+          data-testid="input-maint-photo-camera"
+          onChange={(e) => { addStagedPhotos(e.target.files); e.target.value = ""; }}
+        />
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          className="hidden"
+          id="maint-photo-gallery"
+          data-testid="input-maint-photo-gallery"
+          onChange={(e) => { addStagedPhotos(e.target.files); e.target.value = ""; }}
+        />
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => document.getElementById("maint-photo-camera")?.click()} data-testid="button-maint-photo-camera">
+            <Camera className="w-4 h-4" /> Camera
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => document.getElementById("maint-photo-gallery")?.click()} data-testid="button-maint-photo-gallery">
+            <ImagePlus className="w-4 h-4" /> Gallery
+          </Button>
+        </div>
+        {stagedPhotos.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {stagedPhotos.map((file, idx) => (
+              <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-maint-photo-${idx}`}>
+                {file.type.startsWith("image/") ? (
+                  <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex items-center justify-center h-full w-full text-xs text-center p-1 truncate">{file.name}</div>
+                )}
+                <button
+                  type="button"
+                  className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
+                  onClick={() => removeStagedPhoto(idx)}
+                  data-testid={`button-remove-staged-maint-photo-${idx}`}
+                >
+                  <X className="h-3.5 w-3.5 text-destructive" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">Photos are uploaded once you save the log.</p>
       </div>
       {storeItems.length > 0 && (
         <div className="space-y-2 border rounded-lg p-3 bg-muted/30">

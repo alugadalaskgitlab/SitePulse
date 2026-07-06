@@ -14,9 +14,10 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus } from "lucide-react";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { useUpload } from "@/hooks/use-upload";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -41,6 +42,49 @@ export default function PlantMaterialReceipts() {
   const [editingReceipt, setEditingReceipt] = useState<MaterialReceipt | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  // Photos are staged locally while creating a new receipt (no DB id yet to
+  // link an attachment to), then uploaded in one batch once the receipt is saved.
+  const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
+  const { uploadFile } = useUpload();
+  const receiptCameraInputRef = useRef<HTMLInputElement>(null);
+  const receiptGalleryInputRef = useRef<HTMLInputElement>(null);
+  const addStagedReceiptPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const valid = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE) {
+        toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" });
+        return false;
+      }
+      if (!f.type.startsWith("image/") && f.type !== "application/pdf") {
+        toast({ title: "Unsupported file", description: `${f.name} must be an image or PDF.`, variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+    setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  const removeStagedReceiptPhoto = (idx: number) => setStagedPhotos((prev) => prev.filter((_, i) => i !== idx));
+  const uploadStagedReceiptPhotos = async (receiptId: number) => {
+    for (const file of stagedPhotos) {
+      const uploadResponse = await uploadFile(file);
+      if (!uploadResponse) continue;
+      try {
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "material_receipt",
+          linkedRecordId: receiptId,
+          materialId: materialId ? Number(materialId) : null,
+          fileName: file.name,
+          objectPath: uploadResponse.objectPath,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        });
+      } catch {
+        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      }
+    }
+    setStagedPhotos([]);
+  };
 
   // Deep-link highlight support: ?highlight=<receiptId>
   // Deep-link edit support: ?edit=<receiptId>
@@ -328,6 +372,10 @@ export default function PlantMaterialReceipts() {
         }
       }
       await clearDraft();
+      if (stagedPhotos.length > 0 && receipt?.id) {
+        await uploadStagedReceiptPhotos(receipt.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", "material_receipt", receipt.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -364,6 +412,7 @@ export default function PlantMaterialReceipts() {
   });
 
   const resetForm = () => {
+    setStagedPhotos([]);
     setDate(format(new Date(), "yyyy-MM-dd"));
     setTime(format(new Date(), "HH:mm"));
     setPartyId("");
@@ -1070,7 +1119,7 @@ export default function PlantMaterialReceipts() {
                 );
               })()}
 
-              {editingReceipt && (
+              {editingReceipt ? (
                 <div className="space-y-1.5">
                   <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
                   <AttachmentUploader
@@ -1079,6 +1128,58 @@ export default function PlantMaterialReceipts() {
                     materialId={materialId ? Number(materialId) : null}
                   />
                   <AttachmentGallery moduleType="material_receipt" linkedRecordId={editingReceipt.id} />
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <input
+                    ref={receiptCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    data-testid="input-receipt-photo-camera"
+                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptCameraInputRef.current) receiptCameraInputRef.current.value = ""; }}
+                  />
+                  <input
+                    ref={receiptGalleryInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    className="hidden"
+                    data-testid="input-receipt-photo-gallery"
+                    onChange={(e) => { addStagedReceiptPhotos(e.target.files); if (receiptGalleryInputRef.current) receiptGalleryInputRef.current.value = ""; }}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptCameraInputRef.current?.click()} data-testid="button-receipt-photo-camera">
+                      <Camera className="w-4 h-4" /> Camera
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => receiptGalleryInputRef.current?.click()} data-testid="button-receipt-photo-gallery">
+                      <ImagePlus className="w-4 h-4" /> Gallery
+                    </Button>
+                  </div>
+                  {stagedPhotos.length > 0 && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {stagedPhotos.map((file, idx) => (
+                        <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-receipt-photo-${idx}`}>
+                          {file.type.startsWith("image/") ? (
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex items-center justify-center h-full w-full text-xs text-center p-1 truncate">{file.name}</div>
+                          )}
+                          <button
+                            type="button"
+                            className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
+                            onClick={() => removeStagedReceiptPhoto(idx)}
+                            data-testid={`button-remove-staged-receipt-photo-${idx}`}
+                          >
+                            <X className="h-3.5 w-3.5 text-destructive" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Photos are uploaded once you save the receipt.</p>
                 </div>
               )}
 
@@ -1367,6 +1468,16 @@ export default function PlantMaterialReceipts() {
                                       <Badge variant="outline">T{receipt.tankNumber}</Badge>
                                     </div>
                                   )}
+                                </div>
+                                <div className="mt-3">
+                                  <span className="text-muted-foreground text-sm block mb-1.5">Attachments</span>
+                                  <AttachmentGallery
+                                    moduleType="material_receipt"
+                                    linkedRecordId={receipt.id}
+                                    allowDelete={false}
+                                    emptyText="No photos attached."
+                                    className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 max-w-2xl"
+                                  />
                                 </div>
                                 {(() => {
                                   const indentRef = (receipt as any).indentRef;
