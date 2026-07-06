@@ -1,0 +1,89 @@
+The FieldHome / permissions / DPR personnel fixes are still not fully closed.
+
+Observed:
+1. Ramesh still sees all sites on mobile FieldHome.
+2. DPR Site selector may also show all sites.
+3. Add Personnel from DPR still does not save.
+4. For engineer/mobile users, guided FieldHome and guided DPR should be default, not something the user must toggle into.
+
+Please fix and verify these points:
+
+A. Site Access filtering
+
+FieldHome currently appears to use /api/sites and displays all active sites.
+
+Required:
+1. For non-admin/non-manager users, /api/sites should return only sites permitted through the existing User Management → Site Access settings.
+   OR FieldHome and SiteEntry should call/use a permitted-sites endpoint.
+
+2. FieldHome Today’s DPR Status must show only permitted sites.
+
+3. New DPR site selector in SiteEntry must show only permitted sites.
+
+4. File Now / New DPR must prefill or restrict to the permitted site.
+
+5. If a field user has no assigned/permitted site, show:
+   “No site assigned. Please contact admin.”
+
+6. Admin/manager can continue to see all sites.
+
+Please test with Ramesh:
+- grant only NH-167 site access
+- login on mobile
+- FieldHome should show only NH-167
+- New DPR site dropdown should show only NH-167
+
+B. Default field/mobile view
+
+For engineer/non-admin/non-manager users:
+1. Mobile login should land directly on FieldHome.
+2. New DPR should open in guided mobile DPR flow by default.
+3. “View full dashboard” / “Classic view” can remain as fallback links.
+4. User should not need to click Field view first and then Guided view again.
+
+Managers/admins should keep normal dashboard by default.
+
+C. Add Personnel from DPR
+
+The frontend quick-add dialog posts to POST /api/personnel.
+
+Please verify backend route and permission gate.
+
+Required:
+1. A user with site_dprs.create should be allowed to quick-add personnel from DPR,
+   OR show a clear permission error if only master_personnel.create is allowed.
+
+2. On save, POST /api/personnel should accept:
+   - name
+   - role
+   - phone optional
+   - isActive/default active
+
+3. If save fails, show the actual backend error toast, not silent failure.
+
+4. After save:
+   - invalidate/refetch /api/personnel
+   - select the newly created person in Engineer / Submitted By if opened from header
+   - attach to progress row if opened from row
+   - close dialog
+   - show success toast
+
+5. If duplicate exists, show friendly error and allow selecting existing personnel.
+
+D. Permission audit for Estimator visibility
+
+Also confirm estimator/cards/modules are hidden for users without permission:
+- estimator_portal
+- mix_calculator
+- concrete_calculator
+- qto_boq
+- rate_cards
+
+Ramesh should not see Estimator unless explicitly granted.
+
+Please provide a short closure report:
+- FieldHome site filtering fixed: yes/no
+- DPR site selector filtering fixed: yes/no
+- Add Personnel from DPR fixed: yes/no
+- Guided mobile default fixed: yes/no
+- Estimator visibility fixed: yes/no

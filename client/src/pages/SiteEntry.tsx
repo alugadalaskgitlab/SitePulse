@@ -352,6 +352,16 @@ export default function SiteEntry() {
     setHeader((h) => ({ ...h, boqProjectId: resolvedBoqProjectId }));
   }, [resolvedBoqProjectId]);
 
+  // Site Access filtering (part of Task #1247 follow-up): /api/sites already
+  // returns only the sites this user is permitted to see. When a restricted
+  // user has exactly one permitted site, auto-select it so they never have
+  // to hunt through a dropdown — this is the "File Now" prefill requirement.
+  useEffect(() => {
+    if (activeSites.length === 1 && !header.site) {
+      setHeader((h) => ({ ...h, site: activeSites[0].name }));
+    }
+  }, [activeSites, header.site]);
+
   const siteBoqProjectId = header.boqProjectId;
 
   const siteBoqProjectName = useMemo(() => {
@@ -627,33 +637,81 @@ export default function SiteEntry() {
   // just refresh the list, matching the previous behavior.
   type PersonnelAddTarget = { kind: "header" } | { kind: "progressRow"; idx: number };
   const [personnelAddTarget, setPersonnelAddTarget] = useState<PersonnelAddTarget | null>(null);
+  const [duplicatePersonnel, setDuplicatePersonnel] = useState<Personnel | null>(null);
+
+  // Attach a person (existing or newly created) to whichever target opened
+  // the "+ New Personnel" dialog, then reset the dialog state.
+  const attachPersonnelToTarget = useCallback((person: Personnel) => {
+    const target = personnelAddTarget;
+    setPersonnelAddTarget(null);
+    if (target?.kind === "header") {
+      setHeader((h) => ({ ...h, engineer: `${person.name.toUpperCase()} - ${person.role.toUpperCase()}` }));
+    } else if (target?.kind === "progressRow") {
+      setProgress((prev) => {
+        const updated = [...prev];
+        const row = updated[target.idx];
+        if (row && !row.personnelIds.includes(person.id)) {
+          updated[target.idx] = { ...row, personnelIds: [...row.personnelIds, person.id] };
+        }
+        return updated;
+      });
+    }
+  }, [personnelAddTarget]);
 
   const createPersonnelMutation = useMutation({
-    mutationFn: (data: { name: string; role: string; phone?: string }) =>
-      apiRequest("POST", "/api/personnel", data).then((r) => r.json()),
+    mutationFn: async (data: { name: string; role: string; phone?: string }) => {
+      const res = await fetch("/api/personnel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err: any = new Error(body?.message || `Failed to add personnel (${res.status})`);
+        err.status = res.status;
+        err.existingPersonnel = body?.existingPersonnel;
+        throw err;
+      }
+      return body as Personnel;
+    },
     onSuccess: (created: Personnel) => {
       queryClient.invalidateQueries({ queryKey: ["/api/personnel"] });
       setAddPersonnelOpen(false);
       setNewPersonnelName("");
       setNewPersonnelRole("Engineer");
       setNewPersonnelPhone("");
-      const target = personnelAddTarget;
-      setPersonnelAddTarget(null);
-      if (target?.kind === "header") {
-        setHeader((h) => ({ ...h, engineer: `${created.name.toUpperCase()} - ${created.role.toUpperCase()}` }));
-      } else if (target?.kind === "progressRow") {
-        setProgress((prev) => {
-          const updated = [...prev];
-          const row = updated[target.idx];
-          if (row && !row.personnelIds.includes(created.id)) {
-            updated[target.idx] = { ...row, personnelIds: [...row.personnelIds, created.id] };
-          }
-          return updated;
-        });
-      }
+      attachPersonnelToTarget(created);
       toast({ title: "Personnel added" });
     },
+    onError: (err: any) => {
+      if (err?.status === 409 && err?.existingPersonnel) {
+        setDuplicatePersonnel(err.existingPersonnel);
+        toast({
+          title: "Personnel already exists",
+          description: err.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: "Couldn't add personnel",
+        description: err?.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
+
+  // When the backend reports a duplicate name, let the user attach the
+  // existing person to their target with one click instead of dead-ending.
+  const useExistingPersonnel = useCallback((person: Personnel) => {
+    setAddPersonnelOpen(false);
+    setNewPersonnelName("");
+    setNewPersonnelRole("Engineer");
+    setNewPersonnelPhone("");
+    attachPersonnelToTarget(person);
+    toast({ title: `${person.name} selected` });
+  }, [attachPersonnelToTarget, toast]);
 
   const [progress, setProgress] = useState<ProgressEntry[]>([
     { activity: "", side: "", chainageFrom: "", chainageTo: "", length: null, width: null, thickness: null, quantity: null, uom: "SQM", noSiteWork: false, noSiteWorkDescription: "", personnelIds: [], boqItemId: null }
@@ -1140,6 +1198,11 @@ export default function SiteEntry() {
           <CardTitle>Report Details</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {activeSites.length === 0 && (
+            <div className="md:col-span-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700" data-testid="alert-no-site-assigned">
+              No site assigned. Please contact admin.
+            </div>
+          )}
           <div>
             <Label>Date</Label>
             <Input
@@ -2800,7 +2863,7 @@ export default function SiteEntry() {
         open={addPersonnelOpen}
         onOpenChange={(open) => {
           setAddPersonnelOpen(open);
-          if (!open) setPersonnelAddTarget(null);
+          if (!open) { setPersonnelAddTarget(null); setDuplicatePersonnel(null); }
         }}
       >
         <DialogContent className="sm:max-w-[400px]">
@@ -2812,7 +2875,7 @@ export default function SiteEntry() {
               <Label>Name</Label>
               <Input
                 value={newPersonnelName}
-                onChange={(e) => setNewPersonnelName(e.target.value.toUpperCase())}
+                onChange={(e) => { setNewPersonnelName(e.target.value.toUpperCase()); setDuplicatePersonnel(null); }}
                 placeholder="Full name"
                 className="uppercase"
                 data-testid="input-new-personnel-name"
@@ -2839,9 +2902,23 @@ export default function SiteEntry() {
                 data-testid="input-new-personnel-phone"
               />
             </div>
+            {duplicatePersonnel && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-center justify-between gap-2" data-testid="alert-duplicate-personnel">
+                <span>{duplicatePersonnel.name} already exists ({duplicatePersonnel.role}).</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => useExistingPersonnel(duplicatePersonnel)}
+                  data-testid="button-use-existing-personnel"
+                >
+                  Use this person
+                </Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddPersonnelOpen(false); setPersonnelAddTarget(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setAddPersonnelOpen(false); setPersonnelAddTarget(null); setDuplicatePersonnel(null); }}>Cancel</Button>
             <Button
               disabled={!newPersonnelName.trim() || createPersonnelMutation.isPending}
               onClick={() => createPersonnelMutation.mutate({

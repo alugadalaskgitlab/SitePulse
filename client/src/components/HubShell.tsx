@@ -86,8 +86,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   // Task #1247 — isManager is true for every non-admin authenticated user
   // (see auth-context.tsx), so the old `isManager ? "Manager" : "Engineer"`
   // branch never actually resolved to "Engineer". Use the explicit
-  // isFieldEngineer flag for the label instead; canSeeEstimator below is
-  // deliberately left keyed on isManager to preserve existing access.
+  // isFieldEngineer flag for the label instead.
   const roleLabel = isAdmin ? "Admin" : isFieldEngineer ? "Engineer" : "Manager";
   const initials = user?.fullName
     ? user.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -95,7 +94,19 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const isHome = location === "/";
 
-  const canSeeEstimator = isAdmin || isManager;
+  // Task #1248 — canSeeEstimator was previously `isAdmin || isManager`, and
+  // since isManager is true for every non-admin user this exposed the
+  // Estimator/mix/concrete/QTO/rate-card modules to everyone regardless of
+  // actual permissions. Gate on the real permission section keys instead so
+  // only users explicitly granted access to one of the calculator modules
+  // see the nav entry.
+  const canSeeEstimator = isAdmin || (
+    sectionVisible("estimator_portal") ||
+    sectionVisible("mix_calculator") ||
+    sectionVisible("concrete_calculator") ||
+    sectionVisible("qto_boq") ||
+    sectionVisible("rate_cards")
+  );
 
   const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },

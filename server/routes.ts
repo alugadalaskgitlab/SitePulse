@@ -484,7 +484,17 @@ export async function registerRoutes(
 
   app.get("/api/sites", async (req, res) => {
     try {
-      const sitesList = await storage.getSites();
+      let sitesList = await storage.getSites();
+      // Permission System v2: non-admin users with explicit site-access
+      // restrictions should only see their permitted sites. Users with no
+      // restriction rows (including managers) continue to see all sites.
+      if (req.authUser && !req.authUser.isAdmin) {
+        const permittedIds = await storage.getUserPermittedSiteIds(req.authUser.id);
+        if (permittedIds !== null) {
+          const idSet = new Set(permittedIds);
+          sitesList = sitesList.filter((s) => idSet.has(s.id));
+        }
+      }
       res.json(sitesList);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch sites" });
@@ -555,12 +565,35 @@ export async function registerRoutes(
 
   app.post("/api/personnel", async (req, res) => {
     try {
-      if (!assertCreate(req, res, "master_personnel")) return;
+      if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+      // Personnel can be added either from the Master Data screen
+      // (master_personnel.create) or as a quick-add while filing a DPR
+      // (site_dprs.create) — a field engineer submitting a DPR needs to be
+      // able to add a person on the fly without master-data access.
+      const m = req.authPermissions;
+      const canViaMaster = req.authUser.isAdmin || !!m?.master_personnel?.create;
+      const canViaDpr = req.authUser.isAdmin || !!m?.site_dprs?.create;
+      if (!canViaMaster && !canViaDpr) {
+        return res.status(403).json({ message: "You don't have permission to add personnel.", error: "forbidden", section: "master_personnel", action: "create" });
+      }
       const parsed = insertPersonnelSchema.parse(req.body);
+      const existingList = await storage.getPersonnel(true);
+      const dup = existingList.find(
+        (p) => p.name.trim().toLowerCase() === parsed.name.trim().toLowerCase()
+      );
+      if (dup) {
+        return res.status(409).json({
+          message: `${dup.name} already exists as ${dup.role}. Select them from the list instead of adding a duplicate.`,
+          existingPersonnel: dup,
+        });
+      }
       const person = await storage.createPersonnel(parsed);
       res.status(201).json(person);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "A person with this name already exists. Please select them from the list instead." });
+      }
       res.status(500).json({ message: "Failed to create personnel" });
     }
   });

@@ -137,7 +137,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
             <h3 className="text-sm font-semibold text-slate-800">Today's DPR Status</h3>
           </div>
           {activeSites.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-slate-400">No active sites configured</div>
+            <div className="px-4 py-6 text-center text-sm text-slate-400" data-testid="text-no-site-assigned">No site assigned. Please contact admin.</div>
           ) : (
             <div className="divide-y divide-slate-50">
               {activeSites.map((site: any) => {
