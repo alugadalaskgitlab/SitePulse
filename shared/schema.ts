@@ -2927,6 +2927,55 @@ export type SnlSearchResult = Pick<SnlItem, "id" | "itemCode" | "shortLabel" | "
 };
 
 // ============================================
+// REUSABLE ATTACHMENT SYSTEM
+// ============================================
+// Single generic table for all file attachments across modules (DPR photos,
+// material receipt/challan photos, equipment breakdown/maintenance evidence,
+// etc). Do not create per-module upload tables — extend moduleType instead.
+export const attachmentModuleTypes = [
+  "dpr_progress",
+  "dpr_material",
+  "material_receipt",
+  "site_purchase",
+  "irn",
+  "pi",
+  "vendor_bill",
+  "plant_production",
+  "hmp_rmc_stock_receipt",
+  "equipment_breakdown",
+  "equipment_maintenance",
+  "equipment_fuel_proof",
+  "quality_test",
+] as const;
+export type AttachmentModuleType = typeof attachmentModuleTypes[number];
+
+export const attachments = pgTable("attachments", {
+  id: serial("id").primaryKey(),
+  moduleType: text("module_type").notNull(),
+  linkedRecordId: integer("linked_record_id").notNull(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  boqProjectId: integer("boq_project_id").references(() => boqProjects.id, { onDelete: "set null" }),
+  boqItemId: integer("boq_item_id"),
+  structureId: text("structure_id"),
+  equipmentId: integer("equipment_id"),
+  materialId: integer("material_id"),
+  fileName: text("file_name").notNull(),
+  objectPath: text("object_path").notNull(),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  caption: text("caption"),
+  uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const insertAttachmentSchema = createInsertSchema(attachments).omit({
+  id: true,
+  uploadedAt: true,
+});
+export type Attachment = typeof attachments.$inferSelect;
+export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
+
+// ============================================
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,

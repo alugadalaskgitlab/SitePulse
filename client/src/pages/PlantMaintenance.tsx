@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useOrigin } from "@/hooks/use-origin";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType, StoreItem, StoreStockBalance } from "@shared/schema";
 import { ChevronLeft, Plus, Wrench, AlertTriangle, CheckCircle2, Clock, Package, Trash2, ChevronDown, ChevronUp, Activity, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
@@ -663,6 +665,19 @@ function LogCard({
                   />
                 </div>
               )}
+
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Attachments</p>
+                <AttachmentUploader
+                  moduleType={log.eventType === "breakdown" ? "equipment_breakdown" : "equipment_maintenance"}
+                  linkedRecordId={log.id}
+                  equipmentId={log.equipmentId}
+                />
+                <AttachmentGallery
+                  moduleType={log.eventType === "breakdown" ? "equipment_breakdown" : "equipment_maintenance"}
+                  linkedRecordId={log.id}
+                />
+              </div>
             </div>
           )}
         </CardContent>

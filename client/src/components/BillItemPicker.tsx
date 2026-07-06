@@ -1,13 +1,25 @@
 // Cascading "Bill → Item" picker for DPR activity selection.
 // Field 1 = the BOQ Bill / Section (exactly as imported from Excel, e.g. "BILL No. 1 SITE CLEARANCE").
-// Field 2 = only the items inside the chosen bill (short name, full text on hover).
-// Reused by both the Road DPR and the Structure DPR.
+// Field 2 = only the items inside the chosen bill — a searchable picker showing
+// code + short name + UOM prominently, with the full description as a
+// secondary line / tooltip. On mobile it opens as a bottom sheet so long
+// BOQ item lists stay easy to scan and search on a phone.
+// Reused by Road DPR, Structure DPR, and labour/equipment/material BOQ links.
 
 import { useMemo, useState } from "react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import {
+  Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem,
+} from "@/components/ui/command";
+import { ChevronsUpDown, Check } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export type BillItem = {
   id: number;
@@ -21,7 +33,7 @@ export type BillItem = {
 };
 
 // Same smart short-name used elsewhere — strips boilerplate, keeps grade + location.
-function shortItemName(full?: string | null): string {
+export function shortItemName(full?: string | null): string {
   if (!full) return "";
   let s = String(full).replace(/\s+/g, " ").trim();
   const PREFIXES = [
@@ -55,6 +67,72 @@ function shortItemName(full?: string | null): string {
 
 const BILL_OTHER = "Other / Unbilled";
 
+function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
+  const short = shortItemName(it.itemName || it.description);
+  return (
+    <div className="flex flex-col min-w-0" title={it.description}>
+      <span className="flex items-center gap-1.5 font-medium leading-snug truncate">
+        {it.itemCode ? <span className="text-primary shrink-0">{it.itemCode}</span> : null}
+        <span className="truncate">{short}</span>
+        <span className="text-muted-foreground font-normal shrink-0">{unitSuffix}</span>
+      </span>
+      {it.description && it.description !== short && (
+        <span className="text-xs text-muted-foreground truncate">{it.description}</span>
+      )}
+    </div>
+  );
+}
+
+function ItemSearchList({
+  billItems,
+  value,
+  onSelect,
+}: {
+  billItems: BillItem[];
+  value: number | null;
+  onSelect: (it: BillItem | null) => void;
+}) {
+  return (
+    <Command
+      filter={(value, search) => {
+        const it = billItems.find((i) => String(i.id) === value);
+        if (!it) return 0;
+        const haystack = [it.itemCode, it.itemName, it.description, it.unit]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(search.toLowerCase()) ? 1 : 0;
+      }}
+    >
+      <CommandInput placeholder="Search by code, name, or description…" data-testid="input-boq-item-search" />
+      <CommandList className="max-h-[60vh]">
+        <CommandEmpty>No matching items.</CommandEmpty>
+        <CommandGroup>
+          <CommandItem value="__none__" onSelect={() => onSelect(null)} data-testid="option-boq-item-none">
+            <Check className={cn("mr-2 h-4 w-4", value == null ? "opacity-100" : "opacity-0")} />
+            — Select item —
+          </CommandItem>
+          {billItems.map((it) => {
+            const unitSuffix = `(${it.unit}${it.dprConversionFactor != null && it.dprConversionFactor !== 1 ? ` × ${it.dprConversionFactor}` : ""})`;
+            return (
+              <CommandItem
+                key={it.id}
+                value={String(it.id)}
+                onSelect={() => onSelect(it)}
+                className="items-start py-2.5"
+                data-testid={`option-boq-item-${it.id}`}
+              >
+                <Check className={cn("mr-2 mt-1 h-4 w-4 shrink-0", value === it.id ? "opacity-100" : "opacity-0")} />
+                <ItemRow it={it} unitSuffix={unitSuffix} />
+              </CommandItem>
+            );
+          })}
+        </CommandGroup>
+      </CommandList>
+    </Command>
+  );
+}
+
 export function BillItemPicker({
   items,
   value,
@@ -70,6 +148,9 @@ export function BillItemPicker({
   stacked?: boolean;
   labels?: boolean;
 }) {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+
   // Bills in their original Excel order (by first item's sortOrder).
   const bills = useMemo(() => {
     const m = new Map<string, number>();
@@ -91,6 +172,20 @@ export function BillItemPicker({
         .filter((i) => (i.categoryName?.trim() || BILL_OTHER) === effectiveBill)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     [items, effectiveBill],
+  );
+
+  const handleSelect = (it: BillItem | null) => {
+    onChange(it ? it.id : null, it);
+    setOpen(false);
+  };
+
+  const triggerLabel = selectedItem ? (
+    <ItemRow
+      it={selectedItem}
+      unitSuffix={`(${selectedItem.unit}${selectedItem.dprConversionFactor != null && selectedItem.dprConversionFactor !== 1 ? ` × ${selectedItem.dprConversionFactor}` : ""})`}
+    />
+  ) : (
+    <span className="text-muted-foreground">{effectiveBill ? "Select item…" : "Pick a bill first"}</span>
   );
 
   return (
@@ -121,42 +216,53 @@ export function BillItemPicker({
 
       <div className="space-y-1">
         {labels && <Label className="text-sm">Work Item</Label>}
-        <Select
-          value={value != null ? String(value) : "__none__"}
-          disabled={!effectiveBill}
-          onValueChange={(v) => {
-            if (v === "__none__") { onChange(null, null); return; }
-            const it = items.find((i) => i.id === parseInt(v)) ?? null;
-            onChange(it ? it.id : null, it);
-          }}
-          data-testid={`${testidPrefix}-item-select`}
-        >
-          <SelectTrigger className="h-auto min-h-9 py-1.5 text-left [&>span]:line-clamp-2 [&>span]:whitespace-normal">
-            <SelectValue placeholder={effectiveBill ? "Select item…" : "Pick a bill first"} />
-          </SelectTrigger>
-          <SelectContent className="max-w-[min(92vw,640px)]">
-            <SelectItem value="__none__">— Select item —</SelectItem>
-            {billItems.map((it) => (
-              <SelectItem
-                key={it.id}
-                value={String(it.id)}
-                className="items-start whitespace-normal leading-snug py-2"
+        {isMobile ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              disabled={!effectiveBill}
+              onClick={() => setOpen(true)}
+              className="h-auto min-h-9 w-full justify-between py-1.5 font-normal"
+              data-testid={`${testidPrefix}-item-select`}
+            >
+              <span className="min-w-0 flex-1 text-left truncate">{triggerLabel}</span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+            <Drawer open={open} onOpenChange={setOpen}>
+              <DrawerContent className="max-h-[85vh]">
+                <DrawerHeader className="text-left">
+                  <DrawerTitle>Select Work Item</DrawerTitle>
+                </DrawerHeader>
+                <div className="px-2 pb-4">
+                  <ItemSearchList billItems={billItems} value={value} onSelect={handleSelect} />
+                </div>
+              </DrawerContent>
+            </Drawer>
+          </>
+        ) : (
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={open}
+                disabled={!effectiveBill}
+                className="h-auto min-h-9 w-full justify-between py-1.5 font-normal"
+                data-testid={`${testidPrefix}-item-select`}
               >
-                <span className="block pr-2" title={it.description}>
-                  {it.itemCode ? <span className="font-semibold">{it.itemCode} · </span> : null}
-                  {shortItemName(it.itemName || it.description)}{" "}
-                  <span className="text-slate-400 font-normal">
-                    ({it.unit}
-                    {it.dprConversionFactor != null && it.dprConversionFactor !== 1
-                      ? ` × ${it.dprConversionFactor}`
-                      : ""}
-                    )
-                  </span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+                <span className="min-w-0 flex-1 text-left truncate">{triggerLabel}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[min(92vw,640px)] p-0" align="start">
+              <ItemSearchList billItems={billItems} value={value} onSelect={handleSelect} />
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     </div>
   );

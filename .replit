@@ -87,3 +87,6 @@ VITE_ENABLE_WORK_PROGRAM = "true"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[agent]
+integrations = ["javascript_object_storage:2.0.0"]

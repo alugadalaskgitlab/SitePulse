@@ -151,6 +151,9 @@ import {
   type Personnel,
   type InsertPersonnel,
   type ActivityPersonnel,
+  attachments,
+  type Attachment,
+  type InsertAttachment,
   DEFAULT_LDO_NORM,
   CONSUMPTION_TOLERANCE_PERCENT,
   vendorBills,
@@ -1062,6 +1065,13 @@ export interface IStorage {
   updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined>;
   togglePersonnelActive(id: number): Promise<Personnel | undefined>;
   deletePersonnel(id: number): Promise<boolean>;
+
+  // Reusable Attachment System (Task #1249) — one common table backs all
+  // module attachments (DPR photos, receipt/challan photos, equipment
+  // breakdown/maintenance evidence, etc). Never add per-module upload tables.
+  createAttachment(data: InsertAttachment): Promise<Attachment>;
+  getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]>;
+  deleteAttachment(id: number): Promise<boolean>;
   hasPersonnelUsageHistory(id: number): Promise<boolean>;
 
   // Activity Personnel
@@ -9037,6 +9047,25 @@ export class DatabaseStorage implements IStorage {
     const uppercased = { ...data, name: data.name.toUpperCase() };
     const [result] = await db.insert(personnel).values(uppercased).returning();
     return result;
+  }
+
+  // Reusable Attachment System
+  async createAttachment(data: InsertAttachment): Promise<Attachment> {
+    const [result] = await db.insert(attachments).values(data).returning();
+    return result;
+  }
+
+  async getAttachments(moduleType: string, linkedRecordId: number): Promise<Attachment[]> {
+    return db
+      .select()
+      .from(attachments)
+      .where(and(eq(attachments.moduleType, moduleType), eq(attachments.linkedRecordId, linkedRecordId)))
+      .orderBy(desc(attachments.uploadedAt));
+  }
+
+  async deleteAttachment(id: number): Promise<boolean> {
+    const result = await db.delete(attachments).where(eq(attachments.id, id)).returning();
+    return result.length > 0;
   }
 
   async updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined> {

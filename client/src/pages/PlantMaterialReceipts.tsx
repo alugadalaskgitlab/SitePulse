@@ -15,6 +15,8 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert } from "lucide-react";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -1067,6 +1069,18 @@ export default function PlantMaterialReceipts() {
                   </div>
                 );
               })()}
+
+              {editingReceipt && (
+                <div className="space-y-1.5">
+                  <Label>Attachments <span className="text-muted-foreground text-sm">(challan, invoice, photos)</span></Label>
+                  <AttachmentUploader
+                    moduleType="material_receipt"
+                    linkedRecordId={editingReceipt.id}
+                    materialId={materialId ? Number(materialId) : null}
+                  />
+                  <AttachmentGallery moduleType="material_receipt" linkedRecordId={editingReceipt.id} />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Button onClick={handleSubmit} className="w-full" disabled={createMutation.isPending || updateMutation.isPending || !materialId || !quantity || !challanNumber.trim()} data-testid="button-save-receipt">

@@ -1,0 +1,14 @@
+---
+name: Common attachment system
+description: Shared attachments table/API/components for photos and documents across DPR, receipts, purchases, and equipment logs.
+---
+
+One shared `attachments` table + generic `/api/attachments` REST routes + `AttachmentUploader`/`AttachmentGallery` React components back every file-upload need (DPR photos, material receipts, site purchases, IRN/PI/vendor bills, equipment breakdown/maintenance). Do not build per-module upload UIs or tables — extend `moduleType` on the shared system instead.
+
+**Why:** keeps storage, permission gating (`requireAuth` on `/objects` and `/api/uploads`), file-type/size validation (15MB, image/PDF) in one place instead of duplicated per module.
+
+**How to apply:** for any new attachable record type, add a `moduleType` enum value in `shared/schema.ts` and drop in `<AttachmentUploader moduleType=... linkedRecordId=... />` + `<AttachmentGallery .../>` wherever the record is edited.
+
+**DPR-specific pattern:** the DPR only gets a DB id after it's saved (`createMutation` in `SiteEntry.tsx`), so there's no id to link photos to during the guided-flow capture step. Solution: stage picked photos as local `File[]` state, preview via `URL.createObjectURL`, and only call `uploadFile` + `POST /api/attachments` inside the mutation's `onSuccess` once `data.id` exists. This pattern (stage-then-upload-on-save) applies to any other "create new record with photos in one flow" case.
+
+**Environment quirk:** `drizzle-kit push`'s interactive TUI prompt can't be answered via piped stdin (echo/printf into the pipe exits 0 but doesn't apply the change) — use a raw `CREATE TABLE`/`ALTER TABLE` via `psql` as a workaround for schema changes that hit this prompt.

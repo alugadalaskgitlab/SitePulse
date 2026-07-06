@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
 import { format } from "date-fns";
 import SitePreview from "@/pages/SitePreview";
 import type { EquipmentMasterType, Site, Personnel } from "@shared/schema";
@@ -288,6 +289,50 @@ export default function SiteEntry() {
   const guidedMode = guidedOverride ?? defaultGuided;
   const [guidedStep, setGuidedStep] = useState(0);
   const [remarksNote, setRemarksNote] = useState("");
+  // Photos are staged locally until the DPR is saved (it needs a DB id
+  // before an attachment can be linked to it), then uploaded in one batch.
+  const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
+  const { uploadFile } = useUpload();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const addStagedPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const valid = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE) {
+        toast({ title: "File too large", description: `${f.name} exceeds 15MB.`, variant: "destructive" });
+        return false;
+      }
+      if (!f.type.startsWith("image/")) {
+        toast({ title: "Unsupported file", description: `${f.name} must be an image.`, variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+    setStagedPhotos((prev) => [...prev, ...valid]);
+  };
+  const removeStagedPhoto = (idx: number) => setStagedPhotos((prev) => prev.filter((_, i) => i !== idx));
+  const uploadStagedPhotos = async (dprId: number) => {
+    for (const file of stagedPhotos) {
+      const uploadResponse = await uploadFile(file);
+      if (!uploadResponse) continue;
+      try {
+        await apiRequest("POST", "/api/attachments", {
+          moduleType: "dpr_progress",
+          linkedRecordId: dprId,
+          siteId: selectedSiteId ?? null,
+          boqProjectId: header.boqProjectId ?? null,
+          fileName: file.name,
+          objectPath: uploadResponse.objectPath,
+          mimeType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        });
+      } catch {
+        // Non-fatal — DPR is already saved; surface via toast but don't block navigation.
+        toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
+      }
+    }
+  };
   const showStep = (n: number) => !guidedMode || guidedStep === n;
   const goToStep = (n: number) => setGuidedStep(Math.max(0, Math.min(GUIDED_STEPS.length - 1, n)));
 
@@ -968,6 +1013,10 @@ export default function SiteEntry() {
     },
     onSuccess: async (data) => {
       await clearDraft();
+      if (stagedPhotos.length > 0) {
+        await uploadStagedPhotos(data.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
@@ -2807,16 +2856,56 @@ export default function SiteEntry() {
               />
             </div>
             <div>
-              <Label className="mb-2 block">Photo</Label>
-              <button
-                type="button"
-                className="w-full border-2 border-dashed rounded-lg py-8 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:bg-muted/40 transition-colors"
-                data-testid="button-add-photo-placeholder"
-                onClick={() => toast({ title: "Coming soon", description: "Photo attachments will be available in a future update." })}
-              >
-                <Camera className="w-6 h-6" />
-                <span className="text-sm">Add photo (coming soon)</span>
-              </button>
+              <Label className="mb-2 block">Photos</Label>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                data-testid="input-dpr-photo-camera"
+                onChange={(e) => { addStagedPhotos(e.target.files); if (cameraInputRef.current) cameraInputRef.current.value = ""; }}
+              />
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                data-testid="input-dpr-photo-gallery"
+                onChange={(e) => { addStagedPhotos(e.target.files); if (galleryInputRef.current) galleryInputRef.current.value = ""; }}
+              />
+              <div className="flex gap-2 mb-3">
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => cameraInputRef.current?.click()} data-testid="button-dpr-photo-camera">
+                  <Camera className="w-4 h-4" /> Camera
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => galleryInputRef.current?.click()} data-testid="button-dpr-photo-gallery">
+                  <Plus className="w-4 h-4" /> Gallery
+                </Button>
+              </div>
+              {stagedPhotos.length === 0 ? (
+                <div className="w-full border-2 border-dashed rounded-lg py-8 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <Camera className="w-6 h-6" />
+                  <span className="text-sm">No photos added yet</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {stagedPhotos.map((file, idx) => (
+                    <div key={idx} className="relative border rounded-md overflow-hidden bg-muted aspect-square" data-testid={`card-staged-photo-${idx}`}>
+                      <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 bg-background/90 rounded-full p-1"
+                        onClick={() => removeStagedPhoto(idx)}
+                        data-testid={`button-remove-staged-photo-${idx}`}
+                      >
+                        <X className="h-3.5 w-3.5 text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">Photos are uploaded once you save the report.</p>
             </div>
             <p className="text-sm text-muted-foreground">
               Review your entries using the step dots above, then tap Preview Report to finish.

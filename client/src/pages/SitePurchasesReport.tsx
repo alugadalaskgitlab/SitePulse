@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 interface SitePurchaseItem {
   id: number;
@@ -389,6 +391,13 @@ export default function SitePurchasesReport() {
                 />
               </div>
             </div>
+            {editingItem && (
+              <div className="space-y-1.5">
+                <Label className="text-sm">Attachments <span className="text-muted-foreground">(DC, invoice, photos)</span></Label>
+                <AttachmentUploader moduleType="site_purchase" linkedRecordId={editingItem.id} />
+                <AttachmentGallery moduleType="site_purchase" linkedRecordId={editingItem.id} />
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setEditingItem(null)} data-testid="button-cancel-edit">

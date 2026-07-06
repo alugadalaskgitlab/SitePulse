@@ -29,6 +29,8 @@ import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser,
 import { canonicalizeMachineType } from "@shared/canonicalize";
 import { aggregateGstBreakdown, computeBillGstByCategory, type GstCategory } from "@shared/vendor-bill-gst";
 import { requireAuth, isPublicApiPath, isOptionalAuthPath, optionalAuth, lookupSessionFromCookie, loadUserPermissionsMatrix } from "./auth";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
+import { insertAttachmentSchema, attachmentModuleTypes } from "@shared/schema";
 import {
   registerAuthRoutes,
   assertAdmin,
@@ -179,6 +181,14 @@ export async function registerRoutes(
   // ============================================
   registerAuthRoutes(app);
   registerManagementReportRoutes(app);
+
+  // Object storage: presigned-upload + object-serving routes for the
+  // reusable Attachment System. Require login to view/upload any object —
+  // gate BEFORE registering so it applies to the "/objects" GET route too
+  // (that route lives outside "/api" and would otherwise bypass auth).
+  app.use("/objects", requireAuth);
+  app.use("/api/uploads", requireAuth);
+  registerObjectStorageRoutes(app);
 
   // Global API auth middleware. Applies to every /api/* request except the
   // public auth + estimator endpoints. Populates req.authUser, req.authPermissions.
@@ -546,6 +556,64 @@ export async function registerRoutes(
       res.json({ seeded: count });
     } catch (err) {
       res.status(500).json({ message: "Failed to seed sites" });
+    }
+  });
+
+  // ============================================
+  // REUSABLE ATTACHMENT SYSTEM (Task #1249)
+  // One shared table/API backs all module attachments (DPR photos, material
+  // receipt/site purchase proof, equipment breakdown/maintenance evidence,
+  // etc). Do NOT build per-module upload endpoints — extend moduleType here.
+  // ============================================
+
+  app.get("/api/attachments", async (req, res) => {
+    try {
+      const moduleType = String(req.query.moduleType || "");
+      const linkedRecordId = Number(req.query.linkedRecordId);
+      if (!moduleType || !Number.isFinite(linkedRecordId)) {
+        return res.status(400).json({ message: "moduleType and linkedRecordId are required" });
+      }
+      const list = await storage.getAttachments(moduleType, linkedRecordId);
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch attachments" });
+    }
+  });
+
+  app.post("/api/attachments", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+      const parsed = insertAttachmentSchema.parse(req.body);
+      if (!(attachmentModuleTypes as readonly string[]).includes(parsed.moduleType)) {
+        return res.status(400).json({ message: `Invalid moduleType. Must be one of: ${attachmentModuleTypes.join(", ")}` });
+      }
+      if (!parsed.objectPath.startsWith("/objects/")) {
+        return res.status(400).json({ message: "objectPath must reference an uploaded object" });
+      }
+      const ALLOWED_MIME_PREFIXES = ["image/", "application/pdf"];
+      if (parsed.mimeType && !ALLOWED_MIME_PREFIXES.some((p) => parsed.mimeType!.startsWith(p))) {
+        return res.status(400).json({ message: "Only image or PDF attachments are allowed" });
+      }
+      const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
+      if (parsed.fileSize && parsed.fileSize > MAX_FILE_SIZE) {
+        return res.status(400).json({ message: "File is too large. Maximum size is 15MB." });
+      }
+      const record = await storage.createAttachment({ ...parsed, uploadedBy: req.authUser.id });
+      res.status(201).json(record);
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: "Failed to save attachment" });
+    }
+  });
+
+  app.delete("/api/attachments/:id", async (req, res) => {
+    try {
+      if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });
+      const deleted = await storage.deleteAttachment(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Attachment not found" });
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete attachment" });
     }
   });
 
