@@ -13,12 +13,19 @@ import { format } from "date-fns";
 
 
 export default function Home() {
-  const { user, sectionVisible, isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager } = useAuth();
 
   // ── Mobile-first field home (Phase 1 UX facelift) ──────────────────────
   // Engineers on mobile land on the simplified FieldHome by default;
   // managers/admins always keep this classic dashboard. Either side can
   // toggle over for the session.
+  //
+  // IMPORTANT: the decision of which component to render lives in this
+  // top-level wrapper, which itself calls no data-fetching hooks. This
+  // avoids "Rendered fewer hooks than expected" errors that would occur if
+  // a component with an early return also called useQuery hooks after that
+  // return — the hook count/order must stay identical across renders of a
+  // single component instance.
   const isMobileViewport = useIsMobile();
   const [fieldOverride, setFieldOverride] = useState<boolean | null>(null);
   const defaultField = isMobileViewport && !isAdmin && !isManager;
@@ -27,6 +34,23 @@ export default function Home() {
   if (showFieldHome) {
     return <FieldHome onViewFullDashboard={() => setFieldOverride(false)} />;
   }
+
+  return (
+    <HomeDashboard
+      isMobileViewport={isMobileViewport}
+      onSwitchToFieldView={() => setFieldOverride(true)}
+    />
+  );
+}
+
+function HomeDashboard({
+  isMobileViewport,
+  onSwitchToFieldView,
+}: {
+  isMobileViewport: boolean;
+  onSwitchToFieldView: () => void;
+}) {
+  const { user, sectionVisible, isAdmin } = useAuth();
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayDisplay = format(new Date(), "EEEE, d MMMM yyyy");
@@ -132,7 +156,7 @@ export default function Home() {
           {isMobileViewport && (
             <button
               type="button"
-              onClick={() => setFieldOverride(true)}
+              onClick={onSwitchToFieldView}
               className="flex items-center gap-1.5 text-xs font-medium text-slate-500 border border-slate-200 rounded-full px-3 py-1.5 flex-shrink-0"
               data-testid="button-switch-field-view"
             >
