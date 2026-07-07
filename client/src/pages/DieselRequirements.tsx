@@ -939,7 +939,7 @@ export default function DieselRequirements() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {canEdit && (selectedRequirement.status === "purchased" || selectedRequirement.status === "rejected") && (
+                    {!isAdmin && (selectedRequirement.status === "purchased" || selectedRequirement.status === "rejected") && (
                       <EditPermissionButton
                         recordType="diesel_requirement"
                         recordId={selectedRequirement.id}

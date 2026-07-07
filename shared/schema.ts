@@ -3055,6 +3055,7 @@ export const EDIT_PERMISSION_RECORD_TYPES = [
   "plant_shift_log",
   "heating_session",
   "material_receipt",
+  "site_material_trip",
   "site_purchase",
   "store_grn",
   "diesel_requirement",

@@ -24,6 +24,7 @@ interface EditPermissionButtonProps {
   label?: string;
   className?: string;
   size?: "default" | "sm" | "lg" | "icon";
+  variant?: "default" | "outline" | "ghost" | "secondary" | "destructive" | "link";
 }
 
 export function EditPermissionButton({

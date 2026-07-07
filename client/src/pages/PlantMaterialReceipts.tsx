@@ -1447,7 +1447,7 @@ export default function PlantMaterialReceipts() {
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
                                 )}
-                                {canEdit && !isOwnerOrAdmin && (receipt as any).documentStatus === "submitted" && (
+                                {!isOwnerOrAdmin && (receipt as any).documentStatus === "submitted" && (
                                   <EditPermissionButton
                                     recordType="material_receipt"
                                     recordId={receipt.id}
