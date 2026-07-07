@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Link, useSearch } from "wouter";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X, History, Ban } from "lucide-react";
+import { ChevronLeft, ShoppingCart, Filter, Pencil, Loader2, X, History, Ban, CheckCircle2, FileWarning, Lock } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { useAuth } from "@/lib/auth-context";
 
 interface SitePurchaseItem {
   id: number;
@@ -31,10 +33,14 @@ interface SitePurchaseItem {
   engineer: string;
   source?: "purchase" | "diesel";
   workType?: string | null;
+  documentStatus?: string | null;
+  hasRequiredDoc?: boolean;
 }
 
 export default function SitePurchasesReport() {
   const { toast } = useToast();
+  const { isOwner, isAdmin } = useAuth();
+  const isOwnerOrAdmin = isOwner || isAdmin;
   const search = useSearch();
   const sp = new URLSearchParams(search);
   const returnTo = sp.get("returnTo") || "/site/dashboard";
@@ -125,6 +131,25 @@ export default function SitePurchasesReport() {
         description: msg,
         variant: "destructive",
       });
+    },
+  });
+
+  const finalSubmitMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/site-purchases/${id}/final-submit`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
+      toast({ title: "Purchase Final Submitted", description: "This purchase is now locked from further edits." });
+    },
+    onError: (error: any) => {
+      let msg = "Failed to final-submit purchase";
+      try {
+        const parsed = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        msg = parsed.message || msg;
+      } catch { msg = error.message || msg; }
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -273,6 +298,7 @@ export default function SitePurchasesReport() {
                       <th className="text-left p-2 font-medium">UOM</th>
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Reported By</th>
+                      <th className="text-center p-2 font-medium">Status</th>
                       <th className="text-center p-2 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -303,6 +329,23 @@ export default function SitePurchasesReport() {
                         <td className="p-2 text-right">{p.amount ? p.amount.toFixed(3) : "-"}</td>
                         <td className="p-2">{p.engineer}</td>
                         <td className="p-2 text-center">
+                          {p.source === 'diesel' ? (
+                            <span className="text-[12px] text-muted-foreground">-</span>
+                          ) : p.documentStatus === "submitted" ? (
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-emerald-400 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 gap-1" data-testid={`badge-doc-status-${p.id}`}>
+                              <Lock className="w-3 h-3" /> Final Submitted
+                            </Badge>
+                          ) : !p.hasRequiredDoc ? (
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-red-400 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 gap-1" data-testid={`badge-doc-status-${p.id}`}>
+                              <FileWarning className="w-3 h-3" /> Pending Document
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-sky-400 text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20" data-testid={`badge-doc-status-${p.id}`}>
+                              Draft
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               variant="ghost"
@@ -315,23 +358,39 @@ export default function SitePurchasesReport() {
                             </Button>
                             {p.source !== 'diesel' ? (
                               <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openEdit(p)}
-                                  data-testid={`button-edit-purchase-${p.id}`}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setCancelItem(p)}
-                                  data-testid={`button-cancel-purchase-${p.id}`}
-                                  title="Cancel"
-                                >
-                                  <Ban className="w-4 h-4 text-amber-600" />
-                                </Button>
+                                {p.documentStatus !== "submitted" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => finalSubmitMutation.mutate(p.id)}
+                                    disabled={finalSubmitMutation.isPending || !p.hasRequiredDoc}
+                                    data-testid={`button-final-submit-purchase-${p.id}`}
+                                    title={p.hasRequiredDoc ? "Final Submit" : "Upload a bill/invoice/receipt photo first"}
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  </Button>
+                                )}
+                                {(p.documentStatus !== "submitted" || isOwnerOrAdmin) && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEdit(p)}
+                                      data-testid={`button-edit-purchase-${p.id}`}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setCancelItem(p)}
+                                      data-testid={`button-cancel-purchase-${p.id}`}
+                                      title="Cancel"
+                                    >
+                                      <Ban className="w-4 h-4 text-amber-600" />
+                                    </Button>
+                                  </>
+                                )}
                               </>
                             ) : (
                               <span className="text-sm text-muted-foreground">-</span>
@@ -345,7 +404,7 @@ export default function SitePurchasesReport() {
                     <tr className="border-t font-bold">
                       <td colSpan={9} className="p-2 text-right">Total:</td>
                       <td className="p-2 text-right">{totalAmount.toFixed(3)}</td>
-                      <td colSpan={2}></td>
+                      <td colSpan={3}></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -420,7 +479,7 @@ export default function SitePurchasesReport() {
             {editingItem && (
               <div className="space-y-1.5">
                 <Label className="text-sm">Attachments <span className="text-muted-foreground">(DC, invoice, photos)</span></Label>
-                <AttachmentUploader moduleType="site_purchase" linkedRecordId={editingItem.id} />
+                <AttachmentUploader moduleType="site_purchase" linkedRecordId={editingItem.id} docType="bill" />
                 <AttachmentGallery moduleType="site_purchase" linkedRecordId={editingItem.id} />
               </div>
             )}

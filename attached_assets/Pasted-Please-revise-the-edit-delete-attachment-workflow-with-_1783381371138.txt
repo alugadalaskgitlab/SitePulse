@@ -1,0 +1,139 @@
+Please revise the edit/delete/attachment workflow with a Draft / Pending Document / Final Submit approach.
+
+Reason:
+In real site work, users may receive material first and get the challan/DC/invoice/bill later. So users must be able to save the transaction first, then upload missing documents/photos later, and only then finally submit/verify it.
+
+Required workflow:
+
+A. Transaction statuses
+
+Add/verify status support for relevant transaction modules:
+
+- Draft
+- Pending Document
+- Submitted
+- Verified / Approved where applicable
+- Cancelled / Voided
+- Locked where applicable
+
+Applicable modules:
+- Material Receipts
+- Site Purchases
+- IRN
+- Purchase Indents
+- Purchase Orders / Vendor Bills where applicable
+- Plant Production / Stock Receipts
+- Equipment Breakdown / Maintenance logs
+- Fuel/LDO/bitumen logs
+- DPR attachments where applicable
+
+B. Material Receipt workflow
+
+For Material Receipt / Site Material Receipt:
+
+1. User should be able to create/save receipt even if challan/DC/invoice photo is not available yet.
+
+2. If required document/photo is missing, save record as:
+   status = Pending Document
+   or Draft / Pending Document as appropriate.
+
+3. User should be able to reopen the receipt while status is Draft / Pending Document and upload:
+   - challan photo
+   - DC photo
+   - invoice photo
+   - receipt photo
+   - PDF/image if available
+
+4. Once required details/photos are uploaded, user can click:
+   Final Submit
+
+5. After Final Submit:
+   - normal user edit should be hidden/disabled
+   - admin/owner/authorized user can still edit/cancel based on permissions
+   - all changes must be audited
+
+C. Site Purchase workflow
+
+Same approach for Site Purchases:
+
+1. Allow save as Draft / Pending Document if bill/invoice photo is not available.
+2. Allow user to upload bill/invoice/receipt photo later.
+3. Final Submit after documents are attached.
+4. Lock normal user editing after final submit.
+5. Admin/authorized correction only with audit trail.
+
+D. Other transaction modules
+
+Apply the same pattern where relevant:
+
+- IRN: allow draft/pending document if issue slip/signature proof is pending.
+- PI: allow draft until submitted for approval.
+- Equipment Maintenance/Breakdown: allow adding repair bill/mechanic report/photos later before closing the log.
+- Plant Production/Stock Receipt: allow pending document if weighment slip/DC/test report is pending.
+- Vendor Bill: allow draft until all supporting receipts/DCs/invoices are attached and verified.
+
+E. UI requirements
+
+1. Every transaction list/report should clearly show status badges:
+   - Draft
+   - Pending Document
+   - Submitted
+   - Verified
+   - Approved
+   - Cancelled
+   - Locked
+
+2. Show missing document indicators:
+   - Challan Missing
+   - Invoice Missing
+   - Photo Missing
+   - DC Pending
+   - Bill Pending
+
+3. For Draft / Pending Document records, show:
+   - Edit
+   - Upload Document
+   - Final Submit
+
+4. For Submitted/Verified/Approved records:
+   - hide normal user edit
+   - show View
+   - show Attachments
+   - show History
+   - show Admin Edit/Cancel only if permission allows
+
+5. In reports, attachments should be visible against the related receipt/purchase/transaction row.
+
+F. Admin / Owner permissions
+
+1. Owner / Primary Admin should have edit/delete/cancel/history controls across modules by default.
+
+2. Other admins/division admins/managers should see edit/delete/cancel only if permission toggles allow.
+
+3. Even owner/admin edits and deletes must be audited.
+
+G. Audit trail
+
+Every edit, document upload, final submit, cancel, delete, or correction must log:
+
+- module
+- transaction ID
+- action
+- user
+- timestamp
+- old value/new value where applicable
+- uploaded attachment details where applicable
+- reason for edit/cancel/delete where applicable
+
+H. Delete / Cancel rule
+
+1. Draft records may be deleted if permitted.
+2. Submitted/approved/stock-affecting records should not be silently hard-deleted.
+3. Use Cancel / Void / Reverse with reason and audit trail.
+4. If a record is already linked to vendor bill/stock/accounting, mark it Locked and allow only authorized correction/reversal.
+
+Immediate testing need:
+While testing, Owner/Admin should have edit/delete/cancel/history controls visible across all transaction modules, so wrong test entries can be corrected. But the commercial workflow should use Draft/Pending Document/Final Submit and audit trail.
+
+Scope:
+Do not redesign the whole module UI. Implement transaction status, document-pending workflow, attachment completion, final submit locking, permission-based admin edit/cancel, and audit trail foundation.

@@ -778,7 +778,16 @@ export async function registerRoutes(
       });
 
       const validatedData = updateSchema.parse(data);
-      
+
+      // Locked once Final Submitted, unless Owner/Admin (assertAdmin above
+      // already guarantees that for this route, but keep the check explicit
+      // so the rule holds if this route is ever opened up to more roles).
+      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      const existing = await storage.getSitePurchase(id);
+      if (existing && existing.documentStatus === "submitted" && !isOwnerOrAdmin) {
+        return res.status(403).json({ message: "This purchase has been Final Submitted and is locked. Contact an admin/owner to make changes." });
+      }
+
       const updated = await storage.updateSitePurchase(id, validatedData);
       if (!updated) {
         return res.status(404).json({ message: "Site purchase not found" });
@@ -826,6 +835,44 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/site-purchases/:id/cancel:", err);
       res.status(500).json({ message: "Failed to cancel site purchase" });
+    }
+  });
+
+  // Final Submit: locks the purchase for normal-user edits once required
+  // documents (bill/invoice/receipt) are attached. Owner/Admin can
+  // force-submit without a document for testing/edge cases (spec §H, §F).
+  app.post("/api/site-purchases/:id/final-submit", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "site_materials")) return;
+      const id = Number(req.params.id);
+      const before = await storage.getSitePurchase(id);
+      if (!before) return res.status(404).json({ message: "Site purchase not found" });
+      if (before.documentStatus === "submitted") return res.status(400).json({ message: "This purchase is already Final Submitted" });
+      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      if (!isOwnerOrAdmin) {
+        const docs = await storage.getAttachments("site_purchase", id);
+        const requiredTypes = ["bill", "invoice", "receipt"];
+        const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));
+        if (!hasRequiredDoc) {
+          return res.status(400).json({ message: "Please upload the bill/invoice/receipt photo before Final Submit." });
+        }
+      }
+      const updated = await storage.finalSubmitSitePurchase(id, req.authUser!.id);
+      await storage.logAudit({
+        module: "site_purchases",
+        transactionId: id,
+        action: "final_submit",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before,
+        newValues: updated ?? null,
+      });
+      sendPushToSection("site_materials", "Site Purchase Submitted", `Purchase #${id} final submitted`, "/site-reports").catch(() => {});
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/site-purchases/:id/final-submit:", err);
+      res.status(500).json({ message: "Failed to final-submit site purchase" });
     }
   });
 
@@ -1786,19 +1833,73 @@ export async function registerRoutes(
   app.put("/api/plant-module/material-receipts/:id", async (req, res) => {
     try {
       if (!assertEdit(req, res, "plant_materials")) return;
+      const id = Number(req.params.id);
+      const existing = await storage.getMaterialReceipt(id);
+      if (!existing) return res.status(404).json({ message: "Receipt not found" });
+      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      if (existing.documentStatus === "submitted" && !isOwnerOrAdmin) {
+        return res.status(403).json({ message: "This receipt has been Final Submitted and is locked. Contact an admin/owner to make changes." });
+      }
       const body = { ...req.body };
       if (typeof body.isPlantCommon === 'boolean') {
         body.isPlantCommon = body.isPlantCommon ? 1 : 0;
       }
       const input = insertMaterialReceiptSchema.partial().parse(body);
-      const updated = await storage.updateMaterialReceipt(Number(req.params.id), input);
+      const updated = await storage.updateMaterialReceipt(id, input);
       if (!updated) return res.status(404).json({ message: "Receipt not found" });
+      await storage.logAudit({
+        module: "material_receipts",
+        transactionId: id,
+        action: "edit",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: existing,
+        newValues: updated,
+      });
       sendPushToSection("plant_materials", "Material Receipt Updated", `Receipt #${req.params.id} updated`, "/plant").catch(() => {});
       res.json(updated);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid receipt data", errors: err.errors });
       console.error("Error updating material receipt:", err);
       res.status(500).json({ message: "Failed to update material receipt" });
+    }
+  });
+
+  // Final Submit: locks the receipt for normal-user edits once required
+  // documents (challan/DC/invoice/receipt) are attached. Owner/Admin can
+  // force-submit without a document for testing/edge cases (spec §H, §F).
+  app.post("/api/plant-module/material-receipts/:id/final-submit", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "plant_materials")) return;
+      const id = Number(req.params.id);
+      const before = await storage.getMaterialReceipt(id);
+      if (!before) return res.status(404).json({ message: "Receipt not found" });
+      if (before.documentStatus === "submitted") return res.status(400).json({ message: "This receipt is already Final Submitted" });
+      const isOwnerOrAdmin = !!(req.authUser!.isOwner || req.authUser!.isAdmin);
+      if (!isOwnerOrAdmin) {
+        const docs = await storage.getAttachments("material_receipt", id);
+        const requiredTypes = ["challan", "dc", "invoice", "receipt"];
+        const hasRequiredDoc = docs.some(d => requiredTypes.includes((d as any).docType));
+        if (!hasRequiredDoc) {
+          return res.status(400).json({ message: "Please upload the challan, DC, invoice or receipt photo before Final Submit." });
+        }
+      }
+      const updated = await storage.finalSubmitMaterialReceipt(id, req.authUser!.id);
+      await storage.logAudit({
+        module: "material_receipts",
+        transactionId: id,
+        action: "final_submit",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        oldValues: before,
+        newValues: updated ?? null,
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/plant-module/material-receipts/:id/final-submit:", err);
+      res.status(500).json({ message: "Failed to final-submit receipt" });
     }
   });
 

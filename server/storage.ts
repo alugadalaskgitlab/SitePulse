@@ -456,6 +456,8 @@ export interface IStorage {
   cancelDpr(id: number, userId: number, reason: string): Promise<Dpr | undefined>;
   cancelMaterialReceipt(id: number, userId: number, reason: string): Promise<MaterialReceipt | undefined>;
   cancelSitePurchase(id: number, userId: number, reason: string): Promise<any>;
+  finalSubmitMaterialReceipt(id: number, userId: number): Promise<MaterialReceipt | undefined>;
+  finalSubmitSitePurchase(id: number, userId: number): Promise<any>;
   cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined>;
   cancelEquipmentMaintenanceLog(id: number, userId: number, reason: string): Promise<EquipmentMaintenanceLog | undefined>;
 
@@ -1047,6 +1049,7 @@ export interface IStorage {
 
   // Site Purchases Report
   getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string }): Promise<any[]>;
+  getSitePurchase(id: number): Promise<any>;
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
@@ -1611,6 +1614,24 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Final Submit: transitions a Draft/Pending Document record to Submitted,
+  // locking normal-user edits (Owner/Admin still bypass via assertEdit).
+  async finalSubmitMaterialReceipt(id: number, userId: number): Promise<MaterialReceipt | undefined> {
+    const [updated] = await db.update(materialReceipts)
+      .set({ documentStatus: "submitted", finalSubmittedAt: new Date(), finalSubmittedBy: userId })
+      .where(eq(materialReceipts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async finalSubmitSitePurchase(id: number, userId: number): Promise<any> {
+    const [updated] = await db.update(sitePurchases)
+      .set({ documentStatus: "submitted", finalSubmittedAt: new Date(), finalSubmittedBy: userId })
+      .where(eq(sitePurchases.id, id))
+      .returning();
+    return updated;
+  }
+
   async cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined> {
     const [updated] = await db.update(siteMaterialTrips)
       .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
@@ -1788,6 +1809,7 @@ export class DatabaseStorage implements IStorage {
             itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
             vendor: sp.vendor?.toUpperCase() || sp.vendor,
             billNo: sp.billNo?.toUpperCase() || sp.billNo,
+            documentStatus: "draft" as const,
           }))
         );
       }
@@ -1882,6 +1904,7 @@ export class DatabaseStorage implements IStorage {
             itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
             vendor: sp.vendor?.toUpperCase() || sp.vendor,
             billNo: sp.billNo?.toUpperCase() || sp.billNo,
+            documentStatus: "draft" as const,
           }))
         );
       }
@@ -2044,6 +2067,7 @@ export class DatabaseStorage implements IStorage {
             vendor: sp.vendor?.toUpperCase() || sp.vendor,
             billNo: sp.billNo?.toUpperCase() || sp.billNo,
             amount: sp.amount,
+            documentStatus: sp.documentStatus ?? "draft",
           }))
         );
       }
@@ -2177,6 +2201,7 @@ export class DatabaseStorage implements IStorage {
               itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription,
               vendor: sp.vendor?.toUpperCase() || sp.vendor,
               billNo: sp.billNo?.toUpperCase() || sp.billNo,
+              documentStatus: "draft" as const,
             }))
           );
         }
@@ -2195,6 +2220,7 @@ export class DatabaseStorage implements IStorage {
               vendor: sp.vendor,
               billNo: sp.billNo,
               amount: sp.amount,
+              documentStatus: sp.documentStatus ?? "draft",
             }))
           );
         }
@@ -2955,9 +2981,19 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(materialReceipts.isDeleted, false));
     }
     
-    return db.select().from(materialReceipts)
+    const rows = await db.select().from(materialReceipts)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(materialReceipts.date));
+
+    if (rows.length === 0) return rows;
+    const requiredDocTypes = ["challan", "dc", "invoice", "receipt"];
+    const docRows = await db.select({ linkedRecordId: attachments.linkedRecordId, docType: attachments.docType })
+      .from(attachments)
+      .where(and(eq(attachments.moduleType, "material_receipt"), inArray(attachments.linkedRecordId, rows.map(r => r.id))));
+    const idsWithRequiredDoc = new Set(
+      docRows.filter(d => d.docType && requiredDocTypes.includes(d.docType)).map(d => d.linkedRecordId)
+    );
+    return rows.map(r => ({ ...r, hasRequiredDoc: idsWithRequiredDoc.has(r.id) })) as any;
   }
 
   private getMaterialCategoryCode(category: string | null | undefined, name: string | null | undefined): string {
@@ -2997,6 +3033,7 @@ export class DatabaseStorage implements IStorage {
         transporter: receipt.transporter?.toUpperCase(),
         vehicleNumber: receipt.vehicleNumber?.toUpperCase(),
         challanNumber: receipt.challanNumber?.toUpperCase(),
+        documentStatus: "draft" as const,
       };
       const [result] = await tx.insert(materialReceipts).values(uppercased).returning();
       
@@ -6481,6 +6518,7 @@ export class DatabaseStorage implements IStorage {
                   vendor: sp.vendor,
                   billNo: sp.billNo,
                   amount: sp.amount,
+                  documentStatus: sp.documentStatus ?? "draft",
                 }))
               );
               repaired += olderPurchases.length;
@@ -7831,6 +7869,7 @@ export class DatabaseStorage implements IStorage {
       amount: sitePurchases.amount,
       isCancelled: sitePurchases.isCancelled,
       cancellationReason: sitePurchases.cancellationReason,
+      documentStatus: sitePurchases.documentStatus,
       date: dprs.date,
       site: dprs.site,
       engineer: dprs.engineer,
@@ -7840,12 +7879,24 @@ export class DatabaseStorage implements IStorage {
     .innerJoin(dprs, eq(sitePurchases.dprId, dprs.id))
     .where(and(...conditions))
     .orderBy(desc(dprs.date));
-    
+
+    const requiredDocTypes = ["bill", "invoice", "receipt"];
+    const purchaseIds = results.map(r => r.id);
+    const docRows = purchaseIds.length
+      ? await db.select({ linkedRecordId: attachments.linkedRecordId, docType: attachments.docType })
+          .from(attachments)
+          .where(and(eq(attachments.moduleType, "site_purchase"), inArray(attachments.linkedRecordId, purchaseIds)))
+      : [];
+    const idsWithRequiredDoc = new Set(
+      docRows.filter(d => d.docType && requiredDocTypes.includes(d.docType)).map(d => d.linkedRecordId)
+    );
+
     let filtered = results
       .map(rest => ({
         ...rest,
         site: this.getBaseSiteName(rest.site),
         source: "purchase" as const,
+        hasRequiredDoc: idsWithRequiredDoc.has(rest.id),
       }));
     
     if (filters?.site) {
@@ -7904,6 +7955,11 @@ export class DatabaseStorage implements IStorage {
     const combined = [...filtered, ...dieselFiltered];
     combined.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return combined;
+  }
+
+  async getSitePurchase(id: number): Promise<any> {
+    const [row] = await db.select().from(sitePurchases).where(eq(sitePurchases.id, id)).limit(1);
+    return row;
   }
 
   async updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any> {

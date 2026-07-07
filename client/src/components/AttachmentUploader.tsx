@@ -19,6 +19,9 @@ interface AttachmentUploaderProps {
   equipmentId?: number | null;
   materialId?: number | null;
   caption?: string;
+  /** Tags the upload as e.g. "challan" | "dc" | "invoice" | "bill" | "receipt" | "photo" | "other",
+   * used to compute missing-document indicators in the Draft/Pending Document workflow. */
+  docType?: string;
   /** Hide the camera-capture button (e.g. on desktop-only forms). Default true (shown). */
   showCamera?: boolean;
   label?: string;
@@ -42,6 +45,7 @@ export function AttachmentUploader({
   equipmentId,
   materialId,
   caption,
+  docType,
   showCamera = true,
   label = "Add Photo",
   className,
@@ -93,6 +97,7 @@ export function AttachmentUploader({
           mimeType: file.type || "application/octet-stream",
           fileSize: file.size,
           caption: caption ?? null,
+          docType: docType ?? null,
         });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/attachments", moduleType, linkedRecordId] });

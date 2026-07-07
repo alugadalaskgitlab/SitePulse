@@ -18,6 +18,19 @@ const cancellationFields = {
   cancellationReason: text("cancellation_reason"),
 };
 
+// Draft / Pending Document / Final Submit workflow (spec: allow saving a
+// transaction before supporting documents/photos are available, then lock
+// normal-user edits once Final Submit is clicked). "Pending Document" is a
+// derived UI state (documentStatus === 'draft' AND required docs missing),
+// not a stored value, to avoid a second source of truth. Owner/Admin always
+// bypass the edit lock (see assertEdit/isOwner) regardless of documentStatus.
+// Default 'submitted' so pre-existing historical rows are unaffected.
+const documentWorkflowFields = {
+  documentStatus: text("document_status").notNull().default("submitted"), // "draft" | "submitted"
+  finalSubmittedAt: timestamp("final_submitted_at"),
+  finalSubmittedBy: integer("final_submitted_by"),
+};
+
 // Generic cross-module audit trail. Every create/edit/delete/cancel/approve
 // action on a transaction should write one row here (see server/storage.ts
 // logAudit()). Deliberately module-agnostic (module + transactionId) instead
@@ -197,6 +210,7 @@ export const sitePurchases = pgTable("site_purchases", {
   billNo: text("bill_no"),
   amount: real("amount"),
   ...cancellationFields,
+  ...documentWorkflowFields,
 });
 
 // DPR Version History (for manager edits as copies)
@@ -398,6 +412,7 @@ export const materialReceipts = pgTable("material_receipts", {
   plantName: text("plant_name").notNull().default("Main Plant"),
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
+  ...documentWorkflowFields,
 }, (table) => ({
   dateIdx: index("material_receipts_date_idx").on(table.date),
 }));
@@ -707,7 +722,7 @@ export const insertDprStructureItemSchema = createInsertSchema(dprStructureItems
 export const insertEquipmentSchema = createInsertSchema(equipmentLogs).omit({ id: true, dprId: true });
 export const insertLabourSchema = createInsertSchema(labourLogs).omit({ id: true, dprId: true });
 export const insertMaterialSchema = createInsertSchema(materialLogs).omit({ id: true, dprId: true });
-export const insertSitePurchaseSchema = createInsertSchema(sitePurchases).omit({ id: true, dprId: true });
+export const insertSitePurchaseSchema = createInsertSchema(sitePurchases).omit({ id: true, dprId: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
 export const insertPlantReportSchema = createInsertSchema(plantReports).omit({ id: true, createdAt: true });
 export const insertPlantProductionSchema = createInsertSchema(plantProduction).omit({ id: true, plantReportId: true });
 
@@ -774,7 +789,7 @@ export const insertMixTypeSchema = createInsertSchema(mixTypes).omit({ id: true,
 export const insertMixTemplateSchema = createInsertSchema(mixTemplates).omit({ id: true, createdAt: true });
 export const insertMixTemplateComponentSchema = createInsertSchema(mixTemplateComponents).omit({ id: true });
 export const insertEquipmentMasterSchema = createInsertSchema(equipmentMaster).omit({ id: true, createdAt: true });
-export const insertMaterialReceiptSchema = createInsertSchema(materialReceipts).omit({ id: true, createdAt: true });
+export const insertMaterialReceiptSchema = createInsertSchema(materialReceipts).omit({ id: true, createdAt: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
 export const insertTruckDispatchSchema = createInsertSchema(truckDispatches).omit({ id: true, createdAt: true });
 export const insertEquipmentUsageSchema = createInsertSchema(equipmentUsage).omit({ id: true, createdAt: true });
 export const insertGeneratorLogSchema = createInsertSchema(generatorLogs).omit({ id: true, createdAt: true });
@@ -3014,6 +3029,7 @@ export const attachments = pgTable("attachments", {
   mimeType: text("mime_type"),
   fileSize: integer("file_size"),
   caption: text("caption"),
+  docType: text("doc_type"), // "challan" | "dc" | "invoice" | "bill" | "receipt" | "photo" | "other" — used for missing-document indicators in the Draft/Pending Document workflow
   uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });

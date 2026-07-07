@@ -14,7 +14,7 @@ import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus, History, Ban } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus, History, Ban, CheckCircle2, FileWarning, Lock } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
@@ -34,7 +34,8 @@ import { UOM_OPTIONS } from "@shared/schema";
 export default function PlantMaterialReceipts() {
   const { toast } = useToast();
   const { getPlantBackLink } = useOrigin();
-  const { sectionCan } = useAuth();
+  const { sectionCan, isOwner, isAdmin } = useAuth();
+  const isOwnerOrAdmin = isOwner || isAdmin;
   const { companyName, logoFile } = useFeatureFlags();
   const canCreate = sectionCan("plant_stock", "create");
   const canEdit = sectionCan("plant_stock", "edit");
@@ -80,6 +81,7 @@ export default function PlantMaterialReceipts() {
           objectPath: uploadResponse.objectPath,
           mimeType: file.type || "application/octet-stream",
           fileSize: file.size,
+          docType: "challan",
         });
       } catch {
         toast({ title: "Some photos failed to attach", description: file.name, variant: "destructive" });
@@ -410,6 +412,23 @@ export default function PlantMaterialReceipts() {
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
       setDeleteConfirmId(null);
       toast({ title: "Receipt deleted successfully" });
+    },
+  });
+
+  const finalSubmitMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("POST", `/api/plant-module/material-receipts/${id}/final-submit`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
+      toast({ title: "Receipt Final Submitted", description: "This receipt is now locked from further edits." });
+    },
+    onError: (error: any) => {
+      let msg = "Failed to final-submit receipt";
+      try {
+        const parsed = JSON.parse(error.message.replace(/^\d+:\s*/, ""));
+        msg = parsed.message || msg;
+      } catch { msg = error.message || msg; }
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -1006,6 +1025,7 @@ export default function PlantMaterialReceipts() {
                     moduleType="material_receipt"
                     linkedRecordId={editingReceipt.id}
                     materialId={materialId ? Number(materialId) : null}
+                    docType="challan"
                   />
                   <AttachmentGallery moduleType="material_receipt" linkedRecordId={editingReceipt.id} />
                 </div>
@@ -1386,12 +1406,47 @@ export default function PlantMaterialReceipts() {
                                 {(!(receipt as any).indentRef || indentStatusMap[(receipt as any).indentRef] !== "approved") && (
                                   <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" data-testid={`badge-pi-pending-${receipt.id}`}>PI Pending</Badge>
                                 )}
+                                {(() => {
+                                  const status = (receipt as any).documentStatus;
+                                  const hasRequiredDoc = (receipt as any).hasRequiredDoc;
+                                  if (status === "submitted") {
+                                    return (
+                                      <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-emerald-400 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 gap-1" data-testid={`badge-doc-status-${receipt.id}`}>
+                                        <Lock className="w-3 h-3" /> Final Submitted
+                                      </Badge>
+                                    );
+                                  }
+                                  if (!hasRequiredDoc) {
+                                    return (
+                                      <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-red-400 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 gap-1" data-testid={`badge-doc-status-${receipt.id}`}>
+                                        <FileWarning className="w-3 h-3" /> Pending Document
+                                      </Badge>
+                                    );
+                                  }
+                                  return (
+                                    <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-sky-400 text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20" data-testid={`badge-doc-status-${receipt.id}`}>
+                                      Draft
+                                    </Badge>
+                                  );
+                                })()}
                               </div>
                               <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
                                 <Button size="icon" variant="ghost" onClick={() => setHistoryReceiptId(receipt.id)} data-testid={`button-history-receipt-${receipt.id}`} title="History">
                                   <History className="w-4 h-4 text-muted-foreground" />
                                 </Button>
-                                {canEdit && (
+                                {canEdit && (receipt as any).documentStatus !== "submitted" && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => finalSubmitMutation.mutate(receipt.id)}
+                                    disabled={finalSubmitMutation.isPending || !(receipt as any).hasRequiredDoc}
+                                    data-testid={`button-final-submit-receipt-${receipt.id}`}
+                                    title={(receipt as any).hasRequiredDoc ? "Final Submit" : "Upload a challan/DC/invoice/receipt photo first"}
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  </Button>
+                                )}
+                                {(canEdit || isOwnerOrAdmin) && ((receipt as any).documentStatus !== "submitted" || isOwnerOrAdmin) && (
                                   <>
                                     <Button size="icon" variant="ghost" onClick={() => handleEditClick(receipt)} data-testid={`button-edit-receipt-${receipt.id}`}>
                                       <Edit className="w-4 h-4" />
