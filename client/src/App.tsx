@@ -74,6 +74,7 @@ import ConcreteCalculatorV2 from "@/pages/ConcreteCalculatorV2";
 import IrnListPage from "@/pages/irn/IrnListPage";
 import IrnRaisePage from "@/pages/irn/IrnRaisePage";
 import IrnDetailPage from "@/pages/irn/IrnDetailPage";
+import EditRequestsPage from "@/pages/EditRequestsPage";
 import BoqProjects from "@/pages/BoqProjects";
 import BoqProjectDetail from "@/pages/BoqProjectDetail";
 import BoqProgramSettings from "@/pages/BoqProgramSettings";
@@ -320,6 +321,8 @@ function AuthedShell() {
             <Route path="/admin/management-report" component={gatedEither(ManagementReport, "report_management", "reports", "admin_settings")} />
             <Route path="/admin/concrete-estimates" component={gatedEither(ConcreteEstimates, "concrete_calculator", "reports")} />
             <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
+            <Route path="/edit-requests" component={EditRequestsPage} />
+            <Route path="/edit-requests/mine" component={EditRequestsPage} />
             <Route path="/notifications/preferences" component={NotificationPreferences} />
             <Route path="/account" component={Account} />
             <Route component={NotFound} />

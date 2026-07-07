@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ChevronLeft, ChevronDown, Plus, Save, Loader2, Trash2, Flame, FolderOpen } from "lucide-react";
 import { format, parseISO, subDays } from "date-fns";
@@ -1334,6 +1335,15 @@ export default function PlantHeatingSessions() {
                             <Button variant="outline" size="sm" onClick={() => openEdit(s)} data-testid={`button-open-${s.id}`}>
                               <FolderOpen className="w-4 h-4 mr-1" />Open
                             </Button>
+                            {!!s.isFinalized && (
+                              <EditPermissionButton
+                                recordType="heating_session"
+                                recordId={s.id}
+                                onEditGranted={() => openEdit(s)}
+                                label="Request Edit"
+                                size="sm"
+                              />
+                            )}
                           </div>
                         </div>
                       );

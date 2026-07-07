@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Fuel, X, Check, ArrowRight, Trash2, Pencil, AlertTriangle } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -938,7 +939,15 @@ export default function DieselRequirements() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle className="text-base">{formatDate(selectedRequirement.date)} — DIESEL REQUIREMENT</CardTitle>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {canEdit && (
+                    {canEdit && (selectedRequirement.status === "purchased" || selectedRequirement.status === "rejected") && (
+                      <EditPermissionButton
+                        recordType="diesel_requirement"
+                        recordId={selectedRequirement.id}
+                        onEditGranted={() => handleEditClick()}
+                        size="sm"
+                      />
+                    )}
+                    {canEdit && selectedRequirement.status !== "purchased" && selectedRequirement.status !== "rejected" && (
                       <Button
                         variant="outline"
                         size="sm"

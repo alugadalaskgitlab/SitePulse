@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ChevronLeft, Plus, Trash2, ArrowDownToLine, X, Loader2, Eye, AlertTriangle, Pencil, Check, Clock, Zap, Bell } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -701,9 +702,19 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                   )}
                   {selectedGrn.remarks && <p className="text-sm text-muted-foreground italic mt-1">{selectedGrn.remarks}</p>}
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={closeDetail} data-testid="button-close-detail">
-                  <X className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {selectedGrn.status === "finalized" && (
+                    <EditPermissionButton
+                      recordType="stores_grn"
+                      recordId={selectedGrn.id}
+                      onEditGranted={() => openDraftForEdit(selectedGrn)}
+                      size="sm"
+                    />
+                  )}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeDetail} data-testid="button-close-detail">
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
               <div className="border rounded overflow-hidden">
                 <table className="w-full text-sm">

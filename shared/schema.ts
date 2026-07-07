@@ -3042,6 +3042,55 @@ export type Attachment = typeof attachments.$inferSelect & { uploadedByName?: st
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
 
 // ============================================
+// EDIT PERMISSION REQUEST SYSTEM
+// When a record is finalized/submitted/locked, a non-admin user can request
+// a one-time edit window. A higher-level approver (Manager/Admin/Owner —
+// never the requester themselves) approves or denies via the in-app
+// notification system. If approved the requester gets 2 hours to make one
+// edit; the permission is then marked "used" or expires automatically.
+// ============================================
+
+export const EDIT_PERMISSION_RECORD_TYPES = [
+  "dpr",
+  "plant_shift_log",
+  "heating_session",
+  "material_receipt",
+  "site_purchase",
+  "store_grn",
+  "diesel_requirement",
+  "purchase_indent",
+  "truck_dispatch",
+  "equipment_usage",
+] as const;
+export type EditPermissionRecordType = typeof EDIT_PERMISSION_RECORD_TYPES[number];
+
+export const editPermissionRequests = pgTable("edit_permission_requests", {
+  id: serial("id").primaryKey(),
+  recordType: text("record_type").notNull(), // EditPermissionRecordType
+  recordId: integer("record_id").notNull(),
+  requestedBy: integer("requested_by").notNull().references(() => users.id),
+  requestedByName: text("requested_by_name").notNull(),
+  requestReason: text("request_reason").notNull(),
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "denied" | "expired" | "used"
+  approvedBy: integer("approved_by").references(() => users.id),
+  approverName: text("approver_name"),
+  approverNote: text("approver_note"),
+  expiresAt: timestamp("expires_at"), // set on approval: now + 2 hours
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  recordIdx: index("epr_record_idx").on(t.recordType, t.recordId),
+  requesterIdx: index("epr_requester_idx").on(t.requestedBy),
+  statusIdx: index("epr_status_idx").on(t.status),
+}));
+
+export const insertEditPermissionRequestSchema = createInsertSchema(editPermissionRequests).omit({
+  id: true, createdAt: true, approvedBy: true, approverName: true, approverNote: true, expiresAt: true, usedAt: true, status: true,
+});
+export type EditPermissionRequest = typeof editPermissionRequests.$inferSelect;
+export type InsertEditPermissionRequest = z.infer<typeof insertEditPermissionRequestSchema>;
+
+// ============================================
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,

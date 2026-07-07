@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link, useSearch, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { ChevronLeft, Plus, Loader2, Trash2, FileText, ClipboardCheck, ShoppingCart, ArrowRight, Check, X, AlertTriangle, BarChart3, Ban, Lock, LockOpen, Clock, ChevronDown, ChevronUp, Pencil, CheckCircle2, XCircle, PackageCheck, CreditCard, Calendar, Edit2, AlertCircle, ClipboardList, Package, Printer, Warehouse } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -3089,6 +3090,14 @@ export default function PurchaseIndents() {
                     >
                       <Printer className="w-3 h-3 mr-1" /> PRINT
                     </Button>
+                    {canEdit && selectedIndent.status === "completed" && !isAdmin && (
+                      <EditPermissionButton
+                        recordType="purchase_indent"
+                        recordId={selectedIndent.id}
+                        onEditGranted={() => handleEditIndent()}
+                        size="sm"
+                      />
+                    )}
                     {(selectedIndent.status !== "completed" || isAdmin) && canEdit && (
                       <Button
                         variant="outline"

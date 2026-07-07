@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
@@ -1530,6 +1531,13 @@ export default function PlantDispatches() {
                               </div>
                               {canEdit && (
                                 <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                  <EditPermissionButton
+                                    recordType="truck_dispatch"
+                                    recordId={dispatch.id}
+                                    onEditGranted={() => handleEditClick(dispatch)}
+                                    size="sm"
+                                    variant="ghost"
+                                  />
                                   <Button size="icon" variant="ghost" onClick={() => handleEditClick(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
                                     <Edit className="w-4 h-4" />
                                   </Button>

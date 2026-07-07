@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1864,6 +1865,13 @@ export default function PlantEquipmentUsage() {
                                     <Gauge className="w-3 h-3" /> Complete
                                   </Button>
                                 )}
+                                <EditPermissionButton
+                                  recordType="equipment_usage"
+                                  recordId={entry.id}
+                                  onEditGranted={() => handleEditClick(entry)}
+                                  size="sm"
+                                  variant="ghost"
+                                />
                                 <Button size="icon" variant="ghost" onClick={() => handleEditClick(entry)} data-testid={`button-edit-usage-${entry.id}`}>
                                   <Edit className="w-4 h-4" />
                                 </Button>

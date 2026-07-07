@@ -4,7 +4,7 @@ import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
   HardHat, Factory, Building2, Wrench, Package, Receipt, BarChart2,
-  RefreshCw, Database, ClipboardList, FileSpreadsheet, BookOpen, ChevronUp,
+  RefreshCw, Database, ClipboardList, FileSpreadsheet, BookOpen, ChevronUp, ShieldCheck,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminNotifications } from "@/components/AdminNotifications";
@@ -71,6 +71,20 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     : 0;
 
   const canSeeIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
+
+  const { data: pendingEditRequests } = useQuery<unknown[]>({
+    queryKey: ["/api/edit-requests/pending"],
+    queryFn: async () => {
+      const res = await fetch("/api/edit-requests/pending", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAdmin,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const pendingEditCount = isAdmin ? (pendingEditRequests?.length ?? 0) : 0;
+
   const { data: pendingIrns } = useQuery<unknown[]>({
     queryKey: ["/api/irn", "pending_stores"],
     queryFn: async () => {
@@ -120,6 +134,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
     { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
+    { href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" },
   ];
 
   const bottomNavItems: NavItem[] = [
@@ -159,6 +174,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
           const active = isNavActive(item);
           const showUnassignedBadge = item.href === "/" && unassignedCount > 0;
           const showIrnBadge = item.href === "/irn" && pendingIrnCount > 0;
+          const showEditBadge = item.href === "/edit-requests" && pendingEditCount > 0;
           return (
             <Link key={item.href} href={item.href}>
               <a
@@ -185,6 +201,14 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
                     className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[12px] font-bold flex items-center justify-center leading-none"
                   >
                     {pendingIrnCount}
+                  </span>
+                )}
+                {showEditBadge && (
+                  <span
+                    data-testid="badge-edit-requests-pending"
+                    className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[12px] font-bold flex items-center justify-center leading-none"
+                  >
+                    {pendingEditCount}
                   </span>
                 )}
               </a>

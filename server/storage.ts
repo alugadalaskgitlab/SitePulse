@@ -64,6 +64,9 @@ import {
   type BitumenHeatingSession,
   type InsertBitumenHeatingSession,
   type UpsertBitumenHeatingSessionInput,
+  editPermissionRequests,
+  type EditPermissionRequest,
+  type InsertEditPermissionRequest,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -1046,6 +1049,17 @@ export interface IStorage {
   updateSite(id: number, site: Partial<InsertSite>): Promise<Site | undefined>;
   deleteSite(id: number): Promise<boolean>;
   seedSitesFromDprs(): Promise<number>;
+
+  // Edit Permission Requests
+  createEditPermissionRequest(data: InsertEditPermissionRequest): Promise<EditPermissionRequest>;
+  getPendingEditPermissionRequests(): Promise<EditPermissionRequest[]>;
+  getEditPermissionRequestsForUser(userId: number): Promise<EditPermissionRequest[]>;
+  getEditPermissionRequest(id: number): Promise<EditPermissionRequest | undefined>;
+  approveEditPermissionRequest(id: number, approverId: number, approverName: string, note?: string): Promise<EditPermissionRequest | undefined>;
+  denyEditPermissionRequest(id: number, approverId: number, approverName: string, note?: string): Promise<EditPermissionRequest | undefined>;
+  checkActiveEditPermission(userId: number, recordType: string, recordId: number): Promise<EditPermissionRequest | undefined>;
+  consumeEditPermission(requestId: number): Promise<void>;
+  expireOldEditPermissions(): Promise<void>;
 
   // Site Purchases Report
   getAllSitePurchases(filters?: { site?: string; dateFrom?: string; dateTo?: string; workType?: string }): Promise<any[]>;
@@ -8428,6 +8442,80 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return created;
+  }
+
+  // ============================================
+  // EDIT PERMISSION REQUESTS
+  // ============================================
+
+  async createEditPermissionRequest(data: InsertEditPermissionRequest): Promise<EditPermissionRequest> {
+    const [row] = await db.insert(editPermissionRequests).values(data).returning();
+    return row;
+  }
+
+  async getPendingEditPermissionRequests(): Promise<EditPermissionRequest[]> {
+    return db.select().from(editPermissionRequests)
+      .where(eq(editPermissionRequests.status, "pending"))
+      .orderBy(desc(editPermissionRequests.createdAt));
+  }
+
+  async getEditPermissionRequestsForUser(userId: number): Promise<EditPermissionRequest[]> {
+    return db.select().from(editPermissionRequests)
+      .where(eq(editPermissionRequests.requestedBy, userId))
+      .orderBy(desc(editPermissionRequests.createdAt));
+  }
+
+  async getEditPermissionRequest(id: number): Promise<EditPermissionRequest | undefined> {
+    const [row] = await db.select().from(editPermissionRequests).where(eq(editPermissionRequests.id, id)).limit(1);
+    return row;
+  }
+
+  async approveEditPermissionRequest(id: number, approverId: number, approverName: string, note?: string): Promise<EditPermissionRequest | undefined> {
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+    const [row] = await db.update(editPermissionRequests)
+      .set({ status: "approved", approvedBy: approverId, approverName, approverNote: note ?? null, expiresAt })
+      .where(and(eq(editPermissionRequests.id, id), eq(editPermissionRequests.status, "pending")))
+      .returning();
+    return row;
+  }
+
+  async denyEditPermissionRequest(id: number, approverId: number, approverName: string, note?: string): Promise<EditPermissionRequest | undefined> {
+    const [row] = await db.update(editPermissionRequests)
+      .set({ status: "denied", approvedBy: approverId, approverName, approverNote: note ?? null })
+      .where(and(eq(editPermissionRequests.id, id), eq(editPermissionRequests.status, "pending")))
+      .returning();
+    return row;
+  }
+
+  async checkActiveEditPermission(userId: number, recordType: string, recordId: number): Promise<EditPermissionRequest | undefined> {
+    const now = new Date();
+    const [row] = await db.select().from(editPermissionRequests)
+      .where(and(
+        eq(editPermissionRequests.requestedBy, userId),
+        eq(editPermissionRequests.recordType, recordType),
+        eq(editPermissionRequests.recordId, recordId),
+        eq(editPermissionRequests.status, "approved"),
+        gt(editPermissionRequests.expiresAt, now),
+      ))
+      .orderBy(desc(editPermissionRequests.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async consumeEditPermission(requestId: number): Promise<void> {
+    await db.update(editPermissionRequests)
+      .set({ status: "used", usedAt: new Date() })
+      .where(eq(editPermissionRequests.id, requestId));
+  }
+
+  async expireOldEditPermissions(): Promise<void> {
+    const now = new Date();
+    await db.update(editPermissionRequests)
+      .set({ status: "expired" })
+      .where(and(
+        eq(editPermissionRequests.status, "approved"),
+        lt(editPermissionRequests.expiresAt, now),
+      ));
   }
 
   // ============================================

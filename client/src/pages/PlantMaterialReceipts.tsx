@@ -15,6 +15,7 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { DraftRestoreBanner } from "@/components/DraftRestoreBanner";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ChevronLeft, ChevronRight, Plus, Package, Loader2, Edit, Trash2, Download, Printer, AlertTriangle, ShieldAlert, Camera, X, ImagePlus, History, Ban, CheckCircle2, FileWarning, Lock } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { AttachmentUploader } from "@/components/AttachmentUploader";
@@ -1445,6 +1446,14 @@ export default function PlantMaterialReceipts() {
                                   >
                                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                   </Button>
+                                )}
+                                {canEdit && !isOwnerOrAdmin && (receipt as any).documentStatus === "submitted" && (
+                                  <EditPermissionButton
+                                    recordType="material_receipt"
+                                    recordId={receipt.id}
+                                    onEditGranted={() => handleEditClick(receipt)}
+                                    size="sm"
+                                  />
                                 )}
                                 {(canEdit || isOwnerOrAdmin) && ((receipt as any).documentStatus !== "submitted" || isOwnerOrAdmin) && (
                                   <>

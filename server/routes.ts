@@ -602,6 +602,172 @@ export async function registerRoutes(
   // etc). Do NOT build per-module upload endpoints — extend moduleType here.
   // ============================================
 
+  // ============================================================
+  // EDIT PERMISSION REQUESTS
+  // ============================================================
+
+  // POST /api/edit-requests — regular user submits a request
+  app.post("/api/edit-requests", requireAuth, async (req, res) => {
+    try {
+      const u = req.authUser!;
+      // Owner/Admin bypass: they don't need to request edit permission
+      if (u.isAdmin || u.isOwner) {
+        return res.status(400).json({ error: "Admins and owners do not need edit permission requests." });
+      }
+      const { recordType, recordId, requestReason } = req.body;
+      if (!recordType || !recordId || !requestReason?.trim()) {
+        return res.status(400).json({ error: "recordType, recordId and requestReason are required." });
+      }
+      // Prevent duplicate pending requests for same record by same user
+      const existing = await storage.checkActiveEditPermission(u.id, recordType, recordId);
+      if (existing) {
+        return res.status(409).json({ error: "You already have an active approved edit permission for this record." });
+      }
+      const pending = await storage.getPendingEditPermissionRequests();
+      const dup = pending.find(r => r.requestedBy === u.id && r.recordType === recordType && r.recordId === Number(recordId));
+      if (dup) {
+        return res.status(409).json({ error: "A pending request for this record already exists." });
+      }
+      const request = await storage.createEditPermissionRequest({
+        recordType,
+        recordId: Number(recordId),
+        requestedBy: u.id,
+        requestedByName: currentUserName(req),
+        requestReason: requestReason.trim(),
+      });
+      // Notify managers/admins via push + in-app notification
+      const label = recordType.replace(/_/g, " ");
+      sendPushToAudience(
+        "Edit Request",
+        `${currentUserName(req)} wants to edit a ${label} (ID ${recordId})`,
+        "/edit-requests",
+        "managers",
+      ).catch(() => {});
+      await storage.createNotification({
+        type: "warning",
+        title: "Edit Permission Request",
+        message: `${currentUserName(req)} requested edit access on ${label} #${recordId}: "${requestReason.trim()}"`,
+        isRead: 0,
+      });
+      res.status(201).json(request);
+    } catch (err) {
+      console.error("create edit-request error:", err);
+      res.status(500).json({ error: "Failed to create edit permission request." });
+    }
+  });
+
+  // GET /api/edit-requests/pending — approvers see all pending requests
+  app.get("/api/edit-requests/pending", requireAuth, async (req, res) => {
+    try {
+      const u = req.authUser!;
+      if (!u.isAdmin && !u.isOwner) {
+        return res.status(403).json({ error: "Only admins and owners can view pending requests." });
+      }
+      await storage.expireOldEditPermissions();
+      const list = await storage.getPendingEditPermissionRequests();
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch pending requests." });
+    }
+  });
+
+  // GET /api/edit-requests/mine — requesting user sees their own requests
+  app.get("/api/edit-requests/mine", requireAuth, async (req, res) => {
+    try {
+      await storage.expireOldEditPermissions();
+      const list = await storage.getEditPermissionRequestsForUser(req.authUser!.id);
+      res.json(list);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch your edit requests." });
+    }
+  });
+
+  // GET /api/edit-requests/check — check if active permission exists for a record
+  app.get("/api/edit-requests/check", requireAuth, async (req, res) => {
+    try {
+      await storage.expireOldEditPermissions();
+      const { recordType, recordId } = req.query;
+      if (!recordType || !recordId) return res.status(400).json({ error: "recordType and recordId required" });
+      const perm = await storage.checkActiveEditPermission(
+        req.authUser!.id,
+        String(recordType),
+        Number(recordId),
+      );
+      res.json({ hasPermission: !!perm, request: perm ?? null });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to check edit permission." });
+    }
+  });
+
+  // POST /api/edit-requests/:id/approve
+  app.post("/api/edit-requests/:id/approve", requireAuth, async (req, res) => {
+    try {
+      const u = req.authUser!;
+      if (!u.isAdmin && !u.isOwner) {
+        return res.status(403).json({ error: "Only admins and owners can approve requests." });
+      }
+      const id = Number(req.params.id);
+      const reqRecord = await storage.getEditPermissionRequest(id);
+      if (!reqRecord) return res.status(404).json({ error: "Request not found." });
+      // Self-approval prevention
+      if (reqRecord.requestedBy === u.id) {
+        return res.status(403).json({ error: "You cannot approve your own edit request." });
+      }
+      const updated = await storage.approveEditPermissionRequest(id, u.id, currentUserName(req), req.body.note);
+      if (!updated) return res.status(409).json({ error: "Request is no longer pending." });
+      // Notify the requester via push
+      sendPushToAudience(
+        "Edit Request Approved",
+        `Your edit request for ${reqRecord.recordType.replace(/_/g, " ")} #${reqRecord.recordId} was approved. You have 2 hours.`,
+        "/edit-requests/mine",
+        "all",
+      ).catch(() => {});
+      res.json(updated);
+    } catch (err) {
+      console.error("approve edit-request error:", err);
+      res.status(500).json({ error: "Failed to approve request." });
+    }
+  });
+
+  // POST /api/edit-requests/:id/deny
+  app.post("/api/edit-requests/:id/deny", requireAuth, async (req, res) => {
+    try {
+      const u = req.authUser!;
+      if (!u.isAdmin && !u.isOwner) {
+        return res.status(403).json({ error: "Only admins and owners can deny requests." });
+      }
+      const id = Number(req.params.id);
+      const reqRecord = await storage.getEditPermissionRequest(id);
+      if (!reqRecord) return res.status(404).json({ error: "Request not found." });
+      if (reqRecord.requestedBy === u.id) {
+        return res.status(403).json({ error: "You cannot deny your own edit request." });
+      }
+      const updated = await storage.denyEditPermissionRequest(id, u.id, currentUserName(req), req.body.note);
+      if (!updated) return res.status(409).json({ error: "Request is no longer pending." });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to deny request." });
+    }
+  });
+
+  // POST /api/edit-requests/:id/consume — called when the user actually saves the edit
+  app.post("/api/edit-requests/:id/consume", requireAuth, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const reqRecord = await storage.getEditPermissionRequest(id);
+      if (!reqRecord) return res.status(404).json({ error: "Request not found." });
+      if (reqRecord.requestedBy !== req.authUser!.id) {
+        return res.status(403).json({ error: "You can only consume your own edit permission." });
+      }
+      const active = await storage.checkActiveEditPermission(req.authUser!.id, reqRecord.recordType, reqRecord.recordId);
+      if (!active) return res.status(410).json({ error: "Edit permission has expired or already been used." });
+      await storage.consumeEditPermission(id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to consume edit permission." });
+    }
+  });
+
   app.get("/api/attachments", async (req, res) => {
     try {
       const moduleType = String(req.query.moduleType || "");
@@ -4016,7 +4182,19 @@ export async function registerRoutes(
         sendPushToSection("plant_shift_logs", "Plant Shift Log Saved", `${saved.date} – ${saved.shiftCode}`, `/plant/shift-log/${saved.date}`).catch(() => {});
         res.status(201).json(saved);
       } catch (e: any) {
-        if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        if (e?.code === "FINALIZED_LOCKED") {
+          const u = req.authUser;
+          if (u && !u.isAdmin && !u.isOwner && existingId) {
+            const perm = await storage.checkActiveEditPermission(u.id, "plant_shift_log", existingId);
+            if (perm) {
+              const saved2 = await storage.upsertPlantShiftLog(parsed, editedBy, "admin");
+              await storage.consumeEditPermission(perm.id);
+              sendPushToSection("plant_shift_logs", "Plant Shift Log Saved", `${saved2.date} – ${saved2.shiftCode}`, `/plant/shift-log/${saved2.date}`).catch(() => {});
+              return res.status(201).json(saved2);
+            }
+          }
+          return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        }
         throw e;
       }
     } catch (err: any) {
@@ -5081,7 +5259,18 @@ export async function registerRoutes(
         );
         res.json(saved);
       } catch (e: any) {
-        if (e?.code === "FINALIZED_LOCKED") return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        if (e?.code === "FINALIZED_LOCKED") {
+          const u = req.authUser;
+          if (u && !u.isAdmin && !u.isOwner) {
+            const perm = await storage.checkActiveEditPermission(u.id, "heating_session", id);
+            if (perm) {
+              const saved2 = await storage.upsertBitumenHeatingSession({ ...parsed, id }, editedBy, "admin");
+              await storage.consumeEditPermission(perm.id);
+              return res.json(saved2);
+            }
+          }
+          return res.status(403).json({ code: "FINALIZED_LOCKED", message: e.message });
+        }
         if (e?.code === "GEN_LOG_ALREADY_LINKED") return res.status(409).json({ code: "GEN_LOG_ALREADY_LINKED", message: e.message });
         if (e?.code === "GEN_LOG_NOT_FOUND" || e?.code === "GEN_LOG_DATE_MISMATCH" || e?.code === "GEN_LOG_PLANT_MISMATCH"
             || e?.code === "METER_DECREASING" || e?.code === "DG_DIESEL_INCONSISTENT") {

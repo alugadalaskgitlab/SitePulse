@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronDown, Plus, Trash2, Save, FileText, Loader2, Pencil, Users, FolderOpen, X, Download } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import * as XLSX from "xlsx";
 import { format, parseISO, subDays } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1263,6 +1264,15 @@ export default function PlantShiftLog() {
         </div>
         <div className="flex items-center gap-2">
           {isFinalized ? <Badge variant="default" className="bg-green-600">Finalized</Badge> : savedId ? <Badge variant="secondary">Draft saved</Badge> : null}
+          {!!isFinalized && savedId && (
+            <EditPermissionButton
+              recordType="plant_shift_log"
+              recordId={savedId}
+              onEditGranted={() => setIsFinalized(0)}
+              label="Request Edit"
+              size="sm"
+            />
+          )}
           <AutoSaveIndicator lastSavedAt={lastSavedAt} />
           <Link href={appendPlantContext(`/plant/daily-report/${date}`, { forceTab: "operations" })}>
             <Button variant="outline" size="sm" data-testid="button-view-daily-report"><FileText className="w-4 h-4 mr-1" />Daily Report</Button>
