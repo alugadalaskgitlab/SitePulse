@@ -8138,7 +8138,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.permittedSiteNames && filters.permittedSiteNames.length > 0) {
       tripConditions.push(inArray(siteMaterialTrips.site, filters.permittedSiteNames));
     }
-    // site_material_trips has no workType column — skip trip source entirely when filtering by workType
+    if (filters?.workType) tripConditions.push(eq(siteMaterialTrips.workType, filters.workType));
 
     const trips = await db.select().from(siteMaterialTrips)
       .where(tripConditions.length > 0 ? and(...tripConditions) : undefined)
@@ -8211,6 +8211,7 @@ export class DatabaseStorage implements IStorage {
       enteredBy: t.enteredBy || null,
       time: t.time || null,
       notes: t.notes || null,
+      workType: t.workType || null,
     }));
 
     const waterConditions: any[] = [
@@ -8275,11 +8276,6 @@ export class DatabaseStorage implements IStorage {
       dprResults = dprResults.filter(r => r.site.toUpperCase().trim() === filterSite);
       tripResults = tripResults.filter(r => (r.site || '').toUpperCase().trim() === filterSite);
       waterResults = waterResults.filter(r => r.site.toUpperCase().trim() === filterSite);
-    }
-
-    // Trips have no workType — exclude them entirely when a workType filter is active
-    if (filters?.workType) {
-      tripResults = [];
     }
 
     if (filters?.supplier) {

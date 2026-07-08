@@ -653,6 +653,7 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   receiptNumber: text("receipt_number"), // Challan/receipt number
   enteredBy: text("entered_by"), // Supervisor name
   notes: text("notes"),
+  workType: text("work_type"), // "road" | "structure"
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
 }, (table) => ({

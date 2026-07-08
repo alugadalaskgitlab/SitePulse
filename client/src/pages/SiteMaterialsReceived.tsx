@@ -41,6 +41,7 @@ interface TripEditForm {
   supplier: string;
   receiptNumber: string;
   notes: string;
+  workType: string;
 }
 
 function SourceBadge({ source }: { source: string }) {
@@ -186,6 +187,7 @@ export default function SiteMaterialsReceived() {
       supplier: trip.supplier || "",
       receiptNumber: trip.receiptNumber || "",
       notes: trip.notes || "",
+      workType: trip.workType || "",
     });
   };
 
@@ -206,6 +208,7 @@ export default function SiteMaterialsReceived() {
       supplier: editForm.supplier.trim() || null,
       receiptNumber: editForm.receiptNumber.trim() || null,
       notes: editForm.notes.trim() || null,
+      workType: editForm.workType || null,
     };
     updateMutation.mutate({ id: selectedTrip.id, payload });
   };
@@ -521,6 +524,16 @@ export default function SiteMaterialsReceived() {
                         onChange={(e) => setEditForm(f => f && { ...f, supplier: e.target.value })}
                         data-testid="input-edit-supplier"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Work Type</Label>
+                      <Select value={editForm.workType || "road"} onValueChange={(v) => setEditForm(f => f && { ...f, workType: v })}>
+                        <SelectTrigger data-testid="select-edit-worktype"><SelectValue placeholder="Select work type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="road">Road</SelectItem>
+                          <SelectItem value="structure">Structure</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1 col-span-2">
                       <Label className="text-xs uppercase tracking-wide text-muted-foreground">Receipt / Challan No.</Label>
