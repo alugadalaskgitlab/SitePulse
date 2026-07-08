@@ -3090,7 +3090,7 @@ export default function PurchaseIndents() {
                     >
                       <Printer className="w-3 h-3 mr-1" /> PRINT
                     </Button>
-                    {selectedIndent.status === "completed" && !isAdmin && (
+                    {selectedIndent.status === "completed" && (
                       <EditPermissionButton
                         recordType="purchase_indent"
                         recordId={selectedIndent.id}

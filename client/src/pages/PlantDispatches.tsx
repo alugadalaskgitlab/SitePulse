@@ -1529,28 +1529,24 @@ export default function PlantDispatches() {
                                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                                 )}
                               </div>
-                              {(canEdit || !isAdmin) && (
-                                <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                                  {!isAdmin && (
-                                    <EditPermissionButton
-                                      recordType="truck_dispatch"
-                                      recordId={dispatch.id}
-                                      onEditGranted={() => handleEditClick(dispatch)}
-                                      size="sm"
-                                    />
-                                  )}
-                                  {canEdit && (
-                                    <>
-                                      <Button size="icon" variant="ghost" onClick={() => handleEditClick(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
-                                        <Edit className="w-4 h-4" />
-                                      </Button>
-                                      <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
-                                        <Trash2 className="w-4 h-4 text-destructive" />
-                                      </Button>
-                                    </>
-                                  )}
-                                </div>
-                              )}
+                              <div className="flex gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                                <EditPermissionButton
+                                  recordType="truck_dispatch"
+                                  recordId={dispatch.id}
+                                  onEditGranted={() => handleEditClick(dispatch)}
+                                  size="sm"
+                                />
+                                {canEdit && (
+                                  <>
+                                    <Button size="icon" variant="ghost" onClick={() => handleEditClick(dispatch)} data-testid={`button-edit-dispatch-${dispatch.id}`}>
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => handleDeleteClick(dispatch.id)} data-testid={`button-delete-dispatch-${dispatch.id}`}>
+                                      <Trash2 className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                             {isExpanded && (
                             <div className="px-4 pb-4 pt-3 border-t border-border/50">

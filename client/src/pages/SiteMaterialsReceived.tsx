@@ -355,8 +355,10 @@ export default function SiteMaterialsReceived() {
 
           {selectedTrip && (
             <div className="space-y-4">
-              {/* Edit Request button for all non-admin/owner users on trip entries */}
-              {selectedTrip.source === "trip" && !isOwnerOrAdmin && (
+              {/* Edit Request button on trip entries. Non-admins request/consume real
+                  permission; admins/owners get a plain Edit button plus a "preview as
+                  requester" toggle so they can test the non-admin flow themselves. */}
+              {selectedTrip.source === "trip" && (
                 <div className="flex justify-end">
                   <EditPermissionButton
                     recordType="site_material_trip"
