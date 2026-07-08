@@ -28,6 +28,14 @@ export function AttachmentGallery({
   const { toast } = useToast();
   const { data: items, isLoading } = useQuery<Attachment[]>({
     queryKey: ["/api/attachments", moduleType, linkedRecordId],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        moduleType,
+        linkedRecordId: String(linkedRecordId),
+      });
+      const res = await apiRequest("GET", `/api/attachments?${params.toString()}`);
+      return res.json();
+    },
     enabled: Number.isFinite(linkedRecordId) && linkedRecordId > 0,
   });
 
