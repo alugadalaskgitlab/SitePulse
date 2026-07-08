@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { useAuth } from "@/lib/auth-context";
 
@@ -78,6 +79,7 @@ export default function SiteMaterialsReceived() {
   );
 
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
+  const [editUnlocked, setEditUnlocked] = useState(false);
 
   const hasActiveFilters =
     !!filters.dateFrom ||
@@ -342,7 +344,7 @@ export default function SiteMaterialsReceived() {
       </div>
 
       {/* Detail Dialog */}
-      <Dialog open={!!selectedTrip} onOpenChange={(open) => { if (!open) setSelectedTrip(null); }}>
+      <Dialog open={!!selectedTrip} onOpenChange={(open) => { if (!open) { setSelectedTrip(null); setEditUnlocked(false); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -359,7 +361,7 @@ export default function SiteMaterialsReceived() {
                   <EditPermissionButton
                     recordType="site_material_trip"
                     recordId={selectedTrip.id}
-                    onEditGranted={() => setSelectedTrip(null)}
+                    onEditGranted={() => setEditUnlocked(true)}
                     label="Request Edit"
                     size="sm"
                   />
@@ -417,8 +419,16 @@ export default function SiteMaterialsReceived() {
 
               {/* Photos */}
               {selectedTrip.source === "trip" && (
-                <div>
+                <div className="space-y-2">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Photos</p>
+                  {(isOwnerOrAdmin || editUnlocked) && (
+                    <AttachmentUploader
+                      moduleType="site_material_trip"
+                      linkedRecordId={selectedTrip.id}
+                      docType="challan"
+                      label="Add Photo"
+                    />
+                  )}
                   <AttachmentGallery
                     moduleType="site_material_trip"
                     linkedRecordId={selectedTrip.id}
