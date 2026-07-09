@@ -515,6 +515,28 @@ export async function registerRoutes(
     try {
       if (!assertCreate(req, res, "site_materials")) return;
       const id = Number(req.params.id);
+
+      // Fetch trip to validate state and ownership
+      const allTrips = await storage.getSiteMaterialTrips({});
+      const trip = allTrips.find((t) => t.id === id);
+      if (!trip) return res.status(404).json({ message: "Site material trip not found" });
+      if ((trip as any).documentStatus === "submitted") {
+        return res.status(409).json({ message: "Trip is already submitted" });
+      }
+      if (!(trip as any).receiptNumber) {
+        return res.status(422).json({ message: "Cannot submit: challan/receipt number is missing" });
+      }
+      // Ownership gate: admin/owner may submit any draft; others are restricted
+      const isPrivileged = req.authUser!.isAdmin || req.authUser!.isOwner;
+      if (!isPrivileged) {
+        // Approximate creator check via enteredBy text field
+        const callerName = currentUserName(req).trim().toLowerCase();
+        const enteredBy = ((trip as any).enteredBy || "").trim().toLowerCase();
+        if (enteredBy && callerName && enteredBy !== callerName) {
+          return res.status(403).json({ message: "You can only submit your own material trip entries" });
+        }
+      }
+
       const updated = await storage.submitSiteMaterialTrip(id, req.authUser!.id);
       if (!updated) return res.status(404).json({ message: "Site material trip not found" });
       await storage.logAudit({

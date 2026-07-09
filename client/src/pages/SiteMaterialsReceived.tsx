@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
@@ -157,12 +157,16 @@ export default function SiteMaterialsReceived() {
     onError: () => toast({ title: "Error", description: "Failed to delete.", variant: "destructive" }),
   });
 
+  const pendingConsumeGrant = useRef<(() => void) | null>(null);
+
   const updateMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: Record<string, any> }) => {
       const res = await apiRequest("PATCH", `/api/site-material-trips/${id}`, payload);
       return res.json();
     },
     onSuccess: (updated: any) => {
+      pendingConsumeGrant.current?.();
+      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" &&
         (q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/materials-received"))
@@ -448,7 +452,8 @@ export default function SiteMaterialsReceived() {
                   <EditPermissionButton
                     recordType="site_material_trip"
                     recordId={selectedTrip.id}
-                    onEditGranted={() => {
+                    onEditGranted={(_, consumeGrant) => {
+                      pendingConsumeGrant.current = consumeGrant ?? null;
                       setEditUnlocked(true);
                       startEditingFields(selectedTrip);
                     }}

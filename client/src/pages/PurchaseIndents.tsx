@@ -1132,10 +1132,14 @@ export default function PurchaseIndents() {
     },
   });
 
+  const pendingConsumeGrant = useRef<(() => void) | null>(null);
+
   const editMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/purchase-indents/${id}`, data),
     onSuccess: () => {
+      pendingConsumeGrant.current?.();
+      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-indents"] });
       toast({ title: "Indent updated successfully" });
       resetForm();
@@ -3094,7 +3098,7 @@ export default function PurchaseIndents() {
                       <EditPermissionButton
                         recordType="purchase_indent"
                         recordId={selectedIndent.id}
-                        onEditGranted={() => handleEditIndent()}
+                        onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; handleEditIndent(); }}
                         size="sm"
                       />
                     )}

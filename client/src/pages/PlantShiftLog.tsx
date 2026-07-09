@@ -99,6 +99,7 @@ export default function PlantShiftLog() {
   }, []);
   const [dryerHighlighted, setDryerHighlighted] = useState(false);
   const dryerFocusRef = useRef<HTMLDivElement | null>(null);
+  const pendingConsumeGrant = useRef<(() => void) | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
 
   const [manpower, setManpower] = useState<ManpowerRow[]>([]);
@@ -675,6 +676,8 @@ export default function PlantShiftLog() {
       return res.json();
     },
     onSuccess: async (data: any) => {
+      pendingConsumeGrant.current?.();
+      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/shift-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions/dryer-source-mismatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/ldo-flow-readings"] });
@@ -1268,7 +1271,7 @@ export default function PlantShiftLog() {
             <EditPermissionButton
               recordType="plant_shift_log"
               recordId={savedId}
-              onEditGranted={() => setIsFinalized(0)}
+              onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; setIsFinalized(0); }}
               label="Request Edit"
               size="sm"
             />

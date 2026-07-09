@@ -8026,7 +8026,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
-    const [trip] = await db.insert(siteMaterialTrips).values(data).returning();
+    const [trip] = await db.insert(siteMaterialTrips).values({ ...data, documentStatus: "draft" }).returning();
     return trip;
   }
 

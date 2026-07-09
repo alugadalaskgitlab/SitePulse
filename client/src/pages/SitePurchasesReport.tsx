@@ -361,6 +361,7 @@ export default function SitePurchasesReport() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            {isOwnerOrAdmin && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -370,6 +371,7 @@ export default function SitePurchasesReport() {
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
                             </Button>
+                            )}
                             {p.source !== 'diesel' ? (
                               <>
                                 {p.documentStatus !== "submitted" && (
