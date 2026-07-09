@@ -526,13 +526,17 @@ export async function registerRoutes(
       if (!(trip as any).receiptNumber) {
         return res.status(422).json({ message: "Cannot submit: challan/receipt number is missing" });
       }
-      // Ownership gate: admin/owner may submit any draft; others are restricted
+      // Photo requirement: at least one attachment must exist before submission
+      const tripPhotos = await storage.getAttachments("site_material_trip", id);
+      if (tripPhotos.length === 0) {
+        return res.status(422).json({ message: "Cannot submit: at least one site photo is required" });
+      }
+      // Ownership gate: admin/owner may submit any draft; others must be the creator
       const isPrivileged = req.authUser!.isAdmin || req.authUser!.isOwner;
       if (!isPrivileged) {
-        // Approximate creator check via enteredBy text field
-        const callerName = currentUserName(req).trim().toLowerCase();
-        const enteredBy = ((trip as any).enteredBy || "").trim().toLowerCase();
-        if (enteredBy && callerName && enteredBy !== callerName) {
+        const callerName = currentUserName(req).trim().toUpperCase();
+        const enteredBy = ((trip as any).enteredBy || "").trim().toUpperCase();
+        if (!enteredBy || !callerName || enteredBy !== callerName) {
           return res.status(403).json({ message: "You can only submit your own material trip entries" });
         }
       }

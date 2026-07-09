@@ -24,7 +24,7 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
-  const { sectionCan, user } = useAuth();
+  const { sectionCan, user, isAdmin, isOwner } = useAuth();
   const canEdit = sectionCan("site_dprs", "edit");
   const canDelete = !!user?.isAdmin;
   const { data: personnelList } = useQuery<Personnel[]>({
@@ -169,6 +169,7 @@ export default function SiteReport() {
               Edit
             </Button>
           )}
+          {(isAdmin || isOwner) && (
           <Button
             variant="outline"
             className="gap-2"
@@ -178,7 +179,8 @@ export default function SiteReport() {
             <History className="w-4 h-4" />
             History
           </Button>
-          {canEdit && (
+          )}
+          {(isAdmin || isOwner) && (
             <Button
               variant="outline"
               className="gap-2 text-amber-600 hover:text-amber-700"

@@ -1068,7 +1068,7 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<(SiteMaterialTrip & { hasPhotos: boolean })[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
@@ -8001,7 +8001,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<(SiteMaterialTrip & { hasPhotos: boolean })[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
@@ -8021,8 +8021,16 @@ export class DatabaseStorage implements IStorage {
       .from(siteMaterialTrips)
       .where(and(...conditions))
       .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
-    
-    return trips;
+
+    if (trips.length === 0) return [];
+
+    const tripIds = trips.map(t => t.id);
+    const photoRows = await db.select({ linkedRecordId: attachments.linkedRecordId })
+      .from(attachments)
+      .where(and(eq(attachments.moduleType, "site_material_trip"), inArray(attachments.linkedRecordId, tripIds)));
+    const withPhotosSet = new Set(photoRows.map(r => r.linkedRecordId));
+
+    return trips.map(t => ({ ...t, hasPhotos: withPhotosSet.has(t.id) }));
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {

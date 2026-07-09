@@ -28,7 +28,7 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
   const { companyName, logoFile } = useFeatureFlags();
-  const { isAdmin, isOwner } = useAuth();
+  const { isAdmin, isOwner, user } = useAuth();
   const isAdminOrOwner = isAdmin || isOwner;
   const searchString = useSearch();
   const returnTo = (() => {
@@ -552,6 +552,11 @@ export default function SiteMaterialTrips() {
                                     <AlertCircle className="w-2.5 h-2.5" /> No Challan
                                   </Badge>
                                 )}
+                                {!(trip as any).hasPhotos && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-rose-400 text-rose-700 bg-rose-50 dark:bg-rose-900/20 dark:text-rose-400 gap-0.5">
+                                    <Camera className="w-2.5 h-2.5" /> No Photo
+                                  </Badge>
+                                )}
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 border-sky-400 text-sky-700 bg-sky-50 dark:bg-sky-900/20 dark:text-sky-400">Draft</Badge>
                               </div>
                             )}
@@ -568,7 +573,8 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {(trip as any).documentStatus !== "submitted" && (
+                            {(trip as any).documentStatus !== "submitted" &&
+                              (isAdminOrOwner || (trip as any).enteredBy === user?.fullName?.toUpperCase()) && (
                               <Button
                                 variant="ghost"
                                 size="icon"
