@@ -478,10 +478,10 @@ export default function RoadDprEntry() {
                 {/* BOQ item link */}
                 {boqItems.length > 0 && (
                   <Field label="BOQ Item (optional)">
-                    <Select value={row.boqItemId} onValueChange={(v) => updateProgress(i, "boqItemId", v)}>
+                    <Select value={row.boqItemId || "__none__"} onValueChange={(v) => updateProgress(i, "boqItemId", v === "__none__" ? "" : v)}>
                       <SelectTrigger data-testid={`select-boq-item-${i}`}><SelectValue placeholder="Link to BOQ item…" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">— None —</SelectItem>
+                        <SelectItem value="__none__">— None —</SelectItem>
                         {(boqItems as any[]).map((item: any) => (
                           <SelectItem key={item.id} value={String(item.id)}>
                             {item.itemCode ? `${item.itemCode} ` : ""}{item.description}

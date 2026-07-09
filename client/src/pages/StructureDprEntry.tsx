@@ -678,10 +678,10 @@ export default function StructureDprEntry() {
             {/* BOQ item link — planned items first */}
             {boqItemsForStructure.length > 0 && (
               <Field label="Link to BOQ Item (optional — planned items shown first)">
-                <Select value={draft.boqItemId} onValueChange={(v) => updateDraft("boqItemId", v)}>
+                <Select value={draft.boqItemId || "__none__"} onValueChange={(v) => updateDraft("boqItemId", v === "__none__" ? "" : v)}>
                   <SelectTrigger data-testid="select-struct-boq-item"><SelectValue placeholder="Select BOQ item…" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— None —</SelectItem>
+                    <SelectItem value="__none__">— None —</SelectItem>
                     {boqItemsForStructure.map((item: any) => (
                       <SelectItem key={item.id} value={String(item.id)}>
                         {item.itemCode ? `${item.itemCode} ` : ""}{item.description}
