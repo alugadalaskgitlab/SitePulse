@@ -25,6 +25,10 @@ interface EditPermissionButtonProps {
   onEditGranted?: (requestId: number, consumeGrant?: () => void) => void;
   onConsumed?: () => void;
   label?: string;
+  /** Text shown once the request is approved and the user can actually edit,
+   * e.g. "Edit Now". Defaults to "Edit Now" — do not reuse the idle "Request
+   * Edit" label here, it's confusing after approval. */
+  approvedLabel?: string;
   className?: string;
   size?: "default" | "sm" | "lg" | "icon";
   variant?: "default" | "outline" | "ghost" | "secondary" | "destructive" | "link";
@@ -36,6 +40,7 @@ export function EditPermissionButton({
   onEditGranted,
   onConsumed,
   label = "Edit",
+  approvedLabel = "Edit Now",
   className,
   size = "sm",
 }: EditPermissionButtonProps) {
@@ -134,7 +139,7 @@ export function EditPermissionButton({
         data-testid="btn-edit-permitted"
       >
         <CheckCircle2 className="h-4 w-4 mr-1" />
-        {label} ({minutesLeft}m left)
+        {approvedLabel} ({minutesLeft}m left)
       </Button>,
     );
   }

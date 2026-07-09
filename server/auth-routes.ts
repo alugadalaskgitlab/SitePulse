@@ -725,6 +725,31 @@ export function assertEdit(req: Request, res: Response, section: SectionKey): bo
   return true;
 }
 
+// Like assertEdit, but also allows the request through if the user holds an
+// active, approved one-time edit-permission grant for this exact record
+// (see edit_permission_requests). Used on PATCH endpoints for record types
+// that support the "Request Edit" flow, so a user without standing section
+// edit rights can still save after their one-off request is approved.
+export async function assertEditOrGrant(
+  req: Request,
+  res: Response,
+  section: SectionKey,
+  recordType: string,
+  recordId: number,
+): Promise<boolean> {
+  if (!req.authUser) {
+    res.status(401).json({ error: "not_authenticated" });
+    return false;
+  }
+  if (req.authUser.isAdmin || req.authUser.isOwner) return true;
+  const m = req.authPermissions;
+  if (m && m[section] && m[section].edit) return true;
+  const grant = await storage.checkActiveEditPermission(req.authUser.id, recordType, recordId);
+  if (grant) return true;
+  res.status(403).json({ error: "forbidden", section, action: "edit" });
+  return false;
+}
+
 export function assertCreate(req: Request, res: Response, section: SectionKey): boolean {
   if (!req.authUser) {
     res.status(401).json({ error: "not_authenticated" });

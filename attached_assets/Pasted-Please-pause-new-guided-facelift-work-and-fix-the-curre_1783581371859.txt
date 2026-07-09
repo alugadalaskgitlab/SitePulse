@@ -1,0 +1,119 @@
+Please pause new guided/facelift work and fix the current defects first.
+
+Current status from testing:
+1. Site Material Entry photo upload is partly working and thumbnail appears in Today’s Trips.
+2. But Camera/Gallery buttons are only opening a file picker. On mobile/tablet, Camera should open camera capture and Gallery should open photo library where supported.
+3. Materials Received Report must show the same challan/photo thumbnail against the same transaction row.
+4. Structure DPR guided flow has been started visually, but it is not pulling actual imported structures. It asks for free text Structure Name / ID instead of letting user select actual structure from imported schedule and auto-populating location/chainage.
+5. Road DPR and Structure DPR pages are throwing Radix Select error:
+   “A <Select.Item /> must have a value prop that is not an empty string.”
+6. SiteMaterialTrips still has Cancel/History clutter.
+7. EditPermissionButton still consumes approved one-time permission when Edit is clicked instead of after successful save.
+
+Please fix only these items now:
+
+A. Fix Radix Select empty value error
+
+Search all Road DPR, Structure DPR, Site Material Entry, Materials Received Report, and guided DPR components for:
+
+<SelectItem value="">
+
+or any SelectItem with empty string value.
+
+Replace empty values with sentinel values:
+- "__none__"
+- "__all__"
+- "__unassigned__"
+- "__other__"
+
+Then convert sentinel values back to empty/null in state/API as needed.
+
+This must fix the runtime error on:
+- /site/dpr/road
+- /site/dpr/structure
+
+B. Fix Camera vs Gallery behavior
+
+For Site Material Entry attachments:
+
+Camera button:
+- use file input with accept="image/*"
+- use capture="environment" where supported
+- should open camera on mobile/tablet where browser supports it
+
+Gallery button:
+- use file input with accept="image/*,application/pdf"
+- no capture attribute
+- should allow photo library/file selection
+
+Do not make both buttons trigger the same generic file picker if avoidable.
+
+C. Confirm Materials Received Report photo visibility
+
+For each site material trip row:
+- moduleType must be "site_material_trip"
+- linkedRecordId must be actual site_material_trips.id
+- Photos column in Materials Received Report must show thumbnail/link against that row
+- not only in Today’s Trips
+- not only in edit/detail dialog
+
+Test:
+1. Create material trip with challan number and photo.
+2. Save/submit.
+3. Open Materials Received Report.
+4. Same row must show photo thumbnail in Photos column.
+
+D. Remove Cancel/History clutter from field Material Entry
+
+In SiteMaterialTrips:
+- remove History button from normal row actions
+- remove Cancel button from normal row actions
+- keep simple actions only:
+  - Edit if draft/pending and permitted
+  - Submit if pending document and complete
+  - Delete only if permission/role allows
+  - View Photo/Attachment
+
+Do not show Cancel/History buttons to field users.
+
+E. Fix EditPermissionButton consumption
+
+Do not consume one-time edit permission when user clicks Edit.
+
+Correct:
+- approved edit opens the record
+- user saves successfully
+- backend consumes permission after successful save
+- if user opens and closes without saving, permission remains valid until expiry
+
+F. Structure DPR data connection
+
+Keep the nice guided tiles, but connect them to actual structure schedule/import data.
+
+After selecting:
+- Structure Type
+- Sub-Type
+
+The next step should show actual imported structure IDs/names for that site/project, for example:
+- PC-01
+- SC-01
+- BC-01
+- Minor Bridge IDs
+- Major Bridge IDs
+- Drain/Retaining Wall chainage sections
+
+When user selects a structure:
+- auto-populate structure name/id
+- auto-populate chainage/location
+- show planned/relevant BOQ items for that structure first
+- also allow search of all valid structure BOQ items if work is delayed/outside plan
+
+Do not use only a free text Structure Name / ID field.
+
+G. Do not start new Phase 2/3/4 items until these are closed
+
+Please stop after fixing the above and give closure report:
+- files changed
+- what was fixed
+- exact test steps
+- known limitations

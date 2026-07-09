@@ -35,6 +35,7 @@ import {
   registerAuthRoutes,
   assertAdmin,
   assertEdit,
+  assertEditOrGrant,
   assertView,
   assertAuthed,
   assertCreate,
@@ -450,8 +451,8 @@ export async function registerRoutes(
   // Update a site material trip
   app.patch("/api/site-material-trips/:id", async (req, res) => {
     try {
-      if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
+      if (!(await assertEditOrGrant(req, res, "site_materials", "site_material_trip", id))) return;
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
       const trip = await storage.updateSiteMaterialTrip(id, input);
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
