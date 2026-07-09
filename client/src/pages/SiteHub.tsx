@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import {
   FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
   Route, Building2, BarChart2, CheckCircle2, HardHat, Store, Cog,
-  LayoutDashboard, Users,
+  LayoutDashboard, Users, Truck, Wrench, Archive, Gauge, Activity,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -184,11 +184,52 @@ export default function SiteHub() {
                   enabled={can("site_materials")}
                 />
                 <HubActionTile
+                  href={`/site/materials-received?returnTo=${HUB}`}
+                  icon={BarChart2} title="Materials Received"
+                  description="View summary of all material receipts across date ranges"
+                  accent="green" iconBg="bg-green-100"
+                  enabled={can("site_materials")}
+                />
+                <HubActionTile
                   href="/irn/new?from=site&returnTo=/site/hub"
                   icon={ClipboardList} title="Raise Requisition (IRN)"
                   description="Request materials from stores for site operations"
                   accent="indigo" iconBg="bg-indigo-100"
                   enabled={can("irn_raise")}
+                />
+                <HubActionTile
+                  href="/irn?returnTo=/site/hub"
+                  icon={FileText} title="IRN List"
+                  description="Track & manage all internal material requisitions"
+                  accent="indigo" iconBg="bg-indigo-100"
+                  enabled={can("irn_view")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <SectionHead title="Reports & Logs" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HubActionTile
+                  href={`/site/dashboard?returnTo=${HUB}`}
+                  icon={LayoutDashboard} title="Submitted DPRs"
+                  description="View & review all submitted daily progress reports"
+                  accent="teal" iconBg="bg-teal-100"
+                  enabled={can("site_dprs")}
+                />
+                <HubActionTile
+                  href="/plant/equipment-usage?returnTo=/site/hub"
+                  icon={Activity} title="Equipment Usage"
+                  description="Log and view daily equipment hours and fuel consumption"
+                  accent="orange" iconBg="bg-orange-100"
+                  enabled={can("plant_equipment")}
+                />
+                <HubActionTile
+                  href={`/site/purchases?returnTo=${HUB}`}
+                  icon={TrendingUp} title="Site Purchases Report"
+                  description="Purchases, expenses & procurement analysis for site"
+                  accent="rose" iconBg="bg-rose-100"
+                  enabled={can("report_site_purchases")}
                 />
               </div>
             </div>
@@ -263,14 +304,41 @@ export default function SiteHub() {
                   icon={TrendingUp} title="Site Purchases Report"
                   description="Purchases, expenses & procurement analysis"
                   accent="rose" iconBg="bg-rose-100"
-                  enabled={can("site_procurement")}
+                  enabled={can("report_site_purchases")}
                 />
+                <HubActionTile
+                  href="/work-program"
+                  icon={Activity} title="Plan vs Actual"
+                  description="Work programme progress — compare planned vs achieved quantities"
+                  accent="blue" iconBg="bg-blue-100"
+                  enabled={can("qto_boq")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <SectionHead title="Procurement & Approvals" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <HubActionTile
                   href="/plant/purchase-indents?returnTo=/site/hub&from=site"
                   icon={ShoppingCart} title="Purchase Indents"
                   description="Review and approve purchase indents raised by site team"
                   accent="blue" iconBg="bg-blue-100"
                   enabled={can("site_procurement")}
+                />
+                <HubActionTile
+                  href="/irn?returnTo=/site/hub"
+                  icon={ClipboardList} title="IRN Approvals"
+                  description="Review and approve internal material requisition notes"
+                  accent="indigo" iconBg="bg-indigo-100"
+                  enabled={can("irn_approve")}
+                />
+                <HubActionTile
+                  href="/plant/diesel-requirements?returnTo=/site/hub"
+                  icon={Fuel} title="Daily Diesel Requirement"
+                  description="Review & approve daily diesel allocation requests"
+                  accent="amber" iconBg="bg-amber-100"
+                  enabled={can("site_diesel")}
                 />
               </div>
             </div>
@@ -303,14 +371,41 @@ export default function SiteHub() {
         {wsRole === "storekeeper" && (
           <>
             <div>
-              <SectionHead title="Your Workspace" role={wsRole} showBadge />
+              <SectionHead title="Stores" role={wsRole} showBadge />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HubActionTile
+                  href="/stores/grns"
+                  icon={Archive} title="GRN — Goods Receipt"
+                  description="Log and manage inward goods receipt notes for stores"
+                  accent="emerald" iconBg="bg-emerald-100"
+                  badge="Primary"
+                  enabled={can("stores_inventory")}
+                />
+                <HubActionTile
+                  href="/stores/items"
+                  icon={Boxes} title="Stock Items"
+                  description="View current stock levels and item catalog for stores"
+                  accent="teal" iconBg="bg-teal-100"
+                  enabled={can("stores_inventory")}
+                />
+                <HubActionTile
+                  href="/stores/issues"
+                  icon={Package} title="Stock Issues"
+                  description="Issue materials from stores against IRN or work orders"
+                  accent="amber" iconBg="bg-amber-100"
+                  enabled={can("stores_inventory")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <SectionHead title="Requisitions & Procurement" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <HubActionTile
                   href="/irn/new?from=site&returnTo=/site/hub"
                   icon={ClipboardList} title="Raise Requisition (IRN)"
                   description="Request materials from stores for site operations"
                   accent="indigo" iconBg="bg-indigo-100"
-                  badge="Primary"
                   enabled={can("irn_raise")}
                 />
                 <HubActionTile
@@ -320,11 +415,25 @@ export default function SiteHub() {
                   accent="indigo" iconBg="bg-indigo-100"
                   enabled={can("irn_view")}
                 />
+                <HubActionTile
+                  href="/plant/purchase-indents?returnTo=/site/hub&from=site"
+                  icon={ShoppingCart} title="Purchase Indent"
+                  description="Raise and track purchase indents for materials"
+                  accent="blue" iconBg="bg-blue-100"
+                  enabled={can("site_procurement")}
+                />
+                <HubActionTile
+                  href={`/site/purchases?returnTo=${HUB}`}
+                  icon={TrendingUp} title="Site Purchases Report"
+                  description="Purchases, expenses & procurement analysis"
+                  accent="rose" iconBg="bg-rose-100"
+                  enabled={can("report_site_purchases")}
+                />
               </div>
             </div>
 
             <div>
-              <SectionHead title="Materials" />
+              <SectionHead title="Site Materials" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <HubActionTile
                   href={`/site/material-trips?returnTo=${HUB}`}
@@ -334,25 +443,11 @@ export default function SiteHub() {
                   enabled={can("site_materials")}
                 />
                 <HubActionTile
-                  href={`/site/material-stock?returnTo=${HUB}`}
-                  icon={Boxes} title="Site Material Stock"
-                  description="Current material stock levels at each site"
-                  accent="emerald" iconBg="bg-emerald-100"
-                  enabled={can("site_materials")}
-                />
-                <HubActionTile
                   href={`/site/materials-received?returnTo=${HUB}`}
                   icon={BarChart2} title="Materials Received Report"
                   description="Summary of all receipts across date ranges"
                   accent="green" iconBg="bg-green-100"
                   enabled={can("site_materials")}
-                />
-                <HubActionTile
-                  href="/plant/purchase-indents?returnTo=/site/hub&from=site"
-                  icon={ShoppingCart} title="Purchase Indent"
-                  description="Raise and track purchase indents for materials"
-                  accent="blue" iconBg="bg-blue-100"
-                  enabled={can("site_procurement")}
                 />
               </div>
             </div>
@@ -367,13 +462,6 @@ export default function SiteHub() {
           <>
             <div>
               <SectionHead title="Plant Operations" role={wsRole} showBadge />
-              <div className="bg-orange-50 border border-orange-200 rounded-xl px-5 py-4 mb-4 flex items-start gap-3">
-                <Cog className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-orange-800">Plant Operator Workspace</p>
-                  <p className="text-xs text-orange-700 mt-1">Your primary workspace is Plant Hub. Site Operations here gives you quick access to material receipts & procurement related to site work.</p>
-                </div>
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <HubActionTile
                   href="/plant/shift-log"
@@ -384,11 +472,65 @@ export default function SiteHub() {
                   enabled={can("plant_shift_logs")}
                 />
                 <HubActionTile
-                  href="/plant/materials"
+                  href="/plant/material-receipts"
                   icon={Package} title="Material Receipts"
                   description="Log incoming material deliveries to the plant"
                   accent="emerald" iconBg="bg-emerald-100"
                   enabled={can("plant_materials")}
+                />
+                <HubActionTile
+                  href="/plant/dispatches"
+                  icon={Truck} title="Dispatches"
+                  description="Log mix dispatches, truck trips and production output"
+                  accent="amber" iconBg="bg-amber-100"
+                  enabled={can("plant_production")}
+                />
+                <HubActionTile
+                  href="/plant/equipment-usage"
+                  icon={Activity} title="Equipment Usage"
+                  description="Log daily equipment hours, idle time and fuel consumption"
+                  accent="orange" iconBg="bg-orange-100"
+                  enabled={can("plant_equipment")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <SectionHead title="Fuel & Stocks" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HubActionTile
+                  href="/plant/ldo-flow-meter"
+                  icon={Gauge} title="LDO / Fuel Flow"
+                  description="Record LDO meter readings and track diesel consumption"
+                  accent="rose" iconBg="bg-rose-100"
+                  enabled={can("plant_ldo")}
+                />
+                <HubActionTile
+                  href="/plant/bitumen-stock"
+                  icon={Fuel} title="Bitumen Stock"
+                  description="Track bitumen receipts, usage and current stock levels"
+                  accent="slate" iconBg="bg-slate-100"
+                  enabled={can("plant_bitumen")}
+                />
+              </div>
+            </div>
+
+            <div>
+              <SectionHead title="Maintenance & Reports" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <HubActionTile
+                  href="/plant/maintenance"
+                  icon={Wrench} title="Maintenance / Breakdown"
+                  description="Log equipment breakdowns, repairs and maintenance records"
+                  accent="red" iconBg="bg-red-100"
+                  enabled={can("plant_maintenance")}
+                />
+                <HubActionTile
+                  href="/plant/daily-reports"
+                  icon={FileText} title="Plant Daily Reports"
+                  description="View and export daily plant production reports"
+                  accent="blue" iconBg="bg-blue-100"
+                  enabled={can("plant_daily_reports")}
                 />
               </div>
             </div>

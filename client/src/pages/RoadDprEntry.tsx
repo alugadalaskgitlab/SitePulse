@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   ChevronLeft, ChevronRight, Check, Route, Layers, Wrench, Users, Package,
-  FileText, Plus, Trash2, ArrowLeft, AlertTriangle, MapPin, Info,
+  FileText, Plus, Trash2, ArrowLeft, AlertTriangle, MapPin, Info, Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -193,6 +193,8 @@ export default function RoadDprEntry() {
 
   // Step 5 – Materials
   const [materials, setMaterials] = useState<MaterialRow[]>([emptyMaterial()]);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Step 6 – Remarks
   const [remarks, setRemarks] = useState("");
@@ -693,6 +695,55 @@ export default function RoadDprEntry() {
             <Button variant="outline" className="w-full border-dashed" onClick={() => setMaterials((rows) => [...rows, emptyMaterial()])} data-testid="button-add-material">
               <Plus className="w-4 h-4 mr-2" /> Add Material Entry
             </Button>
+
+            {/* ── Site Photos ──────────────────────────────── */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Camera className="w-4 h-4 text-slate-600" />
+                <h4 className="text-sm font-semibold text-slate-700">Site Photos <span className="text-slate-400 font-normal">(optional)</span></h4>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">Capture progress photos — they will be attached to the DPR after it's submitted.</p>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setPhotos((prev) => [...prev, ...files]);
+                  if (photoInputRef.current) photoInputRef.current.value = "";
+                }}
+                data-testid="input-photos"
+              />
+              {photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {photos.map((f, i) => (
+                    <div key={i} className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden">
+                      <img src={URL.createObjectURL(f)} alt={f.name} className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute top-1 right-1 bg-white/80 rounded-full p-0.5 text-rose-500 hover:text-rose-700"
+                        data-testid={`button-remove-photo-${i}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => photoInputRef.current?.click()}
+                data-testid="button-add-photo"
+              >
+                <Camera className="w-4 h-4" />
+                {photos.length > 0 ? `${photos.length} photo${photos.length > 1 ? "s" : ""} added` : "Take / Add Photos"}
+              </Button>
+            </div>
           </div>
         )}
 

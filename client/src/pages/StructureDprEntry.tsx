@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   ChevronLeft, ChevronRight, Check, Building2, Layers, Wrench, Users, Package,
-  FileText, Plus, Trash2, ArrowLeft, AlertTriangle, Tag, CalendarDays,
+  FileText, Plus, Trash2, ArrowLeft, AlertTriangle, Tag, CalendarDays, Camera, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,8 @@ type StructureItemRow = {
   remarks: string;
   boqItemId: string;
   structureId: string; // from programme schedule
+  chainageFrom: string; // auto-populated from schedule bar
+  chainageTo: string;   // auto-populated from schedule bar
 };
 
 type LabourRow = { category: string; gender: string; count: string; task: string; contractor: string };
@@ -63,6 +65,7 @@ type MaterialRow = { type: "Received" | "Issued"; material: string; quantity: st
 const emptyStructItem = (): StructureItemRow => ({
   structureType: "", structureSubType: "", structureName: "", stage: "",
   itemOfWork: "", quantity: "", uom: "Cum", remarks: "", boqItemId: "", structureId: "",
+  chainageFrom: "", chainageTo: "",
 });
 const emptyLabour = (): LabourRow => ({ category: "MASON", gender: "Male", count: "", task: "", contractor: "" });
 const emptyEquip = (): EquipmentRow => ({ machine: "", customMachine: "", operator: "", vehicleNo: "", startTime: "", endTime: "", hoursWorked: "", diesel: "", task: "" });
@@ -187,6 +190,8 @@ export default function StructureDprEntry() {
   const [labour, setLabour] = useState<LabourRow[]>([emptyLabour()]);
   const [equipment, setEquipment] = useState<EquipmentRow[]>([emptyEquip()]);
   const [materials, setMaterials] = useState<MaterialRow[]>([emptyMaterial()]);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [remarks, setRemarks] = useState("");
   const [outsideWindowDismissed, setOutsideWindowDismissed] = useState(false);
 
@@ -198,6 +203,16 @@ export default function StructureDprEntry() {
   }, [activeSites, site]);
 
   const { resolvedBoqProjectId, programmeBars, boqItems } = useSiteBoqProject(site, activeSites);
+
+  // Plan-vs-actual data (used for tier-1 BOQ priority: not-complete-first)
+  const { data: planVsActualRows = [] } = useQuery<any[]>({
+    queryKey: ["/api/boq/projects", resolvedBoqProjectId, "plan-vs-actual", date],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${resolvedBoqProjectId}/plan-vs-actual?asOf=${date}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!resolvedBoqProjectId && !!date,
+  });
 
   const { data: equipmentMasters = [] } = useQuery<any[]>({
     queryKey: ["/api/equipment-master"],
@@ -221,18 +236,52 @@ export default function StructureDprEntry() {
     return Array.from(map.values());
   }, [programmeBars]);
 
-  // BOQ items relevant to a chosen structure location (planned-first ordering)
+  // BOQ items — 3-tier priority:
+  //   Tier 1: Bars for THIS structure that are NOT 100% complete (planned > actual)
+  //   Tier 2: Items linked to other structures of the SAME type (structure-type mapped)
+  //   Tier 3: All remaining items
   const boqItemsForStructure = useMemo(() => {
     if (!selectedScheduleId) return boqItems as any[];
-    const planned = new Set<number>();
-    structureLocations.find((s) => s.structureId === selectedScheduleId)
-      ?.bars.forEach((b) => planned.add(b.boqItemId));
+    const loc = structureLocations.find((s) => s.structureId === selectedScheduleId);
+    if (!loc) return boqItems as any[];
+
+    // Build plan-vs-actual map for completion check
+    const planMap = new Map<number, { totalActual: number; totalPlanned: number }>();
+    (planVsActualRows as any[]).forEach((r: any) => {
+      planMap.set(r.boqItemId, {
+        totalActual: r.totalActual ?? 0,
+        totalPlanned: r.totalPlanned ?? r.currentQty ?? 0,
+      });
+    });
+
+    // Tier 1: planned for THIS structure AND not 100% complete
+    const tier1Ids = new Set<number>();
+    loc.bars.forEach((bar) => {
+      const pva = planMap.get(bar.boqItemId);
+      const totalActual = pva?.totalActual ?? 0;
+      const totalPlanned = pva?.totalPlanned ?? bar.plannedQty;
+      if (totalActual < totalPlanned - 0.0001) tier1Ids.add(bar.boqItemId);
+    });
+
+    // Tier 2: items from any bar with same structureLocType (structure-type mapped), not in tier 1
+    const tier2Ids = new Set<number>();
+    const locType = loc.structureLocType;
+    if (locType) {
+      (programmeBars as ProgrammeBar[]).forEach((b) => {
+        if (
+          b.planningMode === "structure_location" &&
+          b.structureLocType === locType &&
+          !tier1Ids.has(b.boqItemId)
+        ) tier2Ids.add(b.boqItemId);
+      });
+    }
+
     const all = boqItems as any[];
-    return [
-      ...all.filter((item: any) => planned.has(item.id)),
-      ...all.filter((item: any) => !planned.has(item.id)),
-    ];
-  }, [boqItems, selectedScheduleId, structureLocations]);
+    const t1 = all.filter((i: any) => tier1Ids.has(i.id));
+    const t2 = all.filter((i: any) => !tier1Ids.has(i.id) && tier2Ids.has(i.id));
+    const t3 = all.filter((i: any) => !tier1Ids.has(i.id) && !tier2Ids.has(i.id));
+    return [...t1, ...t2, ...t3];
+  }, [boqItems, selectedScheduleId, structureLocations, planVsActualRows, programmeBars]);
 
   // Outside programme window for structures
   const structureBarsForDate = useMemo(() =>
@@ -264,17 +313,24 @@ export default function StructureDprEntry() {
     });
   };
 
-  // When a schedule structure is picked, pre-fill draft
+  // When a schedule structure is picked, pre-fill draft including chainage from the first bar
   const handleScheduleSelect = (structureId: string) => {
     setSelectedScheduleId(structureId);
     const loc = structureLocations.find((s) => s.structureId === structureId);
     if (!loc) return;
-    // structureLocType from the import maps to structureType (e.g. "Culvert", "Bridge")
     const sType = loc.structureLocType ?? "";
     const isKnown = STRUCTURE_TYPES.includes(sType);
-    updateDraft("structureType", isKnown ? sType : (STRUCTURE_TYPES.includes("Other") ? "Other" : ""));
-    updateDraft("structureName", structureId);
-    updateDraft("structureId", structureId);
+    const firstBar = loc.bars[0];
+    setDraft((d) => ({
+      ...d,
+      structureType: isKnown ? sType : (STRUCTURE_TYPES.includes("Other") ? "Other" : d.structureType),
+      structureSubType: "",
+      stage: "",
+      structureName: structureId,
+      structureId,
+      chainageFrom: firstBar?.chainageFrom != null ? String(firstBar.chainageFrom) : "",
+      chainageTo: firstBar?.chainageTo != null ? String(firstBar.chainageTo) : "",
+    }));
   };
 
   const commitDraftAndContinue = () => {
@@ -573,6 +629,19 @@ export default function StructureDprEntry() {
                 data-testid="input-struct-name"
               />
             </Field>
+            {selectedScheduleId && (draft.chainageFrom || draft.chainageTo) && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center gap-3">
+                <MapPin className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-0.5">Location (auto-filled from schedule)</p>
+                  <p className="text-sm text-indigo-800">
+                    {draft.chainageFrom && <span>Ch. {draft.chainageFrom}</span>}
+                    {draft.chainageFrom && draft.chainageTo && <span className="mx-1">→</span>}
+                    {draft.chainageTo && <span>Ch. {draft.chainageTo}</span>}
+                  </p>
+                </div>
+              </div>
+            )}
             {availableStages.length > 0 && (
               <Field label="Stage">
                 <div className="grid grid-cols-2 gap-2">
@@ -815,6 +884,55 @@ export default function StructureDprEntry() {
             <Button variant="outline" className="w-full border-dashed" onClick={() => setMaterials((rows) => [...rows, emptyMaterial()])} data-testid="button-add-material">
               <Plus className="w-4 h-4 mr-2" /> Add Material Entry
             </Button>
+
+            {/* ── Site Photos ──────────────────────────────── */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Camera className="w-4 h-4 text-slate-600" />
+                <h4 className="text-sm font-semibold text-slate-700">Site Photos <span className="text-slate-400 font-normal">(optional)</span></h4>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">Capture progress photos — they will be attached to the DPR after it's submitted.</p>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setPhotos((prev) => [...prev, ...files]);
+                  if (photoInputRef.current) photoInputRef.current.value = "";
+                }}
+                data-testid="input-photos"
+              />
+              {photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {photos.map((f, i) => (
+                    <div key={i} className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden">
+                      <img src={URL.createObjectURL(f)} alt={f.name} className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute top-1 right-1 bg-white/80 rounded-full p-0.5 text-rose-500 hover:text-rose-700"
+                        data-testid={`button-remove-photo-${i}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => photoInputRef.current?.click()}
+                data-testid="button-add-photo"
+              >
+                <Camera className="w-4 h-4" />
+                {photos.length > 0 ? `${photos.length} photo${photos.length > 1 ? "s" : ""} added` : "Take / Add Photos"}
+              </Button>
+            </div>
           </div>
         )}
 
