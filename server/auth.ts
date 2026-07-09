@@ -256,7 +256,7 @@ export async function createUserRow(input: {
     isAdmin: !!input.isAdmin,
     isFieldEngineer: !!input.isFieldEngineer,
     notificationsEnabled: !!input.notificationsEnabled,
-    sessionPolicy: input.sessionPolicy ?? "7d",
+    sessionPolicy: input.sessionPolicy ?? (input.isAdmin ? "1h" : "7d"),
   }).returning();
   return row;
 }
@@ -516,7 +516,14 @@ export async function lookupSessionFromCookie(cookieHeader: string | undefined):
     if (now - lastActivityMs > idleMs) return { kind: "expired" };
   } else {
     const maxAge = getMaxAgeMs(policy, loginMs);
-    if (maxAge !== null && now - loginMs > maxAge) return { kind: "expired" };
+    if (maxAge !== null) {
+      if (now - loginMs > maxAge) return { kind: "expired" };
+    } else {
+      // Unknown/unrecognised policy value — fail closed with a 1-hour idle limit
+      // rather than allowing an indefinitely-valid session.
+      const FALLBACK_IDLE_MS = 60 * 60 * 1000;
+      if (now - lastActivityMs > FALLBACK_IDLE_MS) return { kind: "expired" };
+    }
   }
   return { kind: "ok", user: u, sessionId: sess.id, deviceId: sess.deviceId };
 }

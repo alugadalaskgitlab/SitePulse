@@ -388,7 +388,12 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="isAdmin">Admin</Label>
-            <Switch id="isAdmin" checked={isAdmin} onCheckedChange={setIsAdmin} data-testid="switch-new-admin" />
+            <Switch
+              id="isAdmin"
+              checked={isAdmin}
+              onCheckedChange={(v) => { setIsAdmin(v); setPolicy(v ? "1h" : "7d"); }}
+              data-testid="switch-new-admin"
+            />
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor="isFieldEngineer">Engineer / field user</Label>
