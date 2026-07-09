@@ -1,0 +1,499 @@
+Please create a focused task:
+
+# Commercial Field Flow Cleanup + Role-Based Guided UX Foundation
+
+We need to stop adding clutter and stabilize the commercial field-user flow before further facelift.
+
+Current problems observed in dev testing:
+1. DPR progress photos are uploaded but not shown in DPR report/detail properly.
+2. Site material receipt/challan photos are uploaded but not shown against the same row in Materials Received Report.
+3. Site Operations screens are cluttered with Cancel / History buttons, which is confusing for field users.
+4. Edit/Delete/one-time approval flow is confusing.
+5. Engineer login home shows too limited actions, such as only New DPR, instead of all permitted field actions like Material Entry, IRN, PI, Equipment/Labour logs, Site Purchases, etc.
+6. Road DPR and Structure DPR are still mixed/confusing in some flows; they should be separate guided flows.
+7. Structure DPR should auto-populate structure name/location/chainage after selecting structure type/sub-type/structure.
+8. DPR BOQ/activity dropdowns show “Other” / “Unbilled” instead of proper categories in some cases.
+9. The Takkadpally-Sirur BOQ is imported and mapped, but programme activities are showing all in Month 1, which is not acceptable.
+10. User Permission Centre is powerful but too cluttered and needs proper role/module/screen/action organization.
+11. Session timeout options are not practical for field use; 5 minutes is too short.
+
+Please implement in controlled phases, not as random UI changes.
+
+==================================================
+A. REMOVE FIELD SCREEN CLUTTER
+==================================================
+
+Do not show Cancel and History buttons in normal field-user screens.
+
+For field users, keep actions simple:
+- View
+- Edit
+- Delete only where permission and role allow
+- Submit
+- Upload/View Photo
+- Print where applicable
+
+Do not show Cancel button for DPR or material receipt field rows.
+Do not show History button in normal field-user rows.
+
+Audit/history can remain in backend or an Admin Audit view later, but should not clutter site engineer/operator/storekeeper screens.
+
+Field user screens affected:
+- Road DPR
+- Structure DPR
+- DPR History
+- Material Entry / Site Material Trip
+- Materials Received Report
+- Site Purchases
+- Site Purchases Report
+- Equipment/Labour logs
+- PI / IRN where applicable
+
+==================================================
+B. SIMPLIFY EDIT / DELETE / ONE-TIME APPROVAL FLOW
+==================================================
+
+Do not create separate confusing “Request Edit” buttons everywhere.
+
+Use the same Edit button intelligently:
+
+1. Draft / Pending Document records:
+   - creator can Edit directly if they have permission
+   - creator can Delete directly only if delete permission allows
+
+2. Submitted / Finalized / Locked records:
+   - if normal user clicks Edit, open reason dialog and create one-time edit request
+   - request goes to eligible Sr Engineer / PM / Manager / Admin / Owner
+   - same user cannot approve own request
+   - approvers must respect site/project access where possible
+
+3. Approved one-time edit:
+   - same Edit button becomes active
+   - applies only to that exact recordType + recordId + user
+   - valid for 2 hours or until one successful save
+   - consume permission only after successful save, not when Edit is clicked
+   - after save, record locks again
+
+4. Delete:
+   - field staff generally should not have delete
+   - Delete should be available mainly to Sr Engineer / PM / Admin / Owner based on permission
+   - if delete is used, require reason and backend audit
+   - do not show Cancel as substitute for Delete in field screens
+
+5. Owner/Admin:
+   - can edit/delete if permission allows
+   - actions must still be audited
+
+Important bug to fix:
+EditPermissionButton should not consume one-time edit permission when the user merely clicks Edit. It must be consumed only after successful save/update.
+
+==================================================
+C. FIX PHOTO / ATTACHMENT VISIBILITY
+==================================================
+
+Photo upload is incomplete unless the uploaded photo appears in the related report row/detail.
+
+Required:
+
+1. DPR Photos:
+   - photos uploaded during DPR progress/review must show inside DPR report/detail
+   - show photo thumbnails/links against the DPR or progress item
+   - do not make users search photos separately
+
+2. Materials Received / Site Material Trip:
+   - challan/DC/receipt photo uploaded in Material Entry must show in Materials Received Report
+   - Photos column must show thumbnail/link against the same transaction row
+   - moduleType should be site_material_trip
+   - linkedRecordId must be actual site_material_trips.id
+   - verify report row id/source mapping is correct
+
+3. Site Purchases:
+   - bill/invoice/receipt photos should show against the purchase row in report/detail
+
+4. Equipment Maintenance / Breakdown:
+   - repair photos/bills should show in equipment maintenance history/report
+
+Test requirement:
+Create an actual site material entry with challan no. and photo, save/submit it, open Materials Received Report, and confirm the same row shows the photo instead of "-".
+
+==================================================
+D. MATERIAL RECEIVED AT SITE WORKFLOW
+==================================================
+
+For Site Material Entry / Materials Received at Site:
+
+If user enters material received but does not enter challan/DC/receipt no. OR does not upload challan/DC/receipt photo:
+
+- save as Draft / Pending Document
+- same creator can edit directly
+- show missing indicators:
+  - Challan No. Missing
+  - Photo Missing
+  - Pending Document
+
+Once challan/DC/receipt no. and photo are added:
+- user clicks Submit Receipt
+- status becomes Submitted
+- normal user cannot edit directly after submission
+- Edit button then triggers one-time approval flow
+
+Add document workflow support to site_material_trips if missing:
+- documentStatus
+- finalSubmittedAt
+- finalSubmittedBy
+
+Report should show:
+- Draft / Pending Document / Submitted status
+- Photo thumbnail/link
+- Edit/Submit actions based on status and permission
+
+==================================================
+E. ROLE-BASED HOME FOR ALL USERS
+==================================================
+
+Field users should not land on a management-style dashboard or only a single New DPR tile.
+
+Rule:
+Role decides home.
+Site access decides data.
+Permissions decide buttons.
+Device decides layout.
+
+Engineer / Supervisor home should show all permitted actions directly:
+- Road DPR
+- Structure DPR
+- Material Entry
+- Materials Received Report
+- Raise IRN
+- Raise PI
+- Equipment Usage
+- Labour Log
+- Site Purchases
+- My Drafts / Pending Documents
+- Submitted Reports
+
+Storekeeper home should show:
+- Material Receipts
+- Stock
+- IRN
+- PI
+- Site Purchases
+- Pending Documents
+- Reports
+
+Plant Operator / Plant Supervisor home should show:
+- Shift Log
+- Plant Material Receipts
+- Dispatches
+- Fuel / LDO / Bitumen
+- Equipment Usage
+- Maintenance / Breakdown
+- Plant Reports
+
+PM / Manager home should show:
+- assigned project/site summary
+- pending edit approvals
+- pending documents
+- DPR reports
+- material received
+- PI/IRN/procurement
+- Plan vs Actual
+- alerts
+
+Owner/Admin should have full dashboard and controls.
+
+Home tiles must respect:
+- site access
+- module permissions
+- action permissions
+
+Ramesh/Engineer should not see all sites if assigned to one site.
+
+==================================================
+F. GUIDED ENTRY ACROSS ALL DEVICES
+==================================================
+
+Guided should not mean mobile-only.
+
+All entry modules should use guided flow by default on mobile, tablet, and desktop.
+
+Device only changes layout:
+- Mobile: single-column step-by-step
+- Tablet: card/two-column guided layout
+- Desktop: expanded guided workspace with side summary
+
+Entry screens = guided.
+Reports = table/cards with filters.
+Admin/settings = advanced forms.
+
+Priority guided entry flows:
+1. Road DPR
+2. Structure DPR
+3. Material Entry / Site Material Receipt
+4. Site Purchases
+5. Equipment Usage / Labour Log
+6. Plant Shift Log / Plant Receipts
+7. IRN / PI
+
+Create reusable guided components if useful:
+- GuidedPage
+- GuidedStep
+- GuidedActionBar
+- GuidedReviewCard
+- AttachmentStep
+- StatusBadge
+- PermissionAwareActions
+
+Do not redesign all modules randomly. Create a consistent guided shell and apply to priority flows first.
+
+==================================================
+G. SEPARATE ROAD DPR AND STRUCTURE DPR
+==================================================
+
+Road DPR and Structure DPR should be separate tiles and separate guided flows.
+
+Do not force Road/Structure as confusing tabs inside one generic DPR page.
+
+Road DPR flow:
+1. Select site/project/date
+2. Select road reach/stretch
+3. Auto-populate chainage From/To when stretch is selected
+4. Select BOQ/activity
+5. Enter actual quantity/details
+6. Labour/equipment/materials/photos
+7. Review and submit
+
+Structure DPR flow:
+1. Select site/project/date
+2. Select structure type
+3. Select sub-type
+4. Select structure ID/name
+5. Auto-populate structure name, chainage/location
+6. Show relevant BOQ items for that structure first
+7. Allow user to search/select other valid structure BOQ items also
+8. Labour/equipment/materials/photos
+9. Review and submit
+
+Important:
+Do not restrict Structure DPR only to items planned for today.
+If programme is delayed or activity is from an earlier/later period, engineer must still be able to enter actual work.
+
+Use this logic:
+- Primary list: items planned for this structure and not completed
+- Secondary list: all BOQ items mapped/imported for this structure
+- Search fallback: all valid structure BOQ items for the project
+- Show warning if item is outside current programme period, but do not block entry
+
+Same principle for Road DPR:
+- show today/current planned items first
+- allow valid delayed/unplanned actual entry with warning
+
+DPR should guide by plan, not block valid site actuals.
+
+==================================================
+H. FIX BOQ / PROGRAMME / DPR LINKAGE
+==================================================
+
+Issue:
+Takkadpally-Sirur BOQ is imported and mapped, but programme shows all activities in Month 1.
+
+Required:
+1. Programme generation should use:
+   - BOQ item type/category
+   - road reach/structure location
+   - quantity
+   - duration/productivity/SDB/SNL where available
+   - fronts/sequence
+   - structure schedule where applicable
+
+2. Do not dump all activities into Month 1.
+
+3. If programme cannot sequence due to missing data:
+   - mark as Needs Review
+   - show reason
+   - do not silently create bad Month 1 programme
+
+4. DPR dropdowns should show meaningful categories/names:
+   - Road item categories: Earthwork, GSB, WMM, DBM, BC, Prime/Tack, etc.
+   - Structure categories: Excavation, PCC, RCC, Reinforcement, Bearings, Joints, Drainage Spouts, Weep Holes, etc.
+
+5. Do not show “Other” or “Unbilled” when BOQ item has valid imported/mapped category.
+
+6. BOQ item dropdowns must show:
+   - code
+   - short meaningful name
+   - UOM
+   - full description secondary
+
+Example:
+3.02 — Wet Mix Macadam — CUM
+Full BOQ description below in smaller text.
+
+==================================================
+I. USER PERMISSION CENTRE OVERHAUL
+==================================================
+
+Current permission matrix is powerful but too dense and confusing.
+
+Please redesign conceptually around:
+
+1. Role / Level
+2. Site / Project Access
+3. Module Access
+4. Screen/Sub-screen Access
+5. Action Permissions
+
+Add proper role templates beyond current Admin and Engineer/Field User.
+
+Suggested roles:
+- Owner / Primary Admin
+- Company Admin
+- Project Manager
+- Senior Engineer
+- Site Engineer
+- Supervisor
+- Storekeeper
+- Plant Manager
+- Plant Supervisor
+- Plant Operator
+- Equipment Incharge
+- Procurement User
+- Billing / Accounts User
+- Viewer / Auditor
+
+Role gives default permissions.
+Admin/Owner can fine-tune permissions after role selection.
+
+Permissions should be grouped by workflow, not technical clutter.
+
+Suggested groups:
+
+Site Operations:
+- Road DPR
+- Structure DPR
+- Material Entry
+- Materials Received Report
+- Site Purchases
+- Site Stock
+- DPR History
+
+Stores & Inventory:
+- GRN
+- IRN
+- Stock Ledger
+- Material Receipts
+- Issue / Return
+
+Procurement & Billing:
+- Purchase Indents
+- Purchase Orders
+- Vendor Bills
+- Vendor Receipt Proof
+
+Plant Operations:
+- HMP Shift Log
+- Bitumen Heating
+- Plant Material Receipts
+- Plant Dispatch
+- Plant Production
+- Plant Stock
+
+Equipment & Fleet:
+- Equipment Usage
+- Fuel Logs
+- Breakdown
+- Maintenance
+- Service Reports
+
+Reports:
+- DPR Reports
+- Material Reports
+- Plant Reports
+- Equipment Reports
+- Procurement Reports
+
+Admin:
+- Users
+- Permissions
+- Masters
+- Settings
+- Audit
+
+Actions per screen:
+- View
+- Create
+- Edit
+- Delete
+- Reports
+- Export
+- Approve
+- Notify
+
+Improve UI:
+- role template selector
+- site/project access tab
+- module access tab
+- advanced action matrix tab
+- search/filter permissions
+- expand/collapse by module
+- “grant all in module”
+- “copy permissions from another user”
+- “reset to role default”
+
+Do not remove fine-grained toggles. Organize them better.
+
+==================================================
+J. SESSION POLICY
+==================================================
+
+5 minutes is too short for field use.
+
+Add practical session options:
+- 5 minutes
+- 15 minutes
+- 30 minutes
+- 1 hour
+- End of day
+- Sticky 7 days
+- Sticky 30 days
+
+Default suggestion:
+- Field users: Sticky 7 days or End of day
+- Admin/Owner: 1 hour or configurable
+- Keep 5 minutes only as high-security option, not default
+
+==================================================
+K. IMPLEMENTATION METHOD
+==================================================
+
+Please do not implement this as one huge uncontrolled rewrite.
+
+Proceed in phases:
+
+Phase 1:
+- Remove Cancel/History clutter from field screens
+- Fix attachment visibility in DPR report and Materials Received Report
+- Fix EditPermissionButton consume-on-save bug
+- Fix Material Entry Draft/Pending/Submit workflow
+
+Phase 2:
+- Role-based home showing all permitted actions
+- Separate Road DPR and Structure DPR guided flows
+- Structure selection auto-populates location/chainage
+- DPR planned-first but not blocking delayed/unplanned valid actual entry
+
+Phase 3:
+- BOQ/programme/DPR linkage cleanup
+- Fix Month 1 programme issue
+- Fix BOQ categories showing Other/Unbilled
+
+Phase 4:
+- Permission centre redesign
+- Role templates
+- Session policy options
+
+Please provide a closure report after each phase with:
+- files changed
+- what was fixed
+- test steps
+- known limitations
