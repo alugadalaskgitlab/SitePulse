@@ -462,6 +462,7 @@ export interface IStorage {
   finalSubmitMaterialReceipt(id: number, userId: number): Promise<MaterialReceipt | undefined>;
   finalSubmitSitePurchase(id: number, userId: number): Promise<any>;
   cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined>;
+  submitSiteMaterialTrip(id: number, userId: number): Promise<SiteMaterialTrip | undefined>;
   cancelEquipmentMaintenanceLog(id: number, userId: number, reason: string): Promise<EquipmentMaintenanceLog | undefined>;
 
   // DPRs
@@ -1649,6 +1650,14 @@ export class DatabaseStorage implements IStorage {
   async cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined> {
     const [updated] = await db.update(siteMaterialTrips)
       .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
+      .where(eq(siteMaterialTrips.id, id))
+      .returning();
+    return updated;
+  }
+
+  async submitSiteMaterialTrip(id: number, userId: number): Promise<SiteMaterialTrip | undefined> {
+    const [updated] = await db.update(siteMaterialTrips)
+      .set({ documentStatus: "submitted", finalSubmittedAt: new Date(), finalSubmittedBy: userId })
       .where(eq(siteMaterialTrips.id, id))
       .returning();
     return updated;

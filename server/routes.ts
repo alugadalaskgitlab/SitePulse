@@ -510,6 +510,29 @@ export async function registerRoutes(
     }
   });
 
+  // Final-submit a site material trip (draft → submitted)
+  app.post("/api/site-material-trips/:id/submit", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_materials")) return;
+      const id = Number(req.params.id);
+      const updated = await storage.submitSiteMaterialTrip(id, req.authUser!.id);
+      if (!updated) return res.status(404).json({ message: "Site material trip not found" });
+      await storage.logAudit({
+        module: "site_material_trips",
+        transactionId: id,
+        action: "approve",
+        userId: req.authUser!.id,
+        userName: currentUserName(req),
+        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
+        newValues: updated,
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("POST /api/site-material-trips/:id/submit:", err);
+      res.status(500).json({ message: "Failed to submit site material trip" });
+    }
+  });
+
   // Site Material Stock & Reconciliation (per site: ordered / delivered / consumed / lying)
   app.get("/api/site-material-stock", async (req, res) => {
     try {

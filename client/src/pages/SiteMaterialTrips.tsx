@@ -2,13 +2,14 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { format } from "date-fns";
-import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban } from "lucide-react";
+import { Plus, Trash2, Loader2, ArrowLeft, Truck, Package, Camera, ImagePlus, X, History, Ban, AlertCircle, CheckCircle2 } from "lucide-react";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -16,6 +17,7 @@ import type { SiteMaterialTrip, Site } from "@shared/schema";
 import { useFeatureFlags } from "@/lib/featureFlags";
 import { useUpload } from "@/hooks/use-upload";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { useAuth } from "@/lib/auth-context";
 
 const MATERIAL_OPTIONS = [
   "WMM", "GSB", "Soil", "Dust", "6MM DOWN", "10/12MM", "20MM", "BC Mix", "DBM Mix", "Water", "Bitumen", "Emulsion", "Diesel"
@@ -26,6 +28,8 @@ const UOM_OPTIONS = ["CFT", "MT", "Cum", "Liters", "Trips", "Kgs", "Tons"];
 export default function SiteMaterialTrips() {
   const { toast } = useToast();
   const { companyName, logoFile } = useFeatureFlags();
+  const { isAdmin, isOwner } = useAuth();
+  const isAdminOrOwner = isAdmin || isOwner;
   const searchString = useSearch();
   const returnTo = (() => {
     try {
@@ -171,6 +175,23 @@ export default function SiteMaterialTrips() {
 
   const [cancelTripId, setCancelTripId] = useState<number | null>(null);
   const [historyTripId, setHistoryTripId] = useState<number | null>(null);
+
+  const submitMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/site-material-trips/${id}/submit`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-material-trips"] });
+      queryClient.invalidateQueries({ predicate: (q) =>
+        typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith("/api/materials-received")
+      });
+      toast({ title: "Submitted", description: "Material trip marked as submitted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to submit trip.", variant: "destructive" });
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -502,6 +523,7 @@ export default function SiteMaterialTrips() {
                       <th className="text-right p-2">Qty</th>
                       <th className="text-left p-2">UOM</th>
                       <th className="text-left p-2">Location</th>
+                      <th className="text-left p-2">Status</th>
                       <th className="text-left p-2">Photos</th>
                       <th className="text-center p-2">Action</th>
                     </tr>
@@ -518,6 +540,24 @@ export default function SiteMaterialTrips() {
                         <td className="p-2">{trip.uom}</td>
                         <td className="p-2">{trip.location || '-'}</td>
                         <td className="p-2">
+                          <div className="space-y-1">
+                            {(trip as any).documentStatus === "submitted" ? (
+                              <Badge variant="outline" className="text-[11px] px-1.5 py-0 border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400 gap-0.5">
+                                <CheckCircle2 className="w-2.5 h-2.5" /> Submitted
+                              </Badge>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {!trip.receiptNumber && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 gap-0.5">
+                                    <AlertCircle className="w-2.5 h-2.5" /> No Challan
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-sky-400 text-sky-700 bg-sky-50 dark:bg-sky-900/20 dark:text-sky-400">Draft</Badge>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2">
                           <AttachmentGallery
                             moduleType="site_material_trip"
                             linkedRecordId={trip.id}
@@ -528,33 +568,49 @@ export default function SiteMaterialTrips() {
                         </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setHistoryTripId(trip.id)}
-                              data-testid={`button-history-trip-${trip.id}`}
-                              title="History"
-                            >
-                              <History className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setCancelTripId(trip.id)}
-                              data-testid={`button-cancel-trip-${trip.id}`}
-                              title="Cancel"
-                            >
-                              <Ban className="w-4 h-4 text-amber-600" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => deleteMutation.mutate(trip.id)}
-                              disabled={deleteMutation.isPending}
-                              data-testid={`button-delete-trip-${trip.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
+                            {(trip as any).documentStatus !== "submitted" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => submitMutation.mutate(trip.id)}
+                                disabled={submitMutation.isPending}
+                                data-testid={`button-submit-trip-${trip.id}`}
+                                title="Submit Receipt"
+                              >
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              </Button>
+                            )}
+                            {isAdminOrOwner && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setHistoryTripId(trip.id)}
+                                  data-testid={`button-history-trip-${trip.id}`}
+                                  title="History"
+                                >
+                                  <History className="w-4 h-4 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setCancelTripId(trip.id)}
+                                  data-testid={`button-cancel-trip-${trip.id}`}
+                                  title="Cancel"
+                                >
+                                  <Ban className="w-4 h-4 text-amber-600" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => deleteMutation.mutate(trip.id)}
+                                  disabled={deleteMutation.isPending}
+                                  data-testid={`button-delete-trip-${trip.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

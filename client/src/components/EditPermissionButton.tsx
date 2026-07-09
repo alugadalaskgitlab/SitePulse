@@ -19,7 +19,10 @@ import type { EditPermissionRecordType } from "@shared/schema";
 interface EditPermissionButtonProps {
   recordType: EditPermissionRecordType;
   recordId: number | undefined;
-  onEditGranted?: (requestId: number) => void;
+  /** Called when edit is granted. Second arg is a function to call after a successful save
+   * to mark the one-time token as consumed. Calling it on click is the bug — always call it
+   * in your mutation's onSuccess instead. */
+  onEditGranted?: (requestId: number, consumeGrant?: () => void) => void;
   onConsumed?: () => void;
   label?: string;
   className?: string;
@@ -122,9 +125,11 @@ export function EditPermissionButton({
         className={`bg-green-600 hover:bg-green-700 text-white ${className ?? ""}`}
         onClick={() => {
           if (isAdminOrOwner) return;
-          consumePermission(activeRequest.id);
+          // Do NOT consume the grant on click — call consumeGrant() in your
+          // mutation's onSuccess so the token is only spent after a successful save.
+          const consumeGrant = () => consumePermission(activeRequest.id);
           onConsumed?.();
-          onEditGranted?.(activeRequest.id);
+          onEditGranted?.(activeRequest.id, consumeGrant);
         }}
         data-testid="btn-edit-permitted"
       >

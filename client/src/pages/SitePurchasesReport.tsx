@@ -299,6 +299,7 @@ export default function SitePurchasesReport() {
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Reported By</th>
                       <th className="text-center p-2 font-medium">Status</th>
+                      <th className="text-left p-2 font-medium">Photos</th>
                       <th className="text-center p-2 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -343,6 +344,19 @@ export default function SitePurchasesReport() {
                             <Badge variant="outline" className="text-[12px] px-1.5 py-0 border-sky-400 text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20" data-testid={`badge-doc-status-${p.id}`}>
                               Draft
                             </Badge>
+                          )}
+                        </td>
+                        <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                          {p.source !== 'diesel' ? (
+                            <AttachmentGallery
+                              moduleType="site_purchase"
+                              linkedRecordId={p.id}
+                              allowDelete={false}
+                              emptyText="—"
+                              className="flex flex-wrap gap-1 w-24"
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="p-2 text-center">

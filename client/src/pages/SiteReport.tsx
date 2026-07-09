@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Personnel } from "@shared/schema";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -385,6 +386,21 @@ export default function SiteReport() {
             </Table>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* DPR Progress Photos */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Site Photos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AttachmentGallery
+            moduleType="dpr_progress"
+            linkedRecordId={id}
+            allowDelete={false}
+            emptyText="No photos attached to this report."
+          />
         </CardContent>
       </Card>
 

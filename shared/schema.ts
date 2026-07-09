@@ -656,6 +656,7 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   workType: text("work_type"), // "road" | "structure"
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
+  ...documentWorkflowFields,
 }, (table) => ({
   dateIdx: index("site_material_trips_date_idx").on(table.date),
 }));
@@ -799,7 +800,7 @@ export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
-export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
+export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
