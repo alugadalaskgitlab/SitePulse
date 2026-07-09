@@ -16,6 +16,8 @@ import Home from "@/pages/Home";
 import SiteHome from "@/pages/SiteHome";
 import SiteDashboard from "@/pages/SiteDashboard";
 import SiteEntry from "@/pages/SiteEntry";
+import RoadDprEntry from "@/pages/RoadDprEntry";
+import StructureDprEntry from "@/pages/StructureDprEntry";
 import SiteEdit from "@/pages/SiteEdit";
 import SiteMaterialStock from "@/pages/SiteMaterialStock";
 import SiteSuccess from "@/pages/SiteSuccess";
@@ -238,6 +240,8 @@ function AuthedShell() {
             <Route path="/site" component={SiteHome} />
             <Route path="/site/dashboard" component={gated(SiteDashboard, "site_dprs")} />
             <Route path="/site/new" component={gated(SiteEntry, "site_dprs")} />
+            <Route path="/site/dpr/road" component={gated(RoadDprEntry, "site_dprs")} />
+            <Route path="/site/dpr/structure" component={gated(StructureDprEntry, "site_dprs")} />
             <Route path="/site/edit/:id" component={gated(SiteEdit, "site_dprs")} />
             <Route path="/site/success/:id" component={gated(SiteSuccess, "site_dprs")} />
             <Route path="/site/report/:id" component={gated(SiteReport, "site_dprs")} />
