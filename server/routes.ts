@@ -11450,16 +11450,24 @@ export async function registerRoutes(
       // Build sequencer input — when structure fronts are disabled, exclude structure-type
       // items entirely so the sequencer only schedules road/linear work. Their bars were
       // already pre-deleted above; any imported structure_location bars are untouched.
-      const seqItems = (items as any[])
-        .filter((it) => {
-          if ((it.currentQty ?? 0) <= 0) return false;
-          if (
-            disableStructureFronts &&
-            isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
-          ) return false;
-          return true;
-        })
-        .map((it) => {
+      const filteredItems = (items as any[]).filter((it) => {
+        if ((it.currentQty ?? 0) <= 0) return false;
+        if (
+          disableStructureFronts &&
+          isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
+        ) return false;
+        return true;
+      });
+
+      // Track which items have no productivity data — their bars will be flagged
+      // needsReview: true so the Gantt can surface them as "Unscheduled / Needs Review"
+      // instead of silently placing them in Month 1.
+      const noProductivityItemIds = new Set<number>();
+      // Fallback duration for items with no productivity: spread them proportionally
+      // across the full project timeline instead of dumping everything into Month 1.
+      const defaultSpreadMonths = Math.max(1, totalMonths / Math.max(filteredItems.length, 1));
+
+      const seqItems = filteredItems.map((it) => {
           const equipment = ((it.equipment ?? []) as any[]).map((e) => ({
             name: e.equipmentName,
             outputUnit: e.outputUnit ?? null,
@@ -11481,12 +11489,17 @@ export async function registerRoutes(
             null,
             null,
           );
+          const hasProductivity = dur.months > 0;
+          if (!hasProductivity) noProductivityItemIds.add(it.id);
           return {
             boqItemId: it.id,
             description: it.description ?? "",
             unit: it.unit ?? "",
             totalQty: it.currentQty ?? 0,
-            fullDurationMonths: dur.months > 0 ? dur.months : 1,
+            // When no productivity data is available, spread items proportionally across
+            // the project timeline (totalMonths / numItems) rather than defaulting to 1
+            // month, which causes all no-data items to cluster in Month 1.
+            fullDurationMonths: hasProductivity ? dur.months : defaultSpreadMonths,
             // Pass stored planningWorkType so user-overridden classifications are respected
             planningWorkType: (it.planningWorkType === "road" || it.planningWorkType === "structure")
               ? it.planningWorkType as "road" | "structure"
@@ -11527,7 +11540,16 @@ export async function registerRoutes(
       for (const b of autoBars) await storage.deleteWorkProgramBar(b.id);
       for (const b of bars) {
         try {
-          await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
+          const isNoProductivity = noProductivityItemIds.has(b.boqItemId);
+          await storage.upsertWorkProgramBar({
+            ...b,
+            boqProjectId: projectId,
+            // Flag bars with no productivity data so the Gantt can surface them
+            // with a "Needs Review" indicator rather than silently treating them
+            // as correctly scheduled.
+            needsReview: isNoProductivity,
+            durationSource: isNoProductivity ? "default" : "productivity",
+          } as any);
           created++;
         } catch (e: any) {
           insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
@@ -11539,6 +11561,7 @@ export async function registerRoutes(
         totalMonths,
         bars: created,
         itemsConsidered: seqItems.length,
+        needsReviewCount: noProductivityItemIds.size,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
       });

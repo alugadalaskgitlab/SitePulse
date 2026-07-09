@@ -388,6 +388,15 @@ function StretchRow({
         ) : !isFirst ? (
           <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
         ) : null}
+        {(bar as any).needsReview && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 py-0.5 flex-shrink-0 dark:bg-amber-900/30 dark:text-amber-400"
+            title="No productivity/equipment data found — duration was estimated by spreading items across the project timeline. Add equipment recipes and re-run auto-sequence to compute accurate durations."
+          >
+            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+            Needs Review
+          </span>
+        )}
 
         {/* Chainage inputs */}
         <span className="text-xs text-slate-400 flex-shrink-0">Ch</span>
@@ -2238,7 +2247,11 @@ export default function WorkProgramme() {
       else if (p < it.currentQty - 0.5) under++;
       else if (p > it.currentQty + 0.5) over++;
     }
-    return { under, over, missing };
+    // Count road-style bars marked needsReview (no productivity data — estimated duration)
+    const needsReview = bars.filter(
+      b => (b as any).needsReview === true && (b as any).planningMode !== "structure_location"
+    ).length;
+    return { under, over, missing, needsReview };
   }, [items, bars]);
 
   const autoGenMutation = useMutation({
@@ -2288,13 +2301,14 @@ export default function WorkProgramme() {
       return res.json();
     },
     onMutate: pushSnapshot,
-    onSuccess: async (data: { bars?: number; fronts?: number }) => {
+    onSuccess: async (data: { bars?: number; fronts?: number; needsReviewCount?: number }) => {
       setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
       toast({
         title: "Programme sequenced",
-        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
+        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`
+          + (data?.needsReviewCount ? ` — ${data.needsReviewCount} item(s) need equipment recipes (shown with "Needs Review" badge).` : ""),
       });
     },
     onError: (err: any) =>
@@ -2682,10 +2696,15 @@ export default function WorkProgramme() {
       )}
 
       {/* Warning banner */}
-      {(warnings.missing + warnings.under + warnings.over) > 0 && (
+      {(warnings.missing + warnings.under + warnings.over + warnings.needsReview) > 0 && (
         <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 space-y-0.5">
+            {warnings.needsReview > 0 && (
+              <p className="text-sm text-amber-700">
+                <strong>{warnings.needsReview}</strong> bar{warnings.needsReview > 1 ? "s" : ""} need equipment recipes — duration estimated proportionally (look for the amber <em>Needs Review</em> badge). Add recipes via <strong>Auto-build recipes</strong> then re-run <strong>Auto-sequence</strong>.
+              </p>
+            )}
             {warnings.missing > 0 && (
               <p className="text-sm text-amber-700"><strong>{warnings.missing}</strong> item{warnings.missing > 1 ? "s" : ""} not yet programmed</p>
             )}

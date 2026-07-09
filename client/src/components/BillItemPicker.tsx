@@ -67,6 +67,33 @@ export function shortItemName(full?: string | null): string {
 
 const BILL_OTHER = "Other / Unbilled";
 
+// Derive a meaningful category name from the item description when the imported
+// BOQ doesn't carry an explicit category. Keeps "Other / Unbilled" as the true
+// last resort rather than the default for every item that has no categoryId.
+function deriveCategory(description: string, categoryName?: string | null): string {
+  if (categoryName?.trim()) return categoryName.trim();
+  const d = description ?? "";
+  if (/\bearth(work|en|cut|fill|moving)\b|embankment|sub.?grade|formation/i.test(d)) return "Earthwork";
+  if (/\bgsb\b|granular sub.?base/i.test(d)) return "Granular Sub-Base (GSB)";
+  if (/\bwmm\b|wet.?mix.?macadam/i.test(d)) return "Wet Mix Macadam (WMM)";
+  if (/\bwbm\b|water.?bound.?macadam/i.test(d)) return "Water Bound Macadam (WBM)";
+  if (/\bdbm\b|dense.?bituminous.?macadam/i.test(d)) return "Dense Bituminous Macadam (DBM)";
+  if (/\bbc\b.*bituminous|\bbituminous\s+concrete\b|\bsdbc\b|semi.?dense/i.test(d)) return "Bituminous Concrete (BC)";
+  if (/\bbm\b.*bituminous|\bbituminous\s+macadam\b/i.test(d)) return "Bituminous Macadam (BM)";
+  if (/prime\s*coat|tack\s*coat|fog\s*seal|spray\s*coat|emulsion\s*coat/i.test(d)) return "Spray Coats";
+  if (/\bpcc\b|plain\s+cement\s+concrete|plain\s+concrete/i.test(d)) return "PCC";
+  if (/\brcc\b|reinforced\s+(cement\s+)?concrete/i.test(d)) return "RCC";
+  if (/reinforcement|re.?bar|high\s+strength\s+(bar|steel)|tmt\s+bar|tor\s+steel/i.test(d)) return "Reinforcement Steel";
+  if (/drainage|catch\s*water|side\s*drain|lined\s*drain|open\s*drain|culvert.*drain/i.test(d)) return "Drainage";
+  if (/\bculvert\b|hume\s*pipe|box\s*culvert|pipe\s*culvert/i.test(d)) return "Culverts";
+  if (/\bbridge\b|viaduct|flyover|bridge\s+deck/i.test(d)) return "Bridges";
+  if (/retaining\s*wall|breast\s*wall|gabion|protection\s*wall/i.test(d)) return "Retaining Structures";
+  if (/road\s*marking|thermoplastic|road\s*sign|kilometre\s*post|reflective|guard\s*rail|delineator/i.test(d)) return "Road Safety & Signs";
+  if (/site\s*clearance|clearing|grubbing|demolish|removal|dismantl/i.test(d)) return "Site Clearance";
+  if (/traffic\s*management|diversion|barricad/i.test(d)) return "Traffic Management";
+  return BILL_OTHER;
+}
+
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
   const short = shortItemName(it.itemName || it.description);
   return (
@@ -152,10 +179,13 @@ export function BillItemPicker({
   const [open, setOpen] = useState(false);
 
   // Bills in their original Excel order (by first item's sortOrder).
+  // Uses deriveCategory to assign meaningful groupings to items whose imported
+  // categoryName is null — so items don't all fall into "Other / Unbilled" just
+  // because the BOQ file wasn't split into named bill sections.
   const bills = useMemo(() => {
     const m = new Map<string, number>();
     for (const it of items) {
-      const name = it.categoryName?.trim() || BILL_OTHER;
+      const name = deriveCategory(it.description, it.categoryName);
       const so = it.sortOrder ?? Number.MAX_SAFE_INTEGER;
       if (!m.has(name) || so < (m.get(name) as number)) m.set(name, so);
     }
@@ -163,13 +193,15 @@ export function BillItemPicker({
   }, [items]);
 
   const selectedItem = value != null ? items.find((i) => i.id === value) ?? null : null;
-  const [bill, setBill] = useState<string>(selectedItem?.categoryName?.trim() || "");
-  const effectiveBill = bill || selectedItem?.categoryName?.trim() || "";
+  const [bill, setBill] = useState<string>(
+    selectedItem ? deriveCategory(selectedItem.description, selectedItem.categoryName) : "",
+  );
+  const effectiveBill = bill || (selectedItem ? deriveCategory(selectedItem.description, selectedItem.categoryName) : "");
 
   const billItems = useMemo(
     () =>
       items
-        .filter((i) => (i.categoryName?.trim() || BILL_OTHER) === effectiveBill)
+        .filter((i) => deriveCategory(i.description, i.categoryName) === effectiveBill)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     [items, effectiveBill],
   );
