@@ -2553,7 +2553,11 @@ export const workProgramBars = pgTable("work_program_bars", {
   stage: text("stage"),                              // construction stage key, e.g. "excavation" | "pcc" | "rcc_foundation" | …
   sequenceOrder: integer("sequence_order"),          // order of this bar within its structureId group
   durationSource: text("duration_source"),           // 'imported' | 'productivity' | 'default' — how duration was derived
+  // ── Scheduling status (Phase 3) ─────────────────────────────────────────────
+  // needsReview = true is equivalent to schedulingStatus = "needs_review".
+  // Use needsReview as the primary flag; schedulingNote carries the human reason.
   needsReview: boolean("needs_review").default(false), // true when a default (non-productivity) duration was used
+  schedulingNote: text("scheduling_note"),            // why the bar couldn't be auto-scheduled (shown as tooltip in Gantt)
   scheduled: boolean("scheduled").default(true),     // false = imported without a valid date, not yet placed on the programme
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({

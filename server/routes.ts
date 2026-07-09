@@ -11545,10 +11545,12 @@ export async function registerRoutes(
             ...b,
             boqProjectId: projectId,
             // Flag bars with no productivity data so the Gantt can surface them
-            // with a "Needs Review" indicator rather than silently treating them
-            // as correctly scheduled.
+            // in the "Unscheduled / Needs Review" swimlane.
             needsReview: isNoProductivity,
             durationSource: isNoProductivity ? "default" : "productivity",
+            schedulingNote: isNoProductivity
+              ? "No equipment recipes found for this item — duration was estimated proportionally across the project timeline. Add equipment recipes via Auto-build recipes, then re-run Auto-sequence to schedule this item correctly."
+              : null,
           } as any);
           created++;
         } catch (e: any) {

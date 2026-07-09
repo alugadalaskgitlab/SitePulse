@@ -95,16 +95,25 @@ function deriveCategory(description: string, categoryName?: string | null): stri
 }
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
-  const short = shortItemName(it.itemName || it.description);
+  // Prefer itemName (already clean, imported from BOQ header) over stripping description.
+  // Only run description through shortItemName when itemName is absent.
+  const displayName = it.itemName?.trim() || shortItemName(it.description);
+  const parts: string[] = [];
+  if (it.itemCode?.trim()) parts.push(it.itemCode.trim());
+  if (displayName) parts.push(displayName);
+  const primaryLabel = parts.join(" — ");
   return (
     <div className="flex flex-col min-w-0" title={it.description}>
-      <span className="flex items-center gap-1.5 font-medium leading-snug truncate">
-        {it.itemCode ? <span className="text-primary shrink-0">{it.itemCode}</span> : null}
-        <span className="truncate">{short}</span>
-        <span className="text-muted-foreground font-normal shrink-0">{unitSuffix}</span>
+      {/* Primary: <code> — <shortName> — <UOM> */}
+      <span className="flex items-center gap-1 font-medium leading-snug min-w-0">
+        <span className="truncate">{primaryLabel}</span>
+        {unitSuffix && (
+          <span className="text-muted-foreground font-normal shrink-0 whitespace-nowrap">— {unitSuffix}</span>
+        )}
       </span>
-      {it.description && it.description !== short && (
-        <span className="text-xs text-muted-foreground truncate">{it.description}</span>
+      {/* Secondary: full description (only if it adds context beyond the short name) */}
+      {it.description && it.description !== displayName && (
+        <span className="text-xs text-muted-foreground truncate mt-0.5">{it.description}</span>
       )}
     </div>
   );
