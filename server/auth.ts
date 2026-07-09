@@ -256,7 +256,7 @@ export async function createUserRow(input: {
     isAdmin: !!input.isAdmin,
     isFieldEngineer: !!input.isFieldEngineer,
     notificationsEnabled: !!input.notificationsEnabled,
-    sessionPolicy: input.sessionPolicy ?? "strict",
+    sessionPolicy: input.sessionPolicy ?? "7d",
   }).returning();
   return row;
 }

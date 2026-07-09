@@ -67,6 +67,7 @@ import {
   ShieldHalf,
   BellOff,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 
 type SafeUser = {
@@ -337,7 +338,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [isAdmin, setIsAdmin] = useState(false);
   const [isFieldEngineer, setIsFieldEngineer] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [policy, setPolicy] = useState<SessionPolicy>("strict");
+  const [policy, setPolicy] = useState<SessionPolicy>("7d");
 
   const create = useMutation({
     mutationFn: async () => {
@@ -437,7 +438,7 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
   const [isAdminVal, setIsAdminVal] = useState(target?.isAdmin ?? false);
   const [isFieldEngineerVal, setIsFieldEngineerVal] = useState(target?.isFieldEngineer ?? false);
   const [notifEnabled, setNotifEnabled] = useState(target?.notificationsEnabled ?? false);
-  const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "strict");
+  const [policy, setPolicy] = useState<SessionPolicy>(target?.sessionPolicy ?? "7d");
   const [canMgmtPerms, setCanMgmtPerms] = useState(target?.canManagePermissions ?? false);
   const [permScope, setPermScope] = useState<"full" | "partial">(target?.permissionManagerScope ?? "partial");
 
@@ -583,6 +584,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   const [roleKey, setRoleKey] = useState<RoleTemplateKey | "">("");
   const [search, setSearch] = useState("");
   const [roleConfirmPending, setRoleConfirmPending] = useState<RoleTemplateKey | null>(null);
+  const [pendingSessPolicy, setPendingSessPolicy] = useState<SessionPolicy | null>(null);
 
   const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
 
@@ -616,6 +618,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
     });
     setRoleKey(rk);
     setRoleConfirmPending(null);
+    setPendingSessPolicy(ROLE_DEFAULT_SESSION_POLICY[rk]);
   }
 
   const notifyMismatch =
@@ -631,10 +634,15 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   const save = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("PUT", `/api/auth/users/${userId}/permissions`, matrix);
+      if (pendingSessPolicy !== null) {
+        await apiRequest("PATCH", `/api/auth/users/${userId}`, { sessionPolicy: pendingSessPolicy });
+      }
       return r.json();
     },
     onSuccess: () => {
-      toast({ title: "Permissions saved" });
+      const extra = pendingSessPolicy ? ` · session set to ${SESSION_POLICY_SHORT_LABELS[pendingSessPolicy]}` : "";
+      toast({ title: `Permissions saved${extra}` });
+      qc.invalidateQueries({ queryKey: ["/api/auth/users"] });
       qc.invalidateQueries({ queryKey: ["/api/auth/users", userId, "permissions"] });
       onClose();
     },
@@ -856,6 +864,15 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           </div>
         )}
 
+        {/* Pending session policy note after role template applied */}
+        {pendingSessPolicy && !roleConfirmPending && (
+          <div className="flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700 px-3 py-2 text-sm text-blue-800 dark:text-blue-300">
+            <Info className="h-4 w-4 shrink-0" />
+            <span className="flex-1">Session policy will be set to <strong>{SESSION_POLICY_SHORT_LABELS[pendingSessPolicy]}</strong> (role default) when saved.</span>
+            <Button size="sm" variant="ghost" className="h-auto p-0 text-xs underline" onClick={() => setPendingSessPolicy(null)} data-testid="button-undo-sess-policy">Undo</Button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           {!isPartialManager && (
             <>
@@ -896,7 +913,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
         <div className="overflow-y-auto flex-1 pr-1">
           <Accordion
             type="multiple"
-            defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}
+            defaultValue={["site-operations", "stores-inventory"]}
             value={
               search.trim()
                 ? visibleGroups
