@@ -387,25 +387,25 @@ export default function SitePurchasesReport() {
                                   </Button>
                                 )}
                                 {(p.documentStatus !== "submitted" || isOwnerOrAdmin) && (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => openEdit(p)}
-                                      data-testid={`button-edit-purchase-${p.id}`}
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => setCancelItem(p)}
-                                      data-testid={`button-cancel-purchase-${p.id}`}
-                                      title="Cancel"
-                                    >
-                                      <Ban className="w-4 h-4 text-amber-600" />
-                                    </Button>
-                                  </>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openEdit(p)}
+                                    data-testid={`button-edit-purchase-${p.id}`}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                {isOwnerOrAdmin && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setCancelItem(p)}
+                                    data-testid={`button-cancel-purchase-${p.id}`}
+                                    title="Cancel"
+                                  >
+                                    <Ban className="w-4 h-4 text-amber-600" />
+                                  </Button>
                                 )}
                               </>
                             ) : (
