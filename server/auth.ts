@@ -39,6 +39,8 @@ import {
   DEVICE_COOKIE_DAYS,
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
+  getIdleTimeoutMs,
+  getMaxAgeMs,
 } from "@shared/permissions";
 import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
 import * as crypto from "crypto";
@@ -509,10 +511,12 @@ export async function lookupSessionFromCookie(cookieHeader: string | undefined):
   const lastActivityMs = sess.lastActivityAt.getTime();
   const loginMs = sess.loginAt.getTime();
   const policy = u.sessionPolicy as SessionPolicy;
-  if (policy === "strict") {
-    if (now - lastActivityMs > STRICT_IDLE_MINUTES * 60 * 1000) return { kind: "expired" };
+  const idleMs = getIdleTimeoutMs(policy);
+  if (idleMs !== null) {
+    if (now - lastActivityMs > idleMs) return { kind: "expired" };
   } else {
-    if (now - loginMs > STICKY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) return { kind: "expired" };
+    const maxAge = getMaxAgeMs(policy, loginMs);
+    if (maxAge !== null && now - loginMs > maxAge) return { kind: "expired" };
   }
   return { kind: "ok", user: u, sessionId: sess.id, deviceId: sess.deviceId };
 }

@@ -11,11 +11,21 @@ import {
   PERMISSION_GROUPS,
   emptyMatrix,
   fullMatrix,
+  SESSION_POLICY_LABELS,
+  SESSION_POLICY_SHORT_LABELS,
+  USER_FACING_SESSION_POLICIES,
   type PermissionMatrix,
   type SectionKey,
   type Action,
   type SessionPolicy,
 } from "@shared/permissions";
+import {
+  ROLE_TEMPLATE_KEYS,
+  ROLE_TEMPLATE_LABELS,
+  ROLE_DEFAULT_SESSION_POLICY,
+  getRoleTemplate,
+  type RoleTemplateKey,
+} from "@shared/roleTemplates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -264,11 +274,12 @@ function UserRow({
       <td className="py-2 pr-4">
         <Select value={user.sessionPolicy} onValueChange={(v) => patch.mutate({ sessionPolicy: v as SessionPolicy })}>
           <SelectTrigger className="w-28 h-8" data-testid={`select-session-${user.id}`}>
-            <SelectValue />
+            <SelectValue>{SESSION_POLICY_SHORT_LABELS[user.sessionPolicy] ?? user.sessionPolicy}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="strict">Strict (5m)</SelectItem>
-            <SelectItem value="sticky">Sticky (30d)</SelectItem>
+            {USER_FACING_SESSION_POLICIES.map((pol) => (
+              <SelectItem key={pol} value={pol}>{SESSION_POLICY_SHORT_LABELS[pol]}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </td>
@@ -391,8 +402,9 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
               <SelectTrigger data-testid="select-new-policy"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
-                <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+                {USER_FACING_SESSION_POLICIES.map((pol) => (
+                  <SelectItem key={pol} value={pol}>{SESSION_POLICY_LABELS[pol]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -506,8 +518,9 @@ function EditUserDialog({ userId, users, onClose }: { userId: number; users: Saf
             <Select value={policy} onValueChange={(v) => setPolicy(v as SessionPolicy)}>
               <SelectTrigger data-testid="select-edit-policy"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="strict">Strict — 5 min idle, tab close ends session</SelectItem>
-                <SelectItem value="sticky">Sticky — 30 days max, tab close ends session</SelectItem>
+                {USER_FACING_SESSION_POLICIES.map((pol) => (
+                  <SelectItem key={pol} value={pol}>{SESSION_POLICY_LABELS[pol]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -567,11 +580,43 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   });
 
   const [matrix, setMatrix] = useState<PermissionMatrix>(emptyMatrix());
+  const [roleKey, setRoleKey] = useState<RoleTemplateKey | "">("");
+  const [search, setSearch] = useState("");
+  const [roleConfirmPending, setRoleConfirmPending] = useState<RoleTemplateKey | null>(null);
+
+  const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
+
   useEffect(() => {
     if (permsQ.data?.matrix) setMatrix(permsQ.data.matrix);
   }, [permsQ.data?.matrix]);
 
-  const isPartialManager = !currentIsAdmin && canManagePermissions && permissionManagerScope === "partial";
+  function applyRoleTemplate(rk: RoleTemplateKey) {
+    const tpl = getRoleTemplate(rk);
+    setMatrix((prev) => {
+      const next = { ...prev };
+      for (const k of SECTION_KEYS) {
+        const tplRow = tpl[k];
+        // For partial managers, preserve any permissions they can't grant
+        if (isPartialManager) {
+          next[k] = {
+            view:         tplRow.view         || prev[k].view,
+            create:       tplRow.create        || prev[k].create,
+            edit:         tplRow.edit          || prev[k].edit,
+            delete:       tplRow.delete        || prev[k].delete,
+            view_reports: tplRow.view_reports  || prev[k].view_reports,
+            export:       tplRow.export        || prev[k].export,
+            approve:      tplRow.approve       || prev[k].approve,
+            notify:       prev[k].notify,
+          };
+        } else {
+          next[k] = { ...tplRow, notify: prev[k].notify };
+        }
+      }
+      return next;
+    });
+    setRoleKey(rk);
+    setRoleConfirmPending(null);
+  }
 
   const notifyMismatch =
     target?.notificationsEnabled === false &&
@@ -664,6 +709,13 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
   const NON_NOTIFY_ACTIONS = ACTIONS.filter((a) => a !== "notify");
 
   function PermMatrix({ sections }: { sections: SectionKey[] }) {
+    const q = search.trim().toLowerCase();
+    const filteredSections = q
+      ? sections.filter((s) => s.toLowerCase().includes(q) || SECTION_LABELS[s].toLowerCase().includes(q))
+      : sections;
+
+    if (filteredSections.length === 0) return null;
+
     return (
       <div className="overflow-x-auto border rounded">
         <table className="w-full text-sm">
@@ -689,7 +741,7 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
             </tr>
           </thead>
           <tbody>
-            {sections.map((s) => {
+            {filteredSections.map((s) => {
               const row = matrix[s];
               // "All" checkbox only covers non-notify actions — Notify must be opted-in explicitly.
               const allGrantable = NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a));
@@ -764,7 +816,47 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 mb-2">
+        {/* Role template selector row */}
+        <div className="flex flex-wrap items-center gap-2 border rounded px-3 py-2 bg-muted/20">
+          <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Role template:</span>
+          <Select
+            value={roleKey}
+            onValueChange={(v) => {
+              if (v) setRoleConfirmPending(v as RoleTemplateKey);
+            }}
+          >
+            <SelectTrigger className="h-8 w-56" data-testid="select-role-template">
+              <SelectValue placeholder="Select a role…" />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLE_TEMPLATE_KEYS.map((rk) => (
+                <SelectItem key={rk} value={rk}>{ROLE_TEMPLATE_LABELS[rk]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {roleKey && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => applyRoleTemplate(roleKey as RoleTemplateKey)}
+              data-testid="button-reset-to-role"
+            >
+              Reset to role default
+            </Button>
+          )}
+        </div>
+
+        {/* Confirmation banner when a role is picked */}
+        {roleConfirmPending && (
+          <div className="flex items-center gap-3 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="flex-1">Apply <strong>{ROLE_TEMPLATE_LABELS[roleConfirmPending]}</strong> defaults? This will replace the current permission matrix.</span>
+            <Button size="sm" variant="destructive" onClick={() => applyRoleTemplate(roleConfirmPending)} data-testid="button-confirm-role">Apply</Button>
+            <Button size="sm" variant="outline" onClick={() => setRoleConfirmPending(null)} data-testid="button-cancel-role">Cancel</Button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
           {!isPartialManager && (
             <>
               <Button size="sm" variant="outline" onClick={() => setMatrix(fullMatrix())} data-testid="button-perms-all">
@@ -792,9 +884,37 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
           )}
         </div>
 
+        {/* Search filter */}
+        <Input
+          placeholder="Search sections…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-8"
+          data-testid="input-perm-search"
+        />
+
         <div className="overflow-y-auto flex-1 pr-1">
-          <Accordion type="multiple" defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}>
+          <Accordion
+            type="multiple"
+            defaultValue={visibleGroups.filter((g) => g.id !== "legacy").map((g) => g.id)}
+            value={
+              search.trim()
+                ? visibleGroups
+                    .filter((g) => {
+                      const q = search.trim().toLowerCase();
+                      return g.sections.some((s) => s.toLowerCase().includes(q) || SECTION_LABELS[s].toLowerCase().includes(q));
+                    })
+                    .map((g) => g.id)
+                : undefined
+            }
+          >
             {visibleGroups.map((group) => {
+              const q = search.trim().toLowerCase();
+              const matchingSections = q
+                ? group.sections.filter((s) => s.toLowerCase().includes(q) || SECTION_LABELS[s].toLowerCase().includes(q))
+                : group.sections;
+              if (q && matchingSections.length === 0) return null;
+
               const allGrantableInGroup = group.sections.flatMap((s) =>
                 NON_NOTIFY_ACTIONS.filter((a) => canGrantAction(s, a)).map((a) => ({ s, a }))
               );
@@ -804,7 +924,9 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
                   <AccordionTrigger className="py-2 px-1 hover:no-underline">
                     <div className="flex items-center gap-3 flex-1 mr-3">
                       <span className="text-sm font-semibold">{group.label}</span>
-                      <span className="text-sm text-muted-foreground">({group.sections.length} sections)</span>
+                      <span className="text-sm text-muted-foreground">
+                        ({q ? `${matchingSections.length}/` : ""}{group.sections.length} sections)
+                      </span>
                       <label
                         className="flex items-center gap-1.5 ml-auto cursor-pointer normal-case font-normal text-sm tracking-normal"
                         onClick={(e) => e.stopPropagation()}

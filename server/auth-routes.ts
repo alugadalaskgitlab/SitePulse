@@ -85,7 +85,7 @@ const createUserSchema = z.object({
   isAdmin: z.boolean().optional(),
   isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
-  sessionPolicy: z.enum(["strict", "sticky"]).optional(),
+  sessionPolicy: z.enum(["5m", "15m", "30m", "1h", "eod", "7d", "30d", "strict", "sticky"]).optional(),
 }).superRefine((d, ctx) => {
   const hasEmail = !!d.email && d.email.trim().length > 0;
   const hasPhone = !!d.phone && d.phone.trim().length > 0;
@@ -102,7 +102,7 @@ const patchUserSchema = z.object({
   isAdmin: z.boolean().optional(),
   isFieldEngineer: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
-  sessionPolicy: z.enum(["strict", "sticky"]).optional(),
+  sessionPolicy: z.enum(["5m", "15m", "30m", "1h", "eod", "7d", "30d", "strict", "sticky"]).optional(),
   canManagePermissions: z.boolean().optional(),
   permissionManagerScope: z.enum(["full", "partial"]).optional(),
 });
