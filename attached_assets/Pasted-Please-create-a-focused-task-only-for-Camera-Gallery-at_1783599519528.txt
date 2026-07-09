@@ -1,0 +1,129 @@
+Please create a focused task only for Camera/Gallery attachment behaviour and attachment display.
+
+Do not touch:
+- Road DPR flow
+- Structure DPR flow
+- Field Home
+- Permissions
+- Dashboard
+- Programme / BOQ logic
+- Guided DPR redesign
+
+Current issue:
+Camera and Gallery buttons are not behaving clearly. Camera should open the phone/tablet camera where supported. Gallery should open photo library/files. Attachments should also be visible in the related report/detail row after upload.
+
+A. Common Camera/Gallery component
+
+Create or update one reusable component for attachment capture.
+
+It should have two separate buttons:
+
+1. Camera
+2. Gallery / Photo Library / Files
+
+Do not make both buttons trigger the same generic file input.
+
+B. Camera button
+
+Camera button should use a separate hidden file input:
+
+<input type="file" accept="image/*" capture="environment" />
+
+Expected:
+- On mobile/tablet where supported, it should open rear camera.
+- On desktop/browser where camera capture is not supported, fallback to file picker is acceptable.
+- Do not break desktop usage.
+
+C. Gallery button
+
+Gallery button should use a separate hidden file input:
+
+<input type="file" accept="image/*,application/pdf" />
+
+No capture attribute.
+
+Expected:
+- On mobile/tablet, opens photo library/files depending on browser.
+- On desktop, opens normal file picker.
+- Allows images and PDFs.
+
+D. Apply this common component to existing attachment points only
+
+Apply where attachment feature already exists or is required:
+
+1. DPR progress/site photos
+2. Site Material Entry / Site Material Trip challan/DC/receipt photos
+3. Materials Received Report row/detail display
+4. Plant Material Receipts challan/DC/invoice photos
+5. GRN attachments
+6. Site Purchases bill/invoice/receipt photos
+7. Diesel/fuel purchase bills
+8. Equipment breakdown/maintenance photos and repair bills
+9. Purchase/vendor bill attachments where already wired
+
+Do not redesign these modules. Only replace the attachment buttons/inputs with the common Camera/Gallery component.
+
+E. Preview before save
+
+After selecting/taking a photo:
+- show thumbnail preview before save
+- show file name for PDFs
+- allow removing staged attachment before save
+
+F. Display after save
+
+Uploaded attachments must be visible in the related record/report.
+
+Examples:
+- DPR photo should show in DPR report/detail.
+- Site material challan photo should show in Materials Received Report row/detail.
+- Plant material receipt photo should show in receipt detail/report.
+- Site purchase bill photo should show in Site Purchase report.
+- Diesel/fuel bill photo should show in fuel/diesel report/detail.
+- Equipment repair photo/bill should show in maintenance history/report.
+
+G. Unsaved changes warning
+
+The “You have unsaved changes” warning should appear only when the user has actually changed form data or staged attachments.
+
+If the form is clean/no changes, navigating away should not show this warning.
+
+H. Test only these
+
+1. DPR:
+- click Camera
+- click Gallery
+- attach photo
+- preview before submit
+- submit
+- photo visible in DPR report/detail
+
+2. Site Material Entry:
+- click Camera
+- click Gallery
+- attach challan photo
+- save/submit
+- photo visible in Materials Received Report row/detail
+
+3. Plant Material Receipt:
+- attach challan/invoice photo
+- save
+- photo visible in receipt report/detail
+
+4. Site Purchase:
+- attach bill/invoice photo
+- save
+- photo visible in purchase report/detail
+
+5. Diesel/Fuel purchase:
+- attach bill photo
+- save
+- photo visible in relevant report/detail
+
+Stop after this task and give:
+- files changed
+- what was fixed
+- test steps
+- known limitations
+
+Do not start any other changes.
