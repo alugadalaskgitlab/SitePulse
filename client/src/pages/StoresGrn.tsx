@@ -111,7 +111,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
   const [draftFinaliseComboSearch, setDraftFinaliseComboSearch] = useState("");
   const [draftFinaliseComboOpen, setDraftFinaliseComboOpen] = useState(false);
   const draftFinaliseComboRef = useRef<HTMLDivElement>(null);
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [editingDraftNumber, setEditingDraftNumber] = useState("");
 
@@ -430,8 +429,6 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     mutationFn: ({ id, indentRef }: { id: number; indentRef: string | null }) =>
       apiRequest("PATCH", `/api/stores/grns/${id}`, { status: "finalized", indentRef }),
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/stores") });
       toast({ title: "GRN finalised — items added to stock" });
       setFinalisingDraft(false);
@@ -710,7 +707,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
                     <EditPermissionButton
                       recordType="stores_grn"
                       recordId={selectedGrn.id}
-                      onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; openDraftForEdit(selectedGrn); }}
+                      onEditGranted={() => openDraftForEdit(selectedGrn)}
                       size="sm"
                     />
                   )}

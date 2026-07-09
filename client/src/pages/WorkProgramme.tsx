@@ -388,15 +388,6 @@ function StretchRow({
         ) : !isFirst ? (
           <span className="text-[12px] text-orange-500 font-medium flex-shrink-0 w-8">(split)</span>
         ) : null}
-        {(bar as any).needsReview && (
-          <span
-            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-1 py-0.5 flex-shrink-0 dark:bg-amber-900/30 dark:text-amber-400"
-            title="No productivity/equipment data found — duration was estimated by spreading items across the project timeline. Add equipment recipes and re-run auto-sequence to compute accurate durations."
-          >
-            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
-            Needs Review
-          </span>
-        )}
 
         {/* Chainage inputs */}
         <span className="text-xs text-slate-400 flex-shrink-0">Ch</span>
@@ -1314,8 +1305,6 @@ function InlineGanttTable({
 
   const [deleteBarId, setDeleteBarId] = useState<number | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
-  // Unscheduled swimlane starts collapsed so it doesn't dominate the view.
-  const [collapsedUnscheduled, setCollapsedUnscheduled] = useState(true);
 
   const barsByItemId = useMemo(() => {
     const m: Record<number, WorkProgramBarWithItem[]> = {};
@@ -1340,31 +1329,10 @@ function InlineGanttTable({
     [bars],
   );
 
-  // Items where EVERY auto-sequence bar has needsReview = true are treated as
-  // "unscheduled" — they cannot be confidently placed on the timeline because no
-  // equipment productivity data exists. They are rendered in a dedicated
-  // "Unscheduled / Needs Review" swimlane rather than cluttering the main Gantt.
-  const unscheduledItemIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const it of items) {
-      if (it.includedInPlanning === false) continue;
-      const itemBars = barsByItemId[it.id] ?? [];
-      // Only flag items that have at least one bar AND every bar is flagged needsReview.
-      // Items with zero bars or mixed bars stay in the regular category group.
-      if (itemBars.length > 0 && itemBars.every(b => (b as any).needsReview === true)) {
-        ids.add(it.id);
-      }
-    }
-    return ids;
-  }, [items, barsByItemId]);
-
   const grouped = useMemo(() => {
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
       if (it.includedInPlanning === false) continue;
-      // Items that are fully unscheduled (all bars = needsReview) are shown in the
-      // dedicated "Unscheduled / Needs Review" swimlane — exclude from normal groups.
-      if (unscheduledItemIds.has(it.id)) continue;
       const cat = it.categoryName ?? "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
@@ -1373,7 +1341,7 @@ function InlineGanttTable({
       m[cat].sort((a, b) => compareItemCode(a.itemCode, b.itemCode));
     }
     return m;
-  }, [items, unscheduledItemIds]);
+  }, [items]);
 
   const allCategoryKeys = useMemo(() => {
     const keys = Object.keys(grouped).filter(k => k !== "__uncategorised__");
@@ -1728,185 +1696,6 @@ function InlineGanttTable({
             </div>
           );
         })}
-
-        {/* ── Unscheduled / Needs Review swimlane ─────────────────────────────────
-            Items where EVERY auto-sequence bar has needsReview=true are shown here
-            instead of in their regular category group. They are spread across the
-            timeline proportionally (not dumped in Month 1) but marked as estimates —
-            the user should add equipment recipes and re-run Auto-sequence to schedule
-            them correctly. The swimlane starts collapsed to avoid dominating the view.
-        ─────────────────────────────────────────────────────────────────────────── */}
-        {unscheduledItemIds.size > 0 && (() => {
-          const unscheduledItems = items.filter(it => unscheduledItemIds.has(it.id));
-          return (
-            <div data-testid="swimlane-unscheduled">
-              {/* Swimlane header — amber, sticky below the main Gantt header */}
-              <div
-                style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: CAT_H, position: "sticky", top: 44, zIndex: 20 }}
-                className="border-b border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-950"
-              >
-                <div
-                  style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10, backgroundColor: "#fef3c710" }}
-                  className="flex items-center gap-2 px-3 cursor-pointer border-r border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-950/20"
-                  onClick={() => setCollapsedUnscheduled(c => !c)}
-                  data-testid="button-toggle-unscheduled-swimlane"
-                >
-                  <AlertTriangle className="w-3 h-3 text-amber-600 flex-shrink-0" />
-                  <span className="text-[12px] font-bold uppercase tracking-wider flex-1 truncate text-amber-700 dark:text-amber-400">
-                    Unscheduled / Needs Review
-                  </span>
-                  <span className="text-[12px] text-amber-600 flex-shrink-0">{unscheduledItems.length}</span>
-                  {collapsedUnscheduled
-                    ? <ChevronDown className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                    : <ChevronUp className="w-3 h-3 text-amber-500 flex-shrink-0" />}
-                </div>
-                <div
-                  style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0, backgroundColor: "#fef3c720" }}
-                  className="border-b border-amber-200 dark:border-amber-800"
-                />
-              </div>
-
-              {!collapsedUnscheduled && unscheduledItems.map(item => {
-                const itemBars = barsByItemId[item.id] ?? [];
-                const totalPlanned = plannedByItemId[item.id] ?? 0;
-                // schedulingNote from the first bar (all bars share the same note)
-                const note = (itemBars[0] as any)?.schedulingNote ?? "No equipment recipes found — add recipes and re-run Auto-sequence to schedule this item.";
-                return (
-                  <div key={item.id} className="border-b border-amber-200 dark:border-amber-800">
-                    {/* Item header row */}
-                    <div
-                      style={{ display: "flex", alignItems: "stretch", minWidth: LEFT_W + totalRightW, minHeight: ITEM_H }}
-                      className="border-b border-amber-100 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/10"
-                    >
-                      {/* Item left */}
-                      <div
-                        style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-50/60 dark:bg-amber-950/20 border-r border-amber-200 dark:border-amber-800"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {item.itemCode && (
-                              <span className="text-xs font-mono text-amber-700 flex-shrink-0">{item.itemCode}</span>
-                            )}
-                            <HoverCard openDelay={120} closeDelay={40}>
-                              <HoverCardTrigger asChild>
-                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-amber-300 underline-offset-2">
-                                  {item.itemName ? item.itemName : shortItemName(item.description)}
-                                </span>
-                              </HoverCardTrigger>
-                              <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
-                                {item.itemCode && (
-                                  <span className="font-mono text-xs text-amber-700">{item.itemCode}</span>
-                                )}
-                                <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug whitespace-pre-wrap">
-                                  {item.description}
-                                </p>
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  {fmt(item.currentQty)} {item.unit}
-                                </p>
-                                <p className="mt-2 text-xs text-amber-700 border-t border-amber-100 pt-2">
-                                  <strong>Why unscheduled:</strong> {note}
-                                </p>
-                              </HoverCardContent>
-                            </HoverCard>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
-                            <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {item.unit}</span>
-                            <span
-                              className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-300 rounded px-1 py-0.5 flex-shrink-0"
-                              title={note}
-                            >
-                              <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
-                              No equipment recipes
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => addStretch(item.id)}
-                          disabled={createMutation.isPending}
-                          className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors flex-shrink-0 font-medium self-center"
-                          data-testid={`button-add-stretch-unscheduled-${item.id}`}
-                        >
-                          <Plus className="w-3 h-3" />
-                          add stretch
-                        </button>
-                      </div>
-
-                      {/* Item right — month cells (amber-tinted to distinguish from scheduled area) */}
-                      <div
-                        style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0, display: "flex" }}
-                        className="bg-amber-50/20 dark:bg-amber-950/5"
-                      >
-                        {monthHeaders.map(m => (
-                          <div
-                            key={m.num}
-                            style={{ width: colW, minWidth: colW }}
-                            onClick={() => addStretch(item.id, m.num)}
-                            className="flex-shrink-0 border-r border-amber-100/60 dark:border-amber-900/20 hover:bg-amber-100/60 dark:hover:bg-amber-900/20 cursor-pointer transition-colors"
-                            title={`Add stretch starting at ${m.label}`}
-                            data-testid={`cell-unscheduled-month-${item.id}-${m.num}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Stretch rows — same StretchRow component, amber "Needs Review" badge visible */}
-                    {itemBars.map((bar, i) =>
-                      (bar as any).planningMode === "structure_location" ? (
-                        <StructureLocationRow
-                          key={bar.id}
-                          bar={bar}
-                          project={project}
-                          projectId={projectId}
-                          color="#d97706"
-                          totalMonths={totalMonths}
-                          colW={colW}
-                          onDelete={setDeleteBarId}
-                        />
-                      ) : (
-                        <StretchRow
-                          key={bar.id}
-                          bar={bar}
-                          itemBars={itemBars.filter(b => (b as any).planningMode !== "structure_location")}
-                          item={item}
-                          project={project}
-                          recipesMap={recipesMap}
-                          projectId={projectId}
-                          color="#d97706"
-                          isFirst={i === 0}
-                          totalMonths={totalMonths}
-                          colW={colW}
-                          onDelete={setDeleteBarId}
-                          onSplit={bar => splitMutation.mutate(bar)}
-                          onBeforeMutate={onBeforeMutate}
-                          productivitySettings={productivitySettings}
-                        />
-                      )
-                    )}
-
-                    {/* Total row when ≥ 2 stretches */}
-                    {itemBars.length >= 2 && (
-                      <div
-                        style={{ display: "flex", minWidth: LEFT_W + totalRightW, height: 26 }}
-                        className="bg-amber-50/40 dark:bg-amber-950/10 border-t border-amber-200 dark:border-amber-800"
-                      >
-                        <div
-                          style={{ width: LEFT_W, minWidth: LEFT_W, position: "sticky", left: 0, zIndex: 10 }}
-                          className="flex items-center gap-2 px-3 bg-amber-50/60 dark:bg-amber-950/20 border-r border-amber-200 dark:border-amber-800"
-                        >
-                          <span className="text-[12px] text-amber-700 font-semibold">
-                            Total: {fmtQty(totalPlanned, 1)} {item.unit}
-                          </span>
-                        </div>
-                        <div style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0 }} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
       </div>
 
       {/* Delete confirmation dialog */}
@@ -2449,11 +2238,7 @@ export default function WorkProgramme() {
       else if (p < it.currentQty - 0.5) under++;
       else if (p > it.currentQty + 0.5) over++;
     }
-    // Count road-style bars marked needsReview (no productivity data — estimated duration)
-    const needsReview = bars.filter(
-      b => (b as any).needsReview === true && (b as any).planningMode !== "structure_location"
-    ).length;
-    return { under, over, missing, needsReview };
+    return { under, over, missing };
   }, [items, bars]);
 
   const autoGenMutation = useMutation({
@@ -2503,14 +2288,13 @@ export default function WorkProgramme() {
       return res.json();
     },
     onMutate: pushSnapshot,
-    onSuccess: async (data: { bars?: number; fronts?: number; needsReviewCount?: number }) => {
+    onSuccess: async (data: { bars?: number; fronts?: number }) => {
       setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
       toast({
         title: "Programme sequenced",
-        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`
-          + (data?.needsReviewCount ? ` — ${data.needsReviewCount} item(s) need equipment recipes (shown with "Needs Review" badge).` : ""),
+        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
       });
     },
     onError: (err: any) =>
@@ -2898,15 +2682,10 @@ export default function WorkProgramme() {
       )}
 
       {/* Warning banner */}
-      {(warnings.missing + warnings.under + warnings.over + warnings.needsReview) > 0 && (
+      {(warnings.missing + warnings.under + warnings.over) > 0 && (
         <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 space-y-0.5">
-            {warnings.needsReview > 0 && (
-              <p className="text-sm text-amber-700">
-                <strong>{warnings.needsReview}</strong> bar{warnings.needsReview > 1 ? "s" : ""} need equipment recipes — duration estimated proportionally (look for the amber <em>Needs Review</em> badge). Add recipes via <strong>Auto-build recipes</strong> then re-run <strong>Auto-sequence</strong>.
-              </p>
-            )}
             {warnings.missing > 0 && (
               <p className="text-sm text-amber-700"><strong>{warnings.missing}</strong> item{warnings.missing > 1 ? "s" : ""} not yet programmed</p>
             )}

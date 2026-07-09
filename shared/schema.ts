@@ -656,7 +656,6 @@ export const siteMaterialTrips = pgTable("site_material_trips", {
   workType: text("work_type"), // "road" | "structure"
   createdAt: timestamp("created_at").defaultNow(),
   ...cancellationFields,
-  ...documentWorkflowFields,
 }, (table) => ({
   dateIdx: index("site_material_trips_date_idx").on(table.date),
 }));
@@ -800,7 +799,7 @@ export const insertStockBalanceSchema = createInsertSchema(stockBalances).omit({
 export const insertStockLedgerSchema = createInsertSchema(stockLedger).omit({ id: true, createdAt: true });
 export const insertMaterialIssueSchema = createInsertSchema(materialIssues).omit({ id: true, createdAt: true });
 export const insertMaterialReturnSchema = createInsertSchema(materialReturns).omit({ id: true, createdAt: true });
-export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true, documentStatus: true, finalSubmittedAt: true, finalSubmittedBy: true });
+export const insertSiteMaterialTripSchema = createInsertSchema(siteMaterialTrips).omit({ id: true, createdAt: true });
 
 // Types
 export type Party = typeof parties.$inferSelect;
@@ -2553,11 +2552,7 @@ export const workProgramBars = pgTable("work_program_bars", {
   stage: text("stage"),                              // construction stage key, e.g. "excavation" | "pcc" | "rcc_foundation" | …
   sequenceOrder: integer("sequence_order"),          // order of this bar within its structureId group
   durationSource: text("duration_source"),           // 'imported' | 'productivity' | 'default' — how duration was derived
-  // ── Scheduling status (Phase 3) ─────────────────────────────────────────────
-  // needsReview = true is equivalent to schedulingStatus = "needs_review".
-  // Use needsReview as the primary flag; schedulingNote carries the human reason.
   needsReview: boolean("needs_review").default(false), // true when a default (non-productivity) duration was used
-  schedulingNote: text("scheduling_note"),            // why the bar couldn't be auto-scheduled (shown as tooltip in Gantt)
   scheduled: boolean("scheduled").default(true),     // false = imported without a valid date, not yet placed on the programme
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({

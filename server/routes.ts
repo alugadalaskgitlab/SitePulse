@@ -35,7 +35,6 @@ import {
   registerAuthRoutes,
   assertAdmin,
   assertEdit,
-  assertEditOrGrant,
   assertView,
   assertAuthed,
   assertCreate,
@@ -451,8 +450,8 @@ export async function registerRoutes(
   // Update a site material trip
   app.patch("/api/site-material-trips/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "site_materials")) return;
       const id = Number(req.params.id);
-      if (!(await assertEditOrGrant(req, res, "site_materials", "site_material_trip", id))) return;
       const input = insertSiteMaterialTripSchema.partial().parse(req.body);
       const trip = await storage.updateSiteMaterialTrip(id, input);
       sendPushToSection("site_materials", "Site Material Trip Updated", `Trip #${id} updated`, "/site-reports").catch(() => {});
@@ -508,55 +507,6 @@ export async function registerRoutes(
     } catch (err) {
       console.error("POST /api/site-material-trips/:id/cancel:", err);
       res.status(500).json({ message: "Failed to cancel site material trip" });
-    }
-  });
-
-  // Final-submit a site material trip (draft → submitted)
-  app.post("/api/site-material-trips/:id/submit", async (req, res) => {
-    try {
-      if (!assertCreate(req, res, "site_materials")) return;
-      const id = Number(req.params.id);
-
-      // Fetch trip to validate state and ownership
-      const allTrips = await storage.getSiteMaterialTrips({});
-      const trip = allTrips.find((t) => t.id === id);
-      if (!trip) return res.status(404).json({ message: "Site material trip not found" });
-      if ((trip as any).documentStatus === "submitted") {
-        return res.status(409).json({ message: "Trip is already submitted" });
-      }
-      if (!(trip as any).receiptNumber) {
-        return res.status(422).json({ message: "Cannot submit: challan/receipt number is missing" });
-      }
-      // Photo requirement: at least one attachment must exist before submission
-      const tripPhotos = await storage.getAttachments("site_material_trip", id);
-      if (tripPhotos.length === 0) {
-        return res.status(422).json({ message: "Cannot submit: at least one site photo is required" });
-      }
-      // Ownership gate: admin/owner may submit any draft; others must be the creator
-      const isPrivileged = req.authUser!.isAdmin || req.authUser!.isOwner;
-      if (!isPrivileged) {
-        const callerName = currentUserName(req).trim().toUpperCase();
-        const enteredBy = ((trip as any).enteredBy || "").trim().toUpperCase();
-        if (!enteredBy || !callerName || enteredBy !== callerName) {
-          return res.status(403).json({ message: "You can only submit your own material trip entries" });
-        }
-      }
-
-      const updated = await storage.submitSiteMaterialTrip(id, req.authUser!.id);
-      if (!updated) return res.status(404).json({ message: "Site material trip not found" });
-      await storage.logAudit({
-        module: "site_material_trips",
-        transactionId: id,
-        action: "approve",
-        userId: req.authUser!.id,
-        userName: currentUserName(req),
-        userRole: req.authUser!.isOwner ? "owner" : req.authUser!.isAdmin ? "admin" : "manager",
-        newValues: updated,
-      });
-      res.json(updated);
-    } catch (err) {
-      console.error("POST /api/site-material-trips/:id/submit:", err);
-      res.status(500).json({ message: "Failed to submit site material trip" });
     }
   });
 
@@ -11451,24 +11401,16 @@ export async function registerRoutes(
       // Build sequencer input — when structure fronts are disabled, exclude structure-type
       // items entirely so the sequencer only schedules road/linear work. Their bars were
       // already pre-deleted above; any imported structure_location bars are untouched.
-      const filteredItems = (items as any[]).filter((it) => {
-        if ((it.currentQty ?? 0) <= 0) return false;
-        if (
-          disableStructureFronts &&
-          isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
-        ) return false;
-        return true;
-      });
-
-      // Track which items have no productivity data — their bars will be flagged
-      // needsReview: true so the Gantt can surface them as "Unscheduled / Needs Review"
-      // instead of silently placing them in Month 1.
-      const noProductivityItemIds = new Set<number>();
-      // Fallback duration for items with no productivity: spread them proportionally
-      // across the full project timeline instead of dumping everything into Month 1.
-      const defaultSpreadMonths = Math.max(1, totalMonths / Math.max(filteredItems.length, 1));
-
-      const seqItems = filteredItems.map((it) => {
+      const seqItems = (items as any[])
+        .filter((it) => {
+          if ((it.currentQty ?? 0) <= 0) return false;
+          if (
+            disableStructureFronts &&
+            isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
+          ) return false;
+          return true;
+        })
+        .map((it) => {
           const equipment = ((it.equipment ?? []) as any[]).map((e) => ({
             name: e.equipmentName,
             outputUnit: e.outputUnit ?? null,
@@ -11490,17 +11432,12 @@ export async function registerRoutes(
             null,
             null,
           );
-          const hasProductivity = dur.months > 0;
-          if (!hasProductivity) noProductivityItemIds.add(it.id);
           return {
             boqItemId: it.id,
             description: it.description ?? "",
             unit: it.unit ?? "",
             totalQty: it.currentQty ?? 0,
-            // When no productivity data is available, spread items proportionally across
-            // the project timeline (totalMonths / numItems) rather than defaulting to 1
-            // month, which causes all no-data items to cluster in Month 1.
-            fullDurationMonths: hasProductivity ? dur.months : defaultSpreadMonths,
+            fullDurationMonths: dur.months > 0 ? dur.months : 1,
             // Pass stored planningWorkType so user-overridden classifications are respected
             planningWorkType: (it.planningWorkType === "road" || it.planningWorkType === "structure")
               ? it.planningWorkType as "road" | "structure"
@@ -11541,18 +11478,7 @@ export async function registerRoutes(
       for (const b of autoBars) await storage.deleteWorkProgramBar(b.id);
       for (const b of bars) {
         try {
-          const isNoProductivity = noProductivityItemIds.has(b.boqItemId);
-          await storage.upsertWorkProgramBar({
-            ...b,
-            boqProjectId: projectId,
-            // Flag bars with no productivity data so the Gantt can surface them
-            // in the "Unscheduled / Needs Review" swimlane.
-            needsReview: isNoProductivity,
-            durationSource: isNoProductivity ? "default" : "productivity",
-            schedulingNote: isNoProductivity
-              ? "No equipment recipes found for this item — duration was estimated proportionally across the project timeline. Add equipment recipes via Auto-build recipes, then re-run Auto-sequence to schedule this item correctly."
-              : null,
-          } as any);
+          await storage.upsertWorkProgramBar({ ...b, boqProjectId: projectId } as any);
           created++;
         } catch (e: any) {
           insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
@@ -11564,7 +11490,6 @@ export async function registerRoutes(
         totalMonths,
         bars: created,
         itemsConsidered: seqItems.length,
-        needsReviewCount: noProductivityItemIds.size,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
       });

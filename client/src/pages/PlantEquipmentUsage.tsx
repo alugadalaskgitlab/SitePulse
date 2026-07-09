@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { DraftRestoredBanner } from "@/components/DraftRestoredBanner";
@@ -296,14 +296,10 @@ export default function PlantEquipmentUsage() {
     },
   });
 
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
-
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/equipment-usage/${id}`, data),
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/equipment-usage"] });
       setDialogOpen(false);
       setEditingUsage(null);
@@ -1872,7 +1868,7 @@ export default function PlantEquipmentUsage() {
                                 <EditPermissionButton
                                   recordType="equipment_usage"
                                   recordId={entry.id}
-                                  onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; handleEditClick(entry); }}
+                                  onEditGranted={() => handleEditClick(entry)}
                                   size="sm"
                                   variant="ghost"
                                 />

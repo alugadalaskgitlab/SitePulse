@@ -39,8 +39,6 @@ import {
   DEVICE_COOKIE_DAYS,
   SESSION_COOKIE_NAME,
   DEVICE_COOKIE_NAME,
-  getIdleTimeoutMs,
-  getMaxAgeMs,
 } from "@shared/permissions";
 import { and, eq, gt, isNull, desc, sql } from "drizzle-orm";
 import * as crypto from "crypto";
@@ -256,7 +254,7 @@ export async function createUserRow(input: {
     isAdmin: !!input.isAdmin,
     isFieldEngineer: !!input.isFieldEngineer,
     notificationsEnabled: !!input.notificationsEnabled,
-    sessionPolicy: input.sessionPolicy ?? (input.isAdmin ? "1h" : "7d"),
+    sessionPolicy: input.sessionPolicy ?? "strict",
   }).returning();
   return row;
 }
@@ -511,19 +509,10 @@ export async function lookupSessionFromCookie(cookieHeader: string | undefined):
   const lastActivityMs = sess.lastActivityAt.getTime();
   const loginMs = sess.loginAt.getTime();
   const policy = u.sessionPolicy as SessionPolicy;
-  const idleMs = getIdleTimeoutMs(policy);
-  if (idleMs !== null) {
-    if (now - lastActivityMs > idleMs) return { kind: "expired" };
+  if (policy === "strict") {
+    if (now - lastActivityMs > STRICT_IDLE_MINUTES * 60 * 1000) return { kind: "expired" };
   } else {
-    const maxAge = getMaxAgeMs(policy, loginMs);
-    if (maxAge !== null) {
-      if (now - loginMs > maxAge) return { kind: "expired" };
-    } else {
-      // Unknown/unrecognised policy value — fail closed with a 1-hour idle limit
-      // rather than allowing an indefinitely-valid session.
-      const FALLBACK_IDLE_MS = 60 * 60 * 1000;
-      if (now - lastActivityMs > FALLBACK_IDLE_MS) return { kind: "expired" };
-    }
+    if (now - loginMs > STICKY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) return { kind: "expired" };
   }
   return { kind: "ok", user: u, sessionId: sess.id, deviceId: sess.deviceId };
 }

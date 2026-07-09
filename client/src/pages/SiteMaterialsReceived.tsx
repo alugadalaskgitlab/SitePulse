@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
@@ -157,16 +157,12 @@ export default function SiteMaterialsReceived() {
     onError: () => toast({ title: "Error", description: "Failed to delete.", variant: "destructive" }),
   });
 
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
-
   const updateMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: Record<string, any> }) => {
       const res = await apiRequest("PATCH", `/api/site-material-trips/${id}`, payload);
       return res.json();
     },
     onSuccess: (updated: any) => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ predicate: (q) =>
         typeof q.queryKey[0] === "string" &&
         (q.queryKey[0].startsWith("/api/site-material-trips") || q.queryKey[0].startsWith("/api/materials-received"))
@@ -351,7 +347,6 @@ export default function SiteMaterialsReceived() {
                       <th className="text-left p-2 border text-sm">Receipt No.</th>
                       <th className="text-center p-2 border text-sm">Work Type</th>
                       <th className="text-center p-2 border text-sm">Source</th>
-                      <th className="text-center p-2 border text-sm">Status</th>
                       <th className="text-left p-2 border text-sm">Photos</th>
                       <th className="text-center p-2 border text-sm w-16"></th>
                     </tr>
@@ -376,17 +371,6 @@ export default function SiteMaterialsReceived() {
                         <td className="p-2 border text-sm">{trip.receiptNumber || "-"}</td>
                         <td className="p-2 border text-center"><WorkTypeBadge workType={trip.workType} /></td>
                         <td className="p-2 border text-center"><SourceBadge source={trip.source} /></td>
-                        <td className="p-2 border text-center">
-                          {trip.source === "trip" ? (
-                            trip.documentStatus === "submitted" ? (
-                              <Badge variant="outline" className="text-[11px] px-1.5 py-0 border-emerald-400 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400">Submitted</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[11px] px-1.5 py-0 border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400">Draft</Badge>
-                            )
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </td>
                         <td className="p-2 border" onClick={e => e.stopPropagation()}>
                           {trip.source === "trip" ? (
                             <AttachmentGallery
@@ -452,8 +436,7 @@ export default function SiteMaterialsReceived() {
                   <EditPermissionButton
                     recordType="site_material_trip"
                     recordId={selectedTrip.id}
-                    onEditGranted={(_, consumeGrant) => {
-                      pendingConsumeGrant.current = consumeGrant ?? null;
+                    onEditGranted={() => {
                       setEditUnlocked(true);
                       startEditingFields(selectedTrip);
                     }}

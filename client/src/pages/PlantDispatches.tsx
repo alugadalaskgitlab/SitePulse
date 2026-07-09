@@ -207,7 +207,6 @@ export default function PlantDispatches() {
   // plant name from plant settings and pre-set the active plant filter. This
   // fires once after settings load and only if filterPlantName is still unset.
   const plantIdFilterApplied = useRef(false);
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (plantIdFilterApplied.current) return;
     if (!mgmtReportPlantId || !plantSettingsList) return;
@@ -336,8 +335,6 @@ export default function PlantDispatches() {
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/dispatches/${id}`, data),
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/dispatches"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -1536,7 +1533,7 @@ export default function PlantDispatches() {
                                 <EditPermissionButton
                                   recordType="truck_dispatch"
                                   recordId={dispatch.id}
-                                  onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; handleEditClick(dispatch); }}
+                                  onEditGranted={() => handleEditClick(dispatch)}
                                   size="sm"
                                 />
                                 {canEdit && (

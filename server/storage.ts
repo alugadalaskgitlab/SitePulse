@@ -462,7 +462,6 @@ export interface IStorage {
   finalSubmitMaterialReceipt(id: number, userId: number): Promise<MaterialReceipt | undefined>;
   finalSubmitSitePurchase(id: number, userId: number): Promise<any>;
   cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined>;
-  submitSiteMaterialTrip(id: number, userId: number): Promise<SiteMaterialTrip | undefined>;
   cancelEquipmentMaintenanceLog(id: number, userId: number, reason: string): Promise<EquipmentMaintenanceLog | undefined>;
 
   // DPRs
@@ -1068,7 +1067,7 @@ export interface IStorage {
   updateSitePurchase(id: number, data: { itemDescription?: string; quantity?: number | null; uom?: string | null; vendor?: string | null; billNo?: string | null; amount?: number | null }): Promise<any>;
 
   // Site Material Trips (Quick Entry)
-  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<(SiteMaterialTrip & { hasPhotos: boolean })[]>;
+  getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<SiteMaterialTrip[]>;
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
@@ -1650,14 +1649,6 @@ export class DatabaseStorage implements IStorage {
   async cancelSiteMaterialTrip(id: number, userId: number, reason: string): Promise<SiteMaterialTrip | undefined> {
     const [updated] = await db.update(siteMaterialTrips)
       .set({ isCancelled: true, cancelledAt: new Date(), cancelledBy: userId, cancellationReason: reason })
-      .where(eq(siteMaterialTrips.id, id))
-      .returning();
-    return updated;
-  }
-
-  async submitSiteMaterialTrip(id: number, userId: number): Promise<SiteMaterialTrip | undefined> {
-    const [updated] = await db.update(siteMaterialTrips)
-      .set({ documentStatus: "submitted", finalSubmittedAt: new Date(), finalSubmittedBy: userId })
       .where(eq(siteMaterialTrips.id, id))
       .returning();
     return updated;
@@ -8001,7 +7992,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<(SiteMaterialTrip & { hasPhotos: boolean })[]> {
+  async getSiteMaterialTrips(filters?: { site?: string; material?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[]; includeCancelled?: boolean }): Promise<SiteMaterialTrip[]> {
     let conditions = [];
     
     if (filters?.site) conditions.push(eq(siteMaterialTrips.site, filters.site));
@@ -8021,20 +8012,12 @@ export class DatabaseStorage implements IStorage {
       .from(siteMaterialTrips)
       .where(and(...conditions))
       .orderBy(desc(siteMaterialTrips.date), desc(siteMaterialTrips.createdAt));
-
-    if (trips.length === 0) return [];
-
-    const tripIds = trips.map(t => t.id);
-    const photoRows = await db.select({ linkedRecordId: attachments.linkedRecordId })
-      .from(attachments)
-      .where(and(eq(attachments.moduleType, "site_material_trip"), inArray(attachments.linkedRecordId, tripIds)));
-    const withPhotosSet = new Set(photoRows.map(r => r.linkedRecordId));
-
-    return trips.map(t => ({ ...t, hasPhotos: withPhotosSet.has(t.id) }));
+    
+    return trips;
   }
 
   async createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip> {
-    const [trip] = await db.insert(siteMaterialTrips).values({ ...data, documentStatus: "draft" }).returning();
+    const [trip] = await db.insert(siteMaterialTrips).values(data).returning();
     return trip;
   }
 

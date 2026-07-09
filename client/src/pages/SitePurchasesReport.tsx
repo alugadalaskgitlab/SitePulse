@@ -299,7 +299,6 @@ export default function SitePurchasesReport() {
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Reported By</th>
                       <th className="text-center p-2 font-medium">Status</th>
-                      <th className="text-left p-2 font-medium">Photos</th>
                       <th className="text-center p-2 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -346,22 +345,8 @@ export default function SitePurchasesReport() {
                             </Badge>
                           )}
                         </td>
-                        <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                          {p.source !== 'diesel' ? (
-                            <AttachmentGallery
-                              moduleType="site_purchase"
-                              linkedRecordId={p.id}
-                              allowDelete={false}
-                              emptyText="—"
-                              className="flex flex-wrap gap-1 w-24"
-                            />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </td>
                         <td className="p-2 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {isOwnerOrAdmin && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -371,7 +356,6 @@ export default function SitePurchasesReport() {
                             >
                               <History className="w-4 h-4 text-muted-foreground" />
                             </Button>
-                            )}
                             {p.source !== 'diesel' ? (
                               <>
                                 {p.documentStatus !== "submitted" && (
@@ -387,25 +371,25 @@ export default function SitePurchasesReport() {
                                   </Button>
                                 )}
                                 {(p.documentStatus !== "submitted" || isOwnerOrAdmin) && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => openEdit(p)}
-                                    data-testid={`button-edit-purchase-${p.id}`}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                {isOwnerOrAdmin && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setCancelItem(p)}
-                                    data-testid={`button-cancel-purchase-${p.id}`}
-                                    title="Cancel"
-                                  >
-                                    <Ban className="w-4 h-4 text-amber-600" />
-                                  </Button>
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEdit(p)}
+                                      data-testid={`button-edit-purchase-${p.id}`}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setCancelItem(p)}
+                                      data-testid={`button-cancel-purchase-${p.id}`}
+                                      title="Cancel"
+                                    >
+                                      <Ban className="w-4 h-4 text-amber-600" />
+                                    </Button>
+                                  </>
                                 )}
                               </>
                             ) : (

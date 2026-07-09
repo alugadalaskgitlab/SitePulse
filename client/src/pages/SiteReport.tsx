@@ -16,7 +16,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import type { Personnel } from "@shared/schema";
-import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 export default function SiteReport() {
   const [, params] = useRoute("/site/report/:id");
@@ -24,7 +23,7 @@ export default function SiteReport() {
   const id = parseInt(params?.id || "0");
   const { data: dpr, isLoading, error } = useDpr(id);
   const { toast } = useToast();
-  const { sectionCan, user, isAdmin, isOwner } = useAuth();
+  const { sectionCan, user } = useAuth();
   const canEdit = sectionCan("site_dprs", "edit");
   const canDelete = !!user?.isAdmin;
   const { data: personnelList } = useQuery<Personnel[]>({
@@ -169,7 +168,6 @@ export default function SiteReport() {
               Edit
             </Button>
           )}
-          {(isAdmin || isOwner) && (
           <Button
             variant="outline"
             className="gap-2"
@@ -179,8 +177,7 @@ export default function SiteReport() {
             <History className="w-4 h-4" />
             History
           </Button>
-          )}
-          {(isAdmin || isOwner) && (
+          {canEdit && (
             <Button
               variant="outline"
               className="gap-2 text-amber-600 hover:text-amber-700"
@@ -388,21 +385,6 @@ export default function SiteReport() {
             </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* DPR Progress Photos */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Site Photos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AttachmentGallery
-            moduleType="dpr_progress"
-            linkedRecordId={id}
-            allowDelete={false}
-            emptyText="No photos attached to this report."
-          />
         </CardContent>
       </Card>
 

@@ -51,7 +51,6 @@ export default function PlantMaterialReceipts() {
   const [stagedPhotos, setStagedPhotos] = useState<File[]>([]);
   const { uploadFile } = useUpload();
   const receiptCameraInputRef = useRef<HTMLInputElement>(null);
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
   const receiptGalleryInputRef = useRef<HTMLInputElement>(null);
   const addStagedReceiptPhotos = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -395,8 +394,6 @@ export default function PlantMaterialReceipts() {
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/plant-module/material-receipts/${id}`, data),
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/material-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-ledger"] });
@@ -1454,7 +1451,7 @@ export default function PlantMaterialReceipts() {
                                   <EditPermissionButton
                                     recordType="material_receipt"
                                     recordId={receipt.id}
-                                    onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; handleEditClick(receipt); }}
+                                    onEditGranted={() => handleEditClick(receipt)}
                                     size="sm"
                                   />
                                 )}

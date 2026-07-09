@@ -296,75 +296,103 @@ export function fullMatrix(): PermissionMatrix {
 }
 
 // ── Permission groups for the admin UI ────────────────────────────────────────
-// 7 workflow groups per spec (first 2 expanded by default, rest collapsed).
-// An 8th "Legacy" group holds backward-compat broad keys.
+// Each group has an id, a display label, and an ordered list of section keys.
 export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKey[] }[] = [
   {
-    id: "site-operations",
-    label: "Site Operations",
-    sections: [
-      "dashboard",
-      "site_hub",
-      "site_dprs",
-      "site_materials",
-    ],
+    id: "dashboard",
+    label: "Dashboard",
+    sections: ["dashboard"],
   },
   {
-    id: "stores-inventory",
-    label: "Stores & Inventory",
-    sections: [
-      "stores_hub",
-      "stores_inventory",
-    ],
+    id: "hubs",
+    label: "Hub Navigation (page access)",
+    sections: ["hmp_hub", "site_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub", "admin_hub", "rmc_hub"],
   },
   {
-    id: "procurement-billing",
-    label: "Procurement & Billing",
-    sections: [
-      "finance_hub",
-      "purchase_indents_view", "purchase_indents_raise", "purchase_indents_approve",
-      "diesel_req_view", "diesel_req_raise", "diesel_req_approve",
-      "irn_view", "irn_raise", "irn_approve",
-      "vendor_bills_view", "vendor_bills_raise", "vendor_bills_verify", "vendor_bills_approve", "vendor_bill_aliases",
-    ],
+    id: "site",
+    label: "Site — DPRs & Materials",
+    sections: ["site_dprs", "site_materials"],
   },
   {
-    id: "plant-operations",
-    label: "Plant Operations",
+    id: "indents",
+    label: "Purchase Indents",
+    sections: ["purchase_indents_view", "purchase_indents_raise", "purchase_indents_approve"],
+  },
+  {
+    id: "diesel",
+    label: "Diesel Requirements",
+    sections: ["diesel_req_view", "diesel_req_raise", "diesel_req_approve"],
+  },
+  {
+    id: "irn",
+    label: "Internal Requisitions (IRN — coming soon)",
+    sections: ["irn_view", "irn_raise", "irn_approve"],
+  },
+  {
+    id: "hmp_ops",
+    label: "HMP Plant — Operations",
     sections: [
-      "hmp_hub",
       "plant_shift_logs", "plant_manpower_review",
       "plant_heating", "plant_heating_trends",
-      "plant_production", "plant_materials", "plant_bitumen", "plant_ldo",
-      "plant_daily_reports", "plant_stock", "plant_ldo_reconciliation", "plant_variance", "plant_audit", "plant_diesel_proc",
-      "rmc_hub", "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests", "rmc_raw_materials", "rmc_delivery_challans", "rmc_daily_report",
+      "plant_equipment", "plant_generator_logs", "plant_maintenance",
+      "plant_production",
+      "plant_materials",
+      "plant_bitumen", "plant_ldo",
     ],
   },
   {
-    id: "equipment-fleet",
-    label: "Equipment & Fleet",
+    id: "hmp_reports",
+    label: "HMP Plant — Reports & Ledgers",
     sections: [
-      "plant_equipment", "plant_generator_logs", "plant_maintenance",
+      "plant_daily_reports", "plant_stock", "plant_ldo_reconciliation",
+      "plant_variance", "plant_audit", "plant_diesel_proc",
+    ],
+  },
+  {
+    id: "rmc",
+    label: "RMC Module",
+    sections: [
+      "rmc_batch_records", "rmc_mix_designs", "rmc_cube_tests",
+      "rmc_raw_materials", "rmc_delivery_challans", "rmc_daily_report",
+    ],
+  },
+  {
+    id: "vendor_bills",
+    label: "Vendor Bills",
+    sections: [
+      "vendor_bills_view", "vendor_bills_raise",
+      "vendor_bills_verify", "vendor_bills_approve", "vendor_bill_aliases",
     ],
   },
   {
     id: "reports",
-    label: "Reports & Estimators",
-    sections: [
-      "reports_hub",
-      "report_management", "report_site_purchases",
-      "estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "rate_cards",
-    ],
+    label: "Reports",
+    sections: ["report_management", "report_site_purchases"],
   },
   {
-    id: "admin",
-    label: "Admin & Masters",
-    sections: [
-      "admin_hub", "masters_hub",
-      "master_parties", "master_materials", "master_equipment", "master_personnel",
-      "site_management", "admin_ldo_tools", "admin_ledger_tools", "data_sync",
-      "user_management", "permission_manager", "device_approval", "push_notifications",
-    ],
+    id: "stores",
+    label: "Stores & Inventory",
+    sections: ["stores_inventory"],
+  },
+  {
+    id: "calculators",
+    label: "Rate Calculators & Estimator",
+    sections: ["estimator_portal", "mix_calculator", "concrete_calculator", "qto_boq", "rate_cards"],
+  },
+  {
+    id: "masters",
+    label: "Masters",
+    sections: ["master_parties", "master_materials", "master_equipment", "master_personnel"],
+  },
+  {
+    id: "admin_tools",
+    label: "Admin & System Tools",
+    sections: ["site_management", "admin_ldo_tools", "admin_ledger_tools", "data_sync"],
+  },
+  {
+    id: "access",
+    label: "User & Access Management",
+    sections: ["user_management", "permission_manager", "device_approval", "push_notifications"],
   },
   {
     id: "legacy",
@@ -401,67 +429,13 @@ export const PUSH_ACTIVE_SECTIONS = new Set<SectionKey>([
   "vendor_bills_approve",
 ]);
 
-export const SESSION_POLICIES = ["5m", "15m", "30m", "1h", "eod", "7d", "30d", "strict", "sticky"] as const;
+export const SESSION_POLICIES = ["strict", "sticky"] as const;
 export type SessionPolicy = (typeof SESSION_POLICIES)[number];
-
-export const SESSION_POLICY_LABELS: Record<SessionPolicy, string> = {
-  "5m":    "5 min idle (high-security)",
-  "15m":   "15 min idle",
-  "30m":   "30 min idle",
-  "1h":    "1 hour idle",
-  "eod":   "End of day",
-  "7d":    "Sticky — 7 days",
-  "30d":   "Sticky — 30 days",
-  "strict": "Strict — 5 min idle (legacy)",
-  "sticky": "Sticky — 30 days (legacy)",
-};
-
-export const SESSION_POLICY_SHORT_LABELS: Record<SessionPolicy, string> = {
-  "5m":    "5 min",
-  "15m":   "15 min",
-  "30m":   "30 min",
-  "1h":    "1 hour",
-  "eod":   "End of day",
-  "7d":    "7 days",
-  "30d":   "30 days",
-  "strict": "5 min",
-  "sticky": "30 days",
-};
-
-export const USER_FACING_SESSION_POLICIES: SessionPolicy[] = ["5m", "15m", "30m", "1h", "eod", "7d", "30d"];
 
 // Session-policy timing constants (minutes / days).
 export const STRICT_IDLE_MINUTES = 5;
 export const STICKY_MAX_AGE_DAYS = 30;
 export const DEVICE_COOKIE_DAYS = 90;
-
-/** Returns idle timeout in ms for idle-based policies, or null for non-idle policies. */
-export function getIdleTimeoutMs(policy: SessionPolicy): number | null {
-  switch (policy) {
-    case "5m":
-    case "strict": return 5 * 60 * 1000;
-    case "15m":    return 15 * 60 * 1000;
-    case "30m":    return 30 * 60 * 1000;
-    case "1h":     return 60 * 60 * 1000;
-    default:       return null;
-  }
-}
-
-/** Returns max absolute session age in ms for sticky policies, or null for idle-based policies. */
-export function getMaxAgeMs(policy: SessionPolicy, loginTime: number): number | null {
-  switch (policy) {
-    case "7d":     return 7 * 24 * 60 * 60 * 1000;
-    case "30d":
-    case "sticky": return 30 * 24 * 60 * 60 * 1000;
-    case "eod": {
-      // Expire at midnight of the *login* day (stable cutoff regardless of when the check runs).
-      const login = new Date(loginTime);
-      const eodMs = new Date(login.getFullYear(), login.getMonth(), login.getDate() + 1, 0, 0, 0, 0).getTime();
-      return eodMs - loginTime;
-    }
-    default: return null;
-  }
-}
 
 export const SESSION_COOKIE_NAME = "hlc_sess";
 export const DEVICE_COOKIE_NAME = "hlc_dev";

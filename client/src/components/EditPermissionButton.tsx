@@ -19,16 +19,9 @@ import type { EditPermissionRecordType } from "@shared/schema";
 interface EditPermissionButtonProps {
   recordType: EditPermissionRecordType;
   recordId: number | undefined;
-  /** Called when edit is granted. Second arg is a function to call after a successful save
-   * to mark the one-time token as consumed. Calling it on click is the bug — always call it
-   * in your mutation's onSuccess instead. */
-  onEditGranted?: (requestId: number, consumeGrant?: () => void) => void;
+  onEditGranted?: (requestId: number) => void;
   onConsumed?: () => void;
   label?: string;
-  /** Text shown once the request is approved and the user can actually edit,
-   * e.g. "Edit Now". Defaults to "Edit Now" — do not reuse the idle "Request
-   * Edit" label here, it's confusing after approval. */
-  approvedLabel?: string;
   className?: string;
   size?: "default" | "sm" | "lg" | "icon";
   variant?: "default" | "outline" | "ghost" | "secondary" | "destructive" | "link";
@@ -40,7 +33,6 @@ export function EditPermissionButton({
   onEditGranted,
   onConsumed,
   label = "Edit",
-  approvedLabel = "Edit Now",
   className,
   size = "sm",
 }: EditPermissionButtonProps) {
@@ -130,16 +122,14 @@ export function EditPermissionButton({
         className={`bg-green-600 hover:bg-green-700 text-white ${className ?? ""}`}
         onClick={() => {
           if (isAdminOrOwner) return;
-          // Do NOT consume the grant on click — call consumeGrant() in your
-          // mutation's onSuccess so the token is only spent after a successful save.
-          const consumeGrant = () => consumePermission(activeRequest.id);
+          consumePermission(activeRequest.id);
           onConsumed?.();
-          onEditGranted?.(activeRequest.id, consumeGrant);
+          onEditGranted?.(activeRequest.id);
         }}
         data-testid="btn-edit-permitted"
       >
         <CheckCircle2 className="h-4 w-4 mr-1" />
-        {approvedLabel} ({minutesLeft}m left)
+        {label} ({minutesLeft}m left)
       </Button>,
     );
   }

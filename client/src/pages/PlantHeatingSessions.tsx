@@ -138,7 +138,6 @@ export default function PlantHeatingSessions() {
     } catch { return null; }
   }, [returnToFromUrl]);
   const autoOpenedRef = useRef<number | null>(null);
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(today));
@@ -631,8 +630,6 @@ export default function PlantHeatingSessions() {
       return saved;
     },
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       clearHeatingDraft();
       setDraftRestored(false);
       queryClient.invalidateQueries({ queryKey: ["/api/plant-module/heating-sessions"] });
@@ -1342,7 +1339,7 @@ export default function PlantHeatingSessions() {
                               <EditPermissionButton
                                 recordType="heating_session"
                                 recordId={s.id}
-                                onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; openEdit(s); }}
+                                onEditGranted={() => openEdit(s)}
                                 label="Request Edit"
                                 size="sm"
                               />

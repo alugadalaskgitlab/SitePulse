@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { usePersistedFilters } from "@/hooks/use-persisted-filters";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -257,14 +257,10 @@ export default function DieselRequirements() {
     },
   });
 
-  const pendingConsumeGrant = useRef<(() => void) | null>(null);
-
   const editMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiRequest("PUT", `/api/diesel-requirements/${id}`, data),
     onSuccess: () => {
-      pendingConsumeGrant.current?.();
-      pendingConsumeGrant.current = null;
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/diesel-requirements/summary"] });
       toast({ title: "Diesel requirement updated successfully" });
@@ -947,7 +943,7 @@ export default function DieselRequirements() {
                       <EditPermissionButton
                         recordType="diesel_requirement"
                         recordId={selectedRequirement.id}
-                        onEditGranted={(_, consumeGrant) => { pendingConsumeGrant.current = consumeGrant ?? null; handleEditClick(); }}
+                        onEditGranted={() => handleEditClick()}
                         size="sm"
                       />
                     )}

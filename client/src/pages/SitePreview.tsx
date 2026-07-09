@@ -7,7 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import type { Personnel, EquipmentMasterType } from "@shared/schema";
-import { AttachmentGallery } from "@/components/AttachmentGallery";
 
 interface PreviewData {
   date: string;
@@ -27,11 +26,9 @@ interface SitePreviewProps {
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
-  /** If provided, show the DPR progress photo gallery (for editing existing DPRs). */
-  dprId?: number;
 }
 
-export default function SitePreview({ data, onBack, onSubmit, isSubmitting, dprId }: SitePreviewProps) {
+export default function SitePreview({ data, onBack, onSubmit, isSubmitting }: SitePreviewProps) {
   const { data: personnelList } = useQuery<Personnel[]>({
     queryKey: ["/api/personnel"],
   });
@@ -407,23 +404,6 @@ export default function SitePreview({ data, onBack, onSubmit, isSubmitting, dprI
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* DPR Progress Photos (only when editing an existing DPR) */}
-      {dprId && dprId > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Site Photos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AttachmentGallery
-              moduleType="dpr_progress"
-              linkedRecordId={dprId}
-              allowDelete={false}
-              emptyText="No photos attached to this report."
-            />
           </CardContent>
         </Card>
       )}
