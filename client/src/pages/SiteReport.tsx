@@ -15,6 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { Personnel } from "@shared/schema";
 
 export default function SiteReport() {
@@ -636,6 +637,21 @@ export default function SiteReport() {
           </CardContent>
         </Card>
       )}
+
+      {/* Site Photos */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Site Photos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AttachmentGallery
+            moduleType="dpr_progress"
+            linkedRecordId={id}
+            allowDelete={canEdit}
+            emptyText="No photos attached"
+          />
+        </CardContent>
+      </Card>
 
       <CancelDialog
         open={showCancel}
