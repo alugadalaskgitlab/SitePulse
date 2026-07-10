@@ -1,0 +1,87 @@
+Camera/Gallery buttons are now working as expected in DPR and Site Material Entry.
+
+Do not touch Camera/Gallery behaviour now.
+
+The remaining issue in Task #1275 is attachment display after save.
+
+Current problems from testing:
+
+1. DPR:
+- Photos are uploaded during DPR entry.
+- But photos are not displayed in the DPR report/detail/summary.
+- The DPR report still shows activity, equipment, labour, materials, etc., but not the uploaded site/progress photos.
+
+2. Site Material Entry / Materials Received:
+- Camera/Gallery works.
+- Photo uploads successfully.
+- But the uploaded challan/photo is not shown in the Materials Received Report / summary row/detail.
+
+Required fix only:
+
+A. DPR attachment display
+
+For submitted DPR report/detail:
+
+1. Show uploaded photos in the DPR report/detail.
+2. Use:
+   moduleType = "dpr_progress"
+   linkedRecordId = actual DPR id
+3. Add a visible section:
+   Site Photos / Progress Photos
+4. Show thumbnails of uploaded images.
+5. Show file name/link for PDFs if any.
+6. If no photos, show “No photos attached.”
+7. Photos must remain visible after page refresh.
+
+Test:
+- Create DPR
+- Attach photo
+- Submit DPR
+- Open DPR report/detail
+- Photo must be visible in the report
+
+B. Site Material Entry / Materials Received attachment display
+
+For Materials Received Report:
+
+1. Show uploaded challan/DC/receipt photo against the same transaction.
+2. Use:
+   moduleType = "site_material_trip"
+   linkedRecordId = actual site_material_trips.id
+3. The Photos column or row detail must show thumbnail/link.
+4. It should not show blank / dash if photo exists.
+5. Photos must remain visible after page refresh.
+
+Test:
+- Create material trip
+- Attach challan photo
+- Save/submit
+- Open Materials Received Report
+- Same row must show photo thumbnail/link
+
+C. Check attachment query mapping
+
+Please verify:
+1. Upload is saving correct moduleType.
+2. Upload is saving correct linkedRecordId.
+3. Report row uses the same actual record id, not a transformed/combined id.
+4. AttachmentGallery is pointed to the same moduleType + linkedRecordId.
+5. Query invalidation/refetch happens after upload/save.
+
+D. Do not touch unrelated items
+
+Do not touch:
+- Road DPR flow
+- Structure DPR flow
+- Field Home
+- Permissions
+- Dashboard
+- BOQ/programme logic
+- Guided DPR redesign
+- Camera/Gallery behaviour, since it is now working
+
+Stop after fixing attachment display and give:
+- files changed
+- exact fix done
+- test steps performed
+- known limitations

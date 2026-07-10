@@ -2250,6 +2250,13 @@ export class DatabaseStorage implements IStorage {
       // Mark original DPR as superseded so it no longer appears in listings
       await tx.update(dprs).set({ isSuperseded: true }).where(eq(dprs.id, originalId));
 
+      // Carry forward site/progress photo attachments so they remain visible
+      // against the new (current) version instead of being orphaned on the
+      // now-superseded original DPR row.
+      await tx.update(attachments)
+        .set({ linkedRecordId: newDpr.id })
+        .where(and(eq(attachments.moduleType, "dpr_progress"), eq(attachments.linkedRecordId, originalId)));
+
       return newDpr;
     });
   }
