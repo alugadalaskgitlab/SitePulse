@@ -95,7 +95,7 @@ export default function EquipmentHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href={`/plant/equipment-usage?returnTo=${HUB}`}
+              href={`/plant/equipment-usage?returnTo=${HUB}&context=equipment`}
               icon={Activity}
               title="Equipment Usage Log"
               description="Record daily equipment hours, fuel usage & operator details"
@@ -104,7 +104,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("plant_equipment")}
             />
             <HubActionTile
-              href={`/plant/maintenance?returnTo=${HUB}`}
+              href={`/plant/maintenance?returnTo=${HUB}&context=equipment`}
               icon={AlertTriangle}
               title="Maintenance & Breakdowns"
               description="Log breakdowns, track repairs & service history"
@@ -114,7 +114,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("plant_equipment")}
             />
             <HubActionTile
-              href={`/plant/generator-logs?returnTo=${HUB}`}
+              href={`/plant/generator-logs?returnTo=${HUB}&context=equipment`}
               icon={Zap}
               title="Generator / DG Logs"
               description="Record diesel generator run logs & fuel consumption"

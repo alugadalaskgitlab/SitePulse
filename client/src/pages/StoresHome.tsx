@@ -82,7 +82,7 @@ export default function StoresHome() {
                 Aggregates, cement, bitumen, and other bulk materials received at the plant.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <Link href={`/plant/material-receipts?returnTo=${BULK_RETURN}`}>
+                <Link href={`/plant/material-receipts?returnTo=${BULK_RETURN}&context=stores`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-receipts">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
@@ -97,7 +97,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href={`/plant/material-issues?returnTo=${BULK_RETURN}`}>
+                <Link href={`/plant/material-issues?returnTo=${BULK_RETURN}&context=stores`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-issues">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
@@ -112,7 +112,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href={`/plant/material-returns?returnTo=${BULK_RETURN}`}>
+                <Link href={`/plant/material-returns?returnTo=${BULK_RETURN}&context=stores`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-returns">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
@@ -127,7 +127,7 @@ export default function StoresHome() {
                   </Card>
                 </Link>
 
-                <Link href={`/plant/stock?returnTo=${BULK_RETURN}`}>
+                <Link href={`/plant/stock?returnTo=${BULK_RETURN}&context=stores`}>
                   <Card className="hover-elevate cursor-pointer h-full" data-testid="tile-bulk-stock">
                     <CardContent className="p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">

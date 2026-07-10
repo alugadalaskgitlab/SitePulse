@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Settings, LayoutDashboard, LogOut,
   Menu, ChevronRight, Calculator,
@@ -29,12 +29,14 @@ interface NavItem {
   icon: React.ElementType;
   label: string;
   matchPrefix?: string;
+  contextKey?: string;
 }
 
 export function HubShell({ children, title, subtitle, backHref, backLabel }: HubShellProps) {
   const { user, isAdmin, isManager, isFieldEngineer, logout, sectionVisible } = useAuth();
   const { rmcEnabled, companyName } = useFeatureFlags();
   const [location] = useLocation();
+  const searchString = useSearch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -125,10 +127,10 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" },
-    { href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant" },
-    ...(rmcEnabled ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc" }] : []),
-    { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment" },
-    { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores" },
+    { href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" },
+    ...(rmcEnabled ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
+    { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" },
+    { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" },
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
@@ -143,8 +145,20 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
     ...(isAdmin ? [{ href: "/admin/hub", icon: Settings, label: "Settings", matchPrefix: "/admin" }] : []),
   ];
 
+  // Some pages (e.g. shared plant/equipment usage & material pages) are reachable
+  // from more than one hub and live under a route prefix that doesn't match the
+  // hub they were opened from (e.g. /plant/equipment-usage opened from the
+  // Equipment & Fleet hub). Those links append a `?context=<contextKey>` param
+  // so the sidebar highlights the hub the user actually navigated from instead
+  // of guessing from the URL prefix alone.
+  const activeContext = new URLSearchParams(searchString).get("context");
+
   const isNavActive = (item: NavItem) => {
     if (item.href === "/") return isHome;
+    if (activeContext) {
+      const anyItemMatchesContext = mainNavItems.some((i) => i.contextKey === activeContext);
+      if (anyItemMatchesContext) return item.contextKey === activeContext;
+    }
     if (item.matchPrefix) return location.startsWith(item.matchPrefix);
     return location.startsWith(item.href);
   };

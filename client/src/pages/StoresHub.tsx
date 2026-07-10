@@ -167,7 +167,7 @@ export default function StoresHub() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <HubActionTile
-                href={`/plant/material-receipts?returnTo=${HUB}`}
+                href={`/plant/material-receipts?returnTo=${HUB}&context=stores`}
                 icon={ArrowDownToLine}
                 title="Material Receipts"
                 description="Record incoming bulk materials at the plant"
@@ -176,7 +176,7 @@ export default function StoresHub() {
                 enabled={canBulk}
               />
               <HubActionTile
-                href={`/plant/material-issues?returnTo=${HUB}`}
+                href={`/plant/material-issues?returnTo=${HUB}&context=stores`}
                 icon={ArrowUpFromLine}
                 title="Material Issues"
                 description="Issue bulk materials from plant stock to sites"
@@ -185,7 +185,7 @@ export default function StoresHub() {
                 enabled={canBulk}
               />
               <HubActionTile
-                href={`/plant/stock?returnTo=${HUB}`}
+                href={`/plant/stock?returnTo=${HUB}&context=stores`}
                 icon={Layers}
                 title="HMP Material Stock"
                 description="View HMP plant material-wise stock balances & transaction history"
@@ -194,7 +194,7 @@ export default function StoresHub() {
                 enabled={canBulk}
               />
               <HubActionTile
-                href={`/plant/stock-transfer?returnTo=${HUB}`}
+                href={`/plant/stock-transfer?returnTo=${HUB}&context=stores`}
                 icon={ArrowLeftRight}
                 title="Inter-Party Transfer"
                 description="Return borrowed material between contractor parties"

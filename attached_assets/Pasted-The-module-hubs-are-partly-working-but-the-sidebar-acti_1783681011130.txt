@@ -1,0 +1,141 @@
+The module hubs are partly working, but the sidebar active state/context is still wrong.
+
+Observed:
+1. When going into Equipment & Fleet Hub / Equipment Usage, the sidebar still highlights HMP Operations.
+2. When going into Stores & Inventory, the sidebar also shifts/highlights HMP Operations.
+3. This is confusing and must be fixed before any further work.
+
+Please fix only the sidebar active-state and module-context mapping.
+
+Do not touch:
+- Camera/Gallery attachments
+- DPR photos
+- Road DPR
+- Structure DPR
+- Field Home
+- Permissions
+- BOQ/programme logic
+- Dashboard
+- Any module UI redesign
+
+Required fix:
+
+A. Correct active sidebar mapping
+
+The sidebar highlighted module must come from the current route/module context, not from old plant/HMP route assumptions.
+
+Expected mapping:
+
+Site Operations:
+- /site
+- /site/hub
+- /site/dpr
+- /site/material-trips
+- /site/materials-received
+- /site/purchases
+- /site/stock
+
+HMP Operations:
+- /hmp
+- /hmp/hub
+- /plant/hub only if this is still the HMP hub route
+- HMP shift log
+- bitumen heating
+- plant production
+- plant dispatch
+- HMP material receipts
+
+RMC Operations:
+- /rmc
+- /rmc/hub
+- RMC production / receipts / dispatch / reports
+
+Equipment & Fleet:
+- /equipment
+- /equipment/hub
+- equipment usage
+- equipment maintenance
+- equipment breakdown
+- equipment fuel / odometer / hour meter
+- equipment reports
+
+Stores & Inventory:
+- /stores
+- /stores/hub
+- GRN
+- IRN
+- stock ledger
+- store receipts
+- store issues / returns
+
+Procurement & Billing:
+- /finance
+- /finance/hub
+- /procurement
+- purchase indents
+- purchase orders
+- vendor bills
+
+B. Stop treating shared plant/equipment pages as HMP by default
+
+If Equipment Usage uses old plant APIs or old PlantEquipmentUsage.tsx internally, that is okay.
+
+But frontend module context should still be Equipment & Fleet when opened from:
+- /equipment/hub
+- Equipment & Fleet sidebar
+- Equipment & Fleet routes
+
+Backend/API naming should not decide sidebar highlight.
+
+C. Add explicit module context if needed
+
+For shared pages, pass context through route/query/state.
+
+Example:
+- /equipment/usage?context=equipment
+  should highlight Equipment & Fleet
+
+- /hmp/equipment-usage?context=hmp
+  should highlight HMP Operations
+
+If using the same component, it must accept parentModule or moduleContext.
+
+D. Breadcrumb and Back/Home
+
+Also fix breadcrumb and hub navigation for these pages:
+
+Equipment Usage:
+- breadcrumb: Equipment & Fleet > Equipment Usage
+- sidebar: Equipment & Fleet
+- Home/Hub button: /equipment/hub
+
+Stores pages:
+- breadcrumb: Stores & Inventory > [page name]
+- sidebar: Stores & Inventory
+- Home/Hub button: /stores/hub
+
+HMP pages:
+- breadcrumb: HMP Operations > [page name]
+- sidebar: HMP Operations
+- Home/Hub button: /hmp/hub or correct HMP hub route
+
+E. Test exactly
+
+1. Open Equipment & Fleet Hub.
+2. Click Equipment Usage.
+3. Confirm sidebar highlights Equipment & Fleet, not HMP Operations.
+4. Confirm breadcrumb says Equipment & Fleet > Equipment Usage.
+5. Confirm Back/Home returns to Equipment & Fleet Hub.
+
+6. Open Stores & Inventory Hub.
+7. Open any stores page.
+8. Confirm sidebar highlights Stores & Inventory, not HMP Operations.
+
+9. Open HMP Operations Hub.
+10. Open HMP page.
+11. Confirm sidebar highlights HMP Operations.
+
+Stop after this fix and report:
+- file where sidebar active-state logic was fixed
+- routes tested
+- remaining shared-page context limitations if any
