@@ -638,10 +638,10 @@ export default function SiteReport() {
         </Card>
       )}
 
-      {/* Site Photos */}
+      {/* Activity Photos */}
       <Card>
         <CardHeader>
-          <CardTitle>Site Photos</CardTitle>
+          <CardTitle>Activity Photos</CardTitle>
         </CardHeader>
         <CardContent>
           <AttachmentGallery

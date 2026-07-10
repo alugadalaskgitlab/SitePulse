@@ -34,7 +34,9 @@ import {
   Clock,
   Pencil,
   BarChart2,
+  Camera,
 } from "lucide-react";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
 import type { EquipmentMasterType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,6 +231,18 @@ export default function SiteDashboard() {
       return true;
     });
   }, [dprsWithDetails, filters]);
+
+  const dprIdsForPhotoCounts = useMemo(() => dprs.map((d: any) => d.id).sort((a: number, b: number) => a - b), [dprs]);
+
+  const { data: photoCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/attachments/counts", "dpr_progress", dprIdsForPhotoCounts],
+    queryFn: async () => {
+      const res = await fetch(`/api/attachments/counts?moduleType=dpr_progress&ids=${dprIdsForPhotoCounts.join(",")}`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: dprIdsForPhotoCounts.length > 0,
+  });
 
   // Build unique site names from detailed DPRs (using base site names)
   const uniqueSites = useMemo(() => {
@@ -1208,6 +1222,12 @@ export default function SiteDashboard() {
                                     Pending Closing ({pendingClosingCount})
                                   </span>
                                 )}
+                                {!!photoCounts?.[dpr.id] && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium bg-primary/10 text-primary whitespace-nowrap" data-testid={`badge-photo-count-${dpr.id}`}>
+                                    <Camera className="w-3 h-3" />
+                                    {photoCounts[dpr.id]} photo{photoCounts[dpr.id] > 1 ? "s" : ""}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
                                 <span className="flex items-center gap-1">
@@ -1407,6 +1427,21 @@ export default function SiteDashboard() {
                                     </tbody>
                                   </table>
                                 </div>
+                              </div>
+                            )}
+
+                            {/* Activity Photos */}
+                            {!!photoCounts?.[dpr.id] && (
+                              <div>
+                                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                  <Camera className="w-4 h-4" /> Activity Photos
+                                </h4>
+                                <AttachmentGallery
+                                  moduleType="dpr_progress"
+                                  linkedRecordId={dpr.id}
+                                  allowDelete={false}
+                                  emptyText="No photos attached"
+                                />
                               </div>
                             )}
                           </div>

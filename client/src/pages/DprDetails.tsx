@@ -498,10 +498,10 @@ export default function DprDetails() {
         </CardContent>
       </Card>
 
-      {/* Site Photos */}
+      {/* Activity Photos */}
       <Card>
         <CardHeader>
-          <CardTitle>Site Photos</CardTitle>
+          <CardTitle>Activity Photos</CardTitle>
         </CardHeader>
         <CardContent>
           <AttachmentGallery

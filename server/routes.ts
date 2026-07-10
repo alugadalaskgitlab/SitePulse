@@ -782,6 +782,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/attachments/counts", async (req, res) => {
+    try {
+      const moduleType = String(req.query.moduleType || "");
+      const idsParam = String(req.query.ids || "");
+      const ids = idsParam.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n));
+      if (!moduleType || ids.length === 0) {
+        return res.status(400).json({ message: "moduleType and ids are required" });
+      }
+      const counts = await storage.getAttachmentCounts(moduleType, ids);
+      res.json(counts);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch attachment counts" });
+    }
+  });
+
   app.post("/api/attachments", async (req, res) => {
     try {
       if (!req.authUser) return res.status(401).json({ message: "not_authenticated" });

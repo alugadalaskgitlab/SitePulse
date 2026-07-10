@@ -9308,6 +9308,23 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  async getAttachmentCounts(moduleType: string, linkedRecordIds: number[]): Promise<Record<number, number>> {
+    if (linkedRecordIds.length === 0) return {};
+    const rows = await db
+      .select({
+        linkedRecordId: attachments.linkedRecordId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(attachments)
+      .where(and(eq(attachments.moduleType, moduleType), inArray(attachments.linkedRecordId, linkedRecordIds)))
+      .groupBy(attachments.linkedRecordId);
+    const result: Record<number, number> = {};
+    for (const row of rows) {
+      result[row.linkedRecordId] = row.count;
+    }
+    return result;
+  }
+
   async updatePersonnel(id: number, data: Partial<InsertPersonnel>): Promise<Personnel | undefined> {
     const updates = { ...data };
     if (updates.name) updates.name = updates.name.toUpperCase();
