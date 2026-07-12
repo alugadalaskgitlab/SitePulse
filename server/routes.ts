@@ -13365,9 +13365,10 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (!body.date) return res.status(400).json({ error: "date is required" });
       const row = await storage.createSiteRequirement({
         date: body.date,
-        siteId: body.siteId ?? null,
-        submittedBy: body.submittedBy ?? req.session?.userId ?? null,
-        submittedByName: body.submittedByName ?? req.session?.username ?? null,
+        siteId: body.siteId ? parseInt(String(body.siteId)) : null,
+        // Always use server-side session for identity — never trust client-supplied values
+        submittedBy: req.session?.userId ?? null,
+        submittedByName: req.session?.username ?? null,
         plannedWork: body.plannedWork ?? null,
         materials: body.materials ?? null,
         equipment: body.equipment ?? null,

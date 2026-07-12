@@ -67,6 +67,7 @@ import {
   editPermissionRequests,
   type EditPermissionRequest,
   type InsertEditPermissionRequest,
+  siteRequirements,
 } from "@shared/schema";
 import { getVolumeAtDepth, BITUMEN_DENSITY_KG_PER_LITER, LDO_DENSITY_KG_PER_LITER } from "@shared/bitumen-dip-chart";
 import { getLdoMaxDepth, getLdoVolumeAtDepth } from "@shared/ldo-dip-chart";
@@ -22035,61 +22036,57 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSiteRequirement(data: any): Promise<any> {
-    const [row] = await db.execute(sql.raw(`
-      INSERT INTO site_requirements
-        (date, site_id, submitted_by, submitted_by_name, planned_work, materials, equipment, labour, immediate_requirements, status)
-      VALUES
-        (${data.date ? `'${data.date}'` : 'NULL'},
-         ${data.siteId ?? 'NULL'},
-         ${data.submittedBy ?? 'NULL'},
-         ${data.submittedByName ? `'${String(data.submittedByName).replace(/'/g, "''")}'` : 'NULL'},
-         ${data.plannedWork ? `'${JSON.stringify(data.plannedWork).replace(/'/g, "''")}'::jsonb` : 'NULL'},
-         ${data.materials ? `'${JSON.stringify(data.materials).replace(/'/g, "''")}'::jsonb` : 'NULL'},
-         ${data.equipment ? `'${JSON.stringify(data.equipment).replace(/'/g, "''")}'::jsonb` : 'NULL'},
-         ${data.labour ? `'${JSON.stringify(data.labour).replace(/'/g, "''")}'::jsonb` : 'NULL'},
-         ${data.immediateRequirements ? `'${JSON.stringify(data.immediateRequirements).replace(/'/g, "''")}'::jsonb` : 'NULL'},
-         'submitted')
-      RETURNING *
-    `)) as any;
+    const [row] = await db.insert(siteRequirements).values({
+      date: String(data.date),
+      siteId: data.siteId ?? null,
+      submittedBy: data.submittedBy ?? null,
+      submittedByName: data.submittedByName ?? null,
+      plannedWork: data.plannedWork ?? null,
+      materials: data.materials ?? null,
+      equipment: data.equipment ?? null,
+      labour: data.labour ?? null,
+      immediateRequirements: data.immediateRequirements ?? null,
+      status: "submitted",
+    }).returning();
     return row;
   }
 
   async listSiteRequirements(filters: { dateFrom?: string; dateTo?: string; siteId?: number; submittedBy?: number; status?: string } = {}): Promise<any[]> {
-    let whereClause = "WHERE 1=1";
-    if (filters.dateFrom) whereClause += ` AND date >= '${filters.dateFrom}'`;
-    if (filters.dateTo)   whereClause += ` AND date <= '${filters.dateTo}'`;
-    if (filters.siteId)   whereClause += ` AND site_id = ${filters.siteId}`;
-    if (filters.submittedBy) whereClause += ` AND submitted_by = ${filters.submittedBy}`;
-    if (filters.status)   whereClause += ` AND status = '${filters.status}'`;
-    const result = await db.execute(sql.raw(`
-      SELECT * FROM site_requirements ${whereClause} ORDER BY created_at DESC
-    `)) as any;
-    return result.rows ?? result ?? [];
+    const VALID_STATUSES = ["submitted", "approved", "arranged", "sent_store", "sent_purchase", "sent_plant", "rejected", "clarification"];
+    const conditions = [];
+    if (filters.dateFrom) conditions.push(gte(siteRequirements.date, filters.dateFrom));
+    if (filters.dateTo)   conditions.push(lte(siteRequirements.date, filters.dateTo));
+    if (filters.siteId)   conditions.push(eq(siteRequirements.siteId, filters.siteId));
+    if (filters.submittedBy) conditions.push(eq(siteRequirements.submittedBy, filters.submittedBy));
+    if (filters.status && VALID_STATUSES.includes(filters.status)) {
+      conditions.push(eq(siteRequirements.status, filters.status));
+    }
+    return db.select()
+      .from(siteRequirements)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(siteRequirements.createdAt));
   }
 
   async getSiteRequirement(id: number): Promise<any | undefined> {
-    const result = await db.execute(sql.raw(`
-      SELECT * FROM site_requirements WHERE id = ${id}
-    `)) as any;
-    const rows = result.rows ?? result ?? [];
+    const rows = await db.select()
+      .from(siteRequirements)
+      .where(eq(siteRequirements.id, id));
     return rows[0];
   }
 
   async updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined> {
-    const reviewedAt = new Date().toISOString();
-    const pmRemarksVal = data.pmRemarks ? `'${String(data.pmRemarks).replace(/'/g, "''")}'` : 'NULL';
-    const reviewedByVal = data.reviewedBy ?? 'NULL';
-    const result = await db.execute(sql.raw(`
-      UPDATE site_requirements
-      SET status = '${data.status}',
-          pm_remarks = ${pmRemarksVal},
-          reviewed_by = ${reviewedByVal},
-          reviewed_at = '${reviewedAt}'
-      WHERE id = ${id}
-      RETURNING *
-    `)) as any;
-    const rows = result.rows ?? result ?? [];
-    return rows[0];
+    const VALID_STATUSES = ["submitted", "approved", "arranged", "sent_store", "sent_purchase", "sent_plant", "rejected", "clarification"];
+    if (!VALID_STATUSES.includes(data.status)) throw new Error(`Invalid status: ${data.status}`);
+    const [row] = await db.update(siteRequirements)
+      .set({
+        status: data.status,
+        pmRemarks: data.pmRemarks ?? null,
+        reviewedBy: data.reviewedBy ?? null,
+        reviewedAt: new Date(),
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
   }
 }
 
