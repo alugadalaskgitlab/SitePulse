@@ -1,201 +1,572 @@
 import { useState } from "react";
 import {
   ClipboardList, Camera, Package, ShoppingCart, ChevronRight,
-  CheckCircle2, Clock, AlertCircle, HardHat, Droplets, Truck,
-  Wrench, Plus, Bell, User, Home, FileText, BarChart2, Menu,
-  MapPin, Wifi, Battery, Signal, ArrowRight, Image, Thermometer
+  CheckCircle2, Circle, AlertTriangle, AlertCircle,
+  HardHat, Truck, Wrench, Plus, Bell, User, Home,
+  FileText, BarChart2, MapPin, ArrowRight, Image,
+  TrendingUp, TrendingDown, Minus, Clock, RefreshCw,
+  Users, Fuel, MessageSquare, BookOpen, ShoppingBag,
+  ChevronDown, ChevronUp, Activity, Target, Layers
 } from "lucide-react";
 
+// ─── Sample data ──────────────────────────────────────────────────────────────
+
+const USER = { name: "Raju", role: "Site Supervisor", initials: "R" };
 const SITE = "THAKADPALLY - SIRUR";
-const ENGINEER = "Raju";
 const TODAY = "Fri, 11 Jul 2026";
+const HOUR = 9;
 
-const recentDPRs = [
-  { date: "Jul 10, Thu", site: "THAKADPALLY - SIRUR", status: "Submitted", activities: 3, equipment: 4 },
-  { date: "Jul 9, Wed",  site: "THAKADPALLY - SIRUR", status: "Submitted", activities: 2, equipment: 3 },
-  { date: "Jul 8, Tue",  site: "THAKADPALLY - SIRUR", status: "Submitted", activities: 4, equipment: 5 },
-];
-
-const todayStats = [
-  { label: "Activities", value: "3",  icon: ClipboardList, color: "text-orange-400", bg: "bg-orange-400/10" },
-  { label: "Equipment",  value: "4",  icon: Wrench,        color: "text-blue-400",   bg: "bg-blue-400/10" },
-  { label: "Mat. Trips", value: "2",  icon: Truck,         color: "text-green-400",  bg: "bg-green-400/10" },
-  { label: "Photos",     value: "5",  icon: Image,         color: "text-purple-400", bg: "bg-purple-400/10" },
-];
-
-const quickActions = [
-  { label: "Add Photo",      icon: Camera,      color: "bg-orange-500" },
-  { label: "Material Trip",  icon: Truck,       color: "bg-blue-600"   },
-  { label: "Purchase",       icon: ShoppingCart, color: "bg-green-600" },
-  { label: "Water Tanker",   icon: Droplets,    color: "bg-cyan-600"   },
-];
-
-const activities = [
-  { name: "WMM Laying", chainage: "1+200 to 1+450", qty: "250 m", unit: "RM" },
-  { name: "GSB Compaction", chainage: "0+800 to 1+000", qty: "200 m", unit: "RM" },
-  { name: "Drain Excavation", chainage: "1+450 to 1+600", qty: "150 m", unit: "RM" },
-];
-
-function StatusBadge({ status }: { status: string }) {
-  if (status === "Submitted")
-    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500/15 text-green-400 border border-green-500/20">✓ Submitted</span>;
-  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20">◐ Draft</span>;
+function greeting() {
+  if (HOUR < 12) return "Good morning";
+  if (HOUR < 17) return "Good afternoon";
+  return "Good evening";
 }
 
-export function SiteTeam() {
-  const [activeTab, setActiveTab] = useState("home");
-  const [dprStarted, setDprStarted] = useState(false);
+type PlanStatus = "Behind" | "On Track" | "Ahead" | "Not Started";
+
+interface PlanItem {
+  id: string;
+  name: string;
+  location: string;
+  unit: string;
+  plannedToDate: number;
+  actualToDate: number;
+  todayTarget: number;
+  loggedToday: number;
+  status: PlanStatus;
+  type: "road" | "structure";
+  note?: string;
+}
+
+const planItems: PlanItem[] = [
+  {
+    id: "wmm-r1",
+    name: "WMM Laying",
+    location: "Reach 1 · Ch. 0+000–2+500",
+    unit: "CUM",
+    plannedToDate: 2500,
+    actualToDate: 1750,
+    todayTarget: 300,
+    loggedToday: 0,
+    status: "Behind",
+    type: "road",
+  },
+  {
+    id: "gsb-r1",
+    name: "GSB Compaction",
+    location: "Reach 1 · Ch. 0+000–2+500",
+    unit: "CUM",
+    plannedToDate: 2500,
+    actualToDate: 2540,
+    todayTarget: 0,
+    loggedToday: 0,
+    status: "Ahead",
+    type: "road",
+  },
+  {
+    id: "drain-r1",
+    name: "Drain Excavation",
+    location: "Reach 1 · Ch. 1+200–2+000",
+    unit: "RM",
+    plannedToDate: 800,
+    actualToDate: 620,
+    todayTarget: 80,
+    loggedToday: 40,
+    status: "Behind",
+    type: "road",
+  },
+  {
+    id: "pc02",
+    name: "PC-02 Pipe Culvert",
+    location: "Ch. 1+450",
+    unit: "Stage",
+    plannedToDate: 0,
+    actualToDate: 0,
+    todayTarget: 0,
+    loggedToday: 0,
+    status: "Not Started",
+    type: "structure",
+    note: "Planned stage: Bedding + Pipe Laying. Actual: Excavation completed. Bedding and pipe laying pending.",
+  },
+  {
+    id: "bc-r2",
+    name: "BC Wearing Course",
+    location: "Reach 2 · Ch. 2+500–4+200",
+    unit: "MT",
+    plannedToDate: 0,
+    actualToDate: 0,
+    todayTarget: 200,
+    loggedToday: 0,
+    status: "Not Started",
+    type: "road",
+    note: "Scheduled to start today.",
+  },
+];
+
+type CheckState = "done" | "partial" | "pending";
+interface CheckItem { id: string; label: string; state: CheckState; sublabel?: string }
+
+const startChecklist: CheckItem[] = [
+  { id: "dpr-open",   label: "Open / create today's DPR draft", state: "done",    sublabel: "Draft opened at 07:15" },
+  { id: "labour",     label: "Confirm labour count",              state: "partial", sublabel: "14 confirmed, 3 not yet" },
+  { id: "equip-open", label: "Record equipment opening meter",    state: "pending", sublabel: "4 equipment pending" },
+  { id: "equip-avail",label: "Confirm key equipment availability", state: "done",   sublabel: "All 4 units confirmed" },
+  { id: "material",   label: "Check material availability",        state: "pending", sublabel: "WMM — check stock" },
+  { id: "photo",      label: "Add morning site photo",             state: "pending", sublabel: "No photo yet" },
+];
+
+const closingChecklist: CheckItem[] = [
+  { id: "close-meter", label: "Equipment closing meter entry",     state: "pending", sublabel: "4 equipment pending" },
+  { id: "labour-final",label: "Final labour count confirmed",      state: "partial", sublabel: "3 workers pending" },
+  { id: "challan",     label: "Material challan photo attached",   state: "pending", sublabel: "WMM challan missing" },
+  { id: "site-photos", label: "Site activity photos added",         state: "done",    sublabel: "5 photos uploaded" },
+  { id: "qty-entry",  label: "All activity quantities entered",    state: "partial", sublabel: "2 of 4 activities done" },
+  { id: "submit",      label: "DPR submitted",                     state: "pending", sublabel: "Not yet submitted" },
+];
+
+type DprState = "not-started" | "draft" | "pending-submit" | "submitted";
+
+const quickActions = [
+  { label: "Record Progress",  icon: Activity,      color: "bg-orange-500",  show: true },
+  { label: "Add Photo",        icon: Camera,        color: "bg-slate-600",   show: true },
+  { label: "Material Trip",    icon: Truck,         color: "bg-blue-600",    show: true },
+  { label: "Equipment Log",    icon: Wrench,        color: "bg-amber-600",   show: true },
+  { label: "Labour Log",       icon: Users,         color: "bg-teal-600",    show: true },
+  { label: "Site Purchase",    icon: ShoppingCart,  color: "bg-green-600",   show: true },
+  { label: "Raise PI",         icon: ShoppingBag,   color: "bg-purple-600",  show: true },
+  { label: "Raise IRN",        icon: BookOpen,      color: "bg-indigo-600",  show: true },
+  { label: "Site Remark",      icon: MessageSquare, color: "bg-rose-500",    show: true },
+];
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: PlanStatus }) {
+  const map: Record<PlanStatus, { bg: string; text: string; icon: React.ReactNode }> = {
+    "Behind":      { bg: "bg-red-50 border-red-200",    text: "text-red-600",    icon: <TrendingDown className="w-3 h-3" /> },
+    "On Track":    { bg: "bg-green-50 border-green-200", text: "text-green-700",  icon: <CheckCircle2 className="w-3 h-3" /> },
+    "Ahead":       { bg: "bg-blue-50 border-blue-200",   text: "text-blue-700",   icon: <TrendingUp className="w-3 h-3" /> },
+    "Not Started": { bg: "bg-gray-50 border-gray-200",   text: "text-gray-500",   icon: <Circle className="w-3 h-3" /> },
+  };
+  const s = map[status];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${s.bg} ${s.text}`}>
+      {s.icon}{status}
+    </span>
+  );
+}
+
+function CheckRow({ item, onToggle }: { item: CheckItem; onToggle: () => void }) {
+  const icons = {
+    done:    <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />,
+    partial: <AlertCircle  className="w-5 h-5 text-amber-500 flex-shrink-0" />,
+    pending: <Circle       className="w-5 h-5 text-gray-300   flex-shrink-0" />,
+  };
+  return (
+    <button onClick={onToggle} className="flex items-start gap-3 w-full text-left py-2.5 hover:bg-gray-50 rounded-lg px-1 transition-colors">
+      {icons[item.state]}
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium leading-tight ${item.state === "done" ? "text-gray-400 line-through" : "text-gray-800"}`}>{item.label}</p>
+        {item.sublabel && <p className={`text-xs mt-0.5 ${item.state === "done" ? "text-gray-300" : item.state === "partial" ? "text-amber-600" : "text-gray-400"}`}>{item.sublabel}</p>}
+      </div>
+    </button>
+  );
+}
+
+function ProgressBar({ value, max, color = "bg-orange-500" }: { value: number; max: number; color?: string }) {
+  const pct = max === 0 ? 0 : Math.min(100, Math.round((value / max) * 100));
+  return (
+    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+      <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function PlanCard({ item, expanded, onToggle }: { item: PlanItem; expanded: boolean; onToggle: () => void }) {
+  const backlog = item.plannedToDate - item.actualToDate;
+  const pct = item.plannedToDate === 0 ? 0 : Math.round((item.actualToDate / item.plannedToDate) * 100);
+  const barColor = item.status === "Behind" ? "bg-red-400" : item.status === "Ahead" ? "bg-blue-400" : item.status === "On Track" ? "bg-green-400" : "bg-gray-200";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-['Inter'] flex flex-col max-w-[430px] mx-auto relative overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
-
-      {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-950 text-xs text-slate-400">
-        <span className="font-semibold">9:41</span>
-        <div className="flex items-center gap-1.5">
-          <Signal className="w-3 h-3" /><Wifi className="w-3 h-3" /><Battery className="w-3.5 h-3.5" />
+    <div className={`bg-white rounded-xl border shadow-sm overflow-hidden ${item.status === "Behind" ? "border-red-100" : item.status === "Not Started" ? "border-gray-100" : "border-gray-100"}`}>
+      {/* Card header — always visible */}
+      <button onClick={onToggle} className="w-full text-left px-4 py-3">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 leading-tight">{item.name}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{item.location}</p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusBadge status={item.status} />
+            {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          </div>
         </div>
-      </div>
 
-      {/* Top header */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 border-b border-slate-700/50 px-4 pt-2 pb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center font-bold text-sm">R</div>
-            <div>
-              <p className="text-xs text-slate-400">Good morning,</p>
-              <p className="text-sm font-bold text-white leading-tight">{ENGINEER} <span className="text-orange-400">· Supervisor</span></p>
+        {item.type === "road" && item.plannedToDate > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">Actual: <span className="font-semibold text-gray-800">{item.actualToDate.toLocaleString()} {item.unit}</span></span>
+              <span className="text-gray-400">of {item.plannedToDate.toLocaleString()} planned</span>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="relative w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center">
-              <Bell className="w-4 h-4 text-slate-300" />
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-orange-500 rounded-full text-[10px] font-bold flex items-center justify-center">2</span>
-            </button>
-            <button className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center">
-              <Menu className="w-4 h-4 text-slate-300" />
-            </button>
-          </div>
-        </div>
-
-        {/* Site chip */}
-        <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-4">
-          <MapPin className="w-3 h-3 text-orange-400" />
-          <span className="font-medium text-slate-300">{SITE}</span>
-          <span className="mx-1 text-slate-600">·</span>
-          <span>{TODAY}</span>
-        </div>
-
-        {/* Primary DPR CTA */}
-        {!dprStarted ? (
-          <button
-            onClick={() => setDprStarted(true)}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-orange-500/30 active:scale-95 transition-transform"
-          >
-            <ClipboardList className="w-6 h-6" />
-            Start Today's DPR
-            <ArrowRight className="w-5 h-5" />
-          </button>
-        ) : (
-          <div className="space-y-2">
-            <button className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-orange-500/30">
-              <ClipboardList className="w-6 h-6" />
-              Continue DPR — 40% done
-            </button>
-            <button className="w-full py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium flex items-center justify-center gap-2">
-              Preview &amp; Submit
-            </button>
+            <ProgressBar value={item.actualToDate} max={item.plannedToDate} color={barColor} />
           </div>
         )}
+
+        {item.type === "structure" && item.note && (
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-1">{item.note}</p>
+        )}
+
+        {item.type === "road" && item.plannedToDate === 0 && item.note && (
+          <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-2 py-1.5 mt-1">{item.note}</p>
+        )}
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && item.type === "road" && item.plannedToDate > 0 && (
+        <div className="border-t border-gray-50 bg-gray-50/50 px-4 py-3 space-y-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <p className="text-gray-400 uppercase tracking-wide text-[10px]">Planned to date</p>
+              <p className="font-bold text-gray-800 text-sm">{item.plannedToDate.toLocaleString()} <span className="font-normal text-gray-400">{item.unit}</span></p>
+            </div>
+            <div>
+              <p className="text-gray-400 uppercase tracking-wide text-[10px]">Actual to date</p>
+              <p className="font-bold text-gray-800 text-sm">{item.actualToDate.toLocaleString()} <span className="font-normal text-gray-400">{item.unit}</span></p>
+            </div>
+            <div>
+              <p className="text-gray-400 uppercase tracking-wide text-[10px]">{backlog >= 0 ? "Backlog" : "Ahead by"}</p>
+              <p className={`font-bold text-sm ${backlog > 0 ? "text-red-500" : "text-blue-500"}`}>{Math.abs(backlog).toLocaleString()} <span className="font-normal text-gray-400">{item.unit}</span></p>
+            </div>
+            <div>
+              <p className="text-gray-400 uppercase tracking-wide text-[10px]">Achievement</p>
+              <p className="font-bold text-gray-800 text-sm">{pct}%</p>
+            </div>
+            {item.todayTarget > 0 && (
+              <div>
+                <p className="text-gray-400 uppercase tracking-wide text-[10px]">Today's target</p>
+                <p className="font-bold text-orange-600 text-sm">{item.todayTarget.toLocaleString()} <span className="font-normal text-gray-400">{item.unit}</span></p>
+              </div>
+            )}
+            {item.todayTarget > 0 && (
+              <div>
+                <p className="text-gray-400 uppercase tracking-wide text-[10px]">Logged today</p>
+                <p className={`font-bold text-sm ${item.loggedToday > 0 ? "text-green-600" : "text-gray-400"}`}>{item.loggedToday > 0 ? item.loggedToday.toLocaleString() : "—"}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium">
+              <Activity className="w-3 h-3" /> Record Progress
+            </button>
+            <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium">
+              <Camera className="w-3 h-3" /> Photo
+            </button>
+            <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium">
+              <Wrench className="w-3 h-3" /> Equipment
+            </button>
+            <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium">
+              <Users className="w-3 h-3" /> Labour
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function SiteTeam() {
+  const [dprState, setDprState] = useState<DprState>("draft");
+  const [startChecks, setStartChecks] = useState<CheckItem[]>(startChecklist);
+  const [closeChecks, setCloseChecks] = useState<CheckItem[]>(closingChecklist);
+  const [expandedPlan, setExpandedPlan] = useState<string | null>("wmm-r1");
+  const [showAllActions, setShowAllActions] = useState(false);
+  const [activeTab, setActiveTab] = useState("home");
+
+  const toggleStart = (id: string) => setStartChecks(cs => cs.map(c => c.id === id
+    ? { ...c, state: c.state === "done" ? "pending" : "done" }
+    : c));
+
+  const toggleClose = (id: string) => setCloseChecks(cs => cs.map(c => c.id === id
+    ? { ...c, state: c.state === "done" ? "pending" : "done" }
+    : c));
+
+  const startDone  = startChecks.filter(c => c.state === "done").length;
+  const closeDone  = closeChecks.filter(c => c.state === "done").length;
+  const closePending = closeChecks.filter(c => c.state !== "done").length;
+
+  const cta = {
+    "not-started":   { label: "Open Today's Work Control",  sub: "Create today's DPR & start tracking",   color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
+    "draft":         { label: "Continue Today's DPR Draft", sub: "Draft opened · 40% complete",            color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
+    "pending-submit":{ label: "Complete Pending DPR",       sub: "All entries done — ready to submit",     color: "bg-green-500 hover:bg-green-600 shadow-green-200"    },
+    "submitted":     { label: "View Submitted DPR",         sub: "Submitted at 18:32 · read-only",         color: "bg-gray-400 hover:bg-gray-500 shadow-gray-200"       },
+  }[dprState];
+
+  const behindCount = planItems.filter(p => p.status === "Behind").length;
+  const visibleActions = showAllActions ? quickActions : quickActions.slice(0, 6);
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-40">
+        <div className="px-4 pt-3 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center font-bold text-white text-sm flex-shrink-0">
+                {USER.initials}
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 leading-tight">{greeting()}, <span className="font-semibold text-gray-700">{USER.name}</span> · {USER.role}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <MapPin className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                  <span className="text-xs font-semibold text-gray-800 leading-tight">{SITE}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 hidden sm:block">{TODAY}</span>
+              <button className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+              <button className="relative w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                <Bell className="w-3.5 h-3.5 text-gray-500" />
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-orange-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">2</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto pb-20 space-y-4 px-4 pt-4">
+      {/* ── Scrollable content ── */}
+      <div className="pb-24 px-4 pt-4 space-y-4 max-w-2xl mx-auto">
 
-        {/* Today's stats */}
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Today's Progress</p>
-          <div className="grid grid-cols-4 gap-2">
-            {todayStats.map((s) => (
-              <div key={s.label} className={`rounded-xl p-2.5 flex flex-col items-center gap-1.5 ${s.bg} border border-white/5`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-                <span className={`text-xl font-black ${s.color}`}>{s.value}</span>
-                <span className="text-[10px] text-slate-400 text-center leading-tight">{s.label}</span>
+        {/* ── 1. Plan vs Progress Summary ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-orange-500" />
+                  Plan vs Progress
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">Cumulative till today</p>
               </div>
+              {behindCount > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 border border-red-100">
+                  <AlertTriangle className="w-3 h-3 text-red-500" />
+                  <span className="text-xs font-semibold text-red-600">{behindCount} behind</span>
+                </div>
+              )}
+            </div>
+
+            {/* Mini summary row */}
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              {[
+                { label: "On Track", count: planItems.filter(p=>p.status==="On Track").length, color: "text-green-600 bg-green-50" },
+                { label: "Behind",   count: planItems.filter(p=>p.status==="Behind").length,   color: "text-red-600 bg-red-50"   },
+                { label: "Ahead",    count: planItems.filter(p=>p.status==="Ahead").length,    color: "text-blue-600 bg-blue-50" },
+              ].map(s => (
+                <div key={s.label} className={`rounded-lg px-2 py-1.5 text-center ${s.color}`}>
+                  <p className="text-lg font-black leading-none">{s.count}</p>
+                  <p className="text-[10px] font-medium mt-0.5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-4 py-3 space-y-2">
+            {planItems.map(item => (
+              <PlanCard
+                key={item.id}
+                item={item}
+                expanded={expandedPlan === item.id}
+                onToggle={() => setExpandedPlan(expandedPlan === item.id ? null : item.id)}
+              />
             ))}
           </div>
         </div>
 
-        {/* Quick actions */}
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Quick Add</p>
-          <div className="grid grid-cols-4 gap-2">
-            {quickActions.map((a) => (
-              <button key={a.label} className="flex flex-col items-center gap-2 p-2">
-                <div className={`w-12 h-12 rounded-2xl ${a.color} flex items-center justify-center shadow-lg`}>
-                  <a.icon className="w-6 h-6 text-white" />
+        {/* ── 2. Main CTA ── */}
+        <div className="space-y-2">
+          <button
+            onClick={() => {
+              if (dprState === "not-started") setDprState("draft");
+              else if (dprState === "draft") setDprState("pending-submit");
+              else if (dprState === "pending-submit") setDprState("submitted");
+              else setDprState("not-started");
+            }}
+            className={`w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-3 shadow-lg transition-all active:scale-[0.98] ${cta.color}`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            <span>{cta.label}</span>
+            <ArrowRight className="w-4 h-4 ml-auto" />
+          </button>
+          <p className="text-xs text-center text-gray-400">{cta.sub}</p>
+        </div>
+
+        {/* ── 3. Start-of-day checklist ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+          <div className="px-4 pt-3 pb-2 border-b border-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-orange-500" />
+              Start-of-Day Checklist
+            </h2>
+            <span className="text-xs font-semibold text-gray-500">{startDone}/{startChecks.length}</span>
+          </div>
+          <div className="px-4 py-1">
+            <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2 mb-1">
+              <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${(startDone/startChecks.length)*100}%` }} />
+            </div>
+            <div className="divide-y divide-gray-50">
+              {startChecks.map(c => (
+                <CheckRow key={c.id} item={c} onToggle={() => toggleStart(c.id)} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── 4. Quick Actions ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
+          <h2 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h2>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {visibleActions.map(a => (
+              <button key={a.label} className="flex flex-col items-center gap-2 p-2 rounded-xl hover:bg-gray-50 transition-colors">
+                <div className={`w-11 h-11 rounded-2xl ${a.color} flex items-center justify-center shadow`}>
+                  <a.icon className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-[10px] text-slate-400 text-center leading-tight">{a.label}</span>
+                <span className="text-[10px] text-gray-500 text-center leading-tight font-medium">{a.label}</span>
               </button>
             ))}
           </div>
+          {quickActions.length > 6 && (
+            <button
+              onClick={() => setShowAllActions(!showAllActions)}
+              className="w-full mt-2 py-1.5 rounded-lg text-xs text-orange-500 font-semibold flex items-center justify-center gap-1"
+            >
+              {showAllActions ? <><ChevronUp className="w-3 h-3" /> Show Less</> : <><ChevronDown className="w-3 h-3" /> +{quickActions.length - 6} more</>}
+            </button>
+          )}
         </div>
 
-        {/* Today's activities */}
+        {/* ── 5. Today's Activity / Structure Cards ── */}
         <div>
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Activities</p>
-            <button className="text-orange-400 text-xs font-semibold flex items-center gap-1">Add <Plus className="w-3 h-3" /></button>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-bold text-gray-900">Today's Work Focus</h2>
+            <button className="text-xs text-orange-500 font-semibold flex items-center gap-0.5">
+              <Plus className="w-3 h-3" /> Add Activity
+            </button>
           </div>
+
           <div className="space-y-2">
-            {activities.map((a, i) => (
-              <div key={i} className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
-                  <HardHat className="w-4 h-4 text-orange-400" />
+            {planItems.filter(p => p.status === "Behind" || p.todayTarget > 0).map(item => {
+              const backlog = item.plannedToDate - item.actualToDate;
+              return (
+                <div key={`focus-${item.id}`} className={`bg-white rounded-xl border shadow-sm p-4 ${item.status === "Behind" ? "border-red-100" : "border-orange-100"}`}>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className={`w-2 h-2 rounded-full ${item.status === "Behind" ? "bg-red-400" : "bg-orange-400"} flex-shrink-0`} />
+                        <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                      </div>
+                      <p className="text-xs text-gray-400 ml-3.5">{item.location}</p>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </div>
+
+                  {item.type === "road" && item.plannedToDate > 0 && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs mb-3">
+                      {[
+                        { label: "Planned",    val: `${item.plannedToDate.toLocaleString()} ${item.unit}`,   color: "text-gray-700" },
+                        { label: "Actual",     val: `${item.actualToDate.toLocaleString()} ${item.unit}`,    color: "text-gray-700" },
+                        { label: backlog >= 0 ? "Backlog" : "Ahead", val: `${Math.abs(backlog).toLocaleString()} ${item.unit}`, color: backlog > 0 ? "text-red-600 font-bold" : "text-blue-600 font-bold" },
+                        { label: "Today logged", val: item.loggedToday > 0 ? `${item.loggedToday} ${item.unit}` : "—", color: item.loggedToday > 0 ? "text-green-600 font-bold" : "text-gray-400" },
+                      ].map(f => (
+                        <div key={f.label}>
+                          <p className="text-gray-400 text-[10px]">{f.label}</p>
+                          <p className={`font-semibold ${f.color}`}>{f.val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {item.todayTarget > 0 && (
+                    <div className="mb-3 bg-orange-50 rounded-lg px-3 py-2 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] text-orange-400 uppercase tracking-wide">Today's Target</p>
+                        <p className="text-sm font-bold text-orange-700">{item.todayTarget.toLocaleString()} {item.unit}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-orange-400 uppercase tracking-wide">Logged</p>
+                        <p className={`text-sm font-bold ${item.loggedToday > 0 ? "text-green-600" : "text-gray-400"}`}>{item.loggedToday > 0 ? item.loggedToday : "0"}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 flex-wrap">
+                    <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold shadow-sm">
+                      <Activity className="w-3 h-3" /> Record
+                    </button>
+                    <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium">
+                      <Camera className="w-3 h-3" /> Photo
+                    </button>
+                    <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium">
+                      <Wrench className="w-3 h-3" /> Equip.
+                    </button>
+                    <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium">
+                      <Users className="w-3 h-3" /> Labour
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{a.name}</p>
-                  <p className="text-xs text-slate-400 truncate">Ch. {a.chainage} · {a.qty} {a.unit}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
-              </div>
-            ))}
-            <button className="w-full py-3 rounded-xl border border-dashed border-slate-700 text-slate-500 text-sm flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> Add Activity
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── 6. Pending Before Submit ── */}
+        <div className={`bg-white rounded-xl border shadow-sm ${closePending > 0 ? "border-amber-200" : "border-green-100"}`}>
+          <div className="px-4 pt-3 pb-2 border-b border-gray-50 flex items-center justify-between">
+            <h2 className={`text-sm font-bold flex items-center gap-2 ${closePending > 0 ? "text-gray-900" : "text-green-700"}`}>
+              {closePending > 0
+                ? <><AlertTriangle className="w-4 h-4 text-amber-500" /> Pending Before Submit</>
+                : <><CheckCircle2 className="w-4 h-4 text-green-500" /> Ready to Submit</>
+              }
+            </h2>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${closePending > 0 ? "bg-amber-50 text-amber-600" : "bg-green-50 text-green-600"}`}>
+              {closeDone}/{closeChecks.length} done
+            </span>
+          </div>
+          <div className="px-4 py-1">
+            <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2 mb-1">
+              <div className={`h-full rounded-full transition-all ${closeDone === closeChecks.length ? "bg-green-400" : "bg-amber-400"}`}
+                style={{ width: `${(closeDone/closeChecks.length)*100}%` }} />
+            </div>
+            <div className="divide-y divide-gray-50">
+              {closeChecks.map(c => (
+                <CheckRow key={c.id} item={c} onToggle={() => toggleClose(c.id)} />
+              ))}
+            </div>
+          </div>
+          <div className="px-4 pb-3 pt-1">
+            <button
+              onClick={() => setDprState("pending-submit")}
+              disabled={closePending > 0}
+              className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${closePending === 0 ? "bg-green-500 text-white shadow-md shadow-green-200" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}
+            >
+              {closePending > 0 ? `${closePending} items pending before submit` : "Submit DPR Now"}
             </button>
           </div>
         </div>
 
-        {/* Recent DPRs */}
-        <div>
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent Reports</p>
-            <button className="text-orange-400 text-xs font-semibold">View All</button>
-          </div>
-          <div className="space-y-2">
-            {recentDPRs.map((d, i) => (
-              <div key={i} className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-4 h-4 text-slate-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{d.date}</p>
-                  <p className="text-xs text-slate-400">{d.activities} activities · {d.equipment} equip.</p>
-                </div>
-                <StatusBadge status={d.status} />
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Bottom nav */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-slate-900 border-t border-slate-700/50 flex items-center justify-around px-2 py-2 z-50">
+      {/* ── Bottom nav ── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg flex items-center justify-around px-2 py-2 z-50 max-w-2xl mx-auto">
         {[
-          { label: "Home",    icon: Home,        tab: "home"    },
+          { label: "Work",    icon: Home,        tab: "home"    },
           { label: "Reports", icon: FileText,     tab: "reports" },
-          { label: "New DPR", icon: Plus,         tab: "new",    primary: true },
-          { label: "Stats",   icon: BarChart2,    tab: "stats"   },
+          { label: "",        icon: Plus,         tab: "new",    primary: true },
+          { label: "Progress",icon: BarChart2,    tab: "stats"   },
           { label: "Profile", icon: User,         tab: "profile" },
         ].map((n) => (
           <button
@@ -204,13 +575,15 @@ export function SiteTeam() {
             className={`flex flex-col items-center gap-0.5 px-3 py-1 ${n.primary ? "" : ""}`}
           >
             {n.primary ? (
-              <div className="w-12 h-12 -mt-5 rounded-full bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/40">
+              <div className="w-12 h-12 -mt-6 rounded-full bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-200">
                 <n.icon className="w-6 h-6 text-white" />
               </div>
             ) : (
-              <n.icon className={`w-5 h-5 ${activeTab === n.tab ? "text-orange-400" : "text-slate-500"}`} />
+              <>
+                <n.icon className={`w-5 h-5 ${activeTab === n.tab ? "text-orange-500" : "text-gray-400"}`} />
+                <span className={`text-[10px] ${activeTab === n.tab ? "text-orange-500 font-semibold" : "text-gray-400"}`}>{n.label}</span>
+              </>
             )}
-            {!n.primary && <span className={`text-[10px] ${activeTab === n.tab ? "text-orange-400 font-semibold" : "text-slate-500"}`}>{n.label}</span>}
           </button>
         ))}
       </div>
