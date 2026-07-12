@@ -102,25 +102,25 @@ type CheckState = "done" | "partial" | "pending";
 interface CheckItem { id: string; label: string; state: CheckState; sub?: string }
 
 const pendingItems: CheckItem[] = [
-  { id: "c1", label: "Equipment closing meter entry",   state: "pending",  sub: "4 equipment pending" },
-  { id: "c2", label: "Final labour count confirmed",    state: "partial",  sub: "3 workers not confirmed" },
-  { id: "c3", label: "Material challan photo attached", state: "pending",  sub: "WMM challan missing" },
+  { id: "c1", label: "Equipment closing meter pending", state: "pending",  sub: "4 equipment not recorded" },
+  { id: "c2", label: "Final labour count pending",      state: "partial",  sub: "3 workers not confirmed" },
+  { id: "c3", label: "Material challan photo pending",  state: "pending",  sub: "WMM challan photo missing" },
   { id: "c4", label: "Activity photos uploaded",        state: "done",     sub: "5 photos added" },
-  { id: "c5", label: "Activity quantities entered",     state: "partial",  sub: "2 of 4 done" },
-  { id: "c6", label: "DPR submitted",                   state: "pending",  sub: "Not yet submitted" },
+  { id: "c5", label: "Activity quantities entered",     state: "partial",  sub: "2 of 4 activities done" },
+  { id: "c6", label: "DPR not submitted",               state: "pending",  sub: "Submit once all items are done" },
 ];
 
 // ─── Quick actions ────────────────────────────────────────────────────────────
 
 const quickActions = [
-  { label: "Add Photo",     icon: Camera,        color: "bg-slate-600"   },
-  { label: "Material Trip", icon: Truck,         color: "bg-blue-600"    },
-  { label: "Equipment Log", icon: Wrench,        color: "bg-amber-600"   },
-  { label: "Labour Log",    icon: Users,         color: "bg-teal-600"    },
-  { label: "Site Purchase", icon: ShoppingCart,  color: "bg-green-600"   },
-  { label: "Raise PI",      icon: ShoppingBag,   color: "bg-purple-600"  },
-  { label: "Raise IRN",     icon: BookOpen,      color: "bg-indigo-600"  },
-  { label: "Site Remark",   icon: MessageSquare, color: "bg-rose-500"    },
+  { label: "Activity Photo", icon: Camera,        color: "bg-slate-600"   },
+  { label: "Material Trip",  icon: Truck,         color: "bg-blue-600"    },
+  { label: "Equipment Log",  icon: Wrench,        color: "bg-amber-600"   },
+  { label: "Labour Log",     icon: Users,         color: "bg-teal-600"    },
+  { label: "Site Purchase",  icon: ShoppingCart,  color: "bg-green-600"   },
+  { label: "Raise PI",       icon: ShoppingBag,   color: "bg-purple-600"  },
+  { label: "Raise IRN",      icon: BookOpen,      color: "bg-indigo-600"  },
+  { label: "Site Remark",    icon: MessageSquare, color: "bg-rose-500"    },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -381,10 +381,17 @@ export function SiteTeam() {
             <ArrowRight className="w-5 h-5 ml-auto" />
           </button>
 
-          {/* Status sub-text */}
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cta.dot}`} />
-            <p className="text-xs text-gray-500">{cta.status}</p>
+          {/* Status sub-text + pending summary */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cta.dot}`} />
+              <p className="text-xs text-gray-500">{cta.status}</p>
+            </div>
+            {pendingCount > 0 && dprState !== "submitted" && (
+              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full flex-shrink-0">
+                {pendingCount} items pending before submit
+              </span>
+            )}
           </div>
         </div>
 
@@ -455,31 +462,22 @@ export function SiteTeam() {
 
       </div>
 
-      {/* ── Bottom nav ── */}
+      {/* ── Bottom nav (4 tabs — no floating duplicate; Quick Actions are in the page body) ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50">
-        <div className="max-w-2xl mx-auto flex items-center justify-around px-2 py-2">
+        <div className="max-w-2xl mx-auto flex items-center justify-around px-4 py-2 pb-safe">
           {[
             { label: "Work",     icon: Home,      tab: "home"    },
             { label: "Reports",  icon: FileText,  tab: "reports" },
-            { label: "",         icon: Plus,      tab: "new",    primary: true },
             { label: "Progress", icon: BarChart2, tab: "stats"   },
             { label: "Profile",  icon: User,      tab: "profile" },
           ].map(n => (
             <button
               key={n.tab}
               onClick={() => setActiveTab(n.tab)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1"
+              className="flex flex-col items-center gap-1 px-4 py-2 min-w-[60px]"
             >
-              {n.primary ? (
-                <div className="w-12 h-12 -mt-6 rounded-full bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-200">
-                  <n.icon className="w-6 h-6 text-white" />
-                </div>
-              ) : (
-                <>
-                  <n.icon className={`w-5 h-5 ${activeTab === n.tab ? "text-orange-500" : "text-gray-400"}`} />
-                  <span className={`text-[10px] ${activeTab === n.tab ? "text-orange-500 font-semibold" : "text-gray-400"}`}>{n.label}</span>
-                </>
-              )}
+              <n.icon className={`w-5 h-5 ${activeTab === n.tab ? "text-orange-500" : "text-gray-400"}`} />
+              <span className={`text-[10px] ${activeTab === n.tab ? "text-orange-500 font-semibold" : "text-gray-400"}`}>{n.label}</span>
             </button>
           ))}
         </div>
