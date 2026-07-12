@@ -12004,13 +12004,32 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS needs_review boolean NOT NULL DEFAULT false",
     ];
     for (const stmt of newCols) await db.execute(sql.raw(stmt));
-    // Backfill display_name for existing items using keyword-extraction short-name logic
+    // Backfill display_name for existing items using keyword-extraction short-name logic.
+    // Strips the most common boilerplate prefixes (providing and laying, supplying and fixing, etc.)
+    // via SQL REGEXP_REPLACE, then clips at the first truncation marker (comma+inc, as per, etc.).
     await db.execute(sql.raw(`
       UPDATE boq_items
-      SET display_name = item_name
+      SET display_name = CASE
+        WHEN item_name IS NOT NULL AND trim(item_name) <> '' THEN
+          trim(regexp_replace(
+            split_part(
+              regexp_replace(
+                item_name,
+                E'^(?:providing,?\\\\s*(?:and\\\\s+)?(?:laying|fixing|casting|supplying)?\\\\s*(?:in\\\\s+position\\\\s*)?(?:of\\\\s*)?|supplying,?\\\\s*(?:and\\\\s+)?(?:laying|fixing|installing)?\\\\s*(?:of\\\\s*)?|supply\\\\s*(?:and\\\\s+)?(?:laying|fixing)?\\\\s*(?:of\\\\s*)?|construction\\\\s+of\\\\s*|constructing(?:\\\\s+of)?\\\\s*|laying(?:\\\\s+of)?\\\\s*)',
+                '',
+                'i'
+              ),
+              ', including',
+              1
+            ),
+            '[,;:.\\\\-\\\\s]+$',
+            ''
+          ))
+        WHEN description IS NOT NULL AND trim(description) <> '' THEN
+          trim(substring(description from 1 for 80))
+        ELSE NULL
+      END
       WHERE display_name IS NULL
-        AND item_name IS NOT NULL
-        AND trim(item_name) <> ''
     `));
     console.log("ensureStructureBarColumns: all structure-bar and boq_items columns verified/added");
   }

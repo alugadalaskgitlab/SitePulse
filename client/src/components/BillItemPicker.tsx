@@ -21,6 +21,7 @@ import { ChevronsUpDown, Check, ExternalLink } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
+import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 
 export type BillItem = {
   id: number;
@@ -30,10 +31,14 @@ export type BillItem = {
   unit: string;
   dprConversionFactor: number | null;
   categoryName?: string | null;
+  workCategory?: string | null;
+  includeInDpr?: boolean | null;
   sortOrder?: number | null;
   displayName?: string | null;
   needsReview?: boolean | null;
 };
+
+const WORK_CAT_LABEL = new Map(BOQ_WORK_CATEGORIES.map(c => [c.code, { label: c.label, sortOrder: c.sortOrder }]));
 
 // Same smart short-name used elsewhere — strips boilerplate, keeps grade + location.
 export function shortItemName(full?: string | null): string {
@@ -160,17 +165,18 @@ export function BillItemPicker({
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
 
-  // Bills in their original Excel order (by first item's sortOrder).
-  // "Needs Mapping" group always appears last.
+  // Bills derived from workCategory (set via BOQ Review). Falls back to categoryName
+  // for items not yet classified. "Needs Mapping" group always appears last.
   const bills = useMemo(() => {
     const m = new Map<string, number>();
     for (const it of items) {
-      const unmapped = !it.categoryName?.trim() || it.needsReview;
-      const name = unmapped ? NEEDS_MAPPING : it.categoryName!.trim();
-      const so = it.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      if (it.includeInDpr === false) continue;
+      const unmapped = !it.workCategory?.trim() || it.needsReview;
+      const name = unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!);
+      const catSortOrder = it.workCategory ? (WORK_CAT_LABEL.get(it.workCategory)?.sortOrder ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const so = catSortOrder * 1000 + (it.sortOrder ?? 0);
       if (!m.has(name) || so < (m.get(name) as number)) m.set(name, so);
     }
-    // Sort normally, but force NEEDS_MAPPING to the bottom
     return [...m.entries()]
       .sort((a, b) => {
         if (a[0] === NEEDS_MAPPING) return 1;
@@ -184,8 +190,8 @@ export function BillItemPicker({
 
   function itemGroup(it: BillItem | null): string {
     if (!it) return "";
-    if (!it.categoryName?.trim() || it.needsReview) return NEEDS_MAPPING;
-    return it.categoryName!.trim();
+    if (!it.workCategory?.trim() || it.needsReview) return NEEDS_MAPPING;
+    return WORK_CAT_LABEL.get(it.workCategory!)?.label ?? it.workCategory!;
   }
 
   const [bill, setBill] = useState<string>(itemGroup(selectedItem));
@@ -194,8 +200,9 @@ export function BillItemPicker({
   const billItems = useMemo(() => {
     return items
       .filter((i) => {
-        const unmapped = !i.categoryName?.trim() || i.needsReview;
-        const groupName = unmapped ? NEEDS_MAPPING : i.categoryName!.trim();
+        if (i.includeInDpr === false) return false;
+        const unmapped = !i.workCategory?.trim() || i.needsReview;
+        const groupName = unmapped ? NEEDS_MAPPING : (WORK_CAT_LABEL.get(i.workCategory!)?.label ?? i.workCategory!);
         return groupName === effectiveBill;
       })
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
