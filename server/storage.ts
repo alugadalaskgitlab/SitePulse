@@ -1302,6 +1302,7 @@ export interface IStorage {
   patchShiftLogDryerSource(id: number, dryerFedFrom: "TANK_1" | "TANK_2"): Promise<boolean>;
   // Task #1125 — SNL auto-mapping: update the mapping_status column on a BOQ item.
   updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void>;
+  bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean): Promise<void>;
   // Delete all BOQ items for a project (replace-mode import). Child records cascade automatically.
   deleteAllBoqItemsForProject(projectId: number): Promise<number>;
   deleteZeroQtyBoqItemsForProject(projectId: number): Promise<number>;
@@ -20286,6 +20287,11 @@ export class DatabaseStorage implements IStorage {
         snlItemDescription: snlItems.description,
         snlConfidence: snlBoqMappings.confidenceScore,
         isComposite: boqItems.isComposite,
+        displayName: boqItems.displayName,
+        dprMeasurementMethod: boqItems.dprMeasurementMethod,
+        includeInDpr: boqItems.includeInDpr,
+        includeInProcurement: boqItems.includeInProcurement,
+        needsReview: boqItems.needsReview,
       })
       .from(boqItems)
       .leftJoin(boqCategories, eq(boqItems.categoryId, boqCategories.id))
@@ -20306,6 +20312,11 @@ export class DatabaseStorage implements IStorage {
       includedInPlanning: r.includedInPlanning ?? true,
       planningWorkType: (r as any).planningWorkType ?? "road",
       isComposite: (r as any).isComposite ?? false,
+      displayName: r.displayName ?? null,
+      dprMeasurementMethod: r.dprMeasurementMethod ?? null,
+      includeInDpr: r.includeInDpr ?? true,
+      includeInProcurement: r.includeInProcurement ?? true,
+      needsReview: r.needsReview ?? false,
     }));
   }
 
@@ -20431,6 +20442,11 @@ export class DatabaseStorage implements IStorage {
 
   async updateBoqItemMappingStatus(boqItemId: number, status: string): Promise<void> {
     await db.update(boqItems).set({ mappingStatus: status }).where(eq(boqItems.id, boqItemId));
+  }
+
+  async bulkSetBoqItemsNeedsReview(itemIds: number[], needsReview: boolean): Promise<void> {
+    if (!itemIds.length) return;
+    await db.update(boqItems).set({ needsReview }).where(inArray(boqItems.id, itemIds));
   }
 
   // ─── BOQ Program Settings ─────────────────────────────────────────────────

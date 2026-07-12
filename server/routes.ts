@@ -11460,7 +11460,7 @@ export async function registerRoutes(
           };
         });
 
-      const bars = generateSequencedProgramme(seqItems, {
+      const { bars, unclassifiedItemIds } = generateSequencedProgramme(seqItems, {
         fronts,
         totalMonths,
         roadLengthKm,
@@ -11472,6 +11472,13 @@ export async function registerRoutes(
         disableStructureFronts,
       });
 
+      // Mark unclassifiable items as needsReview in the DB (fire-and-forget).
+      if (unclassifiedItemIds.length > 0) {
+        storage.bulkSetBoqItemsNeedsReview(unclassifiedItemIds, true).catch((e: any) =>
+          console.error("auto-sequence: bulkSetNeedsReview:", e?.message ?? e),
+        );
+      }
+
       // SAFETY: never wipe the existing programme unless we actually built new bars.
       if (!bars.length) {
         return res.status(422).json({
@@ -11479,6 +11486,7 @@ export async function registerRoutes(
                  `Your existing programme was left untouched. Make sure BOQ items have a current quantity > 0.`,
           itemsConsidered: seqItems.length,
           fronts,
+          unclassifiedItemIds,
         });
       }
 
@@ -11505,6 +11513,8 @@ export async function registerRoutes(
         totalMonths,
         bars: created,
         itemsConsidered: seqItems.length,
+        unclassifiedCount: unclassifiedItemIds.length,
+        unclassifiedItemIds,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
       });

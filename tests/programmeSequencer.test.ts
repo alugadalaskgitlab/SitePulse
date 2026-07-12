@@ -129,7 +129,7 @@ describe("generateSequencedProgramme — roadway_excavation and earthwork start 
       makeItem(2, "Embankment with Cut Material"),
     ];
 
-    const bars = generateSequencedProgramme(items, BASE_OPTS);
+    const { bars } = generateSequencedProgramme(items, BASE_OPTS);
 
     // Collect bars by reach label
     const reachLabels = [...new Set(bars.map(b => b.reachLabel))];
@@ -156,7 +156,7 @@ describe("generateSequencedProgramme — roadway_excavation and earthwork start 
       makeItem(11, "Embankment with Borrow Material"),
     ];
 
-    const bars = generateSequencedProgramme(items, BASE_OPTS);
+    const { bars } = generateSequencedProgramme(items, BASE_OPTS);
     const reachLabels = [...new Set(bars.map(b => b.reachLabel))];
 
     for (const reach of reachLabels) {
@@ -177,7 +177,7 @@ describe("generateSequencedProgramme — roadway_excavation and earthwork start 
       makeItem(22, "Granular Sub-Base"),
     ];
 
-    const bars = generateSequencedProgramme(items, BASE_OPTS);
+    const { bars } = generateSequencedProgramme(items, BASE_OPTS);
     const reachLabels = [...new Set(bars.map(b => b.reachLabel))];
 
     for (const reach of reachLabels) {

@@ -30,6 +30,8 @@ export type BillItem = {
   dprConversionFactor: number | null;
   categoryName?: string | null;
   sortOrder?: number | null;
+  displayName?: string | null;
+  needsReview?: boolean | null;
 };
 
 // Same smart short-name used elsewhere — strips boilerplate, keeps grade + location.
@@ -66,15 +68,19 @@ export function shortItemName(full?: string | null): string {
 }
 
 const BILL_OTHER = "Other / Unbilled";
+const NEEDS_MAPPING = "⚠ Needs Mapping";
 
 function ItemRow({ it, unitSuffix }: { it: BillItem; unitSuffix: string }) {
-  const short = shortItemName(it.itemName || it.description);
+  const short = it.displayName || shortItemName(it.itemName || it.description);
   return (
     <div className="flex flex-col min-w-0" title={it.description}>
       <span className="flex items-center gap-1.5 font-medium leading-snug truncate">
         {it.itemCode ? <span className="text-primary shrink-0">{it.itemCode}</span> : null}
         <span className="truncate">{short}</span>
         <span className="text-muted-foreground font-normal shrink-0">{unitSuffix}</span>
+        {it.needsReview && (
+          <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 shrink-0">Review</span>
+        )}
       </span>
       {it.description && it.description !== short && (
         <span className="text-xs text-muted-foreground truncate">{it.description}</span>
@@ -152,27 +158,45 @@ export function BillItemPicker({
   const [open, setOpen] = useState(false);
 
   // Bills in their original Excel order (by first item's sortOrder).
+  // "Needs Mapping" group always appears last.
   const bills = useMemo(() => {
     const m = new Map<string, number>();
     for (const it of items) {
-      const name = it.categoryName?.trim() || BILL_OTHER;
+      const unmapped = !it.categoryName?.trim() || it.needsReview;
+      const name = unmapped ? NEEDS_MAPPING : it.categoryName!.trim();
       const so = it.sortOrder ?? Number.MAX_SAFE_INTEGER;
       if (!m.has(name) || so < (m.get(name) as number)) m.set(name, so);
     }
-    return [...m.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name);
+    // Sort normally, but force NEEDS_MAPPING to the bottom
+    return [...m.entries()]
+      .sort((a, b) => {
+        if (a[0] === NEEDS_MAPPING) return 1;
+        if (b[0] === NEEDS_MAPPING) return -1;
+        return a[1] - b[1];
+      })
+      .map(([name]) => name);
   }, [items]);
 
   const selectedItem = value != null ? items.find((i) => i.id === value) ?? null : null;
-  const [bill, setBill] = useState<string>(selectedItem?.categoryName?.trim() || "");
-  const effectiveBill = bill || selectedItem?.categoryName?.trim() || "";
 
-  const billItems = useMemo(
-    () =>
-      items
-        .filter((i) => (i.categoryName?.trim() || BILL_OTHER) === effectiveBill)
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
-    [items, effectiveBill],
-  );
+  function itemGroup(it: BillItem | null): string {
+    if (!it) return "";
+    if (!it.categoryName?.trim() || it.needsReview) return NEEDS_MAPPING;
+    return it.categoryName!.trim();
+  }
+
+  const [bill, setBill] = useState<string>(itemGroup(selectedItem));
+  const effectiveBill = bill || itemGroup(selectedItem);
+
+  const billItems = useMemo(() => {
+    return items
+      .filter((i) => {
+        const unmapped = !i.categoryName?.trim() || i.needsReview;
+        const groupName = unmapped ? NEEDS_MAPPING : i.categoryName!.trim();
+        return groupName === effectiveBill;
+      })
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [items, effectiveBill]);
 
   const handleSelect = (it: BillItem | null) => {
     onChange(it ? it.id : null, it);

@@ -105,6 +105,14 @@ export interface SeqInputItem {
   totalQty: number;
   fullDurationMonths: number; // duration for totalQty at a single front
   planningWorkType?: "road" | "structure"; // stored DB hint — overrides classifier
+  needsReview?: boolean; // if already flagged, still try to classify
+}
+
+export interface SeqResult {
+  bars: SeqBar[];
+  /** Item IDs that could not be classified to any construction stage.
+   *  The caller should mark these needsReview = true in the DB. */
+  unclassifiedItemIds: number[];
 }
 
 export interface SeqOptions {
@@ -194,7 +202,7 @@ function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
 }
 
 // ─── Main sequencer ───────────────────────────────────────────────────────────
-export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptions): SeqBar[] {
+export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptions): SeqResult {
   const fronts = Math.max(1, Math.floor(opts.fronts || 1));
   const lag = opts.lagMonths ?? 0.25;
   const stagger = opts.staggerMonths ?? 1;
@@ -207,7 +215,11 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   const pav = classified.filter((c) => c.track === "pavement").sort((a, b) => a.stage - b.stage);
   const str = classified.filter((c) => c.track === "structure").sort((a, b) => a.stage - b.stage);
   const brg = classified.filter((c) => c.track === "bridge").sort((a, b) => a.stage - b.stage);
+  // "other" track = items with no classifiable stage. We DON'T schedule them
+  // at Month 1 (old behaviour). Instead, we skip them and return their IDs so
+  // the caller can mark them needsReview = true in the DB.
   const oth = classified.filter((c) => c.track === "other");
+  const unclassifiedItemIds = oth.map((c) => c.it.boqItemId);
 
   const bars: SeqBar[] = [];
 
@@ -258,11 +270,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
       bars.push(mkBar(c.it, reachLabel, chFrom, chTo, pavStageStart, pavStageStart + dur, qty));
       pavStageDur = Math.max(pavStageDur, dur);
     }
-    for (const c of oth) {
-      const qty = c.it.totalQty / fronts;
-      const dur = Math.max(0.1, c.it.fullDurationMonths / fronts);
-      bars.push(mkBar(c.it, reachLabel, chFrom, chTo, offset, offset + dur, qty));
-    }
+    // "other" items are NOT scheduled here — they are returned in unclassifiedItemIds.
 
   }
 
@@ -336,7 +344,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     }
   }
 
-  if (!bars.length) return bars;
+  if (!bars.length) return { bars, unclassifiedItemIds };
 
   // Scale the critical chain so the last bar ends at (totalMonths - 1), then
   // shift everything to 1-indexed month numbers (Month 1 = project start).
@@ -351,5 +359,5 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     if (b.endMonth <= b.startMonth) b.endMonth = +(b.startMonth + 0.1).toFixed(2);
   }
 
-  return bars;
+  return { bars, unclassifiedItemIds };
 }

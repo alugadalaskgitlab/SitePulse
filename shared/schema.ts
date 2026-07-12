@@ -2483,6 +2483,17 @@ export const boqItems = pgTable("boq_items", {
   // True when auto-mapper detected multiple distinct material layers in the description.
   // Composite items are mapped per-component via snl_composite_components.
   isComposite: boolean("is_composite").notNull().default(false),
+  // Short work name override (admin-editable). Falls back to shortItemName(description) when null.
+  displayName: text("display_name"),
+  // How DPR progress quantity is measured: formula-driven (CUM_LWT, SQM_LW, RMT_L) or manual (MT_manual, NOS_manual, LS_manual).
+  dprMeasurementMethod: text("dpr_measurement_method"),
+  // Exclude from DPR item picker when false.
+  includeInDpr: boolean("include_in_dpr").notNull().default(true),
+  // Exclude from procurement demand when false.
+  includeInProcurement: boolean("include_in_procurement").notNull().default(true),
+  // Flagged for admin review — shown in "Needs Mapping" group in DPR picker,
+  // skipped from auto-sequence until reviewed.
+  needsReview: boolean("needs_review").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
   projectIdx: index("boq_items_project_idx").on(t.boqProjectId),
