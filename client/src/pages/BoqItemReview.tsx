@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { shortItemName } from "@/lib/itemName";
+import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import type { BoqItemWithCategory } from "@shared/schema";
 
 const DPR_METHOD_OPTIONS = [
@@ -33,6 +34,9 @@ const DPR_METHOD_OPTIONS = [
 const WORK_TYPE_OPTIONS = [
   { value: "road", label: "Road / Linear" },
   { value: "structure", label: "Structure / Point" },
+  { value: "drainage", label: "Drainage" },
+  { value: "plant", label: "Plant / Production" },
+  { value: "non_dpr", label: "Non-DPR / Admin" },
 ];
 
 type ItemRow = BoqItemWithCategory & {
@@ -54,6 +58,7 @@ function ItemEditRow({
   const [displayName, setDisplayName] = useState(item.displayName ?? "");
   const [dprMethod, setDprMethod] = useState(item.dprMeasurementMethod ?? "");
   const [workType, setWorkType] = useState(item.planningWorkType ?? "road");
+  const [workCategory, setWorkCategory] = useState(item.workCategory ?? "");
   const [includeInDpr, setIncludeInDpr] = useState(item.includeInDpr ?? true);
   const [includeInPlanning, setIncludeInPlanning] = useState(item.includedInPlanning ?? true);
   const [includeInProcurement, setIncludeInProcurement] = useState(item.includeInProcurement ?? true);
@@ -73,6 +78,7 @@ function ItemEditRow({
       displayName: displayName.trim() || null,
       dprMeasurementMethod: dprMethod || null,
       planningWorkType: workType,
+      workCategory: workCategory || null,
       includeInDpr,
       includedInPlanning: includeInPlanning,
       includeInProcurement,
@@ -104,8 +110,26 @@ function ItemEditRow({
           data-testid={`input-display-name-${item.id}`}
         />
       </td>
-      <td className="py-2 px-3 text-xs text-slate-500 whitespace-nowrap">
-        {item.categoryName ?? <span className="text-amber-500 font-medium">Unmapped</span>}
+      <td className="py-2 px-3 min-w-[160px]">
+        <Select
+          value={workCategory}
+          onValueChange={v => { setWorkCategory(v); save({ workCategory: v || null }); }}
+        >
+          <SelectTrigger className="h-7 text-xs" data-testid={`select-work-category-${item.id}`}>
+            <SelectValue placeholder={<span className="text-amber-500">— Unmapped —</span>} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="" className="text-xs text-slate-400">— Not set —</SelectItem>
+            {BOQ_WORK_CATEGORIES.map(c => (
+              <SelectItem key={c.code} value={c.code} className="text-xs">{c.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="py-2 px-3 text-xs text-slate-400 whitespace-nowrap hidden xl:table-cell" title={item.categoryName ?? "No bill section"}>
+        {item.categoryName
+          ? <span className="truncate max-w-[120px] block">{item.categoryName}</span>
+          : <span className="text-amber-400">—</span>}
       </td>
       <td className="py-2 px-3 text-xs text-slate-500 whitespace-nowrap">{item.unit}</td>
       <td className="py-2 px-3 min-w-[130px]">
@@ -325,7 +349,8 @@ export default function BoqItemReview() {
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Code</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Full Description</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Short Name (editable)</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Category</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work Category</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap hidden xl:table-cell">Bill Section</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Unit</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Work Type</th>
                     <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">DPR Method</th>

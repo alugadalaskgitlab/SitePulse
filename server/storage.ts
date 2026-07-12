@@ -11996,6 +11996,12 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE work_program_bars ADD COLUMN IF NOT EXISTS boq_excel_row integer",
       // BOQ items: excel_row used for P1 structure schedule matching
       "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS excel_row integer",
+      // BOQ items: mapping review fields (added for item review / DPR method / procurement flags)
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS display_name text",
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS dpr_measurement_method text",
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS include_in_dpr boolean NOT NULL DEFAULT true",
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS include_in_procurement boolean NOT NULL DEFAULT true",
+      "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS needs_review boolean NOT NULL DEFAULT false",
     ];
     for (const stmt of newCols) await db.execute(sql.raw(stmt));
     console.log("ensureStructureBarColumns: all structure-bar and boq_items columns verified/added");

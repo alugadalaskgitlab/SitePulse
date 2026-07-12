@@ -1491,6 +1491,7 @@ export default function SiteEntry() {
                       }
                       value={item.boqItemId ?? null}
                       testidPrefix={`structure-${idx}`}
+                      reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
                       onChange={(id, it) => {
                         setStructureItems((prev) =>
                           prev.map((s, i) =>
@@ -1619,6 +1620,7 @@ export default function SiteEntry() {
                         stacked
                         labels={false}
                         testidPrefix={`progress-${idx}`}
+                        reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
                         onChange={(id, it) => {
                           const updated = [...progress];
                           updated[idx].boqItemId = id;

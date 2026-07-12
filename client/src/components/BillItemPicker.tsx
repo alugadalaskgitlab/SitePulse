@@ -17,9 +17,10 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import {
   Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem,
 } from "@/components/ui/command";
-import { ChevronsUpDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check, ExternalLink } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { Link } from "wouter";
 
 export type BillItem = {
   id: number;
@@ -146,6 +147,7 @@ export function BillItemPicker({
   testidPrefix = "boq",
   stacked = false,
   labels = true,
+  reviewPath,
 }: {
   items: BillItem[];
   value: number | null;
@@ -153,6 +155,7 @@ export function BillItemPicker({
   testidPrefix?: string;
   stacked?: boolean;
   labels?: boolean;
+  reviewPath?: string;
 }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -236,6 +239,14 @@ export function BillItemPicker({
             ))}
           </SelectContent>
         </Select>
+        {effectiveBill === NEEDS_MAPPING && reviewPath && (
+          <Link href={reviewPath}>
+            <a className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 hover:underline mt-0.5" data-testid="link-needs-mapping-review">
+              <ExternalLink className="w-3 h-3" />
+              Fix unmapped items in BOQ Item Review
+            </a>
+          </Link>
+        )}
       </div>
 
       <div className="space-y-1">

@@ -10209,12 +10209,26 @@ export async function registerRoutes(
 
   app.patch("/api/boq/items/:id", async (req, res) => {
     try {
+      if (!assertEdit(req, res, "qto_boq")) return;
       const updated = await storage.updateBoqItem(parseInt(req.params.id), req.body);
       if (!updated) return res.status(404).json({ error: "BOQ item not found" });
       res.json(updated);
     } catch (err) {
       console.error("PATCH /api/boq/items/:id:", err);
       res.status(500).json({ error: "Failed to update BOQ item" });
+    }
+  });
+
+  app.post("/api/boq/projects/:id/auto-map-all", async (req, res) => {
+    try {
+      if (!assertEdit(req, res, "qto_boq")) return;
+      const boqProjectId = parseInt(req.params.id);
+      if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
+      const summary = await autoMapProjectWithSummary(boqProjectId);
+      res.json(summary);
+    } catch (err) {
+      console.error("POST /api/boq/projects/:id/auto-map-all:", err);
+      res.status(500).json({ error: "Auto-map failed" });
     }
   });
 
