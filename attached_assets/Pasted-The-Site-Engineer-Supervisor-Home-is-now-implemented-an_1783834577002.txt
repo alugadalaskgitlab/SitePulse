@@ -1,0 +1,126 @@
+The Site Engineer / Supervisor Home is now implemented and the layout direction is good.
+
+Please fix only the data/display logic of FieldHome. Do not redesign the page.
+
+Do not touch:
+- Road DPR form
+- Structure DPR form
+- Attachments
+- Permissions
+- Dashboard
+- Other role homes
+- BOQ import/programme generation
+
+Current issues:
+
+1. Today’s Site Goal is using only today's DPR progress entries. It is not yet using programme/plan data.
+2. Planned till date is showing blank/—.
+3. To be done is not properly calculated.
+4. Full BOQ descriptions are shown instead of short activity names.
+5. Today’s Focus says “DPR submitted — good work” too generally.
+6. Today’s Site Work status must be user/site/date-aware.
+
+Required:
+
+A. Today’s Site Goal should use cumulative plan vs actual
+
+For each key activity / reach / structure, show:
+
+- Item / Activity
+- Stretch / Structure
+- Planned till date
+- Completed till date
+- To be done
+
+Use available programme/BOQ/DPR actual data.
+
+If true programme data is not yet available, do not fake it. Show:
+“Plan data not linked yet”
+or
+“Programme link pending”
+
+But do not display misleading planned/actual values.
+
+B. Short activity names
+
+Do not show full BOQ descriptions on the landing page.
+
+Use short meaningful names.
+
+Examples:
+- Embankment with borrow earth
+- Embankment with cut material
+- GSB — Granular Sub-base
+- WMM — Wet Mix Macadam
+- Prime Coat
+- Tack Coat
+- DBM
+- BC
+- Drain Excavation
+- PCC
+- RCC
+- Reinforcement
+- Pipe Culvert — Bedding
+- Pipe Culvert — Pipe Laying
+
+If mapped short name/category exists, use it.
+Otherwise derive a short name from the BOQ description using keyword extraction.
+
+Full BOQ description can be shown only on expand/details.
+
+C. Today’s Focus logic
+
+Do not simply say “DPR submitted — good work” unless it is clearly the current user’s DPR for today.
+
+Use practical focus messages:
+
+If no DPR started:
+- No DPR started yet — start today’s site work.
+
+If draft exists:
+- Equipment logs pending.
+- Labour count pending.
+- Activity quantities pending.
+- Material challan photo pending.
+
+If DPR submitted by current user:
+- DPR submitted. No pending submission items.
+
+If DPR submitted by another user:
+- DPR filed by [name]. View today’s site report.
+Do not say “good work” to the current user as if he submitted it.
+
+D. Today’s Site Work status must be user/site/date-aware
+
+Logic:
+
+1. No DPR draft/report for current user + site + date:
+   Start Today’s Site Work
+
+2. Draft exists for current user + site + date:
+   Continue Today’s Site Work
+
+3. Draft has missing closing items:
+   Complete Today’s Site Work
+
+4. Submitted by current user:
+   View Today’s Site Report
+
+5. Submitted by another user:
+   Today’s DPR filed by [name]
+   Button: View Today’s Site Report
+
+E. Multi-site handling
+
+If the engineer has more than one assigned site, show status per site or require site selection.
+
+Do not mix DPR status from one site into another.
+
+F. Closure report
+
+Please report:
+- files changed
+- whether Today’s Site Goal uses live programme data or partial placeholder
+- what short-name extraction was added
+- how DPR submitted by current user vs another user is handled
+- test steps with Ramesh
