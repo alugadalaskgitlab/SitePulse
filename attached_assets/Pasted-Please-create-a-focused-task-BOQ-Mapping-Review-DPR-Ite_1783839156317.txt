@@ -1,0 +1,177 @@
+Please create a focused task:
+
+# BOQ Mapping Review + DPR Item/UOM + Programme Sequencing Fix
+
+Current issue observed in Takkadpally–Sirur project:
+
+1. In Site DPR → Work Item & Qty, BOQ items are appearing under “Other / Unbilled”.
+2. BOQ items are not classified into proper categories like Earthwork, Site Clearance, GSB, WMM, Prime Coat, Tack Coat, DBM, BC, Structures, Drainage, etc.
+3. The DPR item selector shows full/unclear item descriptions instead of clean short work names.
+4. UOM is not reliable in DPR. Example: clearing/grubbing style BOQ item shows NOS and quantity auto behaviour is wrong.
+5. Auto-sequence/work programme is placing many/all activities into the first month instead of sequencing by item type, quantity, stage, productivity/duration and road/structure logic.
+6. We need an admin/edit screen for imported BOQ items so wrongly imported/mapped items can be corrected manually.
+
+Please fix only this BOQ mapping / DPR item source / sequencing issue.
+
+Do not touch:
+- Site Engineer landing page
+- Camera/Gallery attachments
+- Field Home layout
+- permissions UI
+- navigation hubs
+- DPR form redesign beyond item picker/UOM behaviour
+- unrelated modules
+
+A. BOQ Mapping Review screen
+
+Add or improve an “Imported BOQ Review / Mapping” screen for each BOQ project.
+
+Admin/authorized user should be able to edit each imported BOQ item:
+
+- item code
+- original description, read-only unless needed
+- short work name / display name
+- BOQ unit
+- BOQ quantity
+- category / bill section
+- planning work type
+- DPR measurement method
+- road / structure / drainage / plant / non-DPR classification
+- include/exclude from DPR
+- include/exclude from programme
+- include/exclude from procurement/BOM
+- SDB/SNL mapped item if available
+- confidence / needs review flag
+
+Examples of categories:
+- Site Clearance
+- Earthwork
+- GSB
+- WMM
+- Prime Coat
+- Tack Coat
+- DBM
+- BC
+- Shoulder
+- Drainage
+- Culverts
+- Bridges
+- Retaining Wall
+- Road Furniture
+- Miscellaneous / Manual Review
+
+B. Short work names
+
+DPR and FieldHome should not show full BOQ descriptions as the primary label.
+
+Use short meaningful work names.
+
+Examples:
+- Clearing and grubbing
+- Embankment with borrow earth
+- Embankment with cut material
+- GSB — Granular Sub-base
+- WMM — Wet Mix Macadam
+- Prime Coat
+- Tack Coat
+- DBM
+- BC
+- Drain Excavation
+- PCC
+- RCC
+- Reinforcement
+- Pipe Culvert — Bedding
+- Pipe Culvert — Pipe Laying
+
+Use mapped short name first.
+If not available, derive short name from description.
+Full BOQ description should be secondary/expandable only.
+
+C. DPR item picker
+
+Fix DPR BOQ item picker so items do not fall under “Other / Unbilled” unless truly unmapped.
+
+The picker should show:
+- category / bill section
+- item code
+- short work name
+- BOQ unit
+- balance / planned qty if available
+
+If category is missing:
+- show “Needs Mapping” instead of silently treating as Other / Unbilled
+- allow admin to open BOQ Review and map it
+
+D. UOM and quantity logic
+
+DPR should use BOQ unit and measurement method.
+
+Rules:
+- CUM / m³: L × W × T
+- SQM / m² / Ha: L × W, with proper conversion if BOQ unit is Ha
+- RMT / m / km: length, with proper conversion if needed
+- MT / kg: manual quantity unless linked to production/weighment
+- NOS / Each: manual count
+- LS / %: manual
+- If formula is uncertain, do not auto-calculate wrong quantity. Show manual entry with warning.
+
+Important:
+Do not default to NOS for road BOQ items unless BOQ unit is truly count-based.
+
+E. Programme sequencing fix
+
+Fix auto-sequence / auto-generate for road BOQ items.
+
+It should not place all items in Month 1.
+
+Sequencing should consider:
+- category / planning work type
+- construction order
+- quantity
+- productivity/duration defaults or SDB/SNL rates if available
+- road reaches/fronts
+- structure schedule for structure items
+- start date and project duration
+
+If sequencing input is missing:
+- mark item as Needs Review
+- do not silently dump into Month 1
+
+Road sequence example:
+Site Clearance
+→ Earthwork / Embankment
+→ GSB
+→ WMM
+→ Prime Coat
+→ DBM
+→ Tack Coat
+→ BC
+→ Shoulder / road furniture
+
+Structure items should follow imported structure schedule and structure sequence, not road reach auto-spread.
+
+F. Validation for Takkadpally–Sirur
+
+Please test with Takkadpally–Sirur BOQ project:
+
+1. Open BOQ Review.
+2. Confirm items are categorized properly and no valid road item remains under Other / Unbilled.
+3. Confirm clearing/grubbing item has correct short name, unit and DPR measurement method.
+4. Open Site DPR.
+5. BOQ dropdown should show proper category and short item name.
+6. UOM should come from BOQ unit.
+7. Quantity should auto-calculate only where valid.
+8. Run programme auto-sequence.
+9. Items should not all land in Month 1.
+10. If any item cannot be sequenced, it should be marked Needs Review with reason.
+
+G. Closure report
+
+Please report:
+- files changed
+- whether BOQ Review edit screen was added or improved
+- how category/short name/UOM/method are stored
+- how DPR picker now uses mapped data
+- how auto-sequence changed
+- test results for Takkadpally–Sirur
+- known limitations
