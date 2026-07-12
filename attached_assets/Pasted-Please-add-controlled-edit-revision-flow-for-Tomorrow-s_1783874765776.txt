@@ -1,0 +1,92 @@
+Please add controlled edit / revision flow for Tomorrow’s Plan / Site Requirements.
+
+Current concern:
+If a site engineer/supervisor submits Tomorrow’s Plan and later remembers that he missed something, he should be able to correct it. PM/Admin should not have to manually add everything on his behalf.
+
+But edits must be controlled because PM/Store/Mechanical may already have started allocation.
+
+Required rule:
+
+A. Draft requirement
+
+If Tomorrow’s Plan / Site Requirement is still draft:
+- creator/site user can edit directly.
+
+B. Submitted but not yet acted upon
+
+If submitted but no PM/Store/Mechanical allocation/status update has happened yet:
+- creator/site user may edit/revise directly if permitted,
+OR
+- show “Revise Requirement” button.
+
+After save:
+- mark as Revised
+- keep it visible in Site Requirements Queue.
+
+C. Already acted upon / approved / arranged
+
+If any allocation/status action has happened, such as:
+- Approved / Accepted
+- Arranged
+- Sent to Store
+- Sent to Purchase
+- Sent to Plant
+- Equipment allocated
+- Labour arranged
+- Available at site
+- Expected at site by time
+
+then site user should not directly edit.
+
+Instead show:
+Request Edit / Request Revision
+
+When clicked:
+- ask reason for revision
+- create edit/revision request linked to the Site Requirement id
+- PM/Admin can approve or reject.
+
+D. Approved one-time revision
+
+If PM/Admin approves:
+- site user sees Edit Now / Revise Now
+- existing Tomorrow’s Plan form opens with current details
+- user can add missed material/equipment/labour/immediate requirement
+- one-time edit permission is consumed only after successful save, not merely on opening
+
+After save:
+- mark requirement as Revised
+- notify/show alert in PM/Admin Site Requirements Queue:
+  “Requirement revised by site user”
+- any newly added items should show as Pending Review / Requested
+- previously approved/arranged items should not be silently overwritten unless changed clearly.
+
+E. PM/Admin direct edit
+
+PM/Admin/Owner can directly edit/revise the requirement if permitted.
+
+F. Display
+
+On Site Requirements Queue, show revision status:
+- Original Submitted
+- Revised
+- Revision Requested
+- Revision Approved
+- Revision Rejected
+- Pending Review
+
+Show revision remarks/reason if available.
+
+G. Scope
+
+Do not redesign the Tomorrow’s Plan form.
+Do not change DPR edit logic in this task unless shared edit-request utility is reused safely.
+Do not touch BOQ, DPR quantity, plant production, stores stock, or permissions redesign.
+
+After implementation, report:
+- how site user can revise missed items
+- when direct revision is allowed
+- when Request Revision is required
+- how PM/Admin approves revision
+- how revised requirement is shown in Site Requirements Queue
+- test steps

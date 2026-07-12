@@ -11,8 +11,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Package,
-  Wrench, Users, AlertTriangle, CheckCircle, Clock, XCircle,
+  Wrench, Users, AlertTriangle, CheckCircle, Clock, XCircle, Pencil, Send,
 } from "lucide-react";
+
+const REVISION_CONFIG: Record<string, { label: string; color: string }> = {
+  original:           { label: "Original Submitted",  color: "bg-slate-100 text-slate-600" },
+  revised:            { label: "Revised",              color: "bg-indigo-100 text-indigo-700" },
+  revision_requested: { label: "Revision Requested",   color: "bg-amber-100 text-amber-700" },
+  revision_approved:  { label: "Revision Approved",    color: "bg-blue-100 text-blue-700" },
+  revision_rejected:  { label: "Revision Rejected",    color: "bg-red-100 text-red-700" },
+};
+
+function isActedUpon(req: any): boolean {
+  const actioned = ["approved", "arranged", "sent_store", "sent_purchase", "sent_plant"];
+  if (actioned.includes(req.status)) return true;
+  const a = req.allocationStatus;
+  return !!(a && (a.materials || a.equipment || a.labour || a.immediate));
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   submitted:      { label: "Submitted",         color: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
@@ -63,6 +78,11 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
   const [newStatus, setNewStatus] = useState(req.status);
   const [pmRemarks, setPmRemarks] = useState(req.pmRemarks ?? "");
   const [editing, setEditing] = useState(false);
+  // Revision state
+  const [revRequestOpen, setRevRequestOpen] = useState(false);
+  const [revReason, setRevReason] = useState("");
+  const [revActionOpen, setRevActionOpen] = useState<"approve"|"reject"|null>(null);
+  const [revActionRemarks, setRevActionRemarks] = useState("");
   // Allocation state
   const [allocEditing, setAllocEditing] = useState(false);
   const [allocMat,     setAllocMat]     = useState(req.allocationStatus?.materials ?? "");
@@ -91,6 +111,44 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
       setEditing(false);
     },
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const [, setLocation] = useLocation();
+  const isOwner = req.submittedBy === (user as any)?.id;
+  const acted = isActedUpon(req);
+  const revStatus = req.revisionStatus ?? "original";
+
+  const revRequestMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/site-requirements/${req.id}/revision-request`, { reason: revReason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
+      toast({ title: "Revision request sent", description: "PM/Admin will review and approve." });
+      setRevRequestOpen(false);
+      setRevReason("");
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const revApproveMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/site-requirements/${req.id}/revision-approve`, { remarks: revActionRemarks }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
+      toast({ title: "Revision approved", description: "Site user can now make one edit." });
+      setRevActionOpen(null);
+      setRevActionRemarks("");
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const revRejectMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/site-requirements/${req.id}/revision-reject`, { remarks: revActionRemarks }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
+      toast({ title: "Revision rejected" });
+      setRevActionOpen(null);
+      setRevActionRemarks("");
+    },
+    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
   const allocMutation = useMutation({
@@ -144,6 +202,11 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <Badge className={`text-[11px] px-1.5 py-0 ${sc.color}`}>{sc.label}</Badge>
+            {revStatus && revStatus !== "original" && REVISION_CONFIG[revStatus] && (
+              <Badge className={`text-[11px] px-1.5 py-0 ${REVISION_CONFIG[revStatus].color}`}>
+                {REVISION_CONFIG[revStatus].label}
+              </Badge>
+            )}
             {hasShortage && (
               <Badge className="text-[11px] px-1.5 py-0 bg-red-100 text-red-600">⚠ Shortage</Badge>
             )}
@@ -334,6 +397,176 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
               })}
               {req.allocationStatus.updatedByName && (
                 <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200">by {req.allocationStatus.updatedByName}</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Revision request reason / remarks display ── */}
+          {req.revisionRequestReason && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 space-y-0.5">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Revision Request Reason</p>
+              <p className="text-xs text-slate-700 dark:text-slate-200">{req.revisionRequestReason}</p>
+              {req.revisionRemarks && (
+                <p className="text-xs text-slate-500 italic">PM remarks: {req.revisionRemarks}</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Engineer (submitter) revision controls ── */}
+          {isOwner && !canReview && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+              {/* Case A/B: Not acted upon → direct revise */}
+              {!acted && revStatus === "original" && (
+                <Button
+                  type="button" variant="outline" size="sm"
+                  className="gap-1.5 text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                  onClick={() => setLocation(`/site/requirements/new?editId=${req.id}&returnTo=/site/requirements`)}
+                  data-testid={`button-revise-${req.id}`}
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Revise Requirement
+                </Button>
+              )}
+
+              {/* Case C: Acted upon, no pending request → show Request Revision */}
+              {(acted || revStatus === "revision_rejected") && revStatus !== "revision_requested" && revStatus !== "revision_approved" && !req.revisionOneTimeUsed && (
+                <>
+                  {!revRequestOpen ? (
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="gap-1.5 text-amber-700 border-amber-200 hover:bg-amber-50"
+                      onClick={() => setRevRequestOpen(true)}
+                      data-testid={`button-request-revision-${req.id}`}
+                    >
+                      <Send className="w-3.5 h-3.5" /> Request Revision
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-3 border border-amber-100 dark:border-amber-800">
+                      <p className="text-xs font-bold text-amber-700">Reason for revision request</p>
+                      <Textarea
+                        value={revReason}
+                        onChange={e => setRevReason(e.target.value)}
+                        placeholder="Briefly explain what you missed or need to correct..."
+                        className="text-sm resize-none bg-white dark:bg-slate-900"
+                        rows={3}
+                        data-testid={`input-rev-reason-${req.id}`}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button" size="sm"
+                          onClick={() => revRequestMutation.mutate()}
+                          disabled={!revReason.trim() || revRequestMutation.isPending}
+                          className="bg-amber-600 hover:bg-amber-700"
+                          data-testid={`button-send-rev-request-${req.id}`}
+                        >
+                          {revRequestMutation.isPending ? "Sending..." : "Send Request"}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => { setRevRequestOpen(false); setRevReason(""); }}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Case: revision_requested — awaiting PM */}
+              {revStatus === "revision_requested" && (
+                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-200">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                  Revision request sent — awaiting PM/Admin approval
+                </div>
+              )}
+
+              {/* Case D: revision approved → one-time edit */}
+              {revStatus === "revision_approved" && !req.revisionOneTimeUsed && (
+                <Button
+                  type="button" size="sm"
+                  className="gap-1.5 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setLocation(`/site/requirements/new?editId=${req.id}&returnTo=/site/requirements`)}
+                  data-testid={`button-edit-now-${req.id}`}
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Now (one-time)
+                </Button>
+              )}
+
+              {/* Case: revision_rejected */}
+              {revStatus === "revision_rejected" && (
+                <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 border border-red-200">
+                  <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  Revision request was rejected
+                  {req.revisionRemarks && <span className="text-slate-500">— {req.revisionRemarks}</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PM/Admin can always edit directly ── */}
+          {canReview && revStatus !== "revision_requested" && (
+            <div className="pt-1">
+              <Button
+                type="button" variant="ghost" size="sm"
+                className="gap-1.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 h-7 text-xs px-2"
+                onClick={() => setLocation(`/site/requirements/new?editId=${req.id}&returnTo=/site/requirements`)}
+                data-testid={`button-pm-edit-${req.id}`}
+              >
+                <Pencil className="w-3 h-3" /> Edit Requirement
+              </Button>
+            </div>
+          )}
+
+          {/* ── PM Revision Approval panel ── */}
+          {canReview && revStatus === "revision_requested" && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-3 border border-amber-200 dark:border-amber-800 space-y-2">
+              <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Revision Requested by site user
+              </p>
+              {!revActionOpen ? (
+                <div className="flex gap-2">
+                  <Button
+                    type="button" size="sm"
+                    className="bg-green-600 hover:bg-green-700 gap-1.5"
+                    onClick={() => setRevActionOpen("approve")}
+                    data-testid={`button-approve-revision-${req.id}`}
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Approve Revision
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    className="text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
+                    onClick={() => setRevActionOpen("reject")}
+                    data-testid={`button-reject-revision-${req.id}`}
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Reject
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {revActionOpen === "approve"
+                      ? "Approving will allow the site user to make one edit."
+                      : "Provide a reason for rejection (optional)."}
+                  </p>
+                  <Textarea
+                    value={revActionRemarks}
+                    onChange={e => setRevActionRemarks(e.target.value)}
+                    placeholder={revActionOpen === "approve" ? "PM remarks (optional)" : "Reason for rejection (optional)"}
+                    className="text-sm resize-none bg-white dark:bg-slate-900"
+                    rows={2}
+                    data-testid={`input-rev-action-remarks-${req.id}`}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button" size="sm"
+                      disabled={revApproveMutation.isPending || revRejectMutation.isPending}
+                      className={revActionOpen === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
+                      onClick={() => revActionOpen === "approve" ? revApproveMutation.mutate() : revRejectMutation.mutate()}
+                      data-testid={`button-confirm-rev-action-${req.id}`}
+                    >
+                      {revApproveMutation.isPending || revRejectMutation.isPending
+                        ? "Saving..."
+                        : revActionOpen === "approve" ? "Confirm Approval" : "Confirm Rejection"}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => { setRevActionOpen(null); setRevActionRemarks(""); }}>Cancel</Button>
+                  </div>
+                </div>
               )}
             </div>
           )}

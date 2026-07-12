@@ -3142,6 +3142,16 @@ export const siteRequirements = pgTable("site_requirements", {
   readinessConfirmation: jsonb("readiness_confirmation"),
   // "not_confirmed" | "confirmed_ok" | "confirmed_with_shortage"
   readinessStatus: text("readiness_status").default("not_confirmed"),
+
+  // Controlled revision workflow
+  // "original" | "revised" | "revision_requested" | "revision_approved" | "revision_rejected"
+  revisionStatus: text("revision_status").default("original"),
+  revisionRequestReason: text("revision_request_reason"),
+  revisionApprovedBy: integer("revision_approved_by"),
+  revisionApprovedAt: text("revision_approved_at"),
+  revisionRemarks: text("revision_remarks"),
+  // consumed = true after the one-time approved edit is saved
+  revisionOneTimeUsed: boolean("revision_one_time_used").default(false),
 });
 
 export const insertSiteRequirementSchema = createInsertSchema(siteRequirements).omit({

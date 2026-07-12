@@ -13491,4 +13491,110 @@ export function registerSiteRequirementRoutes(app: Express) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ── Helper: is this requirement already acted upon by PM/store/mechanical? ──
+  function isActedUpon(row: any): boolean {
+    const actionedStatuses = ["approved", "arranged", "sent_store", "sent_purchase", "sent_plant"];
+    if (actionedStatuses.includes(row.status)) return true;
+    const alloc = row.allocationStatus;
+    if (!alloc) return false;
+    return !!(alloc.materials || alloc.equipment || alloc.labour || alloc.immediate);
+  }
+
+  // PUT /api/site-requirements/:id — direct content update (owner if not acted upon, or PM/admin)
+  app.put("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const role = req.session?.role ?? "engineer";
+      const isManagerOrAdmin = role === "admin" || role === "manager";
+      const row = await storage.getSiteRequirement(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+
+      if (!isManagerOrAdmin) {
+        if (row.submittedBy !== req.session?.userId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        const acted = isActedUpon(row);
+        const hasApprovedOneTime =
+          row.revisionStatus === "revision_approved" && !row.revisionOneTimeUsed;
+        if (acted && !hasApprovedOneTime) {
+          return res.status(403).json({ error: "This requirement has been acted upon. Request a revision first." });
+        }
+      }
+
+      const body = req.body;
+      const updated = await storage.updateSiteRequirementContent(id, {
+        plannedWork: body.plannedWork ?? null,
+        materials: body.materials ?? null,
+        equipment: body.equipment ?? null,
+        labour: body.labour ?? null,
+        immediateRequirements: body.immediateRequirements ?? null,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/site-requirements/:id/revision-request — engineer requests a revision
+  app.post("/api/site-requirements/:id/revision-request", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const row = await storage.getSiteRequirement(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      if (row.submittedBy !== req.session?.userId) {
+        return res.status(403).json({ error: "You can only request revision for your own submissions" });
+      }
+      if (row.revisionStatus === "revision_requested") {
+        return res.status(409).json({ error: "Revision already requested and pending approval" });
+      }
+      const { reason } = req.body;
+      if (!reason?.trim()) return res.status(400).json({ error: "reason is required" });
+      const updated = await storage.requestSiteRequirementRevision(id, reason.trim());
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/site-requirements/:id/revision-approve — PM/admin approves revision
+  app.patch("/api/site-requirements/:id/revision-approve", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can approve revisions" });
+      }
+      const id = parseInt(req.params.id);
+      const row = await storage.getSiteRequirement(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      if (row.revisionStatus !== "revision_requested") {
+        return res.status(409).json({ error: "No pending revision request for this requirement" });
+      }
+      const { remarks } = req.body;
+      const updated = await storage.approveSiteRequirementRevision(
+        id, req.session.userId, remarks ?? ""
+      );
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/site-requirements/:id/revision-reject — PM/admin rejects revision
+  app.patch("/api/site-requirements/:id/revision-reject", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can reject revisions" });
+      }
+      const id = parseInt(req.params.id);
+      const row = await storage.getSiteRequirement(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      const { remarks } = req.body;
+      const updated = await storage.rejectSiteRequirementRevision(id, remarks ?? "");
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 }

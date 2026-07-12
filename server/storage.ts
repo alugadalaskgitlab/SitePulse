@@ -1014,6 +1014,10 @@ export interface IStorage {
   updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined>;
   updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined>;
   updateSiteRequirementReadiness(id: number, data: any): Promise<any | undefined>;
+  updateSiteRequirementContent(id: number, data: any): Promise<any | undefined>;
+  requestSiteRequirementRevision(id: number, reason: string): Promise<any | undefined>;
+  approveSiteRequirementRevision(id: number, approvedBy: number, remarks: string): Promise<any | undefined>;
+  rejectSiteRequirementRevision(id: number, remarks: string): Promise<any | undefined>;
   ensureSiteRequirementsTable(): Promise<void>;
 
   // Site Material Logs Summary
@@ -22106,6 +22110,58 @@ export class DatabaseStorage implements IStorage {
       .set({
         readinessConfirmation: data.readinessConfirmation ?? null,
         readinessStatus: rs,
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async updateSiteRequirementContent(id: number, data: any): Promise<any | undefined> {
+    const [row] = await db.update(siteRequirements)
+      .set({
+        plannedWork: data.plannedWork ?? null,
+        materials: data.materials ?? null,
+        equipment: data.equipment ?? null,
+        labour: data.labour ?? null,
+        immediateRequirements: data.immediateRequirements ?? null,
+        revisionStatus: "revised",
+        revisionOneTimeUsed: true,
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async requestSiteRequirementRevision(id: number, reason: string): Promise<any | undefined> {
+    const [row] = await db.update(siteRequirements)
+      .set({
+        revisionStatus: "revision_requested",
+        revisionRequestReason: reason || null,
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async approveSiteRequirementRevision(id: number, approvedBy: number, remarks: string): Promise<any | undefined> {
+    const [row] = await db.update(siteRequirements)
+      .set({
+        revisionStatus: "revision_approved",
+        revisionApprovedBy: approvedBy,
+        revisionApprovedAt: new Date().toISOString(),
+        revisionRemarks: remarks || null,
+        revisionOneTimeUsed: false,
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async rejectSiteRequirementRevision(id: number, remarks: string): Promise<any | undefined> {
+    const [row] = await db.update(siteRequirements)
+      .set({
+        revisionStatus: "revision_rejected",
+        revisionRemarks: remarks || null,
       })
       .where(eq(siteRequirements.id, id))
       .returning();

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
@@ -77,9 +77,15 @@ export default function SiteRequirementNew() {
   const queryClient = useQueryClient();
   const returnTo = new URLSearchParams(search).get("returnTo") || "/site";
   const mode = new URLSearchParams(search).get("mode");
+  const editId = new URLSearchParams(search).get("editId");
   const isImmediateMode = mode === "immediate";
+  const isEditMode = !!editId;
 
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
+  const { data: existingReq } = useQuery<any>({
+    queryKey: [`/api/site-requirements/${editId}`],
+    enabled: isEditMode,
+  });
 
   const [date, setDate] = useState(isImmediateMode ? format(new Date(), "yyyy-MM-dd") : TOMORROW);
   const [siteId, setSiteId] = useState<string>("");
@@ -101,6 +107,26 @@ export default function SiteRequirementNew() {
   const [plannedQty, setPlannedQty] = useState("");
   const [plannedUom, setPlannedUom] = useState("");
   const [pwRemarks, setPwRemarks] = useState("");
+
+  // Prefill from existing requirement when editing
+  const prefillDone = useRef(false);
+  useEffect(() => {
+    if (!existingReq || prefillDone.current) return;
+    prefillDone.current = true;
+    setDate(existingReq.date ?? TOMORROW);
+    setSiteId(existingReq.siteId ? String(existingReq.siteId) : "");
+    if (existingReq.plannedWork) {
+      setActivity(existingReq.plannedWork.activity ?? "");
+      setChainage(existingReq.plannedWork.chainage ?? "");
+      setPlannedQty(existingReq.plannedWork.plannedQty ?? "");
+      setPlannedUom(existingReq.plannedWork.plannedUom ?? "");
+      setPwRemarks(existingReq.plannedWork.remarks ?? "");
+    }
+    if (existingReq.materials?.length) setMaterials(existingReq.materials);
+    if (existingReq.equipment?.length) setEquipment(existingReq.equipment);
+    if (existingReq.labour?.length) setLabour(existingReq.labour);
+    if (existingReq.immediateRequirements?.length) setImmediate(existingReq.immediateRequirements);
+  }, [existingReq]);
 
   // Section B — Materials
   const [materials, setMaterials] = useState<MaterialLine[]>([]);
@@ -132,41 +158,44 @@ export default function SiteRequirementNew() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const body: any = {
-        date,
-        siteId: siteId ? parseInt(siteId) : null,
-        submittedByName: (user as any)?.username ?? null,
-        submittedBy: (user as any)?.id ?? null,
-      };
+      const body: any = {};
       if (activity || chainage || plannedQty || pwRemarks) {
         body.plannedWork = { activity, chainage, plannedQty, plannedUom, remarks: pwRemarks };
       }
-      if (materials.filter(m => m.materialName).length > 0) {
-        body.materials = materials.filter(m => m.materialName);
+      const filteredMaterials = materials.filter(m => m.materialName);
+      const filteredEquipment = equipment.filter(e => e.equipmentType);
+      const filteredLabour = labour.filter(l => l.labourType);
+      const filteredImmediate = immediate.filter(i => i.description);
+      if (filteredMaterials.length > 0) body.materials = filteredMaterials;
+      if (filteredEquipment.length > 0) body.equipment = filteredEquipment;
+      if (filteredLabour.length > 0) body.labour = filteredLabour;
+      if (filteredImmediate.length > 0) body.immediateRequirements = filteredImmediate;
+
+      if (isEditMode) {
+        return apiRequest("PUT", `/api/site-requirements/${editId}`, body);
       }
-      if (equipment.filter(e => e.equipmentType).length > 0) {
-        body.equipment = equipment.filter(e => e.equipmentType);
-      }
-      if (labour.filter(l => l.labourType).length > 0) {
-        body.labour = labour.filter(l => l.labourType);
-      }
-      if (immediate.filter(i => i.description).length > 0) {
-        body.immediateRequirements = immediate.filter(i => i.description);
-      }
+      // New submission — include identity and date/site
+      body.date = date;
+      body.siteId = siteId ? parseInt(siteId) : null;
       return apiRequest("POST", "/api/site-requirements", body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
+      if (editId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/site-requirements/${editId}`] });
+      }
       toast({
-        title: "Requirement submitted",
-        description: isImmediateMode
-          ? "Your immediate requirement has been raised."
-          : "Your tomorrow's plan has been sent to the PM.",
+        title: isEditMode ? "Requirement revised" : "Requirement submitted",
+        description: isEditMode
+          ? "Your revision has been saved. PM/Admin has been notified."
+          : isImmediateMode
+            ? "Your immediate requirement has been raised."
+            : "Your tomorrow's plan has been sent to the PM.",
       });
       setLocation(returnTo);
     },
     onError: (err: any) => {
-      toast({ title: "Failed to submit", description: err.message, variant: "destructive" });
+      toast({ title: isEditMode ? "Failed to save revision" : "Failed to submit", description: err.message, variant: "destructive" });
     },
   });
 
@@ -192,12 +221,19 @@ export default function SiteRequirementNew() {
         </button>
         <div>
           <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            {isImmediateMode ? "Immediate Requirement" : "Tomorrow's Requirement"}
+            {isEditMode ? "Revise Requirement" : isImmediateMode ? "Immediate Requirement" : "Tomorrow's Requirement"}
           </h1>
           <p className="text-xs text-slate-400">
-            {isImmediateMode ? "Raise an urgent site requirement now" : "Plan and request what you need for tomorrow"}
+            {isEditMode
+              ? "Update the details — you can add missed items or correct existing ones"
+              : isImmediateMode
+                ? "Raise an urgent site requirement now"
+                : "Plan and request what you need for tomorrow"}
           </p>
         </div>
+        {isEditMode && (
+          <span className="ml-auto text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">REVISION</span>
+        )}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
@@ -455,17 +491,25 @@ export default function SiteRequirementNew() {
             data-testid="button-submit-requirement"
           >
             {saveMutation.isPending ? (
-              <span className="text-sm">Submitting...</span>
+              <span className="text-sm">{isEditMode ? "Saving revision..." : "Submitting..."}</span>
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                {isImmediateMode ? "Submit Immediate Requirement" : "Submit Tomorrow's Requirement"}
+                {isEditMode
+                  ? "Save Revision"
+                  : isImmediateMode
+                    ? "Submit Immediate Requirement"
+                    : "Submit Tomorrow's Requirement"}
               </>
             )}
           </Button>
           {!hasAnyContent && (
             <p className="text-xs text-slate-400 text-center mt-2">
-              {isImmediateMode ? "Describe at least one immediate requirement before submitting." : "Fill in at least one section before submitting."}
+              {isEditMode
+                ? "Make at least one change before saving."
+                : isImmediateMode
+                  ? "Describe at least one immediate requirement before submitting."
+                  : "Fill in at least one section before submitting."}
             </p>
           )}
         </div>
