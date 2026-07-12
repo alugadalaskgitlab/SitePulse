@@ -1,0 +1,227 @@
+Please create a planning/audit task first, not implementation:
+
+# Role Landing Page + Navigation Flow Audit
+
+We need to redesign the app navigation flow for data-entry users so the app becomes predictable and easy to use.
+
+Current problem:
+Many pages/forms go back to random places after save/back, sometimes to DPR lists, sometimes to HMP Operations, and sidebar highlighting is also sometimes wrong. This confuses field users.
+
+Product rule to freeze:
+Each data-entry role should have one landing/work page.
+All daily actions start from that landing page.
+After save/submit, the app should return to that same landing page unless the user came from a specific report/list.
+
+Examples:
+- Site Engineer/Supervisor → Site Team Home
+- Plant Operator → Plant Operator Home
+- Storekeeper → Stores Home
+- Equipment In-charge → Equipment/Fleet Home
+- PM/Admin → Manager/Admin Home
+
+Do not implement yet.
+First audit and propose the flow.
+
+A. Required navigation model
+
+Use this rule:
+
+Login
+→ role landing page
+→ select tile/action
+→ enter form
+→ save/submit
+→ return to same role landing page
+→ next action
+
+Examples:
+
+Site Engineer:
+Site Team Home
+→ Material Trip
+→ Save
+→ return to Site Team Home
+
+Site Engineer:
+Site Team Home
+→ Equipment Log
+→ Save
+→ return to Site Team Home
+
+Site Engineer:
+Site Team Home
+→ Today’s Site Work / DPR
+→ Submit
+→ return to Site Team Home or Today’s Site Report
+
+Plant Operator:
+Plant Operator Home
+→ Shift Log
+→ Save
+→ return to Plant Operator Home
+
+Storekeeper:
+Stores Home
+→ GRN
+→ Save
+→ return to Stores Home
+
+Manager:
+Manager Home
+→ Approval item
+→ Approve/Reject
+→ return to Manager Home / Approval Queue
+
+B. Source context / returnTo concept
+
+For every form/page that can be opened from different places, add or plan a source context.
+
+Examples:
+- ?returnTo=field-home
+- ?returnTo=site-hub
+- ?returnTo=materials-received
+- ?returnTo=plant-home
+- ?returnTo=stores-home
+- ?returnTo=equipment-home
+- ?returnTo=reports
+
+The same form should return to different places depending on where it was opened from.
+
+Example:
+Material Trip opened from Site Team Home
+→ save
+→ return to Site Team Home
+
+Material Trip opened from Materials Received Report
+→ save
+→ return to Materials Received Report
+
+Equipment Usage opened from Equipment & Fleet Home
+→ save
+→ return to Equipment & Fleet Home
+
+Equipment Usage opened from HMP Home
+→ save
+→ return to HMP Home
+
+C. Sidebar and breadcrumb rule
+
+Sidebar highlight, breadcrumb, and Home/Back buttons must follow module/source context.
+
+Rules:
+- Sidebar highlight = current module context
+- Breadcrumb = parent module/home > current page
+- App Back button = previous context/parent page
+- Home/Hub button = correct role/module landing page
+
+Examples:
+Equipment Usage opened from Equipment & Fleet:
+- sidebar: Equipment & Fleet
+- breadcrumb: Equipment & Fleet > Equipment Usage
+- save/back: Equipment & Fleet Home
+
+Equipment Usage opened from HMP:
+- sidebar: HMP Operations
+- breadcrumb: HMP Operations > Equipment Usage
+- save/back: Plant Operator/HMP Home
+
+Material Trip opened from Site Team:
+- sidebar: Site Operations
+- breadcrumb: Site Team Home > Material Trip
+- save/back: Site Team Home
+
+D. Audit required
+
+Please create a route/navigation audit table.
+
+For every main page/form, list:
+
+1. Page name
+2. Current route
+3. Current parent module/hub
+4. Current sidebar highlight
+5. Current back target
+6. Current save/submit redirect
+7. Desired parent landing page
+8. Desired sidebar highlight
+9. Desired breadcrumb
+10. Desired save/submit redirect
+11. Whether sourceContext/returnTo is needed
+
+Pages to include at minimum:
+
+Site / Field:
+- FieldHome / Site Team Home
+- Today’s Site Work / DPR entry
+- Road DPR
+- Structure DPR
+- DPR detail/report
+- DPR history/list
+- Site Material Trip
+- Materials Received Report
+- Site Purchase
+- Equipment Log from site
+- Labour Log
+- Site Remark / Issue
+- Raise PI
+- Raise IRN
+
+Plant / HMP:
+- Plant Operator Home / HMP Hub
+- Shift Log
+- Bitumen Heating
+- Plant Material Receipt
+- Plant Dispatch / Production
+- LDO/Fuel
+- Plant Equipment Usage
+- HMP Reports
+
+Stores:
+- Stores Home
+- GRN
+- IRN
+- Stock Ledger
+- Receipts
+- Issues / Returns
+- Store Reports
+
+Equipment:
+- Equipment & Fleet Home
+- Equipment Usage
+- Breakdown Log
+- Maintenance Log
+- Fuel / Odometer / Hour Meter
+- Equipment Reports
+
+Procurement/Billing:
+- Purchase Indents
+- Purchase Orders
+- Vendor Bills
+- Vendor Receipt Proof
+
+Manager/Admin:
+- Manager/Admin Home
+- Approval Queue
+- Edit Requests
+- Pending documents
+- Plan vs Actual
+- Reports
+
+E. Do not implement yet
+
+This is only planning/audit.
+
+Do not change code yet.
+Do not redesign screens yet.
+Do not touch BOQ/programme/DPR logic.
+Do not touch attachments.
+Do not touch permissions.
+
+First give:
+- current navigation problems found
+- proposed corrected navigation map
+- which routes need returnTo/sourceContext
+- recommended implementation phases
+- risks/places where one page is shared by multiple modules
+
+After I review the audit, I will approve the implementation phase.
