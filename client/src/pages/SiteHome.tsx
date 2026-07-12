@@ -185,7 +185,7 @@ export default function SiteHome() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
             {canDprs && (
-              <Link href="/site/new?type=road" data-testid="link-new-dpr-road">
+              <Link href="/site/new?type=road&returnTo=/site" data-testid="link-new-dpr-road">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-amber-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/70 transition-colors">
                     <Route className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -205,7 +205,7 @@ export default function SiteHome() {
             )}
 
             {canDprs && (
-              <Link href="/site/new?type=structure" data-testid="link-new-dpr-structure">
+              <Link href="/site/new?type=structure&returnTo=/site" data-testid="link-new-dpr-structure">
                 <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer">
                   <div className="w-9 h-9 bg-sky-100 dark:bg-sky-900/40 rounded-lg flex items-center justify-center group-hover:bg-sky-200 dark:group-hover:bg-sky-900/70 transition-colors">
                     <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" />

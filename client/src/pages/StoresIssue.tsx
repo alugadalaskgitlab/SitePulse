@@ -112,7 +112,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
       setShowForm(false);
       setForm({ date: TODAY, issuedToSection: "plant", issuedToDetail: "", siteId: "", purpose: "", remarks: "" });
       setLines([emptyLine()]);
-      if (isNew) navigate("/stores/issues");
+      if (isNew) navigate(new URLSearchParams(search).get("returnTo") || "/stores/issues");
     },
     onError: () => toast({ title: "Error creating Issue Voucher", variant: "destructive" }),
   });
@@ -278,7 +278,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                     </span>
                   )}
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowForm(false); if (isNew) navigate("/stores/issues"); }}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowForm(false); if (isNew) navigate(new URLSearchParams(search).get("returnTo") || "/stores/issues"); }}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -476,7 +476,7 @@ export default function StoresIssue({ isNew, detailId }: Props) {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
-                  <Button type="button" variant="ghost" onClick={() => { setShowForm(false); if (isNew) navigate("/stores/issues"); }}>Cancel</Button>
+                  <Button type="button" variant="ghost" onClick={() => { setShowForm(false); if (isNew) navigate(new URLSearchParams(search).get("returnTo") || "/stores/issues"); }}>Cancel</Button>
                   <Button type="submit" className="gap-1 bg-orange-600 hover:bg-orange-700" disabled={createMutation.isPending} data-testid="button-save-issue">
                     {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpFromLine className="w-4 h-4" />}
                     Save Issue Voucher

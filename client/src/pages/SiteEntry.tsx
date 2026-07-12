@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useBeforeUnload } from "@/hooks/use-before-unload";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -268,9 +268,14 @@ const GUIDED_STEPS = [
 
 export default function SiteEntry() {
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
   const { toast } = useToast();
   const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/site/dashboard");
+  // Honor ?returnTo= so SiteHome/FieldHome/SiteDashboard each get their own
+  // landing back.  Fall back to appendOrigin for portal (estimator) users.
+  const _urlParams = new URLSearchParams(searchStr);
+  const returnTo = _urlParams.get("returnTo") ?? null;
+  const backLink = returnTo ?? appendOrigin("/site/dashboard");
   const [showPreview, setShowPreview] = useState(false);
   const [overBalanceWarnings, setOverBalanceWarnings] = useState<string[] | null>(null);
 
@@ -1032,7 +1037,13 @@ export default function SiteEntry() {
         title: "Report Saved Successfully",
         description: "Your site report has been submitted.",
       });
-      setLocation(appendOrigin(`/site/success/${data.id}?type=${workType}`));
+      // Forward returnTo into SiteSuccess so its "Back to Home" button also
+      // goes to the right landing page.
+      const successBase = `/site/success/${data.id}?type=${workType}`;
+      const successUrl = returnTo
+        ? `${successBase}&returnTo=${encodeURIComponent(returnTo)}`
+        : appendOrigin(successBase);
+      setLocation(successUrl);
     },
     onError: () => {
       toast({

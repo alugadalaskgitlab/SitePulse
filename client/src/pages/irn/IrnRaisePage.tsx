@@ -318,7 +318,7 @@ export default function IrnRaisePage() {
         navigate(returnTo || `/irn/${editId}`);
       } else {
         toast({ title: "IRN raised", description: `${irn.irnNo} submitted to stores` });
-        navigate(`/irn/${irn.id}`);
+        navigate(returnTo || `/irn/${irn.id}`);
       }
     },
     onError: (err: any) => {

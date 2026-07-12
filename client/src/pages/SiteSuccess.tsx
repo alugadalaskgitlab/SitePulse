@@ -7,9 +7,13 @@ import { useOrigin } from "@/hooks/use-origin";
 export default function SiteSuccess() {
   const [, params] = useRoute("/site/success/:id");
   const reportId = params?.id;
-  const { appendOrigin } = useOrigin();
-  const backLink = appendOrigin("/site/dashboard");
-  const newReportType = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("type");
+  const { appendOrigin, getBackLink } = useOrigin();
+  // getBackLink honors ?returnTo= so we land back on whoever opened the DPR form.
+  const backLink = getBackLink("/site/dashboard");
+  const sp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const newReportType = sp.get("type");
+  // Forward returnTo into "Create New Report" so the next DPR also comes back here.
+  const returnTo = sp.get("returnTo");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -39,7 +43,11 @@ export default function SiteSuccess() {
                 </Button>
               </Link>
             )}
-            <Link href={appendOrigin(`/site/new${newReportType ? `?type=${newReportType}` : ""}`)}>
+            <Link href={(() => {
+              const base = `/site/new${newReportType ? `?type=${newReportType}` : ""}`;
+              if (returnTo) return `${base}${newReportType ? "&" : "?"}returnTo=${encodeURIComponent(returnTo)}`;
+              return appendOrigin(base);
+            })()}>
               <Button className="w-full gap-2" data-testid="button-create-new">
                 <Plus className="w-4 h-4" />
                 Create New Site Report

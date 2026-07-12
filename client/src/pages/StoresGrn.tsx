@@ -417,7 +417,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
       setGrnCategory("Spares");
       setIndentOverride(false);
       setIndentComboSearch("");
-      if (isNew) navigate("/stores/grns");
+      if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
     },
     onError: () => {
       setIsSavingDraft(false);
@@ -607,7 +607,7 @@ export default function StoresGrn({ isNew, detailId }: Props) {
     setShowForm(false);
     setEditingDraftId(null);
     setEditingDraftNumber("");
-    if (isNew) navigate("/stores/grns");
+    if (isNew) navigate(searchParams.get("returnTo") || "/stores/grns");
   }
 
   return (

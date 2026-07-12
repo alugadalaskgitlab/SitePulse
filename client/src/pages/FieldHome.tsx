@@ -384,7 +384,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
     ? (dprPhase === "submitted-own" ? `/site/report/${myDpr.id}` : `/site/edit/${myDpr.id}`)
     : otherDpr
     ? `/site/report/${otherDpr.id}`
-    : "/site/new";
+    : "/site/new?returnTo=/";
 
   interface CtaConfig {
     label: string;
@@ -401,7 +401,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
       case "not-started":
         return {
           label: "Start Today's Site Work",
-          href: "/site/new",
+          href: "/site/new?returnTo=/",
           status: "DPR not started yet",
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-300",
@@ -444,7 +444,7 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   })();
 
   // ── Quick actions ──────────────────────────────────────────────────────────
-  const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new";
+  const editHref = myDpr ? `/site/edit/${myDpr.id}` : "/site/new?returnTo=/";
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
