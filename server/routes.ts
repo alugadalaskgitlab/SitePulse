@@ -10224,8 +10224,46 @@ export async function registerRoutes(
       if (!assertEdit(req, res, "qto_boq")) return;
       const boqProjectId = parseInt(req.params.id);
       if (isNaN(boqProjectId)) return res.status(400).json({ error: "Invalid project id" });
-      const summary = await autoMapProjectWithSummary(boqProjectId);
-      res.json(summary);
+
+      // Server-side short-name extraction (mirrors client/src/lib/itemName.ts)
+      const MATERIAL_KW = [
+        "Wet Mix Macadam", "Granular Sub-Base", "Granular Sub Base", "Dense Bituminous Macadam",
+        "Bituminous Concrete", "Dense Graded Bituminous", "Prime Coat", "Tack Coat",
+        "Stone Matrix Asphalt", "Crusher Run Macadam", "Water Bound Macadam",
+      ];
+      const GENERIC_PREFIXES = [
+        /^providing,?\s*supplying\s*(&|and)?\s*/i, /^supplying,?\s*providing\s*(&|and)?\s*/i,
+        /^providing,?\s*laying,?\s*spreading\s*(&|and)?\s*compacting\s*(of\s*)?/i,
+        /^providing\s*(&|and)\s*laying\s*(in\s*position\s*)?(of\s*)?/i,
+        /^providing\s*(&|and)\s*fixing\s*(of\s*)?/i, /^providing\s*(of\s*)?/i,
+      ];
+      function serverShortItemName(full?: string | null): string {
+        if (!full) return "";
+        let s = String(full).replace(/\s+/g, " ").trim();
+        for (const kw of MATERIAL_KW) {
+          if (s.toLowerCase().includes(kw.toLowerCase())) return kw;
+        }
+        for (const re of GENERIC_PREFIXES) { const n = s.replace(re, ""); if (n !== s) { s = n.trim(); break; } }
+        s = s.split(/,| including| complete\b| conforming| as per| by providing/i)[0].trim();
+        s = s.replace(/[\s.;:,-]+$/, "").trim();
+        return s.length > 80 ? s.slice(0, 77).replace(/\s+\S*$/, "") + "…" : s;
+      }
+
+      const allItems = await storage.getBoqItems(boqProjectId);
+      const toClassify = allItems.filter(it => it.needsReview || !it.displayName?.trim());
+      let updated = 0;
+      for (const item of toClassify) {
+        const desc = item.description || item.itemName || "";
+        const category = classifyBoqItem(desc);
+        const shortName = serverShortItemName(item.itemName || desc);
+        await storage.updateBoqItem(item.id, {
+          displayName: shortName || null,
+          workCategory: category.code,
+          needsReview: false,
+        } as any);
+        updated++;
+      }
+      res.json({ ok: true, updated, total: allItems.length });
     } catch (err) {
       console.error("POST /api/boq/projects/:id/auto-map-all:", err);
       res.status(500).json({ error: "Auto-map failed" });

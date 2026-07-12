@@ -22,7 +22,7 @@ import { BOQ_WORK_CATEGORIES } from "@shared/boqWorkCategories";
 import type { BoqItemWithCategory } from "@shared/schema";
 
 const DPR_METHOD_OPTIONS = [
-  { value: "", label: "— Auto (from BOQ unit) —" },
+  { value: "__none__", label: "— Auto (from BOQ unit) —" },
   { value: "CUM_LWT", label: "CUM — Length × Width × Thickness" },
   { value: "SQM_LW", label: "SQM — Length × Width" },
   { value: "RMT_L", label: "RMT — Length only" },
@@ -56,9 +56,9 @@ function ItemEditRow({
 }) {
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState(item.displayName ?? "");
-  const [dprMethod, setDprMethod] = useState(item.dprMeasurementMethod ?? "");
+  const [dprMethod, setDprMethod] = useState(item.dprMeasurementMethod ?? "__none__");
   const [workType, setWorkType] = useState(item.planningWorkType ?? "road");
-  const [workCategory, setWorkCategory] = useState(item.workCategory ?? "");
+  const [workCategory, setWorkCategory] = useState(item.workCategory ?? "__none__");
   const [includeInDpr, setIncludeInDpr] = useState(item.includeInDpr ?? true);
   const [includeInPlanning, setIncludeInPlanning] = useState(item.includedInPlanning ?? true);
   const [includeInProcurement, setIncludeInProcurement] = useState(item.includeInProcurement ?? true);
@@ -73,12 +73,14 @@ function ItemEditRow({
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  function toNullable(v: string) { return (!v || v === "__none__") ? null : v; }
+
   function save(extra: Record<string, unknown> = {}) {
     patch.mutate({
       displayName: displayName.trim() || null,
-      dprMeasurementMethod: dprMethod || null,
+      dprMeasurementMethod: toNullable(dprMethod),
       planningWorkType: workType,
-      workCategory: workCategory || null,
+      workCategory: toNullable(workCategory),
       includeInDpr,
       includedInPlanning: includeInPlanning,
       includeInProcurement,
@@ -113,13 +115,13 @@ function ItemEditRow({
       <td className="py-2 px-3 min-w-[160px]">
         <Select
           value={workCategory}
-          onValueChange={v => { setWorkCategory(v); save({ workCategory: v || null }); }}
+          onValueChange={v => { setWorkCategory(v); save({ workCategory: v === "__none__" ? null : v }); }}
         >
           <SelectTrigger className="h-7 text-xs" data-testid={`select-work-category-${item.id}`}>
-            <SelectValue placeholder={<span className="text-amber-500">— Unmapped —</span>} />
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="" className="text-xs text-slate-400">— Not set —</SelectItem>
+            <SelectItem value="__none__" className="text-xs text-amber-500">— Unmapped —</SelectItem>
             {BOQ_WORK_CATEGORIES.map(c => (
               <SelectItem key={c.code} value={c.code} className="text-xs">{c.label}</SelectItem>
             ))}
@@ -150,10 +152,10 @@ function ItemEditRow({
       <td className="py-2 px-3 min-w-[170px]">
         <Select
           value={dprMethod}
-          onValueChange={v => { setDprMethod(v); save({ dprMeasurementMethod: v || null }); }}
+          onValueChange={v => { setDprMethod(v); save({ dprMeasurementMethod: v === "__none__" ? null : v }); }}
         >
           <SelectTrigger className="h-7 text-xs" data-testid={`select-dpr-method-${item.id}`}>
-            <SelectValue placeholder="Auto" />
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {DPR_METHOD_OPTIONS.map(o => (

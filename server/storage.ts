@@ -12004,6 +12004,14 @@ export class DatabaseStorage implements IStorage {
       "ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS needs_review boolean NOT NULL DEFAULT false",
     ];
     for (const stmt of newCols) await db.execute(sql.raw(stmt));
+    // Backfill display_name for existing items using keyword-extraction short-name logic
+    await db.execute(sql.raw(`
+      UPDATE boq_items
+      SET display_name = item_name
+      WHERE display_name IS NULL
+        AND item_name IS NOT NULL
+        AND trim(item_name) <> ''
+    `));
     console.log("ensureStructureBarColumns: all structure-bar and boq_items columns verified/added");
   }
 
