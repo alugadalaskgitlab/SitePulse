@@ -1,0 +1,137 @@
+Please revise only this mockup screen:
+
+Site Team — Field Engineer / Supervisor Home
+
+Do not apply this instruction to Plant Operator, Store In-charge, Site Manager/Admin, Road DPR, Structure DPR, permissions, dashboard, or backend logic.
+
+This is only for the Site Engineer / Supervisor landing page mockup.
+
+Concept:
+This page should show SitePulse as a live site-work guidance screen, not just a DPR entry page.
+
+The engineer should immediately understand:
+- what was planned up to today
+- what has actually been achieved
+- what is lagging/backlog
+- what should be focused on today
+- what has already been logged today
+- what is pending before DPR submission
+
+Please revise the screen in this order:
+
+1. Header
+Show:
+- greeting
+- user name
+- role
+- assigned site
+- date
+- sync / notification status if needed
+
+2. First major card after header: Today’s Site Goal
+
+Subtitle:
+Planned vs actual, backlog and today’s target
+
+This card should show cumulative plan vs actual, not only today’s DPR entries.
+
+For key activities / reaches / structures, show:
+- activity or structure name
+- reach / chainage / structure ID
+- planned till today
+- actual achieved till today
+- backlog / ahead
+- today’s target if available
+- logged today if any
+- status: On Track / Behind / Ahead / Not Started
+
+3. Main action section: Today’s Site Work
+
+Do not use only “Start Today’s DPR” as the main concept.
+
+Use dynamic button text:
+- Start Today’s Site Work
+- Continue Today’s Site Work
+- Complete Today’s Site Work
+- View Today’s Site Report
+
+Below the button, show DPR status text, such as:
+- DPR draft opened · 40% complete
+- 2 activities logged · equipment closing pending
+- DPR submitted at 7:15 PM
+
+This action can create or continue today’s DPR draft, but the wording should feel broader than only DPR because the flow includes progress, labour, equipment, material, photos and remarks.
+
+4. Start-of-Day Checklist
+
+Show after Today’s Site Goal and Today’s Site Work.
+
+Checklist items:
+- Open/create today’s DPR draft
+- Confirm labour count
+- Enter equipment opening meter / start time
+- Confirm key equipment availability
+- Check material availability
+- Add morning site photo if needed
+
+5. Quick Actions
+
+Remove specific “Water Tanker” quick button.
+
+Use permission-based quick actions such as:
+- Record Progress
+- Add Photo
+- Material Trip
+- Equipment Log
+- Labour Log
+- Site Purchase
+- Raise PI
+- Raise IRN
+- Site Remark / Issue
+
+Only show buttons the user has permission to access.
+
+6. Today’s Activity / Structure Cards
+
+Show planned and lagging work cards.
+
+Each card should show:
+- activity / structure name
+- reach / chainage / structure ID
+- planned till today
+- actual till date
+- backlog / balance
+- today logged
+- status
+
+Each card may have quick actions:
+- Record Progress
+- Add Photo
+- Add Equipment
+- Add Labour
+- Add Material if applicable
+
+7. Pending Before Submit / Closing Checklist
+
+Show items that must be completed before final DPR submission:
+- closing meter pending
+- labour count pending
+- material challan photo missing
+- site/activity photos missing
+- activity quantity not entered
+- DPR not submitted
+
+8. Design direction
+
+Use clean light-mode design first.
+Do not force dark mode as default.
+Dark mode can be optional later.
+
+The screen should be responsive:
+- mobile: single-column cards
+- tablet: two-column cards where useful
+- desktop: wider guided work layout
+
+Important:
+Do not implement yet.
+Please show the revised full top-to-bottom mockup first.

@@ -296,10 +296,10 @@ export function SiteTeam() {
   const closePending = closeChecks.filter(c => c.state !== "done").length;
 
   const cta = {
-    "not-started":   { label: "Open Today's Work Control",  sub: "Create today's DPR & start tracking",   color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
-    "draft":         { label: "Continue Today's DPR Draft", sub: "Draft opened · 40% complete",            color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
-    "pending-submit":{ label: "Complete Pending DPR",       sub: "All entries done — ready to submit",     color: "bg-green-500 hover:bg-green-600 shadow-green-200"    },
-    "submitted":     { label: "View Submitted DPR",         sub: "Submitted at 18:32 · read-only",         color: "bg-gray-400 hover:bg-gray-500 shadow-gray-200"       },
+    "not-started":    { label: "Start Today's Site Work",    sub: "No DPR opened yet · tap to begin",                       color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
+    "draft":          { label: "Continue Today's Site Work", sub: "DPR draft opened · 40% complete",                        color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200" },
+    "pending-submit": { label: "Complete Today's Site Work", sub: "2 activities logged · equipment closing pending",         color: "bg-green-500 hover:bg-green-600 shadow-green-200"    },
+    "submitted":      { label: "View Today's Site Report",   sub: "DPR submitted at 6:32 PM · read-only",                   color: "bg-gray-400 hover:bg-gray-500 shadow-gray-200"       },
   }[dprState];
 
   const behindCount = planItems.filter(p => p.status === "Behind").length;
@@ -341,16 +341,16 @@ export function SiteTeam() {
       {/* ── Scrollable content ── */}
       <div className="pb-24 px-4 pt-4 space-y-4 max-w-2xl mx-auto">
 
-        {/* ── 1. Plan vs Progress Summary ── */}
+        {/* ── 1. Today's Site Goal ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                   <Target className="w-4 h-4 text-orange-500" />
-                  Plan vs Progress
+                  Today's Site Goal
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Cumulative till today</p>
+                <p className="text-xs text-gray-400 mt-0.5">Planned vs actual, backlog and today's target</p>
               </div>
               {behindCount > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 border border-red-100">
@@ -387,8 +387,22 @@ export function SiteTeam() {
           </div>
         </div>
 
-        {/* ── 2. Main CTA ── */}
-        <div className="space-y-2">
+        {/* ── 2. Today's Site Work CTA ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-orange-500" />
+              Today's Site Work
+            </h2>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              dprState === "submitted"      ? "bg-green-50 text-green-600" :
+              dprState === "pending-submit" ? "bg-amber-50 text-amber-600" :
+              dprState === "draft"          ? "bg-orange-50 text-orange-600" :
+                                              "bg-gray-50 text-gray-400"
+            }`}>
+              {dprState === "submitted" ? "Submitted" : dprState === "pending-submit" ? "Ready to submit" : dprState === "draft" ? "In progress" : "Not started"}
+            </span>
+          </div>
           <button
             onClick={() => {
               if (dprState === "not-started") setDprState("draft");
@@ -398,11 +412,15 @@ export function SiteTeam() {
             }}
             className={`w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-3 shadow-lg transition-all active:scale-[0.98] ${cta.color}`}
           >
-            <ClipboardList className="w-5 h-5" />
             <span>{cta.label}</span>
             <ArrowRight className="w-4 h-4 ml-auto" />
           </button>
-          <p className="text-xs text-center text-gray-400">{cta.sub}</p>
+          <div className="flex items-center gap-2 px-1">
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              dprState === "submitted" ? "bg-green-400" : dprState === "pending-submit" ? "bg-amber-400" : dprState === "draft" ? "bg-orange-400" : "bg-gray-300"
+            }`} />
+            <p className="text-xs text-gray-500">{cta.sub}</p>
+          </div>
         </div>
 
         {/* ── 3. Start-of-day checklist ── */}
