@@ -152,6 +152,13 @@ app.use((req, res, next) => {
   }
 
   try {
+    await storage.ensureSiteRequirementsTable();
+    console.log("Startup: site_requirements table ensured");
+  } catch (e) {
+    console.error("Startup: Failed to ensure site_requirements table:", e);
+  }
+
+  try {
     await (storage as any).ensureStructureBarColumns();
     console.log("Startup: ensureStructureBarColumns — structure bar columns verified");
   } catch (e) {

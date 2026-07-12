@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Camera, Truck, Wrench, Users, ShoppingCart, ShoppingBag,
-  BookOpen, MessageSquare, LayoutDashboard, MapPin,
+  Truck, ShoppingBag,
+  BookOpen, LayoutDashboard, MapPin,
   ArrowRight, AlertTriangle, CheckCircle2, Circle, AlertCircle,
   Target, Zap, ClipboardList, Home, FileText, BarChart2, User,
-  ChevronRight, Bell, ChevronDown,
+  ChevronRight, Bell, ChevronDown, CalendarPlus,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -448,14 +448,10 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
-    { label: "Activity Photo", icon: Camera,        color: "bg-slate-600", href: editHref,                                    perm: sectionVisible("site_dprs") },
-    { label: "Material Trip",  icon: Truck,         color: "bg-blue-600",  href: "/site/material-trips?returnTo=/",          perm: sectionVisible("site_materials") },
-    { label: "Equipment Log",  icon: Wrench,        color: "bg-amber-600", href: editHref,                                    perm: sectionVisible("site_dprs") },
-    { label: "Labour Log",     icon: Users,         color: "bg-teal-600",  href: editHref,                                    perm: sectionVisible("site_dprs") },
-    { label: "Site Purchase",  icon: ShoppingCart,  color: "bg-green-600", href: editHref,                                    perm: sectionVisible("site_dprs") },
-    { label: "Raise PI",       icon: ShoppingBag,   color: "bg-purple-600",href: "/plant/purchase-indents?returnTo=/&from=site", perm: sectionVisible("site_procurement") },
-    { label: "Raise IRN",      icon: BookOpen,      color: "bg-indigo-600",href: "/irn/new?from=site&returnTo=/",             perm: canRaiseIrn },
-    { label: "Site Remark",    icon: MessageSquare, color: "bg-rose-500",  href: editHref,                                    perm: sectionVisible("site_dprs") },
+    { label: "Material Trip",    icon: Truck,        color: "bg-blue-600",   href: "/site/material-trips?returnTo=/",             perm: sectionVisible("site_materials") },
+    { label: "Raise PI",         icon: ShoppingBag,  color: "bg-purple-600", href: "/plant/purchase-indents?returnTo=/&from=site", perm: sectionVisible("site_procurement") },
+    { label: "Raise IRN",        icon: BookOpen,     color: "bg-indigo-600", href: "/irn/new?from=site&returnTo=/",               perm: canRaiseIrn },
+    { label: "Tomorrow's Plan",  icon: CalendarPlus, color: "bg-teal-600",   href: "/site/requirements/new?returnTo=/",           perm: sectionVisible("site_dprs") },
   ];
   const visibleActions = allQuickActions.filter(a => a.perm !== false);
 

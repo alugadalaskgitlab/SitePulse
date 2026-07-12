@@ -3104,6 +3104,43 @@ export type EditPermissionRequest = typeof editPermissionRequests.$inferSelect;
 export type InsertEditPermissionRequest = z.infer<typeof insertEditPermissionRequestSchema>;
 
 // ============================================
+// Site Requirements — Tomorrow's Plan (raised by site engineer, reviewed by PM)
+// ============================================
+
+export const siteRequirements = pgTable("site_requirements", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Target date this requirement is for (usually tomorrow: yyyy-MM-dd)
+  date: text("date").notNull(),
+  siteId: integer("site_id"),
+  submittedBy: integer("submitted_by").references(() => users.id, { onDelete: "set null" }),
+  submittedByName: text("submitted_by_name"),
+
+  // Section A — Planned work description
+  plannedWork: jsonb("planned_work"),
+  // Section B — Material requirements [{materialName, qty, uom, requiredBy, sourcePreference, urgency}]
+  materials: jsonb("materials"),
+  // Section C — Equipment requirements [{equipmentType, numberRequired, requiredFromTime, expectedDuration, operatorRequired}]
+  equipment: jsonb("equipment"),
+  // Section D — Labour requirements [{labourType, count, skilledType, requiredFromTime}]
+  labour: jsonb("labour"),
+  // Section E — Immediate site requirements [{description, category, urgency, reason}]
+  immediateRequirements: jsonb("immediate_requirements"),
+
+  // PM review workflow
+  status: text("status").notNull().default("submitted"),
+  pmRemarks: text("pm_remarks"),
+  reviewedBy: integer("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+});
+
+export const insertSiteRequirementSchema = createInsertSchema(siteRequirements).omit({
+  id: true, createdAt: true,
+});
+export type SiteRequirement = typeof siteRequirements.$inferSelect;
+export type InsertSiteRequirement = z.infer<typeof insertSiteRequirementSchema>;
+
+// ============================================
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,

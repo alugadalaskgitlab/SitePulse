@@ -12899,6 +12899,8 @@ export async function registerRoutes(
     storage.backfillBoqWorkType().catch(err => console.error("backfillBoqWorkType failed:", err));
   })().catch((err) => console.error("Startup tasks failed:", err));
 
+  registerSiteRequirementRoutes(app);
+
   return httpServer;
 }
 
@@ -13346,4 +13348,85 @@ async function ensureBoqItemNameColumn() {
   } catch (err) {
     console.error("ensureBoqItemNameColumn failed:", err);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site Requirements — Tomorrow's Plan API
+// POST   /api/site-requirements        — site engineer submits
+// GET    /api/site-requirements        — list (all for admin/manager; own for engineer)
+// GET    /api/site-requirements/:id    — single record
+// PATCH  /api/site-requirements/:id/status — PM/Admin updates status
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function registerSiteRequirementRoutes(app: Express) {
+  app.post("/api/site-requirements", requireAuth, async (req: any, res) => {
+    try {
+      const body = req.body;
+      if (!body.date) return res.status(400).json({ error: "date is required" });
+      const row = await storage.createSiteRequirement({
+        date: body.date,
+        siteId: body.siteId ?? null,
+        submittedBy: body.submittedBy ?? req.session?.userId ?? null,
+        submittedByName: body.submittedByName ?? req.session?.username ?? null,
+        plannedWork: body.plannedWork ?? null,
+        materials: body.materials ?? null,
+        equipment: body.equipment ?? null,
+        labour: body.labour ?? null,
+        immediateRequirements: body.immediateRequirements ?? null,
+      });
+      res.json(row);
+    } catch (err: any) {
+      console.error("POST /api/site-requirements error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/site-requirements", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      const filters: any = {};
+      if (req.query.dateFrom) filters.dateFrom = req.query.dateFrom as string;
+      if (req.query.dateTo)   filters.dateTo   = req.query.dateTo as string;
+      if (req.query.siteId)   filters.siteId   = parseInt(req.query.siteId as string);
+      if (req.query.status)   filters.status   = req.query.status as string;
+      // Non-admin/manager see only their own submissions
+      if (role !== "admin" && role !== "manager") {
+        filters.submittedBy = req.session?.userId;
+      }
+      const rows = await storage.listSiteRequirements(filters);
+      res.json(rows);
+    } catch (err: any) {
+      console.error("GET /api/site-requirements error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/site-requirements/:id", requireAuth, async (req: any, res) => {
+    try {
+      const row = await storage.getSiteRequirement(parseInt(req.params.id));
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/site-requirements/:id/status", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can update status" });
+      }
+      const { status, pmRemarks, reviewedBy } = req.body;
+      if (!status) return res.status(400).json({ error: "status is required" });
+      const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
+        status,
+        pmRemarks,
+        reviewedBy: reviewedBy ?? req.session?.userId,
+      });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 }

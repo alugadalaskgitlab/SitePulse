@@ -23,6 +23,8 @@ import SiteReport from "@/pages/SiteReport";
 import SiteMaterialTrips from "@/pages/SiteMaterialTrips";
 import SiteMaterialsReceived from "@/pages/SiteMaterialsReceived";
 import SitePurchasesReport from "@/pages/SitePurchasesReport";
+import SiteRequirementNew from "@/pages/SiteRequirementNew";
+import SiteRequirementsList from "@/pages/SiteRequirementsList";
 import Plant from "@/pages/Plant";
 import PlantHome from "@/pages/PlantHome";
 import PlantNew from "@/pages/PlantNew";
@@ -246,6 +248,8 @@ function AuthedShell() {
             <Route path="/site/materials-received" component={gated(SiteMaterialsReceived, "site_materials")} />
             <Route path="/site/material-stock" component={gated(SiteMaterialStock, "site_materials")} />
             <Route path="/site/purchases" component={gatedEither(SitePurchasesReport, "report_site_purchases", "site_procurement")} />
+            <Route path="/site/requirements/new" component={gated(SiteRequirementNew, "site_dprs")} />
+            <Route path="/site/requirements" component={gated(SiteRequirementsList, "site_dprs")} />
             <Route path="/plant" component={PlantHome} />
             <Route path="/plant/dashboard" component={Plant} />
             <Route path="/plant/new" component={gatedEither(PlantNew, "site_management", "admin_settings")} />

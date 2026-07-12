@@ -1006,6 +1006,13 @@ export interface IStorage {
   getRmcSummaryRange(dateFrom: string, dateTo: string, plantName?: string): Promise<{ date: string; totalVolumeM3: number; totalBatches: number }[]>;
   ensureRmcTables(): Promise<void>;
 
+  // Site Requirements (Tomorrow's Plan / Requirement raised by site engineer)
+  createSiteRequirement(data: any): Promise<any>;
+  listSiteRequirements(filters?: { dateFrom?: string; dateTo?: string; siteId?: number; submittedBy?: number; status?: string }): Promise<any[]>;
+  getSiteRequirement(id: number): Promise<any | undefined>;
+  updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined>;
+  ensureSiteRequirementsTable(): Promise<void>;
+
   // Site Material Logs Summary
   getSiteMaterialLogs(filters?: { site?: string; dateFrom?: string; dateTo?: string }): Promise<{
     id: number;
@@ -21999,6 +22006,90 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     return { source, items: count };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Site Requirements — Tomorrow's Plan
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async ensureSiteRequirementsTable(): Promise<void> {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS site_requirements (
+        id serial PRIMARY KEY,
+        created_at timestamp DEFAULT now() NOT NULL,
+        date text NOT NULL,
+        site_id integer,
+        submitted_by integer,
+        submitted_by_name text,
+        planned_work jsonb,
+        materials jsonb,
+        equipment jsonb,
+        labour jsonb,
+        immediate_requirements jsonb,
+        status text NOT NULL DEFAULT 'submitted',
+        pm_remarks text,
+        reviewed_by integer,
+        reviewed_at timestamp
+      )
+    `));
+  }
+
+  async createSiteRequirement(data: any): Promise<any> {
+    const [row] = await db.execute(sql.raw(`
+      INSERT INTO site_requirements
+        (date, site_id, submitted_by, submitted_by_name, planned_work, materials, equipment, labour, immediate_requirements, status)
+      VALUES
+        (${data.date ? `'${data.date}'` : 'NULL'},
+         ${data.siteId ?? 'NULL'},
+         ${data.submittedBy ?? 'NULL'},
+         ${data.submittedByName ? `'${String(data.submittedByName).replace(/'/g, "''")}'` : 'NULL'},
+         ${data.plannedWork ? `'${JSON.stringify(data.plannedWork).replace(/'/g, "''")}'::jsonb` : 'NULL'},
+         ${data.materials ? `'${JSON.stringify(data.materials).replace(/'/g, "''")}'::jsonb` : 'NULL'},
+         ${data.equipment ? `'${JSON.stringify(data.equipment).replace(/'/g, "''")}'::jsonb` : 'NULL'},
+         ${data.labour ? `'${JSON.stringify(data.labour).replace(/'/g, "''")}'::jsonb` : 'NULL'},
+         ${data.immediateRequirements ? `'${JSON.stringify(data.immediateRequirements).replace(/'/g, "''")}'::jsonb` : 'NULL'},
+         'submitted')
+      RETURNING *
+    `)) as any;
+    return row;
+  }
+
+  async listSiteRequirements(filters: { dateFrom?: string; dateTo?: string; siteId?: number; submittedBy?: number; status?: string } = {}): Promise<any[]> {
+    let whereClause = "WHERE 1=1";
+    if (filters.dateFrom) whereClause += ` AND date >= '${filters.dateFrom}'`;
+    if (filters.dateTo)   whereClause += ` AND date <= '${filters.dateTo}'`;
+    if (filters.siteId)   whereClause += ` AND site_id = ${filters.siteId}`;
+    if (filters.submittedBy) whereClause += ` AND submitted_by = ${filters.submittedBy}`;
+    if (filters.status)   whereClause += ` AND status = '${filters.status}'`;
+    const result = await db.execute(sql.raw(`
+      SELECT * FROM site_requirements ${whereClause} ORDER BY created_at DESC
+    `)) as any;
+    return result.rows ?? result ?? [];
+  }
+
+  async getSiteRequirement(id: number): Promise<any | undefined> {
+    const result = await db.execute(sql.raw(`
+      SELECT * FROM site_requirements WHERE id = ${id}
+    `)) as any;
+    const rows = result.rows ?? result ?? [];
+    return rows[0];
+  }
+
+  async updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined> {
+    const reviewedAt = new Date().toISOString();
+    const pmRemarksVal = data.pmRemarks ? `'${String(data.pmRemarks).replace(/'/g, "''")}'` : 'NULL';
+    const reviewedByVal = data.reviewedBy ?? 'NULL';
+    const result = await db.execute(sql.raw(`
+      UPDATE site_requirements
+      SET status = '${data.status}',
+          pm_remarks = ${pmRemarksVal},
+          reviewed_by = ${reviewedByVal},
+          reviewed_at = '${reviewedAt}'
+      WHERE id = ${id}
+      RETURNING *
+    `)) as any;
+    const rows = result.rows ?? result ?? [];
+    return rows[0];
   }
 }
 

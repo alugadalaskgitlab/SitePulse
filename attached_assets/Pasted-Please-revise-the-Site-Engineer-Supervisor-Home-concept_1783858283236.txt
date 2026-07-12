@@ -1,0 +1,118 @@
+Please revise the Site Engineer / Supervisor Home concept and flow.
+
+Important product correction:
+
+The landing page should not show every DPR log as separate top-level quick actions.
+
+The site engineer should first see the site goal and then click:
+
+Begin Site Work / Continue Site Work / Complete Site Work
+
+Inside that Site Work/DPR flow, the user should record:
+- equipment opening
+- labour count
+- personnel/staff present
+- activity progress
+- activity photos
+- material used
+- remarks/issues
+- closing entries
+- review and submit DPR
+
+So remove or reduce these from the Site Engineer Home quick actions:
+- Labour Log
+- Equipment Log
+- Activity Photo
+
+These should be inside Begin/Continue Site Work, not separate landing-page buttons.
+
+The Site Engineer Home should mainly show:
+
+1. Today’s Site Goal
+2. Today’s Focus
+3. Begin / Continue / Complete Site Work
+4. Material Received / Material Trip
+5. Raise PI, if permitted
+6. Raise IRN, if permitted
+7. Tomorrow’s Plan / Requirement
+8. Pending Before Submit
+
+Add a new feature/card/button:
+
+Tomorrow’s Plan / Requirement
+
+Purpose:
+The site engineer should be able to tell the PM/project team what is needed for tomorrow’s work and also raise any immediate requirement.
+
+Fields suggested:
+
+A. Tomorrow’s planned work
+- site/project
+- date required
+- activity / BOQ item
+- chainage / structure
+- planned quantity
+- remarks
+
+B. Material requirement
+- material name
+- quantity
+- unit
+- required by date/time
+- source preference: store / purchase / plant / local purchase
+- urgency: normal / urgent / immediate
+
+C. Equipment requirement
+- equipment type
+- number required
+- required from time
+- expected duration
+- operator required yes/no
+
+D. Labour requirement
+- labour type
+- number required
+- skilled/unskilled/mason/helper/operator/etc.
+- required from time
+
+E. Immediate site requirement
+- requirement description
+- material/equipment/labour/other
+- urgency
+- reason
+- photo attachment if needed
+
+F. Submission flow
+Site Engineer submits requirement
+→ PM/Admin sees it in requirement queue
+→ PM can mark:
+   - Approved
+   - Arranged
+   - Sent to Store
+   - Sent to Purchase
+   - Sent to Plant
+   - Rejected
+   - Need clarification
+
+Do not implement the full approval workflow immediately unless simple.
+First create the clean Site Engineer entry and PM/Admin view or at least a submitted requirements list.
+
+Navigation rule:
+After saving Material Trip, PI, IRN, or Tomorrow’s Requirement, return to Site Engineer Home.
+
+Do not touch:
+- BOQ mapping
+- DPR item calculation
+- Plant operations logic
+- Store logic
+- Permissions redesign
+- Other role homes
+
+First adjust the Site Engineer Home flow and add/propose Tomorrow’s Plan / Requirement in a simple, controlled way.
+
+After this task, report:
+- what changed on Site Engineer Home
+- which buttons were moved inside Begin Site Work
+- how Tomorrow’s Requirement works
+- where PM/Admin can view submitted requirements
+- test steps
