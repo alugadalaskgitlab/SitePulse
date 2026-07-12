@@ -448,10 +448,10 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   interface QuickAction { label: string; icon: any; color: string; href: string; perm?: boolean }
   const allQuickActions: QuickAction[] = [
-    { label: "Material Trip",    icon: Truck,        color: "bg-blue-600",   href: "/site/material-trips?returnTo=/",             perm: sectionVisible("site_materials") },
-    { label: "Raise PI",         icon: ShoppingBag,  color: "bg-purple-600", href: "/plant/purchase-indents?returnTo=/&from=site", perm: sectionVisible("site_procurement") },
-    { label: "Raise IRN",        icon: BookOpen,     color: "bg-indigo-600", href: "/irn/new?from=site&returnTo=/",               perm: canRaiseIrn },
-    { label: "Tomorrow's Plan",  icon: CalendarPlus, color: "bg-teal-600",   href: "/site/requirements/new?returnTo=/",           perm: sectionVisible("site_dprs") },
+    { label: "Material Trip",        icon: Truck,          color: "bg-blue-600",   href: "/site/material-trips?returnTo=/",                              perm: sectionVisible("site_materials") },
+    { label: "Raise IRN",            icon: BookOpen,       color: "bg-indigo-600", href: "/irn/new?from=site&returnTo=/",                                perm: canRaiseIrn },
+    { label: "Tomorrow's Plan",      icon: CalendarPlus,   color: "bg-teal-600",   href: "/site/requirements/new?returnTo=/",                            perm: sectionVisible("site_dprs") },
+    { label: "Immediate Req.",       icon: AlertTriangle,  color: "bg-red-600",    href: "/site/requirements/new?mode=immediate&returnTo=/",             perm: sectionVisible("site_dprs") },
   ];
   const visibleActions = allQuickActions.filter(a => a.perm !== false);
 

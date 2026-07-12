@@ -8,7 +8,7 @@ import {
   FileText, Package, ShoppingCart, Fuel,
   Plus, ChevronRight, Clock, CheckCircle,
   AlertCircle, Calendar, TrendingUp, Home,
-  Route, Building2, CalendarPlus,
+  Route, Building2, CalendarPlus, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import companyLogo from "@assets/1B61665A-8ECB-443A-98A5-FB3676935BB8_1_102_a_1767081845854.jpeg";
@@ -295,6 +295,24 @@ export default function SiteHome() {
                   <div className="w-full flex items-center justify-between mt-auto">
                     <span className="text-[12px] font-semibold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 px-2 py-0.5 rounded-full">Raise</span>
                     <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-teal-500 transition-colors" />
+                  </div>
+                </button>
+              </Link>
+            )}
+
+            {canDprs && (
+              <Link href="/site/requirements/new?mode=immediate&returnTo=/site" data-testid="link-immediate-requirement">
+                <button className="group w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-start gap-3 shadow-sm hover:border-red-400 hover:shadow-md transition-all cursor-pointer">
+                  <div className="w-9 h-9 bg-red-100 dark:bg-red-900/40 rounded-lg flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/70 transition-colors">
+                    <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Immediate Requirement</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Urgent site need right now</p>
+                  </div>
+                  <div className="w-full flex items-center justify-between mt-auto">
+                    <span className="text-[12px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full">Raise</span>
+                    <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" />
                   </div>
                 </button>
               </Link>

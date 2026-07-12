@@ -76,14 +76,22 @@ export default function SiteRequirementNew() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const returnTo = new URLSearchParams(search).get("returnTo") || "/site";
+  const mode = new URLSearchParams(search).get("mode");
+  const isImmediateMode = mode === "immediate";
 
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
 
-  const [date, setDate] = useState(TOMORROW);
+  const [date, setDate] = useState(isImmediateMode ? format(new Date(), "yyyy-MM-dd") : TOMORROW);
   const [siteId, setSiteId] = useState<string>("");
 
-  // Section open state
-  const [openSections, setOpenSections] = useState({ plannedWork: true, materials: false, equipment: false, labour: false, immediate: false });
+  // Section open state — immediate mode auto-opens Section E only
+  const [openSections, setOpenSections] = useState({
+    plannedWork: !isImmediateMode,
+    materials: false,
+    equipment: false,
+    labour: false,
+    immediate: isImmediateMode,
+  });
   const toggleSection = (s: keyof typeof openSections) =>
     setOpenSections(prev => ({ ...prev, [s]: !prev[s] }));
 
@@ -149,7 +157,12 @@ export default function SiteRequirementNew() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
-      toast({ title: "Requirement submitted", description: "Your tomorrow's plan has been sent to the PM." });
+      toast({
+        title: "Requirement submitted",
+        description: isImmediateMode
+          ? "Your immediate requirement has been raised."
+          : "Your tomorrow's plan has been sent to the PM.",
+      });
       setLocation(returnTo);
     },
     onError: (err: any) => {
@@ -157,11 +170,13 @@ export default function SiteRequirementNew() {
     },
   });
 
-  const hasAnyContent = activity || chainage || plannedQty ||
-    materials.some(m => m.materialName) ||
-    equipment.some(e => e.equipmentType) ||
-    labour.some(l => l.labourType) ||
-    immediate.some(i => i.description);
+  const hasAnyContent = isImmediateMode
+    ? immediate.some(i => i.description)
+    : (activity || chainage || plannedQty ||
+       materials.some(m => m.materialName) ||
+       equipment.some(e => e.equipmentType) ||
+       labour.some(l => l.labourType) ||
+       immediate.some(i => i.description));
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -176,8 +191,12 @@ export default function SiteRequirementNew() {
           <ArrowLeft className="w-4 h-4 text-slate-600 dark:text-slate-300" />
         </button>
         <div>
-          <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100">Tomorrow's Requirement</h1>
-          <p className="text-xs text-slate-400">Plan and request what you need for tomorrow</p>
+          <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {isImmediateMode ? "Immediate Requirement" : "Tomorrow's Requirement"}
+          </h1>
+          <p className="text-xs text-slate-400">
+            {isImmediateMode ? "Raise an urgent site requirement now" : "Plan and request what you need for tomorrow"}
+          </p>
         </div>
       </div>
 
@@ -212,8 +231,8 @@ export default function SiteRequirementNew() {
           )}
         </div>
 
-        {/* Section A — Planned Work */}
-        <Section title="A. Tomorrow's Planned Work" icon={ClipboardList} color="bg-orange-500" open={openSections.plannedWork} onToggle={() => toggleSection("plannedWork")}>
+        {/* Section A — Planned Work (hidden in immediate mode) */}
+        {!isImmediateMode && <Section title="A. Tomorrow's Planned Work" icon={ClipboardList} color="bg-orange-500" open={openSections.plannedWork} onToggle={() => toggleSection("plannedWork")}>
           <div className="space-y-3 mt-2">
             <div>
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Activity / BOQ Item</label>
@@ -237,10 +256,10 @@ export default function SiteRequirementNew() {
               <Textarea value={pwRemarks} onChange={e => setPwRemarks(e.target.value)} placeholder="Any notes about tomorrow's plan..." className="text-sm resize-none" rows={2} data-testid="input-pw-remarks" />
             </div>
           </div>
-        </Section>
+        </Section>}
 
-        {/* Section B — Materials */}
-        <Section title="B. Material Requirement" icon={Package} color="bg-emerald-500" open={openSections.materials} onToggle={() => toggleSection("materials")}>
+        {/* Section B — Materials (hidden in immediate mode) */}
+        {!isImmediateMode && <Section title="B. Material Requirement" icon={Package} color="bg-emerald-500" open={openSections.materials} onToggle={() => toggleSection("materials")}>
           <div className="space-y-3 mt-2">
             {materials.map((m, i) => (
               <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2 relative" data-testid={`material-line-${i}`}>
@@ -291,10 +310,10 @@ export default function SiteRequirementNew() {
               <Plus className="w-3.5 h-3.5" /> Add Material
             </Button>
           </div>
-        </Section>
+        </Section>}
 
-        {/* Section C — Equipment */}
-        <Section title="C. Equipment Requirement" icon={Wrench} color="bg-amber-500" open={openSections.equipment} onToggle={() => toggleSection("equipment")}>
+        {/* Section C — Equipment (hidden in immediate mode) */}
+        {!isImmediateMode && <Section title="C. Equipment Requirement" icon={Wrench} color="bg-amber-500" open={openSections.equipment} onToggle={() => toggleSection("equipment")}>
           <div className="space-y-3 mt-2">
             {equipment.map((e, i) => (
               <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2 relative" data-testid={`equipment-line-${i}`}>
@@ -339,10 +358,10 @@ export default function SiteRequirementNew() {
               <Plus className="w-3.5 h-3.5" /> Add Equipment
             </Button>
           </div>
-        </Section>
+        </Section>}
 
-        {/* Section D — Labour */}
-        <Section title="D. Labour Requirement" icon={Users} color="bg-teal-500" open={openSections.labour} onToggle={() => toggleSection("labour")}>
+        {/* Section D — Labour (hidden in immediate mode) */}
+        {!isImmediateMode && <Section title="D. Labour Requirement" icon={Users} color="bg-teal-500" open={openSections.labour} onToggle={() => toggleSection("labour")}>
           <div className="space-y-3 mt-2">
             {labour.map((l, i) => (
               <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2 relative" data-testid={`labour-line-${i}`}>
@@ -378,10 +397,13 @@ export default function SiteRequirementNew() {
               <Plus className="w-3.5 h-3.5" /> Add Labour Requirement
             </Button>
           </div>
-        </Section>
+        </Section>}
 
-        {/* Section E — Immediate */}
-        <Section title="E. Immediate Site Requirement" icon={AlertTriangle} color="bg-red-500" open={openSections.immediate} onToggle={() => toggleSection("immediate")}>
+        {/* Section E — Immediate (always visible; title simplified in immediate mode) */}
+        <Section
+          title={isImmediateMode ? "Immediate Site Requirement" : "E. Immediate Site Requirement"}
+          icon={AlertTriangle} color="bg-red-500"
+          open={openSections.immediate} onToggle={() => toggleSection("immediate")}>
           <div className="space-y-3 mt-2">
             {immediate.map((item, i) => (
               <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2 relative" data-testid={`immediate-line-${i}`}>
@@ -437,12 +459,14 @@ export default function SiteRequirementNew() {
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                Submit Tomorrow's Requirement
+                {isImmediateMode ? "Submit Immediate Requirement" : "Submit Tomorrow's Requirement"}
               </>
             )}
           </Button>
           {!hasAnyContent && (
-            <p className="text-xs text-slate-400 text-center mt-2">Fill in at least one section before submitting.</p>
+            <p className="text-xs text-slate-400 text-center mt-2">
+              {isImmediateMode ? "Describe at least one immediate requirement before submitting." : "Fill in at least one section before submitting."}
+            </p>
           )}
         </div>
       </div>
