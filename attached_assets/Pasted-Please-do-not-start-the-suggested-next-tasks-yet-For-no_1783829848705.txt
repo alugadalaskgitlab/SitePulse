@@ -1,0 +1,91 @@
+Please do not start the suggested next tasks yet.
+
+For now, build only the approved mockup:
+
+Site Team — Field Engineer / Supervisor Home
+
+Scope:
+Implement only this Site Team / Field Engineer / Supervisor Home screen into the actual app.
+
+Do not touch:
+- Manager/Admin home
+- Store In-charge home
+- Plant Operator home
+- Road DPR form
+- Structure DPR form
+- Permissions
+- Attachments
+- BOQ/programme logic
+- Dashboard
+- Other modules
+
+Implementation requirements:
+
+1. Replace the current simple FieldHome for site engineer/supervisor users with the approved light-mode Site Team home screen.
+
+2. Use this layout order:
+- Header
+- Today’s Site Goal
+- Today’s Focus
+- Today’s Site Work
+- Quick Actions
+- Pending Before Submit
+
+3. Today’s Site Goal should show:
+- Item / Activity
+- Stretch / Structure
+- Planned till date
+- Completed till date
+- To be done
+
+No progress bars as primary display.
+
+4. Today’s Focus should show 3–5 practical priority points based on backlog/pending work.
+
+5. Today’s Site Work button should be dynamic:
+- Start Today’s Site Work
+- Continue Today’s Site Work
+- Complete Today’s Site Work
+- View Today’s Site Report
+
+It should connect to the existing DPR/site work flow without redesigning the DPR form.
+
+6. Quick Actions should be permission-based:
+- Activity Photo
+- Material Trip
+- Equipment Log
+- Labour Log
+- Site Purchase
+- Raise PI
+- Raise IRN
+- Site Remark
+
+Hide actions the user does not have permission for.
+
+7. Pending Before Submit should show:
+- Equipment closing meter pending
+- Final labour count pending
+- Material challan photo pending
+- Activity photos uploaded / pending
+- Activity quantities entered / pending
+- DPR not submitted
+
+8. Keep route/site access respected:
+- Engineer should see only assigned site data.
+- Do not show all sites if user has only one assigned site.
+
+9. Keep the existing Full Dashboard fallback button if permitted.
+
+10. Make sure the page is responsive:
+- mobile single-column
+- tablet/desktop clean centered layout
+- bottom nav/plus button should not cover content
+
+11. Do not create or modify other role home screens in this task.
+
+After build, stop and report:
+- files changed
+- route/page updated
+- what data is live vs placeholder/mock
+- test steps
+- known limitations
