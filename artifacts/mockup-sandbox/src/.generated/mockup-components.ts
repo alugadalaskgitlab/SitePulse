@@ -46,11 +46,11 @@ export const modules: ModuleMap = {
   "./components/mockups/role-landing/PlantOperator.tsx": () => import("../components/mockups/role-landing/PlantOperator.tsx"),
   "./components/mockups/role-landing/SiteTeam.tsx": () => import("../components/mockups/role-landing/SiteTeam.tsx"),
   "./components/mockups/role-landing/StoreIncharge.tsx": () => import("../components/mockups/role-landing/StoreIncharge.tsx"),
+  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep1PiList.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep1PiList.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep2PurchaserForm.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep3Handover.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep3Handover.tsx"),
   "./components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx": () => import("../components/mockups/route-a-procurement/RouteAStep4GrnPreview.tsx"),
-  "./components/mockups/site-report-home/Dashboard.tsx": () => import("../components/mockups/site-report-home/Dashboard.tsx"),
-  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx"),
-  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx")
+  "./components/mockups/sitepulse-splash/SplashScreen.tsx": () => import("../components/mockups/sitepulse-splash/SplashScreen.tsx"),
+  "./components/mockups/sitepulse-login/LoginScreen.tsx": () => import("../components/mockups/sitepulse-login/LoginScreen.tsx")
 };
