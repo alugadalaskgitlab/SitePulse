@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Truck, ShoppingBag,
   BookOpen, LayoutDashboard, MapPin,
   ArrowRight, AlertTriangle, CheckCircle2, Circle, AlertCircle,
   Target, Zap, ClipboardList, Home, FileText, BarChart2, User,
   ChevronRight, Bell, ChevronDown, CalendarPlus,
+  Package, Wrench, Users, CheckCheck, XCircle, Clock, ChevronUp,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
 import { useDeviceType } from "@/hooks/use-device-type";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
@@ -125,6 +130,321 @@ function PendingRow({ item }: { item: CheckItem }) {
           <p className={`text-xs mt-0.5 ${item.state === "done" ? "text-gray-300" : "text-gray-400"}`}>{item.sub}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Readiness for Today's Work ──────────────────────────────────────────────
+
+const TODAY_DATE = format(new Date(), "yyyy-MM-dd");
+
+const ALLOC_CFG: Record<string, { label: string; color: string }> = {
+  requested:     { label: "Requested",           color: "bg-blue-100 text-blue-700" },
+  approved:      { label: "Approved",            color: "bg-green-100 text-green-700" },
+  arranged:      { label: "Arranged",            color: "bg-emerald-100 text-emerald-700" },
+  available:     { label: "Available",           color: "bg-green-100 text-green-700" },
+  expected:      { label: "Expected at site",    color: "bg-blue-100 text-blue-700" },
+  partly:        { label: "Partly available",    color: "bg-amber-100 text-amber-700" },
+  not_available: { label: "Not available",       color: "bg-red-100 text-red-700" },
+  rejected:      { label: "Cannot arrange",      color: "bg-red-100 text-red-700" },
+  clarification: { label: "Clarification needed",color: "bg-amber-100 text-amber-700" },
+};
+
+function AllocBadge({ status }: { status?: string }) {
+  if (!status) return null;
+  const cfg = ALLOC_CFG[status] ?? { label: status, color: "bg-gray-100 text-gray-600" };
+  return (
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+  );
+}
+
+const READINESS_BTNS = [
+  { value: "available",        label: "✓ Available",       active: "bg-green-500 text-white border-green-500" },
+  { value: "expected_today",   label: "⏰ Expected today",  active: "bg-blue-500 text-white border-blue-500" },
+  { value: "partly_available", label: "◑ Partly available", active: "bg-amber-500 text-white border-amber-500" },
+  { value: "not_available",    label: "✗ Not available",   active: "bg-red-500 text-white border-red-500" },
+];
+
+function ReadinessOptionRow({
+  label, icon: Icon, iconColor, value, onChange, items,
+}: {
+  label: string; icon: any; iconColor: string;
+  value: string; onChange: (v: string) => void; items?: any[];
+}) {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <p className={`text-[10px] font-bold ${iconColor} uppercase tracking-wider mb-1.5 flex items-center gap-1`}>
+        <Icon className="w-3 h-3" /> {label}
+      </p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {READINESS_BTNS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(value === opt.value ? "" : opt.value)}
+            className={`text-xs py-1.5 px-2 rounded-lg border transition-colors font-medium text-left ${
+              value === opt.value ? opt.active : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+            data-testid={`readiness-${label.toLowerCase()}-${opt.value}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReadinessSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [collapsed, setCollapsed] = useState(false);
+  const [matStatus, setMatStatus] = useState("");
+  const [eqStatus,  setEqStatus]  = useState("");
+  const [labStatus, setLabStatus] = useState("");
+  const [immStatus, setImmStatus] = useState("");
+  const [remarks,   setRemarks]   = useState("");
+
+  const { data: todayReqs = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/site-requirements?dateFrom=${TODAY_DATE}&dateTo=${TODAY_DATE}`],
+  });
+
+  const req = todayReqs[0];
+  const alreadyConfirmed = req?.readinessStatus && req.readinessStatus !== "not_confirmed";
+
+  const confirmMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/site-requirements/${req.id}/readiness`, {
+        materialStatus:  matStatus  || "not_required",
+        equipmentStatus: eqStatus   || "not_required",
+        labourStatus:    labStatus  || "not_required",
+        immediateStatus: immStatus  || "not_required",
+        remarks,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/site-requirements?dateFrom=${TODAY_DATE}&dateTo=${TODAY_DATE}`],
+      });
+      toast({ title: "Readiness confirmed", description: "Your morning readiness has been saved." });
+    },
+    onError: (err: any) =>
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return null;
+
+  const hasAnyRequest = req && (
+    req.materials?.length > 0 || req.equipment?.length > 0 ||
+    req.labour?.length > 0 || req.immediateRequirements?.length > 0
+  );
+
+  const shortage = req?.readinessStatus === "confirmed_with_shortage";
+  const allClear  = req?.readinessStatus === "confirmed_ok";
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Header / toggle */}
+      <button
+        type="button"
+        onClick={() => setCollapsed(p => !p)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50/60 transition-colors"
+        data-testid="toggle-readiness-section"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <CheckCheck className="w-4 h-4 text-teal-600 flex-shrink-0" />
+          <div className="text-left min-w-0">
+            <h2 className="text-sm font-bold text-gray-900">Readiness for Today's Work</h2>
+            <p className="text-xs text-gray-400 truncate">
+              {!req ? "No plan submitted for today"
+                : alreadyConfirmed ? shortage ? "⚠ Shortage noted — work started" : "✓ All clear"
+                : "Confirm what's available before starting work"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          {shortage && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">Shortage</span>}
+          {allClear  && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">All Clear</span>}
+          {collapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+
+      {!collapsed && (
+        <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+
+          {/* No plan submitted */}
+          {!req && (
+            <p className="text-sm text-gray-400 py-1 text-center">
+              No tomorrow's plan was submitted for today. You can start site work normally.
+            </p>
+          )}
+
+          {req && (
+            <>
+              {/* Planned work */}
+              {req.plannedWork?.activity && (
+                <div className="bg-orange-50 rounded-lg px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Planned Today</p>
+                  <p className="text-sm font-semibold text-gray-800">{req.plannedWork.activity}</p>
+                  {req.plannedWork.chainage && <p className="text-xs text-gray-500">Chainage: {req.plannedWork.chainage}</p>}
+                  {req.plannedWork.plannedQty && (
+                    <p className="text-xs text-gray-500">Qty: {req.plannedWork.plannedQty} {req.plannedWork.plannedUom}</p>
+                  )}
+                  {req.plannedWork.remarks && <p className="text-xs text-gray-400 italic">{req.plannedWork.remarks}</p>}
+                </div>
+              )}
+
+              {/* Requested items */}
+              {hasAnyRequest && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Requested for Today</p>
+                  {req.materials?.map((m: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Package className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium">{m.materialName}</span>
+                      <span className="text-xs text-gray-400">{m.qty} {m.uom}</span>
+                    </div>
+                  ))}
+                  {req.equipment?.map((e: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Wrench className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium">{e.numberRequired}× {e.equipmentType}</span>
+                      {e.requiredFromTime && <span className="text-xs text-gray-400">from {e.requiredFromTime}</span>}
+                    </div>
+                  ))}
+                  {req.labour?.map((l: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Users className="w-3 h-3 text-teal-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium">{l.count} {l.labourType}</span>
+                      <span className="text-xs text-gray-400">{l.skilledType}</span>
+                    </div>
+                  ))}
+                  {req.immediateRequirements?.map((im: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium">{im.description}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* PM allocation status */}
+              {req.allocationStatus && (
+                <div className="bg-slate-50 rounded-lg px-3 py-2.5 space-y-1.5">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">PM / Authority Allocation</p>
+                  {[
+                    { key: "materials",  remarkKey: "materialsRemark",  icon: Package,       label: "Materials" },
+                    { key: "equipment",  remarkKey: "equipmentRemark",  icon: Wrench,        label: "Equipment" },
+                    { key: "labour",     remarkKey: "labourRemark",     icon: Users,         label: "Labour" },
+                    { key: "immediate",  remarkKey: "immediateRemark",  icon: AlertTriangle, label: "Immediate" },
+                  ].filter(r => req.allocationStatus[r.key]).map(r => (
+                    <div key={r.key}>
+                      <div className="flex items-center gap-2">
+                        <r.icon className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                        <span className="text-xs text-gray-600 flex-1">{r.label}</span>
+                        <AllocBadge status={req.allocationStatus[r.key]} />
+                      </div>
+                      {req.allocationStatus[r.remarkKey] && (
+                        <p className="text-[11px] text-gray-400 italic pl-5 mt-0.5">{req.allocationStatus[r.remarkKey]}</p>
+                      )}
+                    </div>
+                  ))}
+                  {req.allocationStatus.updatedByName && (
+                    <p className="text-[10px] text-gray-400 pt-1 border-t border-slate-200">
+                      Updated by {req.allocationStatus.updatedByName}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Already confirmed — summary */}
+              {alreadyConfirmed && req.readinessConfirmation && (
+                <div className={`rounded-lg px-3 py-2.5 border ${shortage ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${shortage ? "text-red-500" : "text-green-600"}`}>
+                    {shortage ? "⚠ Confirmed with shortage" : "✓ Morning readiness confirmed"}
+                  </p>
+                  {[
+                    { label: "Materials",  val: req.readinessConfirmation.materialStatus,  Icon: Package },
+                    { label: "Equipment",  val: req.readinessConfirmation.equipmentStatus, Icon: Wrench },
+                    { label: "Labour",     val: req.readinessConfirmation.labourStatus,    Icon: Users },
+                    { label: "Immediate",  val: req.readinessConfirmation.immediateStatus, Icon: AlertTriangle },
+                  ].filter(r => r.val && r.val !== "not_required").map(r => (
+                    <div key={r.label} className="flex items-center gap-2 mb-1">
+                      <r.Icon className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 flex-1">{r.label}</span>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        r.val === "available" ? "bg-green-100 text-green-700"
+                        : r.val === "expected_today" ? "bg-blue-100 text-blue-700"
+                        : r.val === "partly_available" ? "bg-amber-100 text-amber-700"
+                        : "bg-red-100 text-red-700"
+                      }`}>
+                        {r.val === "available" ? "Available"
+                          : r.val === "expected_today" ? "Expected today"
+                          : r.val === "partly_available" ? "Partly available"
+                          : "Not available"}
+                      </span>
+                    </div>
+                  ))}
+                  {req.readinessConfirmation.remarks && (
+                    <p className="text-xs text-gray-500 italic mt-1 pt-1 border-t border-gray-200">
+                      {req.readinessConfirmation.remarks}
+                    </p>
+                  )}
+                  {req.readinessConfirmation.confirmedByName && (
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      by {req.readinessConfirmation.confirmedByName}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Not yet confirmed — readiness form */}
+              {!alreadyConfirmed && (
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-600">Confirm what is actually available this morning:</p>
+                  <ReadinessOptionRow
+                    label="Required Material" icon={Package} iconColor="text-emerald-600"
+                    value={matStatus} onChange={setMatStatus} items={req.materials}
+                  />
+                  <ReadinessOptionRow
+                    label="Required Equipment" icon={Wrench} iconColor="text-amber-600"
+                    value={eqStatus} onChange={setEqStatus} items={req.equipment}
+                  />
+                  <ReadinessOptionRow
+                    label="Required Labour" icon={Users} iconColor="text-teal-600"
+                    value={labStatus} onChange={setLabStatus} items={req.labour}
+                  />
+                  <ReadinessOptionRow
+                    label="Immediate Requirement" icon={AlertTriangle} iconColor="text-red-600"
+                    value={immStatus} onChange={setImmStatus} items={req.immediateRequirements}
+                  />
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Shortage / issue remarks (optional)</p>
+                    <Textarea
+                      value={remarks}
+                      onChange={e => setRemarks(e.target.value)}
+                      placeholder="e.g. WMM delayed by 1 hr, tipper not arrived..."
+                      className="text-xs resize-none"
+                      rows={2}
+                      data-testid="readiness-remarks"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => confirmMutation.mutate()}
+                    disabled={confirmMutation.isPending}
+                    className="w-full bg-teal-600 hover:bg-teal-700 gap-2"
+                    data-testid="button-confirm-readiness"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    {confirmMutation.isPending ? "Saving..." : "Confirm Readiness & Start Site Work"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -653,7 +973,12 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
           </div>
 
           {/* ══════════════════════════════════════════════════════
-              3. TODAY'S SITE WORK — dynamic CTA
+              3. READINESS FOR TODAY'S WORK
+              ══════════════════════════════════════════════════════ */}
+          <ReadinessSection />
+
+          {/* ══════════════════════════════════════════════════════
+              4. TODAY'S SITE WORK — dynamic CTA
               ══════════════════════════════════════════════════════ */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-4 space-y-3">
             <div className="flex items-center justify-between">

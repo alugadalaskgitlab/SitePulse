@@ -1,0 +1,193 @@
+Please implement this Site Engineer / Supervisor Home improvement carefully and only within this scope.
+
+Current flow is good:
+- Engineer sees today’s goal
+- Engineer starts today’s site work
+- Quick actions now include Material Trip, Raise IRN, Tomorrow’s Plan, Immediate Requirement
+- PI is intentionally not shown to site engineer/supervisor because they should raise IRN; Stores/PM can raise PI if required.
+
+New requirement:
+Before the engineer starts today’s work, the home page should show what he requested yesterday for today, what has been approved/arranged/expected by the responsible authority, and allow him to confirm whether the required material/equipment/labour is available at site.
+
+This should become a simple:
+Tomorrow Plan / Requirement
+→ Approval / allocation by next-level person
+→ Morning readiness confirmation by site engineer
+→ Start Site Work
+→ Later DPR captures actuals
+
+A. Add section on Site Engineer Home
+
+Add a section in Today’s Focus or just below it:
+
+Readiness for Today’s Work
+
+Purpose:
+Show yesterday’s Tomorrow Plan / Requirement submitted for today, and allow the engineer to confirm whether those requirements are actually available or expected before starting work.
+
+Display:
+
+1. Yesterday’s submitted plan for today
+- planned activity
+- chainage / structure
+- planned quantity
+- remarks
+
+2. Requested requirements for today
+- material required
+- equipment required
+- labour required
+- immediate/special requirements if any
+
+3. Allocation / arranged status
+
+For every requested item, show simple status from the responsible authority.
+
+Status options may include:
+- Requested
+- Approved / Accepted
+- Arranged
+- Available at site
+- Expected at site by [time/date]
+- Partly available
+- Not available
+- Rejected / Cannot arrange
+- Need clarification
+
+B. Responsible authority logic
+
+This readiness status should not be only a self-check by the site engineer.
+
+It should follow this chain:
+
+Site Engineer/Supervisor submits Tomorrow’s Plan / Requirement
+→ responsible authority reviews/allocates/confirms
+→ next morning site engineer sees what is approved/arranged/expected
+→ site engineer confirms what is actually available at site before starting work
+→ DPR later records actual work/usage/receipt
+
+Responsible authority examples:
+
+1. Material requirement
+- Store / PM verifies
+- If store item and available: mark issued / arranged / expected at site
+- If direct supply item like GSB/WMM: PM/Store confirms supply arrangement
+- If not available: mark purchase required / not available / expected by
+
+2. Equipment requirement
+- PM / Mechanical / Equipment team updates allocation
+- mark allocated / expected by time / not available / partly available
+
+3. Labour requirement
+- PM / site admin updates
+- mark arranged / partly arranged / not arranged
+
+For this first version, keep it simple. Do not build a complicated full approval workflow unless an existing requirements queue can be reused.
+
+C. Site Engineer morning readiness confirmation
+
+Before starting site work, show simple checkboxes or status buttons.
+
+Suggested group confirmations:
+
+Required material:
+- Available at site
+- Expected today
+- Partly available
+- Not available
+- Issue / shortage
+
+Required equipment:
+- Available at site
+- Expected today
+- Partly available
+- Not available
+- Issue / shortage
+
+Required labour:
+- Available at site
+- Expected today
+- Partly available
+- Not available
+- Issue / shortage
+
+Other / special requirement:
+- Available
+- Pending
+- Not required
+- Issue / shortage
+
+Also add:
+- Shortage / issue remarks text box
+
+Button:
+Confirm Readiness & Start Site Work
+
+D. Behaviour
+
+1. If everything is available or expected:
+- save readiness confirmation
+- proceed to Start Today’s Site Work
+
+2. If anything is partly available / not available / pending:
+- save readiness confirmation
+- allow engineer to still start work if needed
+- mark today’s work as “Started with shortage”
+- PM/Admin should see shortage alert
+
+3. If no Tomorrow Plan exists for today:
+Show:
+“No plan submitted for today”
+Then allow normal Start Today’s Site Work.
+
+4. This must be date + site + user aware:
+- show only requirements meant for today
+- show only the engineer’s assigned site
+- do not mix other sites
+
+E. Keep future DPR linkage in mind
+
+Do not fully redesign DPR now, but keep the data model/fields ready so later we can compare:
+
+- requested quantity
+- approved/arranged quantity
+- available at site
+- actual received/used in DPR
+- reason for shortfall
+
+Example future linkage:
+Tomorrow Plan: WMM planned 450 MT
+Readiness: WMM expected by 10:30 AM
+DPR actual: 380 MT received, 320 MT laid
+Reason: delayed plant supply
+
+F. Navigation
+
+After readiness confirmation and after saving site work, return to Site Engineer Home as per the current flow.
+
+G. Scope restrictions
+
+Do not touch:
+- BOQ mapping
+- DPR quantity calculation
+- plant production logic
+- store stock logic
+- permissions redesign
+- other role homes
+- PI quick action for site engineer
+- unrelated navigation changes
+
+Keep it simple:
+- show what was requested
+- show what is arranged/expected
+- allow site engineer to confirm actual readiness
+- show shortage alert to PM/Admin
+
+After implementation, report:
+- where the Readiness for Today’s Work section was added
+- how yesterday’s plan is fetched for today
+- what allocation/status labels were added
+- where allocation status is updated
+- how readiness confirmation is saved
+- where PM/Admin can see shortages
+- test steps

@@ -29,6 +29,27 @@ const PM_STATUS_OPTIONS = [
   "approved", "arranged", "sent_store", "sent_purchase", "sent_plant", "rejected", "clarification",
 ];
 
+const ALLOC_STATUS_OPTIONS = [
+  { value: "",             label: "— Not set" },
+  { value: "requested",    label: "Requested" },
+  { value: "approved",     label: "Approved" },
+  { value: "arranged",     label: "Arranged" },
+  { value: "available",    label: "Available at site" },
+  { value: "expected",     label: "Expected at site" },
+  { value: "partly",       label: "Partly available" },
+  { value: "not_available",label: "Not available" },
+  { value: "rejected",     label: "Cannot arrange" },
+  { value: "clarification",label: "Need clarification" },
+];
+
+const READINESS_LABEL: Record<string, string> = {
+  available:        "Available at site",
+  expected_today:   "Expected today",
+  partly_available: "Partly available",
+  not_available:    "Not available",
+  not_required:     "Not required",
+};
+
 function SectionIcon({ type }: { type: string }) {
   if (type === "materials")    return <Package className="w-3.5 h-3.5 text-emerald-600" />;
   if (type === "equipment")    return <Wrench className="w-3.5 h-3.5 text-amber-600" />;
@@ -42,6 +63,17 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
   const [newStatus, setNewStatus] = useState(req.status);
   const [pmRemarks, setPmRemarks] = useState(req.pmRemarks ?? "");
   const [editing, setEditing] = useState(false);
+  // Allocation state
+  const [allocEditing, setAllocEditing] = useState(false);
+  const [allocMat,     setAllocMat]     = useState(req.allocationStatus?.materials ?? "");
+  const [allocMatR,    setAllocMatR]    = useState(req.allocationStatus?.materialsRemark ?? "");
+  const [allocEq,      setAllocEq]      = useState(req.allocationStatus?.equipment ?? "");
+  const [allocEqR,     setAllocEqR]     = useState(req.allocationStatus?.equipmentRemark ?? "");
+  const [allocLab,     setAllocLab]     = useState(req.allocationStatus?.labour ?? "");
+  const [allocLabR,    setAllocLabR]    = useState(req.allocationStatus?.labourRemark ?? "");
+  const [allocImm,     setAllocImm]     = useState(req.allocationStatus?.immediate ?? "");
+  const [allocImmR,    setAllocImmR]    = useState(req.allocationStatus?.immediateRemark ?? "");
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -61,7 +93,28 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
+  const allocMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/site-requirements/${req.id}/allocation`, {
+        materials: allocMat || null,
+        materialsRemark: allocMatR || null,
+        equipment: allocEq || null,
+        equipmentRemark: allocEqR || null,
+        labour: allocLab || null,
+        labourRemark: allocLabR || null,
+        immediate: allocImm || null,
+        immediateRemark: allocImmR || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-requirements"] });
+      toast({ title: "Allocation updated" });
+      setAllocEditing(false);
+    },
+    onError: () => toast({ title: "Failed to save allocation", variant: "destructive" }),
+  });
+
   const sc = STATUS_CONFIG[req.status] ?? STATUS_CONFIG.submitted;
+  const hasShortage = req.readinessStatus === "confirmed_with_shortage";
   const sections: string[] = [];
   if (req.plannedWork?.activity) sections.push("planned");
   if (req.materials?.length)    sections.push("materials");
@@ -91,6 +144,12 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <Badge className={`text-[11px] px-1.5 py-0 ${sc.color}`}>{sc.label}</Badge>
+            {hasShortage && (
+              <Badge className="text-[11px] px-1.5 py-0 bg-red-100 text-red-600">⚠ Shortage</Badge>
+            )}
+            {req.readinessStatus === "confirmed_ok" && (
+              <Badge className="text-[11px] px-1.5 py-0 bg-green-100 text-green-700">✓ Readiness OK</Badge>
+            )}
             {sections.map(s => (
               <span key={s} className="flex items-center gap-0.5 text-[11px] text-slate-400">
                 <SectionIcon type={s} /> {s}
@@ -194,9 +253,155 @@ function RequirementCard({ req, canReview }: { req: any; canReview: boolean }) {
             </div>
           )}
 
+          {/* Readiness confirmation summary (shown to PM/manager once engineer confirms) */}
+          {req.readinessStatus && req.readinessStatus !== "not_confirmed" && req.readinessConfirmation && (
+            <div className={`rounded-lg px-3 py-2.5 border ${hasShortage ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800" : "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${hasShortage ? "text-red-500" : "text-green-600"}`}>
+                {hasShortage ? "⚠ Engineer confirmed — shortage noted" : "✓ Engineer confirmed readiness"}
+              </p>
+              {[
+                { label: "Materials",  val: req.readinessConfirmation.materialStatus,  icon: Package },
+                { label: "Equipment",  val: req.readinessConfirmation.equipmentStatus, icon: Wrench },
+                { label: "Labour",     val: req.readinessConfirmation.labourStatus,    icon: Users },
+                { label: "Immediate",  val: req.readinessConfirmation.immediateStatus, icon: AlertTriangle },
+              ].filter(r => r.val && r.val !== "not_required").map(r => (
+                <div key={r.label} className="flex items-center gap-2 mb-1">
+                  <r.icon className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">{r.label}</span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    r.val === "available" ? "bg-green-100 text-green-700"
+                    : r.val === "expected_today" ? "bg-blue-100 text-blue-700"
+                    : r.val === "partly_available" ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-700"
+                  }`}>
+                    {READINESS_LABEL[r.val] ?? r.val}
+                  </span>
+                </div>
+              ))}
+              {req.readinessConfirmation.remarks && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-1 pt-1 border-t border-slate-200 dark:border-slate-700">
+                  {req.readinessConfirmation.remarks}
+                </p>
+              )}
+              {req.readinessConfirmation.confirmedByName && (
+                <p className="text-[10px] text-slate-400 mt-0.5">by {req.readinessConfirmation.confirmedByName}</p>
+              )}
+            </div>
+          )}
+
+          {/* Allocation status (existing, read view) */}
+          {req.allocationStatus && !allocEditing && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Allocation Status</p>
+                {canReview && (
+                  <button
+                    type="button"
+                    onClick={() => setAllocEditing(true)}
+                    className="text-[10px] text-blue-600 hover:underline"
+                    data-testid={`button-edit-alloc-${req.id}`}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              {[
+                { key: "materials",  remarkKey: "materialsRemark",  icon: Package,       label: "Materials" },
+                { key: "equipment",  remarkKey: "equipmentRemark",  icon: Wrench,        label: "Equipment" },
+                { key: "labour",     remarkKey: "labourRemark",     icon: Users,         label: "Labour" },
+                { key: "immediate",  remarkKey: "immediateRemark",  icon: AlertTriangle, label: "Immediate" },
+              ].filter(r => req.allocationStatus[r.key]).map(r => {
+                const val = req.allocationStatus[r.key];
+                const remark = req.allocationStatus[r.remarkKey];
+                const badgeColor = val === "available" || val === "approved" || val === "arranged"
+                  ? "bg-green-100 text-green-700"
+                  : val === "expected" || val === "requested"
+                  ? "bg-blue-100 text-blue-700"
+                  : val === "partly"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-red-100 text-red-700";
+                const badgeLabel = ALLOC_STATUS_OPTIONS.find(o => o.value === val)?.label ?? val;
+                return (
+                  <div key={r.key}>
+                    <div className="flex items-center gap-2">
+                      <r.icon className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      <span className="text-xs text-slate-600 dark:text-slate-300 flex-1">{r.label}</span>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeColor}`}>{badgeLabel}</span>
+                    </div>
+                    {remark && <p className="text-[11px] text-slate-400 italic pl-5">{remark}</p>}
+                  </div>
+                );
+              })}
+              {req.allocationStatus.updatedByName && (
+                <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200">by {req.allocationStatus.updatedByName}</p>
+              )}
+            </div>
+          )}
+
           {/* PM review controls */}
           {canReview && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+
+              {/* Allocation update form */}
+              {allocEditing ? (
+                <div className="space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-3 border border-blue-100 dark:border-blue-800">
+                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300">Update Allocation Status</p>
+                  {[
+                    { label: "Materials",  state: allocMat,  setState: setAllocMat,  remarkState: allocMatR,  setRemarkState: setAllocMatR,  icon: Package,       show: (req.materials?.length > 0) },
+                    { label: "Equipment",  state: allocEq,   setState: setAllocEq,   remarkState: allocEqR,   setRemarkState: setAllocEqR,   icon: Wrench,        show: (req.equipment?.length > 0) },
+                    { label: "Labour",     state: allocLab,  setState: setAllocLab,  remarkState: allocLabR,  setRemarkState: setAllocLabR,  icon: Users,         show: (req.labour?.length > 0) },
+                    { label: "Immediate",  state: allocImm,  setState: setAllocImm,  remarkState: allocImmR,  setRemarkState: setAllocImmR,  icon: AlertTriangle, show: (req.immediateRequirements?.length > 0) },
+                  ].filter(r => r.show).map(r => (
+                    <div key={r.label} className="space-y-1">
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+                        <r.icon className="w-3 h-3" /> {r.label}
+                      </p>
+                      <Select value={r.state} onValueChange={r.setState}>
+                        <SelectTrigger className="text-xs h-8" data-testid={`select-alloc-${r.label.toLowerCase()}-${req.id}`}>
+                          <SelectValue placeholder="— Not set" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALLOC_STATUS_OPTIONS.map(o => (
+                            <SelectItem key={o.value || "__none__"} value={o.value || "__none__"}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <input
+                        type="text"
+                        value={r.remarkState}
+                        onChange={e => r.setRemarkState(e.target.value)}
+                        placeholder="Remark (optional)"
+                        className="w-full text-xs border border-slate-200 rounded px-2 py-1 bg-white dark:bg-slate-900 dark:border-slate-700"
+                        data-testid={`input-alloc-remark-${r.label.toLowerCase()}-${req.id}`}
+                      />
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <Button
+                      type="button" size="sm"
+                      onClick={() => allocMutation.mutate()}
+                      disabled={allocMutation.isPending}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      data-testid={`button-save-alloc-${req.id}`}
+                    >
+                      {allocMutation.isPending ? "Saving..." : "Save Allocation"}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setAllocEditing(false)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                !req.allocationStatus && (
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    onClick={() => setAllocEditing(true)}
+                    data-testid={`button-set-alloc-${req.id}`}
+                  >
+                    Set Allocation Status
+                  </Button>
+                )
+              )}
+
+              {/* Status review */}
               {!editing ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} data-testid={`button-review-${req.id}`}>
                   Update Status

@@ -13430,4 +13430,49 @@ export function registerSiteRequirementRoutes(app: Express) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // PATCH /api/site-requirements/:id/allocation — PM/manager sets per-section allocation status
+  app.patch("/api/site-requirements/:id/allocation", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can update allocation" });
+      }
+      const data = {
+        ...req.body,
+        updatedByName: req.session?.username ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+      const row = await storage.updateSiteRequirementAllocation(parseInt(req.params.id), data);
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/site-requirements/:id/readiness — engineer confirms morning readiness
+  app.patch("/api/site-requirements/:id/readiness", requireAuth, async (req: any, res) => {
+    try {
+      const { materialStatus, equipmentStatus, labourStatus, immediateStatus, remarks } = req.body;
+      const hasShortage = [materialStatus, equipmentStatus, labourStatus, immediateStatus].some(
+        s => s === "partly_available" || s === "not_available" || s === "shortage"
+      );
+      const confirmation = {
+        materialStatus: materialStatus ?? null,
+        equipmentStatus: equipmentStatus ?? null,
+        labourStatus: labourStatus ?? null,
+        immediateStatus: immediateStatus ?? null,
+        remarks: remarks ?? null,
+        confirmedAt: new Date().toISOString(),
+        confirmedByName: req.session?.username ?? null,
+      };
+      const row = await storage.updateSiteRequirementReadiness(parseInt(req.params.id), {
+        readinessConfirmation: confirmation,
+        readinessStatus: hasShortage ? "confirmed_with_shortage" : "confirmed_ok",
+      });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 }

@@ -1012,6 +1012,8 @@ export interface IStorage {
   listSiteRequirements(filters?: { dateFrom?: string; dateTo?: string; siteId?: number; submittedBy?: number; status?: string }): Promise<any[]>;
   getSiteRequirement(id: number): Promise<any | undefined>;
   updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined>;
+  updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined>;
+  updateSiteRequirementReadiness(id: number, data: any): Promise<any | undefined>;
   ensureSiteRequirementsTable(): Promise<void>;
 
   // Site Material Logs Summary
@@ -22083,6 +22085,27 @@ export class DatabaseStorage implements IStorage {
         pmRemarks: data.pmRemarks ?? null,
         reviewedBy: data.reviewedBy ?? null,
         reviewedAt: new Date(),
+      })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined> {
+    const [row] = await db.update(siteRequirements)
+      .set({ allocationStatus: data })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async updateSiteRequirementReadiness(id: number, data: any): Promise<any | undefined> {
+    const VALID_READINESS = ["not_confirmed", "confirmed_ok", "confirmed_with_shortage"];
+    const rs = VALID_READINESS.includes(data.readinessStatus) ? data.readinessStatus : "confirmed_ok";
+    const [row] = await db.update(siteRequirements)
+      .set({
+        readinessConfirmation: data.readinessConfirmation ?? null,
+        readinessStatus: rs,
       })
       .where(eq(siteRequirements.id, id))
       .returning();

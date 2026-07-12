@@ -3132,6 +3132,16 @@ export const siteRequirements = pgTable("site_requirements", {
   pmRemarks: text("pm_remarks"),
   reviewedBy: integer("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
+
+  // PM / responsible-authority allocation status per section
+  // e.g. { materials: "arranged", materialsRemark: "...", equipment: "allocated", ... }
+  allocationStatus: jsonb("allocation_status"),
+
+  // Site engineer morning readiness confirmation
+  // e.g. { materialStatus: "available", equipmentStatus: "partly_available", labourStatus: "available", immediateStatus: "not_required", remarks: "", confirmedAt: "", confirmedByName: "" }
+  readinessConfirmation: jsonb("readiness_confirmation"),
+  // "not_confirmed" | "confirmed_ok" | "confirmed_with_shortage"
+  readinessStatus: text("readiness_status").default("not_confirmed"),
 });
 
 export const insertSiteRequirementSchema = createInsertSchema(siteRequirements).omit({
