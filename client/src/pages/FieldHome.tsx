@@ -523,7 +523,9 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
               <p className="text-xs text-gray-400 font-medium mb-2">Select site</p>
               <div className="flex flex-wrap gap-2">
                 {activeSites.map((s: any) => {
-                  const hasDpr = todayDprs.some((d: any) => d.site === s.name);
+                  const hasDpr = (allDprsWithDetails as any[]).some(
+                    (d: any) => d.date === todayStr && normSite(d.site ?? "") === s.name && !d.isSuperseded
+                  );
                   const isActive = s.id === currentSiteId;
                   return (
                     <button
