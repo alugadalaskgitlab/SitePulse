@@ -13406,6 +13406,12 @@ export function registerSiteRequirementRoutes(app: Express) {
     try {
       const row = await storage.getSiteRequirement(parseInt(req.params.id));
       if (!row) return res.status(404).json({ error: "Not found" });
+      const role = req.session?.role ?? "engineer";
+      const isManagerOrAdmin = role === "admin" || role === "manager";
+      const isOwner = row.submittedBy === req.session?.userId;
+      if (!isManagerOrAdmin && !isOwner) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       res.json(row);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -13418,12 +13424,12 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (role !== "admin" && role !== "manager") {
         return res.status(403).json({ error: "Only managers or admins can update status" });
       }
-      const { status, pmRemarks, reviewedBy } = req.body;
+      const { status, pmRemarks } = req.body;
       if (!status) return res.status(400).json({ error: "status is required" });
       const row = await storage.updateSiteRequirementStatus(parseInt(req.params.id), {
         status,
         pmRemarks,
-        reviewedBy: reviewedBy ?? req.session?.userId,
+        reviewedBy: req.session?.userId,
       });
       res.json(row);
     } catch (err: any) {
@@ -13453,6 +13459,16 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/readiness — engineer confirms morning readiness
   app.patch("/api/site-requirements/:id/readiness", requireAuth, async (req: any, res) => {
     try {
+      // Only the submitting engineer or a manager/admin may confirm readiness
+      const role = req.session?.role ?? "engineer";
+      const isManagerOrAdmin = role === "admin" || role === "manager";
+      if (!isManagerOrAdmin) {
+        const existing = await storage.getSiteRequirement(parseInt(req.params.id));
+        if (!existing) return res.status(404).json({ error: "Not found" });
+        if (existing.submittedBy !== req.session?.userId) {
+          return res.status(403).json({ error: "You can only confirm readiness for your own submissions" });
+        }
+      }
       const { materialStatus, equipmentStatus, labourStatus, immediateStatus, remarks } = req.body;
       const hasShortage = [materialStatus, equipmentStatus, labourStatus, immediateStatus].some(
         s => s === "partly_available" || s === "not_available" || s === "shortage"
