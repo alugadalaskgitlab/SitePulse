@@ -1,0 +1,180 @@
+Please revise only this mockup screen:
+
+Site Team — Field Engineer / Supervisor Home
+
+Do not implement yet. First show the revised mockup.
+
+Do not apply this to:
+- Plant Operator screen
+- Store In-charge screen
+- Site Manager/Admin screen
+- Road DPR form
+- Structure DPR form
+- Permissions
+- Backend logic
+- Any other module
+
+Main correction:
+For site engineers/supervisors/operators, avoid dashboard-style progress bars in the landing page. They need simple actionable site information.
+
+This landing page should show:
+- what was planned till date
+- what is completed till date
+- what remains to be done
+- what should be focused on today
+- quick entry actions
+- pending items before DPR submission
+
+Please revise the layout as follows:
+
+1. Header
+
+Show:
+- greeting
+- user name
+- role
+- assigned site
+- date
+- sync/notification status if needed
+
+Example:
+Good morning, Raju
+Site Supervisor
+THAKADPALLY - SIRUR
+Fri, 11 Jul 2026
+
+2. First major section: Today’s Site Goal
+
+Use a simple table/card format, not progress bars.
+
+Columns / fields should be:
+
+- Item / Activity
+- Stretch / Structure
+- Planned till date
+- Completed till date
+- To be done
+
+Example rows:
+
+WMM
+Stretch: Ch 0+000 to 2+500
+Planned till date: 2,500 CUM
+Completed till date: 1,750 CUM
+To be done: 750 CUM
+
+GSB Compaction
+Stretch: Ch 0+000 to 2+500
+Planned till date: 2,500 CUM
+Completed till date: 2,540 CUM
+To be done: Ahead by 40 CUM
+
+Drain Excavation
+Stretch: Ch 1+200 to 2+000
+Planned till date: 800 RM
+Completed till date: 620 RM
+To be done: 180 RM
+
+PC-02 Pipe Culvert
+Structure: Ch 1+450
+Planned till date: Bedding + Pipe Laying
+Completed till date: Excavation completed
+To be done: Bedding, Pipe Laying
+
+The purpose is:
+The engineer should immediately see what was planned, what is completed, and what remains.
+
+3. Second section: Today’s Focus
+
+Below Today’s Site Goal, show 3–5 focus points.
+
+This should translate backlog into action.
+
+Example:
+- WMM backlog 750 CUM at Reach 1
+- Drain excavation balance 180 RM
+- PC-02 bedding and pipe laying pending
+- GSB is ahead; no priority unless instructed
+
+This should be simple text/cards, not charts.
+
+4. Third section: Today’s Site Work
+
+This should be the main action area.
+
+Use dynamic button text:
+- Start Today’s Site Work
+- Continue Today’s Site Work
+- Complete Today’s Site Work
+- View Today’s Site Report
+
+Clicking this button should conceptually take the user to the working screen/DPR flow.
+
+The working screen should cover:
+- Opening / Start of Day
+- Record Progress
+- Labour
+- Equipment
+- Materials
+- Photos
+- Site Purchases / Remarks
+- Review & Submit DPR
+
+Do not show the full DPR form on this landing page. This landing page should guide the user; actual entries happen inside Today’s Site Work.
+
+Show small status below button:
+Examples:
+- DPR draft not started
+- DPR draft opened · 40% complete
+- 2 activities logged · equipment closing pending
+- DPR submitted at 7:15 PM
+
+5. Quick Actions
+
+Keep this compact.
+
+Use permission-based quick actions:
+- Add Photo
+- Material Trip
+- Equipment Log
+- Labour Log
+- Site Purchase
+- Raise PI
+- Raise IRN
+- Site Remark / Issue
+
+Remove specific Water Tanker button. Water tanker should be part of equipment/material log, not a top-level quick action.
+
+Only show actions allowed by user permission.
+
+6. Pending Before Submit
+
+Show checklist-style pending items before final DPR submission:
+
+Examples:
+- closing meter pending
+- labour count pending
+- material challan photo missing
+- activity photo missing
+- activity quantity not entered
+- DPR not submitted
+
+This can be at the bottom or as a small alert section.
+
+7. Design direction
+
+Use clean light-mode design first.
+Dark mode can be optional later.
+
+Keep the screen compact.
+Avoid long expanded cards by default.
+Use “View all” if there are many activities.
+Mobile should be single-column.
+Tablet/desktop can use wider cards or two-column layout.
+
+8. Important
+
+This is only a mockup revision.
+Do not build/implement yet.
+Do not change backend or existing forms.
+Please show the revised full top-to-bottom mockup first.
