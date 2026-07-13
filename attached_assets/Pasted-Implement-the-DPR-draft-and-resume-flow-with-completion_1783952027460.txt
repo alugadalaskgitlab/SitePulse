@@ -1,0 +1,71 @@
+Implement the DPR draft and resume flow with completion-based buttons.
+
+1. On the DPR entry screen, determine whether all mandatory information required for final submission has been completed.
+
+2. While any required final field is incomplete, show only one primary button:
+
+   “Save Start / Draft”
+
+   Examples of incomplete information include:
+   - activity has start chainage but no to-chainage
+   - equipment has opening time/reading but no closing time/reading
+   - required actual quantity is missing
+   - required labour, material, work timing or completion information is missing
+
+3. Do not show the “Submit DPR” button while mandatory final information is incomplete.
+
+4. “Save Start / Draft” must save all currently entered information without requiring end-of-day details.
+
+5. The saved DPR must:
+   - remain editable
+   - have draft status
+   - preserve all activity, chainage, equipment opening readings, labour, material and other entered information
+   - not enter the submitted DPR approval or review flow
+
+6. On Site Engineer Home, show each pending draft prominently as:
+
+   “Complete Today’s DPR”
+
+   This must be a clickable link/card that opens that exact DPR directly in editable mode.
+
+7. When the Engineer later completes all appropriate mandatory information, including applicable:
+   - to-chainage
+   - actual quantity
+   - equipment closing time and closing reading
+   - work closing time
+   - labour, material and other required actual details
+
+   hide the “Save Start / Draft” button and show:
+
+   “Submit DPR”
+
+8. On clicking “Submit DPR”:
+   - run the existing final DPR validations
+   - change the status from draft to submitted
+   - trigger the existing submitted DPR workflow
+   - remove it from “Complete Today’s DPR”
+   - lock normal editing after submission
+   - retain the existing Edit / Request Edit flow for corrections
+
+9. Multiple DPRs must continue to be allowed for the same site and date when they relate to different:
+   - Engineers
+   - stretches or sections
+   - chainage ranges
+   - activities
+   - shifts, where applicable
+
+10. Draft saving must not trigger:
+   - DPR approval or review
+   - submitted notifications
+   - final quantity posting
+   - final material-consumption posting
+   - equipment closing validations
+
+Do not touch:
+- Site Requirements Queue
+- Tomorrow’s Plan
+- Immediate Requirements
+- PM, Admin, Stores or Equipment approval flows
+- existing submitted DPR approval and request-edit logic
+- DPR calculations and reports unrelated to draft status
+- navigation outside DPR entry, DPR list and the “Complete Today’s DPR” link on Site Engineer Home

@@ -81,6 +81,9 @@ export const dprs = pgTable("dprs", {
   boqProjectId: integer("boq_project_id"),
   // Free-text remarks captured from the mobile guided DPR flow (Phase 1 UX facelift).
   remarks: text("remarks"),
+  // Draft / submitted status. Drafts are saved without triggering approval flows
+  // or notifications. Existing rows default to "submitted" for backward compatibility.
+  dprStatus: text("dpr_status").notNull().default("submitted"), // "draft" | "submitted"
   ...cancellationFields,
 }, (table) => ({
   dateIdx: index("dprs_date_idx").on(table.date),

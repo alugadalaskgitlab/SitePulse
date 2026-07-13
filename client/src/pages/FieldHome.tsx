@@ -871,8 +871,8 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
         };
       case "draft-own":
         return {
-          label: pendingCount === 0 ? "Complete Today's Site Work" : "Continue Today's Site Work",
-          href: `/site/edit/${myDpr!.id}`,
+          label: "Complete Today's DPR",
+          href: `/site/edit/${myDpr!.id}?draft`,
           status: `Draft open · ${doneCount}/${pendingChecks.length} items done`,
           color: "bg-orange-500 hover:bg-orange-600 shadow-orange-200",
           dotColor: "bg-orange-400",

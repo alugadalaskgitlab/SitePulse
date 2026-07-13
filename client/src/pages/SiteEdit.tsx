@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
-import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -569,6 +569,96 @@ export default function SiteEdit() {
     setMaterials(updated);
   };
 
+  const isDraftMode = !!(dpr as any)?.dprStatus && (dpr as any).dprStatus === "draft";
+
+  const isEditFormComplete = (): boolean => {
+    for (const p of progress) {
+      if (p.chainageFrom && !p.chainageTo) return false;
+    }
+    for (const e of equipment) {
+      if (!e.machine) continue;
+      if (e.openingReading !== null && e.closingReading === null) return false;
+      if (e.startTime && !e.endTime) return false;
+    }
+    return true;
+  };
+
+  const buildPayload = () => ({
+    ...header,
+    workType,
+    structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
+    progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
+      const effectiveLength = getEffectiveLength(p);
+      return { ...p, length: effectiveLength, quantity: calculateQuantity(p) || p.quantity };
+    }) : [],
+    equipment: equipment.filter(e => e.machine).map(eq => ({
+      ...eq,
+      totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+        ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+    })),
+    labour: labour.filter(l => l.count > 0),
+    materials: materials.filter(m => m.material).map(m => ({
+      type: m.type, material: m.material, quantity: m.quantity, uom: m.uom,
+      vehicleNumber: m.vehicleNumber || undefined, supplier: m.supplier || undefined,
+      location: m.location || undefined, receiptNumber: m.receiptNumber || undefined,
+    })),
+    sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
+  });
+
+  const draftSaveMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const response = await apiRequest("PATCH", `/api/dprs/${id}/draft`, payload);
+      return response.json();
+    },
+    onSuccess: () => {
+      sessionStorage.removeItem(DRAFT_KEY);
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
+      toast({ title: "Draft Saved", description: "Your progress has been saved. Come back to complete and submit." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save draft", variant: "destructive" });
+    },
+  });
+
+  const submitDraftMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const response = await apiRequest("POST", `/api/dprs/${id}/submit`, { ...payload, clientTimestamp });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      sessionStorage.removeItem(DRAFT_KEY);
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs/:id", id] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/site-purchases") || false });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0]?.toString().startsWith("/api/plant-module/stock-ledger") || false });
+      queryClient.invalidateQueries({ queryKey: ["/api/plant-module/stock-balances"] });
+      toast({ title: "DPR Submitted", description: "Your daily progress report has been submitted successfully." });
+      const returnToParam = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("returnTo");
+      setLocation(returnToParam ?? appendOrigin(`/site/report/${data.id}`));
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to submit DPR", variant: "destructive" });
+    },
+  });
+
+  const handleDraftSave = () => {
+    if (!header.date || !header.site || !header.engineer) {
+      toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
+      return;
+    }
+    draftSaveMutation.mutate(buildPayload());
+  };
+
+  const handleSubmitDraft = () => {
+    if (!header.date || !header.site || !header.engineer) {
+      toast({ title: "Missing Fields", description: "Please fill in date, site name, and engineer name.", variant: "destructive" });
+      return;
+    }
+    submitDraftMutation.mutate(buildPayload());
+  };
+
   const handleSave = () => {
     if (!header.date || !header.site || !header.engineer) {
       toast({
@@ -579,38 +669,7 @@ export default function SiteEdit() {
       return;
     }
 
-    const payload = {
-      ...header,
-      workType,
-      structureItems: workType === "structure" ? structureItems.filter(s => s.itemOfWork) : [],
-      progress: workType === "road" ? progress.filter(p => p.activity).map(p => {
-        const effectiveLength = getEffectiveLength(p);
-        return {
-          ...p,
-          length: effectiveLength,
-          quantity: calculateQuantity(p) || p.quantity,
-        };
-      }) : [],
-      equipment: equipment.filter(e => e.machine).map(eq => ({
-        ...eq,
-        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
-          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
-      })),
-      labour: labour.filter(l => l.count > 0),
-      materials: materials.filter(m => m.material).map(m => ({
-        type: m.type,
-        material: m.material,
-        quantity: m.quantity,
-        uom: m.uom,
-        vehicleNumber: m.vehicleNumber || undefined,
-        supplier: m.supplier || undefined,
-        location: m.location || undefined,
-        receiptNumber: m.receiptNumber || undefined,
-      })),
-      sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
-    };
-
-    updateMutation.mutate(payload);
+    updateMutation.mutate(buildPayload());
   };
 
   if (isLoading) {
@@ -625,7 +684,7 @@ export default function SiteEdit() {
     return <div className="p-20 text-center text-red-500">Report not found.</div>;
   }
 
-  if (!effectivePin) {
+  if (!effectivePin && !isDraftMode) {
     return (
       <div className="p-20 text-center">
         <p className="text-muted-foreground mb-4">Authorization required to edit this report.</p>
@@ -636,22 +695,58 @@ export default function SiteEdit() {
     );
   }
 
+  const _searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const _returnTo = _searchParams.get("returnTo");
+  const draftBackHref = _returnTo ?? appendOrigin("/");
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between">
+      {isDraftMode && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <Shield className="w-4 h-4 shrink-0" />
+          <span><strong>Draft DPR</strong> — Fill in closing readings and quantities, then tap <strong>Submit DPR</strong> when done.</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setLocation(backToReport)} data-testid="button-back">
+          <Button variant="ghost" size="icon" onClick={() => setLocation(isDraftMode ? draftBackHref : backToReport)} data-testid="button-back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold font-display">Edit Report</h1>
-            <p className="text-muted-foreground text-sm">Modify and save your changes</p>
+            <h1 className="text-2xl font-bold font-display">{isDraftMode ? "Complete DPR" : "Edit Report"}</h1>
+            <p className="text-muted-foreground text-sm">{isDraftMode ? "Add closing details and submit when ready" : "Modify and save your changes"}</p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save">
-          {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Changes
-        </Button>
+        {isDraftMode ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleDraftSave}
+              disabled={draftSaveMutation.isPending || submitDraftMutation.isPending}
+              className="gap-2"
+              data-testid="button-save-draft-progress"
+            >
+              {draftSaveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Progress
+            </Button>
+            {isEditFormComplete() && (
+              <Button
+                onClick={handleSubmitDraft}
+                disabled={submitDraftMutation.isPending || draftSaveMutation.isPending}
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                data-testid="button-submit-dpr"
+              >
+                {submitDraftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Submit DPR
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Button onClick={handleSave} disabled={updateMutation.isPending} className="gap-2" data-testid="button-save">
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Changes
+          </Button>
+        )}
       </div>
 
       {draftRestored && (

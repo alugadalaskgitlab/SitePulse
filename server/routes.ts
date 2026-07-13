@@ -1222,14 +1222,17 @@ export async function registerRoutes(
     res.json({ ...dpr, progress: enrichedProgress });
   });
 
-  // Create new DPR
+  // Create new DPR (draft or submitted)
   app.post(api.dprs.create.path, async (req, res) => {
     try {
       if (!assertCreate(req, res, "site_dprs")) return;
       const input = api.dprs.create.input.parse(req.body);
       const dpr = await storage.createDpr(input, input.clientTimestamp);
-      await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
-      sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
+      const isDraft = (input as any).dprStatus === "draft";
+      if (!isDraft) {
+        await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${input.engineer || 'Engineer'} submitted DPR for ${input.site} (${input.date})`, isRead: 0 });
+        sendPushToSection("site_dprs", "New DPR Submitted", `${input.engineer || 'Engineer'} - ${input.site} - ${input.date}`, "/site-reports").catch(() => {});
+      }
       res.status(201).json(dpr);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1239,6 +1242,55 @@ export async function registerRoutes(
         });
       }
       res.status(500).json({ message: "Failed to create DPR" });
+    }
+  });
+
+  // Update an existing draft DPR (engineer only; no notification/push/PIN)
+  app.patch("/api/dprs/:id/draft", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_dprs")) return;
+      const id = Number(req.params.id);
+      const existing = await storage.getDpr(id);
+      if (!existing) return res.status(404).json({ message: "DPR not found" });
+      if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be updated via this endpoint" });
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const baseSite = existing.site.split(" –")[0].trim();
+      if (permittedSiteNames !== null && !permittedSiteNames.includes(baseSite)) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
+      const input = createDprRequestSchema.parse(req.body);
+      const updated = await storage.updateDraftDpr(id, input);
+      if (!updated) return res.status(404).json({ message: "DPR not found or not a draft" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      res.status(500).json({ message: "Failed to update draft DPR" });
+    }
+  });
+
+  // Submit a draft DPR (change to submitted, fire notification)
+  app.post("/api/dprs/:id/submit", async (req, res) => {
+    try {
+      if (!assertCreate(req, res, "site_dprs")) return;
+      const id = Number(req.params.id);
+      const existing = await storage.getDpr(id);
+      if (!existing) return res.status(404).json({ message: "DPR not found" });
+      if ((existing as any).dprStatus !== "draft") return res.status(400).json({ message: "Only draft DPRs can be submitted via this endpoint" });
+      const permittedSiteNames = await getPermittedSiteNames(req);
+      const baseSite = existing.site.split(" –")[0].trim();
+      if (permittedSiteNames !== null && !permittedSiteNames.includes(baseSite)) {
+        return res.status(403).json({ message: "Access denied for this site" });
+      }
+      const input = createDprRequestSchema.parse(req.body);
+      const clientTimestamp = (req.body as any).clientTimestamp;
+      const submitted = await storage.submitDraftDpr(id, input, clientTimestamp);
+      if (!submitted) return res.status(404).json({ message: "DPR not found or not a draft" });
+      await storage.createNotification({ type: "success", title: "New DPR Submitted", message: `${submitted.engineer || 'Engineer'} submitted DPR for ${submitted.site} (${submitted.date})`, isRead: 0 });
+      sendPushToSection("site_dprs", "New DPR Submitted", `${submitted.engineer || 'Engineer'} - ${submitted.site} - ${submitted.date}`, "/site-reports").catch(() => {});
+      res.json(submitted);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      res.status(500).json({ message: "Failed to submit DPR" });
     }
   });
 

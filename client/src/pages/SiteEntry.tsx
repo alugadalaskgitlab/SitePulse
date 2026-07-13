@@ -1066,6 +1066,93 @@ export default function SiteEntry() {
     setShowPreview(true);
   };
 
+  // Returns true when all "end-of-day" mandatory fields are filled and
+  // the DPR is ready for final submission. Returns false while any
+  // opening-only entry is still missing its closing counterpart.
+  const isFormComplete = (): boolean => {
+    for (const p of progress) {
+      if (p.chainageFrom && !p.chainageTo) return false;
+    }
+    for (const e of equipment) {
+      if (!e.machine) continue;
+      if (e.openingReading !== null && e.closingReading === null) return false;
+      if (e.startTime && !e.endTime) return false;
+    }
+    return true;
+  };
+
+  const draftMutation = useMutation({
+    mutationFn: async () => {
+      const progressWithCalc = progress.map(p => {
+        const effectiveLength = getEffectiveLength(p);
+        return { ...p, length: effectiveLength, quantity: p.quantity || calculateQuantity(p) };
+      });
+      const clientTimestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+      const normalizedEquipment = equipment.map(eq => ({
+        ...eq,
+        totalKm: eq.entryType === "trip_based" && eq.numberOfTrips && eq.tripDistance
+          ? Number(eq.numberOfTrips) * Number(eq.tripDistance) * 2 : eq.totalKm || null,
+      }));
+      const response = await apiRequest("POST", "/api/dprs", {
+        date: header.date,
+        site: header.site,
+        engineer: header.engineer,
+        role: "engineer",
+        workType,
+        boqProjectId: header.boqProjectId ?? undefined,
+        dprStatus: "draft",
+        progress: workType === "structure" ? [] : progressWithCalc,
+        structureItems: workType === "structure"
+          ? structureItems.filter(s => s.structureType && s.itemOfWork).map(s => ({
+              ...s, structureId: s.programmeStructureId ?? null,
+            }))
+          : [],
+        equipment: normalizedEquipment,
+        labour,
+        materials: materials.filter(m => m.material),
+        sitePurchases: sitePurchases.filter(sp => sp.itemDescription),
+        remarks: remarksNote.trim() || undefined,
+        clientTimestamp,
+      });
+      return response.json();
+    },
+    onSuccess: async (data) => {
+      await clearDraft();
+      if (stagedPhotos.length > 0) {
+        await uploadStagedPhotos(data.id);
+        queryClient.invalidateQueries({ queryKey: ["/api/attachments", "dpr_progress", data.id] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/dprs"] });
+      toast({
+        title: "Draft Saved",
+        description: "Your draft DPR is saved. Open it from Field Home to complete and submit.",
+      });
+      const draftUrl = returnTo
+        ? `/site/edit/${data.id}?draft&returnTo=${encodeURIComponent(returnTo)}`
+        : `/site/edit/${data.id}?draft`;
+      setLocation(draftUrl);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save draft. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveDraft = () => {
+    if (!header.site || !header.engineer) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in site name and engineer name before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+    draftMutation.mutate();
+  };
+
   // Non-blocking check: warns (with a confirm step) when a row's quantity would
   // push the linked BOQ item's cumulative actual past its planned balance.
   const getOverBalanceWarnings = (): string[] => {
@@ -2954,10 +3041,20 @@ export default function SiteEntry() {
               <Button onClick={() => goToStep(guidedStep + 1)} className="gap-1" data-testid="button-guided-next">
                 Next <ChevronRight className="w-4 h-4" />
               </Button>
-            ) : (
+            ) : isFormComplete() ? (
               <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
                 <Eye className="w-4 h-4" />
                 Preview Report
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSaveDraft}
+                disabled={draftMutation.isPending}
+                className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+                data-testid="button-save-draft"
+              >
+                {draftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save Start / Draft
               </Button>
             )}
           </>
@@ -2966,10 +3063,22 @@ export default function SiteEntry() {
             <Button variant="outline" onClick={() => confirmLeave(() => setLocation(backLink))} data-testid="button-cancel">
               Cancel
             </Button>
-            <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
-              <Eye className="w-4 h-4" />
-              Preview Report
-            </Button>
+            {isFormComplete() ? (
+              <Button onClick={handlePreview} className="gap-2" data-testid="button-preview">
+                <Eye className="w-4 h-4" />
+                Preview Report
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSaveDraft}
+                disabled={draftMutation.isPending}
+                className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+                data-testid="button-save-draft"
+              >
+                {draftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save Start / Draft
+              </Button>
+            )}
           </>
         )}
       </div>

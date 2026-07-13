@@ -470,6 +470,8 @@ export interface IStorage {
   getDprsWithDetails(): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
+  updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
+  submitDraftDpr(id: number, dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr | undefined>;
   updateDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
   cloneDpr(id: number, editedBy: string, clientTimestamp?: string): Promise<Dpr | undefined>;
   createVersionDpr(originalId: number, dprData: CreateDprRequest, editedBy: string, clientTimestamp?: string): Promise<Dpr>;
@@ -1760,7 +1762,10 @@ export class DatabaseStorage implements IStorage {
   async createDpr(dprData: CreateDprRequest, clientTimestamp?: string): Promise<Dpr> {
     // Transaction to insert DPR and all related nested data
     // Use client-provided timestamp for accurate local time, fall back to server time
-    const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    const dprStatusVal: string = (dprData as any).dprStatus ?? "submitted";
+    const submittedAt = dprStatusVal === "draft"
+      ? null
+      : (clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss"));
     
     return await db.transaction(async (tx) => {
       // 1. Insert DPR Header with submission timestamp (uppercase text fields)
@@ -1769,6 +1774,7 @@ export class DatabaseStorage implements IStorage {
         site: dprData.site.toUpperCase(),
         engineer: dprData.engineer.toUpperCase(),
         submittedAt: submittedAt,
+        dprStatus: dprStatusVal,
         workType: dprData.workType ?? "road",
         boqProjectId: (dprData as any).boqProjectId ?? null,
         remarks: (dprData as any).remarks ?? null,
@@ -1852,6 +1858,81 @@ export class DatabaseStorage implements IStorage {
       }
 
       return newDpr;
+    });
+  }
+
+  async updateDraftDpr(id: number, dprData: CreateDprRequest): Promise<Dpr | undefined> {
+    const existing = await this.getDpr(id);
+    if (!existing || (existing as any).dprStatus !== "draft") return undefined;
+    return await this._replaceDprChildRecords(id, dprData, {});
+  }
+
+  async submitDraftDpr(id: number, dprData: CreateDprRequest, clientTimestamp?: string): Promise<Dpr | undefined> {
+    const existing = await this.getDpr(id);
+    if (!existing || (existing as any).dprStatus !== "draft") return undefined;
+    const submittedAt = clientTimestamp || format(new Date(), "yyyy-MM-dd HH:mm:ss");
+    return await this._replaceDprChildRecords(id, dprData, { dprStatus: "submitted", submittedAt, lockStatus: "locked" });
+  }
+
+  private async _replaceDprChildRecords(id: number, dprData: CreateDprRequest, headerOverrides: Record<string, any>): Promise<Dpr | undefined> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(dprs)
+        .set({
+          date: dprData.date,
+          site: dprData.site.toUpperCase(),
+          engineer: dprData.engineer.toUpperCase(),
+          workType: dprData.workType ?? "road",
+          boqProjectId: (dprData as any).boqProjectId ?? null,
+          remarks: (dprData as any).remarks ?? null,
+          ...headerOverrides,
+        })
+        .where(eq(dprs.id, id))
+        .returning();
+
+      await this.cleanupDprEquipmentDieselLedger(tx, id);
+      const oldProgressIds = (await tx.select({ id: progressEntries.id }).from(progressEntries).where(eq(progressEntries.dprId, id))).map(p => p.id);
+      if (oldProgressIds.length > 0) {
+        await tx.delete(activityPersonnel).where(inArray(activityPersonnel.progressEntryId, oldProgressIds));
+      }
+      await tx.delete(progressEntries).where(eq(progressEntries.dprId, id));
+      await tx.delete(equipmentLogs).where(eq(equipmentLogs.dprId, id));
+      await tx.delete(labourLogs).where(eq(labourLogs.dprId, id));
+      await tx.delete(materialLogs).where(eq(materialLogs.dprId, id));
+      await tx.delete(sitePurchases).where(eq(sitePurchases.dprId, id));
+      await tx.delete(dprStructureItems).where(eq(dprStructureItems.dprId, id));
+
+      if (dprData.progress?.length) {
+        const progressWithPersonnel = dprData.progress.map(p => {
+          const { personnelIds, ...progressData } = p as any;
+          return { progressData: { ...progressData, dprId: id, activity: progressData.activity?.toUpperCase() || progressData.activity, noSiteWorkDescription: progressData.noSiteWorkDescription?.toUpperCase() || progressData.noSiteWorkDescription }, personnelIds: personnelIds || [] };
+        });
+        const insertedProgress = await tx.insert(progressEntries).values(progressWithPersonnel.map(p => p.progressData)).returning();
+        for (let i = 0; i < insertedProgress.length; i++) {
+          const pIds = progressWithPersonnel[i].personnelIds as number[];
+          if (pIds.length > 0) {
+            await tx.insert(activityPersonnel).values(pIds.map((personnelId: number) => ({ progressEntryId: insertedProgress[i].id, personnelId })));
+          }
+        }
+      }
+      if (dprData.equipment?.length) {
+        const insertedEquipLogs = await tx.insert(equipmentLogs).values(
+          dprData.equipment.map(e => ({ ...e, dprId: id, machine: e.machine?.toUpperCase() || e.machine, operator: e.operator?.toUpperCase() || e.operator, task: e.task?.toUpperCase() || e.task }))
+        ).returning();
+        await this.processDprEquipmentDieselLedger(tx, insertedEquipLogs, dprData.date, dprData.site);
+      }
+      if (dprData.labour?.length) {
+        await tx.insert(labourLogs).values(dprData.labour.map(l => ({ ...l, dprId: id })));
+      }
+      if (dprData.materials?.length) {
+        await tx.insert(materialLogs).values(dprData.materials.map(m => ({ ...m, dprId: id, vehicleNumber: m.vehicleNumber?.toUpperCase() || m.vehicleNumber, supplier: m.supplier?.toUpperCase() || m.supplier, location: m.location?.toUpperCase() || m.location })));
+      }
+      if (dprData.sitePurchases?.length) {
+        await tx.insert(sitePurchases).values(dprData.sitePurchases.map(sp => ({ ...sp, dprId: id, itemDescription: sp.itemDescription?.toUpperCase() || sp.itemDescription, vendor: sp.vendor?.toUpperCase() || sp.vendor, billNo: sp.billNo?.toUpperCase() || sp.billNo, documentStatus: "draft" as const })));
+      }
+      if (dprData.structureItems?.length) {
+        await tx.insert(dprStructureItems).values(dprData.structureItems.map(s => ({ ...s, dprId: id })));
+      }
+      return updated;
     });
   }
 
