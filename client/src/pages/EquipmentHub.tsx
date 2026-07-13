@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList,
+  Activity, AlertTriangle, Fuel, Zap, ShoppingCart, ClipboardList, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -148,6 +148,15 @@ export default function EquipmentHub() {
               accent="indigo"
               iconBg="bg-indigo-100"
               enabled={sectionVisible("irn_raise")}
+            />
+            <HubActionTile
+              href="/site/requirements?returnTo=/equipment/hub"
+              icon={CalendarCheck}
+              title="Site Requirements Queue"
+              description="View tomorrow's equipment requirements from site — mark as arranged, allocated or sent to plant"
+              accent="teal"
+              iconBg="bg-teal-100"
+              enabled={sectionVisible("plant_equipment")}
             />
           </div>
         </div>

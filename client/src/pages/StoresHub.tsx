@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3, ArrowLeftRight, Settings,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -205,6 +205,24 @@ export default function StoresHub() {
             </div>
           </div>
         )}
+
+        {/* Site Requirements Queue */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+            Site Requirements
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <HubActionTile
+              href="/site/requirements?returnTo=/stores/hub"
+              icon={CalendarCheck}
+              title="Site Requirements Queue"
+              description="View tomorrow's plans & immediate needs — see material requirements, check sent-to-store status & mark items as arranged or available"
+              accent="teal"
+              iconBg="bg-teal-100"
+              enabled={canStores || canIrn}
+            />
+          </div>
+        </div>
 
         {/* Admin Tools */}
         {isAdmin && (

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   FileText, Package, ClipboardList, TrendingUp, Fuel, ShoppingCart, Boxes,
-  Route, Building2,
+  Route, Building2, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -184,6 +184,25 @@ export default function SiteHub() {
             />
           </div>
         </div>
+
+        {/* Tomorrow's Plans & Site Requirements Queue */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+            Tomorrow's Plans & Requirements
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <HubActionTile
+              href="/site/requirements?returnTo=/site/hub"
+              icon={CalendarCheck}
+              title="Site Requirements Queue"
+              description="Review all tomorrow's plans, immediate requirements, material & equipment needs — update allocation and arrangement status"
+              accent="teal"
+              iconBg="bg-teal-100"
+              enabled={sectionVisible("site_dprs")}
+            />
+          </div>
+        </div>
+
       </div>
     </HubShell>
   );

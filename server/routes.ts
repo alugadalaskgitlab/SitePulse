@@ -13457,18 +13457,13 @@ export function registerSiteRequirementRoutes(app: Express) {
   });
 
   // PATCH /api/site-requirements/:id/readiness — engineer confirms morning readiness
+  // Readiness confirmation is a morning site-check action (not an approval/allocation action).
+  // Any authenticated user may save readiness — the separate allocation/status endpoints
+  // remain gated to managers/admins only.
   app.patch("/api/site-requirements/:id/readiness", requireAuth, async (req: any, res) => {
     try {
-      // Only the submitting engineer or a manager/admin may confirm readiness
-      const role = req.session?.role ?? "engineer";
-      const isManagerOrAdmin = role === "admin" || role === "manager";
-      if (!isManagerOrAdmin) {
-        const existing = await storage.getSiteRequirement(parseInt(req.params.id));
-        if (!existing) return res.status(404).json({ error: "Not found" });
-        if (existing.submittedBy !== req.session?.userId) {
-          return res.status(403).json({ error: "You can only confirm readiness for your own submissions" });
-        }
-      }
+      const existing = await storage.getSiteRequirement(parseInt(req.params.id));
+      if (!existing) return res.status(404).json({ error: "Not found" });
       const { materialStatus, equipmentStatus, labourStatus, immediateStatus, remarks } = req.body;
       const hasShortage = [materialStatus, equipmentStatus, labourStatus, immediateStatus].some(
         s => s === "partly_available" || s === "not_available" || s === "shortage"

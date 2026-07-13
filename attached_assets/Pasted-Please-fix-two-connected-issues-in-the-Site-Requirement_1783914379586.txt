@@ -1,0 +1,167 @@
+Please fix two connected issues in the Site Requirements / Readiness flow.
+
+Issue 1:
+Site Requirements Queue / Tomorrow Plans & Site Requirements exists, but it is not visible anywhere in Admin/PM login or hubs.
+
+Issue 2:
+On Site Engineer Home, the Readiness for Today’s Work section is visible, but when site engineer clicks “Confirm Readiness & Start Site Work”, it fails with:
+
+403: Cannot update readiness for your own submission
+
+This permission rule is incorrect for readiness confirmation.
+
+Please fix both issues carefully.
+
+A. Expose Site Requirements Queue
+
+Add a clear tile/link called:
+
+Tomorrow Plans & Site Requirements
+
+or
+
+Site Requirements Queue
+
+Show this tile/link in:
+
+1. Manager/Admin Home or Admin Hub
+For PM/Admin/Owner users.
+
+2. Site Operations Hub
+For users managing site operations.
+
+3. Stores Hub, if relevant
+For store users to see material-related site requirements.
+
+4. Equipment/Fleet Hub, if relevant
+For equipment/mechanical users to see equipment requirements.
+
+Use the existing SiteRequirementsList page.
+Do not create a duplicate page.
+Do not redesign the page.
+
+The queue should show:
+- Tomorrow Plans
+- Immediate Requirements
+- Material requirements
+- Equipment requirements
+- Labour requirements
+- current status
+- allocation/arranged status
+- PM/Admin remarks
+
+PM/Admin/Store/Mechanical users should be able to update:
+- Approved / Accepted
+- Arranged
+- Sent to Store
+- Sent to Purchase
+- Sent to Plant
+- Expected at site by
+- Available at site
+- Partly available
+- Not available
+- Need Clarification
+- Rejected
+
+Immediate Requirement submitted from Site Home must also appear in this same queue.
+
+B. Fix Readiness confirmation permission
+
+The current error is:
+
+403: Cannot update readiness for your own submission
+
+Please distinguish between two different actions:
+
+1. Allocation / approval / arrangement update
+
+This is done by PM/Admin/Store/Mechanical.
+
+The site engineer should not be allowed to approve or arrange his own submitted requirement.
+
+Examples:
+- Approved
+- Arranged
+- Sent to Store
+- Sent to Purchase
+- Sent to Plant
+- Equipment allocated
+- Expected at site by time
+- Rejected
+- Need clarification
+
+2. Morning readiness confirmation
+
+This is done by the site engineer/supervisor on his own Site Home before starting work.
+
+This must be allowed even if he submitted the original Tomorrow Plan.
+
+Examples:
+- Required material available at site / expected today / partly available / not available
+- Required equipment available at site / expected today / partly available / not available
+- Required labour available / partly available / not available
+- shortage remarks
+- Confirm Readiness & Start Site Work
+
+Required backend/API rule:
+
+- Block site user from updating allocation/approval status on his own submission.
+- Allow site user to save morning readiness confirmation for his own submitted requirement.
+- Saving readiness should not change approval/allocation status.
+- Saving readiness should only create/update readiness confirmation fields for site/date/user.
+- After readiness save, proceed to Start Today’s Site Work.
+- If any group is partly available / not available / issue, mark “Started with shortage” and show shortage alert to PM/Admin.
+
+C. Navigation
+
+After readiness confirmation:
+- continue to Start Today’s Site Work
+- or return to Site Engineer Home if the user cancels/comes back
+
+After PM/Admin updates requirement allocation status:
+- return to Site Requirements Queue
+
+D. Do not touch
+
+Do not touch:
+- Tomorrow Plan form design
+- DPR quantity logic
+- BOQ mapping
+- Plant production logic
+- Stores stock logic
+- FieldHome layout except the readiness save flow if needed
+- Permissions redesign beyond this readiness/allocation distinction
+- Lazy loading
+
+E. Test cases
+
+Please test:
+
+1. Admin login:
+Admin should see Tomorrow Plans & Site Requirements / Site Requirements Queue tile.
+
+2. PM/Admin:
+Open Site Requirements Queue and see submitted Tomorrow Plans and Immediate Requirements.
+
+3. Site Engineer:
+Submit Tomorrow Plan.
+
+4. PM/Admin/Store/Mechanical:
+Update allocation/arranged status.
+
+5. Site Engineer:
+Open home page next morning.
+Select readiness status and remarks.
+Click Confirm Readiness & Start Site Work.
+It should save successfully and start site work.
+
+6. Site Engineer restriction:
+Site engineer should still not be able to approve/arrange his own requirement from the queue.
+
+After implementation, report:
+- route used for Site Requirements Queue
+- tile/link added in which hubs
+- permissions applied
+- whether Immediate Requirements appear there
+- how readiness save permission was fixed
+- test results

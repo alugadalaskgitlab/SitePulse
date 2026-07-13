@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   HardHat, FileText, Fuel, ShoppingCart, CheckCircle2, Clock,
-  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin, Smartphone,
+  AlertTriangle, Activity, Truck, ChevronRight, ArrowUpRight, MapPin, Smartphone, CalendarCheck,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -427,7 +427,29 @@ function HomeDashboard({
                   </div>
                 )}
 
-                {/* Tier 4: Internal Requisitions (stores users only) */}
+                {/* Tier 4: Site Requirements Queue */}
+                {canSeeSite && (
+                <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-site-req">
+                  <div className="w-7 h-7 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <CalendarCheck className="w-3.5 h-3.5 text-teal-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-800 leading-snug">Site Requirements</p>
+                    </div>
+                    <p className="text-xs mt-0.5 leading-snug text-slate-400">
+                      Tomorrow's plans & immediate needs
+                    </p>
+                    <Link href="/site/requirements?returnTo=/">
+                      <a className="mt-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 flex items-center gap-0.5" data-testid="link-site-requirements">
+                        Open queue <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    </Link>
+                  </div>
+                </div>
+                )}
+
+                {/* Tier 5: Internal Requisitions (stores users only) */}
                 {canSeeIrn && (
                 <div className="px-4 py-3.5 flex items-start gap-3" data-testid="pending-tier-irn">
                   <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
