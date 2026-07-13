@@ -24,6 +24,7 @@ import { calculateBomDemand, deriveMaterialsFromLayerConfig, normaliseMixType, c
 import { autoSequenceStructureBars, type SequenceableBar, type EquipmentInput } from "@shared/structureSequencing";
 import { isStructureTypeLabel, isChainageLabel, isChainageFromLabel, isChainageToLabel } from "@shared/structureImportLabels";
 import { classifyWorkType, STANDARD_CONCRETE_DESIGNS, isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
+import { suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
 import { parseTankConfig, calculateVolumeAtDepth as calcTankVol } from "@shared/tank-calibration";
 import { sendPushToAll, sendPushToAudience, sendPushToSection, sendPushToRaiser, sendTestPush } from "./push";
 import { canonicalizeMachineType } from "@shared/canonicalize";
@@ -10302,15 +10303,19 @@ export async function registerRoutes(
       }
 
       const allItems = await storage.getBoqItems(boqProjectId);
-      const toClassify = allItems.filter(it => it.needsReview || !it.displayName?.trim());
+      const toClassify = allItems.filter(it => it.needsReview || !it.workCategory?.trim() || !it.displayName?.trim());
       let updated = 0;
       for (const item of toClassify) {
         const desc = item.description || item.itemName || "";
-        const category = classifyBoqItem(desc);
+        const unit = (item as any).unit ?? "";
         const shortName = serverShortItemName(item.itemName || desc);
+        const suggestedCategory = suggestWorkCategoryFromDescription(desc, unit);
+        const newCategory = item.needsReview || !(item as any).workCategory?.trim()
+          ? (suggestedCategory ?? (item as any).workCategory ?? null)
+          : (item as any).workCategory;
         await storage.updateBoqItem(item.id, {
           displayName: shortName || null,
-          workCategory: category.code,
+          workCategory: newCategory,
           needsReview: false,
         } as any);
         updated++;

@@ -1,0 +1,117 @@
+Implement a focused fix for BOQ Item Review and Work Program category handling.
+
+1. Investigate why BOQ Item Review shows “12 without category” even though every visible row already shows a selected Work Category.
+
+2. Ensure there is one consistent source of truth for each BOQ item’s Work Category.
+
+3. The following must all read from the same persisted Work Category field:
+   - BOQ Item Review row
+   - “without category” counter
+   - Work Program
+   - Auto-Sequence
+   - DPR/BOM item metadata where category is required
+
+4. If the Work Category is currently only inferred for display, persist it properly to the BOQ item record.
+
+5. After saving or auto-mapping:
+   - refresh/invalidate the relevant query cache
+   - recalculate the “without category” count
+   - make the updated category immediately available to Work Program
+
+6. Do not depend on BOQ item code for category mapping.
+
+   When item code is missing, map the Work Category intelligently from:
+   - full item description
+   - short name
+   - unit
+   - recognised road-work terminology
+
+7. Add or correct description-based road-work mapping for common terms, including at least:
+   - clearing and grubbing → Site Clearance
+   - scarifying/removal of existing BT surface → Site Clearance / Preparatory Works
+   - excavation → Earthwork
+   - embankment → Earthwork
+   - subgrade → Earthwork / Subgrade
+   - earthen shoulder → Shoulders
+   - granular sub-base / GSB → Sub-base & Base
+   - wet mix macadam / WMM → Sub-base & Base
+   - prime coat → Bituminous Works
+   - tack coat → Bituminous Works
+   - DBM / dense bituminous macadam → Bituminous Works
+   - BC / bituminous concrete / wearing course → Bituminous Works
+
+8. Description matching must be:
+   - case-insensitive
+   - tolerant of punctuation and spacing
+   - able to recognise common abbreviations
+   - based on specific terms before broad generic terms
+
+9. Do not overwrite a Work Category that was manually selected or corrected by the user.
+
+10. Fix Auto-Sequence so it can sequence items even when BOQ item codes are absent.
+
+11. Auto-Sequence should use:
+   - recognised work description
+   - mapped Work Category
+   - normal road-construction execution order
+
+12. Use an execution order broadly like:
+   - clearing and grubbing
+   - scarifying/removal
+   - excavation
+   - embankment
+   - subgrade
+   - GSB
+   - WMM/base course
+   - prime coat
+   - tack coat
+   - DBM/bituminous base
+   - BC/wearing course
+   - shoulders/finishing
+
+13. Preserve any sequence manually set by the user unless the user explicitly runs Auto-Sequence.
+
+14. Use the existing BOQ item Short Name as the primary operational display label outside the detailed BOQ page.
+
+15. Apply Short Name display to:
+   - Work Program
+   - DPR activity/item selectors
+   - BOM
+   - Tomorrow’s Plan
+   - Site Requirements linked to a BOQ item
+   - compact progress/planning tables
+
+16. Display format should preferably be:
+   - Short Name
+   - optionally followed by Item Code where available
+
+17. If Short Name is blank, fall back to:
+   - a sensible shortened item description
+   - then the full description as the final fallback
+
+18. Keep the full BOQ description available in:
+   - BOQ page
+   - tooltip
+   - secondary text
+   - item details
+   - formal reports/exports where required
+
+19. Test specifically with:
+   - NH-167 project, where mapping is already mostly correct
+   - Takkadpally-Sirur project, where item codes are absent
+
+20. Confirm after the fix that:
+   - Takkadpally-Sirur no longer shows all items as “without category”
+   - Work Program receives the mapped categories
+   - Auto-Sequence works without item codes
+   - manually corrected categories remain unchanged
+   - operational screens show Short Names instead of confusing truncated descriptions
+
+Do not touch:
+- BOQ import layout or Excel parsing unrelated to category mapping
+- BOQ quantity, rate or amount calculations
+- DPR submission or approval workflow
+- Site Requirements approval flow
+- permissions
+- reports unrelated to BOQ item labels
+- the existing BOQ page category grouping that is already working

@@ -1583,7 +1583,7 @@ function InlineGanttTable({
                             <HoverCard openDelay={120} closeDelay={40}>
                               <HoverCardTrigger asChild>
                                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate min-w-0 cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
-                                  {shortItemName(item.description)}
+                                  {(item as any).displayName || shortItemName(item.description)}
                                 </span>
                               </HoverCardTrigger>
                               <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">
@@ -1869,7 +1869,7 @@ function MonthlyPlanView({
                         <HoverCard openDelay={120} closeDelay={40}>
                           <HoverCardTrigger asChild>
                             <span className="block truncate cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">
-                              {item.itemCode ? `[${item.itemCode}] ` : ""}{shortItemName(item.description)}
+                              {item.itemCode ? `[${item.itemCode}] ` : ""}{(item as any).displayName || shortItemName(item.description)}
                             </span>
                           </HoverCardTrigger>
                           <HoverCardContent align="start" side="bottom" className="w-96 max-w-[90vw]">

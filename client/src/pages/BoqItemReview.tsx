@@ -231,7 +231,7 @@ export default function BoqItemReview() {
   const filtered = useMemo(() => {
     let list = items as ItemRow[];
     if (filterMode === "needsReview") list = list.filter(i => i.needsReview);
-    else if (filterMode === "unmapped") list = list.filter(i => !i.categoryName?.trim());
+    else if (filterMode === "unmapped") list = list.filter(i => !i.workCategory?.trim());
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(i =>
@@ -245,7 +245,7 @@ export default function BoqItemReview() {
   }, [items, filterMode, search]);
 
   const needsReviewCount = (items as ItemRow[]).filter(i => i.needsReview).length;
-  const unmappedCount = (items as ItemRow[]).filter(i => !i.categoryName?.trim()).length;
+  const unmappedCount = (items as ItemRow[]).filter(i => !i.workCategory?.trim()).length;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
