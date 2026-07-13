@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
@@ -220,7 +220,7 @@ function ItemEditPanel({
 // ── RequirementCard ───────────────────────────────────────────────────────────
 
 function RequirementCard({
-  req, canReview, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate,
+  req, canReview, canUpdateMaterials, canUpdateEquipment, canUpdateLabour, canUpdateImmediate, filterContext,
 }: {
   req: any;
   canReview: boolean;
@@ -228,6 +228,7 @@ function RequirementCard({
   canUpdateEquipment: boolean;
   canUpdateLabour: boolean;
   canUpdateImmediate: boolean;
+  filterContext: string;
 }) {
   const [open, setOpen] = useState(false);
   const [newStatus, setNewStatus] = useState(req.status);
@@ -316,8 +317,33 @@ function RequirementCard({
         remarks:    payload.remarks || null,
       }),
     onSuccess: () => { invalidate(); toast({ title: "Item status updated" }); setEditingItem(null); },
-    onError: () => toast({ title: "Failed to update item status", variant: "destructive" }),
+    onError: (err: any) => {
+      const msg = err?.message ?? err?.error ?? "Server error";
+      console.error("[item-status] update failed:", err);
+      toast({ title: "Failed to update item status", description: msg, variant: "destructive" });
+    },
   });
+
+  // ── Context-based section visibility ──────────────────────────────────────
+  const showMaterials  = filterContext !== "equipment";
+  const showEquipment  = filterContext !== "stores";
+  const showLabour     = filterContext !== "equipment" && filterContext !== "stores";
+  const visibleImmediate: any[] = (() => {
+    const all: any[] = req.immediateRequirements ?? [];
+    if (filterContext === "stores") {
+      return all.filter((it: any) => {
+        const c = (it.category ?? "").toLowerCase();
+        return !c || c.includes("material") || c.includes("store") || c === "other";
+      });
+    }
+    if (filterContext === "equipment") {
+      return all.filter((it: any) => {
+        const c = (it.category ?? "").toLowerCase();
+        return !c || c.includes("equipment") || c.includes("plant") || c.includes("vehicle") || c === "other";
+      });
+    }
+    return all;
+  })();
 
   function openItemEdit(category: string, index: number) {
     setEditingItem({ category, index });
@@ -411,7 +437,7 @@ function RequirementCard({
           )}
 
           {/* ── Materials (with item-level status) ── */}
-          {req.materials?.length > 0 && (
+          {showMaterials && req.materials?.length > 0 && (
             <div>
               <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">Materials</p>
               <div className="space-y-0.5">
@@ -463,7 +489,7 @@ function RequirementCard({
           )}
 
           {/* ── Equipment (with item-level status) ── */}
-          {req.equipment?.length > 0 && (
+          {showEquipment && req.equipment?.length > 0 && (
             <div>
               <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Equipment</p>
               <div className="space-y-0.5">
@@ -513,7 +539,7 @@ function RequirementCard({
           )}
 
           {/* ── Labour (with item-level status) ── */}
-          {req.labour?.length > 0 && (
+          {showLabour && req.labour?.length > 0 && (
             <div>
               <p className="text-xs font-bold text-teal-600 uppercase tracking-wider mb-2">Labour</p>
               <div className="space-y-0.5">
@@ -561,12 +587,12 @@ function RequirementCard({
             </div>
           )}
 
-          {/* ── Immediate requirements (with item-level status) ── */}
-          {req.immediateRequirements?.length > 0 && (
+          {/* ── Immediate requirements (with item-level status, context-filtered) ── */}
+          {visibleImmediate.length > 0 && (
             <div>
               <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">Immediate Requirements</p>
               <div className="space-y-0.5">
-                {req.immediateRequirements.map((item: any, i: number) => {
+                {visibleImmediate.map((item: any, i: number) => {
                   const alloc = getItemAlloc(req.allocationStatus, "immediate", i);
                   const isEditingThis = editingItem?.category === "immediate" && editingItem.index === i;
                   return (
@@ -907,51 +933,104 @@ function RequirementCard({
   );
 }
 
+// ── Context config ────────────────────────────────────────────────────────────
+
+const CONTEXT_CONFIG: Record<string, { title: string; subtitle: string; backLabel: string; defaultBack: string }> = {
+  equipment: {
+    title:       "Site Equipment Requirements",
+    subtitle:    "Equipment requirements from upcoming site work",
+    backLabel:   "Equipment & Fleet",
+    defaultBack: "/equipment/hub",
+  },
+  stores: {
+    title:       "Site Material Requirements",
+    subtitle:    "Material requirements from upcoming site work",
+    backLabel:   "Stores & Inventory",
+    defaultBack: "/stores/hub",
+  },
+  admin: {
+    title:       "Site Requirements Queue",
+    subtitle:    "Pending site plans and immediate needs",
+    backLabel:   "Admin",
+    defaultBack: "/admin/hub",
+  },
+  dashboard: {
+    title:       "Site Requirements Queue",
+    subtitle:    "Pending site plans and immediate needs",
+    backLabel:   "Dashboard",
+    defaultBack: "/",
+  },
+  site: {
+    title:       "Site Requirements Queue",
+    subtitle:    "Review, arrange and respond to site requirements",
+    backLabel:   "Site Operations",
+    defaultBack: "/site/hub",
+  },
+};
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteRequirementsList() {
-  const { sectionVisible, user } = useAuth();
+  const { sectionVisible, user, isFieldEngineer } = useAuth();
+  const search = useSearch();
   const role = (user as any)?.role ?? "engineer";
   const isManager = role === "admin" || role === "manager";
+
+  const searchParams = new URLSearchParams(search);
+  const context = searchParams.get("context") ?? "site";
+  const returnTo = searchParams.get("returnTo") ?? "";
+
+  const cfg = CONTEXT_CONFIG[context] ?? CONTEXT_CONFIG.site;
+  const backHref = returnTo || cfg.defaultBack;
+
+  // For site engineers, always show "Your submitted requirements"
+  const subtitle = isFieldEngineer
+    ? "Your submitted requirements"
+    : cfg.subtitle;
 
   const { data: reqs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/site-requirements"],
   });
 
-  // Role-aware update flags
+  // Role-aware update flags — permission-based, not just role
   const canUpdateMaterials = isManager || sectionVisible("stores_inventory");
   const canUpdateEquipment = isManager || sectionVisible("plant_equipment");
   const canUpdateLabour    = isManager;
   const canUpdateImmediate = isManager || sectionVisible("stores_inventory") || sectionVisible("plant_equipment");
 
-  const subtitle = !isManager && sectionVisible("stores_inventory")
-    ? "Material requirements from upcoming site work"
-    : !isManager && sectionVisible("plant_equipment")
-    ? "Equipment requirements from upcoming site work"
-    : "Review, arrange and respond to site requirements";
+  // Site engineers cannot approve/arrange their own requirements
+  const canReview = isManager;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto px-4 py-4 pb-20">
         <div className="flex items-center gap-3 mb-4">
-          <Link href="/">
+          <Link href={backHref}>
             <a className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors" data-testid="button-back">
               <ArrowLeft className="w-4 h-4 text-slate-600" />
             </a>
           </Link>
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Site Requirements Queue</h1>
+          <div className="flex-1 min-w-0">
+            {context !== "site" && (
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">
+                {cfg.backLabel}
+              </p>
+            )}
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">{cfg.title}</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
           </div>
-          <div className="ml-auto">
-            <Link href="/site/requirements/new?returnTo=/site/requirements">
-              <a data-testid="button-new-requirement">
-                <Button size="sm" className="bg-orange-500 hover:bg-orange-600 gap-1.5">
-                  <ClipboardList className="w-3.5 h-3.5" /> + New
-                </Button>
-              </a>
-            </Link>
-          </div>
+          {/* Only show + New for engineers / managers in non-filtered contexts */}
+          {context !== "equipment" && context !== "stores" && (
+            <div className="ml-auto">
+              <Link href="/site/requirements/new?returnTo=/site/requirements">
+                <a data-testid="button-new-requirement">
+                  <Button size="sm" className="bg-orange-500 hover:bg-orange-600 gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5" /> + New
+                  </Button>
+                </a>
+              </Link>
+            </div>
+          )}
         </div>
 
         {isLoading && (
@@ -963,11 +1042,13 @@ export default function SiteRequirementsList() {
             <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <p className="text-sm font-medium text-slate-500">No requirements yet</p>
             <p className="text-xs text-slate-400 mt-1 mb-4">Tomorrow's plans and immediate requirements will appear here.</p>
-            <Link href="/site/requirements/new?returnTo=/site/requirements">
-              <a data-testid="button-submit-first">
-                <Button size="sm" variant="outline">Submit Tomorrow's Plan</Button>
-              </a>
-            </Link>
+            {context !== "equipment" && context !== "stores" && (
+              <Link href="/site/requirements/new?returnTo=/site/requirements">
+                <a data-testid="button-submit-first">
+                  <Button size="sm" variant="outline">Submit Tomorrow's Plan</Button>
+                </a>
+              </Link>
+            )}
           </div>
         )}
 
@@ -976,11 +1057,12 @@ export default function SiteRequirementsList() {
             <RequirementCard
               key={req.id}
               req={req}
-              canReview={isManager}
+              canReview={canReview}
               canUpdateMaterials={canUpdateMaterials}
               canUpdateEquipment={canUpdateEquipment}
               canUpdateLabour={canUpdateLabour}
               canUpdateImmediate={canUpdateImmediate}
+              filterContext={context}
             />
           ))}
         </div>

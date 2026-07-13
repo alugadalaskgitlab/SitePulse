@@ -1,0 +1,242 @@
+Please fix the Site Requirements Queue context and update workflow.
+
+The queue is now visible from Dashboard, Site Operations, Stores, Equipment & Fleet, etc. That is good.
+
+But there are four issues:
+
+1. Updating item status is failing.
+When clicking Update → selecting status → Save, it shows:
+“Failed to update item status”
+
+This must be fixed first.
+
+2. Module filtering is wrong.
+When opening Site Requirements Queue from Equipment & Fleet, it shows material requirements also.
+Equipment users should mainly see equipment-related requirements.
+Stores users should mainly see material-related requirements.
+
+3. Sidebar highlight is wrong.
+When opening the queue from Equipment & Fleet, the sidebar still highlights Site Operations.
+When opening from Stores, it should highlight Stores.
+When opening from Dashboard/Admin, it should highlight Dashboard/Admin context.
+
+4. Header text is wrong.
+It says “Your submitted requirements” everywhere.
+That is only correct for site engineer/supervisor.
+For PM/Admin/Stores/Equipment, the subtitle should be different.
+
+Please fix only this Site Requirements Queue workflow.
+
+A. Fix status update saving
+
+The item-level Update button must save successfully.
+
+For each item update, save:
+- requirement id
+- item type: material / equipment / labour / immediate
+- item id or item index
+- new status
+- expected at site date/time if provided
+- remarks
+- updated by
+- updated at
+
+If save fails, show the actual reason in console/logs and return a useful error.
+
+Do not just show generic “Failed to update item status”.
+
+B. Role/module-based filtering
+
+Use source context or route query to know where the queue was opened from.
+
+Suggested examples:
+- /site/requirements?context=site
+- /site/requirements?context=admin
+- /site/requirements?context=stores
+- /site/requirements?context=equipment
+- /site/requirements?context=dashboard
+
+Filtering:
+
+1. Admin / PM / Owner / Dashboard context
+Show full requirement:
+- planned work
+- material
+- equipment
+- labour
+- immediate
+
+2. Site Operations context
+Show full site requirement unless user is restricted.
+
+3. Stores context
+Show mainly:
+- material requirements
+- immediate requirements where category = material
+Do not show unrelated equipment/labour items as primary action items.
+
+Stores should be able to update material statuses:
+- Available in store
+- Issued
+- Expected at site by
+- Not available
+- Purchase required
+- Sent to purchase
+- Direct supply arranged
+- Need clarification
+
+4. Equipment & Fleet context
+Show mainly:
+- equipment requirements
+- immediate requirements where category = equipment
+Do not show unrelated material/labour items as primary action items.
+
+Equipment users should be able to update equipment statuses:
+- Allocated
+- Available at site
+- Expected at site by
+- Not available
+- Alternative arranged
+- Need clarification
+
+5. Labour / PM context
+Labour items can be handled by PM/Admin/Site Admin:
+- Arranged
+- Partly arranged
+- Expected by
+- Not available
+- Need clarification
+
+C. Sidebar highlight and breadcrumb
+
+The queue should respect context.
+
+If opened from Equipment & Fleet:
+- sidebar highlight: Equipment & Fleet
+- header/breadcrumb: Equipment & Fleet > Site Equipment Requirements
+- back button: Equipment & Fleet Hub
+
+If opened from Stores:
+- sidebar highlight: Stores & Inventory
+- header/breadcrumb: Stores > Site Material Requirements
+- back button: Stores Hub
+
+If opened from Admin/Dashboard:
+- sidebar highlight: Dashboard or Admin as appropriate
+- header/breadcrumb: Dashboard > Site Requirements Queue
+- back button: Dashboard/Admin Home
+
+If opened from Site Operations:
+- sidebar highlight: Site Operations
+- header/breadcrumb: Site Operations > Site Requirements Queue
+- back button: Site Operations Hub
+
+D. Header/subtitle text
+
+Do not show “Your submitted requirements” for every role.
+
+Use context-based subtitle:
+
+For site engineer/supervisor:
+“Your submitted requirements”
+
+For PM/Admin:
+“Review and arrange site plans and requirements”
+
+For Stores:
+“Material requirements from upcoming site work”
+
+For Equipment:
+“Equipment requirements from upcoming site work”
+
+For Dashboard:
+“Pending site plans and immediate needs”
+
+E. Immediate Requirements
+
+Immediate requirements should follow same filtering:
+
+If immediate item category = material:
+- visible/actionable in Stores and Admin/PM
+
+If category = equipment:
+- visible/actionable in Equipment and Admin/PM
+
+If category = labour:
+- visible/actionable in PM/Admin
+
+If category = other:
+- visible/actionable in PM/Admin, and optionally Site Operations
+
+F. Site person visibility
+
+After Stores/Equipment/PM updates status, the site engineer should see the updated status in:
+
+Readiness for Today’s Work
+
+Example:
+- Gravel 3 loads — Expected at site by 10:30 AM
+- Tractor dozer — Allocated, expected by 9:00 AM
+- 4 labour — Partly arranged
+
+G. Permission distinction
+
+Do not allow site engineer/supervisor to approve or arrange his own requirement.
+
+But allow site engineer/supervisor to:
+- view allocation status
+- confirm readiness from Site Home
+- add remarks / shortage
+- request revision if something was missed
+
+H. Do not touch
+
+Do not touch:
+- DPR quantity calculation
+- BOQ mapping
+- plant production logic
+- stores stock ledger logic
+- Tomorrow Plan form design
+- lazy loading
+- permissions redesign beyond queue update permissions
+- unrelated navigation
+
+I. Test cases
+
+Please test:
+
+1. Admin opens Dashboard → Site Requirements.
+Expected:
+- full requirement visible
+- subtitle suitable for admin
+- update status saves successfully
+
+2. Stores opens Stores Hub → Site Requirements.
+Expected:
+- sidebar highlights Stores
+- subtitle says material requirements
+- material items visible/actionable
+- equipment items not shown as primary action items
+- material update saves successfully
+
+3. Equipment opens Equipment Hub → Site Requirements.
+Expected:
+- sidebar highlights Equipment & Fleet
+- subtitle says equipment requirements
+- equipment items visible/actionable
+- material items not shown as primary action items
+- equipment update saves successfully
+
+4. Site Engineer opens his home.
+Expected:
+- sees updated statuses under Readiness for Today’s Work
+- can confirm readiness
+- cannot approve/arrange his own request
+
+After implementation, report:
+- why item status update was failing
+- what API/payload was fixed
+- how context filtering works
+- which hubs pass which context
+- sidebar/header changes
+- test results

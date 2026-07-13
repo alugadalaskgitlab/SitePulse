@@ -213,7 +213,7 @@ export default function StoresHub() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HubActionTile
-              href="/site/requirements?returnTo=/stores/hub"
+              href="/site/requirements?context=stores&returnTo=/stores/hub"
               icon={CalendarCheck}
               title="Site Requirements Queue"
               description="View tomorrow's plans & immediate needs — see material requirements, check sent-to-store status & mark items as arranged or available"

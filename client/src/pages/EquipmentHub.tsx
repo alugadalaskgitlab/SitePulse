@@ -150,7 +150,7 @@ export default function EquipmentHub() {
               enabled={sectionVisible("irn_raise")}
             />
             <HubActionTile
-              href="/site/requirements?returnTo=/equipment/hub"
+              href="/site/requirements?context=equipment&returnTo=/equipment/hub"
               icon={CalendarCheck}
               title="Site Requirements Queue"
               description="View tomorrow's equipment requirements from site — mark as arranged, allocated or sent to plant"

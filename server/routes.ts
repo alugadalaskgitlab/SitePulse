@@ -13459,10 +13459,12 @@ export function registerSiteRequirementRoutes(app: Express) {
   // PATCH /api/site-requirements/:id/item-status — PM/Store/Equipment updates per-item allocation status
   app.patch("/api/site-requirements/:id/item-status", requireAuth, async (req: any, res) => {
     try {
-      const role = req.session?.role ?? "engineer";
-      if (role !== "admin" && role !== "manager") {
-        return res.status(403).json({ error: "Only managers or admins can update item allocation status" });
-      }
+      const u = req.authUser;
+      const perms = req.authPermissions ?? {};
+      const isManagerOrAdmin = !!(u?.isAdmin || u?.isOwner || req.session?.role === "manager");
+      const canStores   = isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
+      const canEquipment = isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
+
       const { category, itemIndex, status, expectedBy, remarks } = req.body;
       if (!category || itemIndex === undefined || itemIndex === null) {
         return res.status(400).json({ error: "category and itemIndex are required" });
@@ -13470,6 +13472,20 @@ export function registerSiteRequirementRoutes(app: Express) {
       const allowed = ["materials", "equipment", "labour", "immediate"];
       if (!allowed.includes(category)) {
         return res.status(400).json({ error: "Invalid category" });
+      }
+
+      // Per-category permission check
+      if (category === "materials" && !canStores) {
+        return res.status(403).json({ error: "Updating material allocation requires Stores & Inventory access" });
+      }
+      if (category === "equipment" && !canEquipment) {
+        return res.status(403).json({ error: "Updating equipment allocation requires Equipment & Fleet access" });
+      }
+      if (category === "labour" && !isManagerOrAdmin) {
+        return res.status(403).json({ error: "Only PM/Admin can update labour allocation" });
+      }
+      if (category === "immediate" && !(isManagerOrAdmin || canStores || canEquipment)) {
+        return res.status(403).json({ error: "Updating immediate requirements requires Stores, Equipment, or PM access" });
       }
       const row = await storage.updateSiteRequirementItemStatus(parseInt(req.params.id), category, Number(itemIndex), {
         status: status ?? null,
