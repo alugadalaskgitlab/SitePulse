@@ -41,3 +41,30 @@ export function boqUomProfile(unit?: string | null): BoqUomProfile {
   if (/^(rmt|rm|rmtr|m|mtr|meter|metre|km|lm)$/.test(u) || /^r\.?m\.?t?$|runningm|rmeter|rmetre|^lm$|^km$/.test(u)) return { dimClass: "length", uom: "RMT", dims: ["L"] };
   return { dimClass: "count", uom: (unit || "NOS").toUpperCase().replace(/\.$/, ""), dims: [] };
 }
+
+/**
+ * Resolve the effective DPR UOM profile for a BOQ item, respecting the explicit
+ * `dprMeasurementMethod` setting before falling back to the unit-derived profile.
+ *
+ * dprMeasurementMethod values:
+ *   "CUM_LWT"   → volume  (L × W × T)
+ *   "SQM_LW"    → area    (L × W)
+ *   "RMT_L"     → length  (L only)
+ *   "MT_manual" → count (manual MT)
+ *   "NOS_manual"→ count (manual NOS)
+ *   "LS_manual" → count (manual LS)
+ *   null/undefined → derive from unit string
+ */
+export function resolveBoqUomProfile(
+  item: { unit?: string | null; dprMeasurementMethod?: string | null } | null | undefined
+): BoqUomProfile {
+  if (!item) return { dimClass: "count", uom: "NOS", dims: [] };
+  const m = item.dprMeasurementMethod;
+  if (m === "CUM_LWT")   return { dimClass: "volume", uom: "CUM", dims: ["L", "W", "T"] };
+  if (m === "SQM_LW")    return { dimClass: "area",   uom: "SQM", dims: ["L", "W"] };
+  if (m === "RMT_L")     return { dimClass: "length",  uom: "RMT", dims: ["L"] };
+  if (m === "MT_manual")  return { dimClass: "count",  uom: "MT",  dims: [] };
+  if (m === "NOS_manual") return { dimClass: "count",  uom: "NOS", dims: [] };
+  if (m === "LS_manual")  return { dimClass: "count",  uom: "LS",  dims: [] };
+  return boqUomProfile(item.unit);
+}

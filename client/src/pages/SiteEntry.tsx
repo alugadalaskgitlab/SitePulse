@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deriveDprUom, computeDprQty, boqUomProfile } from "@/lib/dprUom";
+import { deriveDprUom, computeDprQty, boqUomProfile, resolveBoqUomProfile } from "@/lib/dprUom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -162,7 +162,7 @@ const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
 
-type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null };
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; planningWorkType?: string | null; dprMeasurementMethod?: string | null };
 
 interface SiteEntryFormData {
   header: { date: string; site: string; engineer: string };
@@ -862,12 +862,12 @@ export default function SiteEntry() {
     return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
   };
 
-  // UOM follows the linked BOQ item's unit; qty is computed only from the dimensions
-  // that unit requires. Count/weight units (Nos, MT…) keep a manual quantity.
+  // UOM follows the linked BOQ item's dprMeasurementMethod (explicit) or unit (derived).
+  // Count/weight/lump-sum methods keep a manual quantity; formula methods auto-compute.
   const progressUom = (entry: ProgressEntry): string | null => {
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
     if (boqItem) {
-      const prof = boqUomProfile(boqItem.unit);
+      const prof = resolveBoqUomProfile(boqItem);
       if (prof.dimClass !== "count") return prof.uom;
       return UOM_OPTIONS.includes(prof.uom) ? prof.uom : "NOS";
     }
@@ -878,16 +878,23 @@ export default function SiteEntry() {
     const length = getEffectiveLength(entry);
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
     if (boqItem) {
-      const prof = boqUomProfile(boqItem.unit);
+      const prof = resolveBoqUomProfile(boqItem);
       entry.uom = progressUom(entry) ?? entry.uom;
       if (prof.dimClass === "volume") return (length && entry.width && entry.thickness) ? length * entry.width * entry.thickness : (entry.quantity ?? null);
       if (prof.dimClass === "area") return (length && entry.width) ? length * entry.width : (entry.quantity ?? null);
       if (prof.dimClass === "length") return length ?? (entry.quantity ?? null);
-      return entry.quantity ?? null; // count / weight → manual
+      return entry.quantity ?? null; // count / weight / lump-sum → manual
     }
     const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
     if (derivedUom) { entry.uom = derivedUom; return computeDprQty(length, entry.width, entry.thickness); }
     return entry.quantity ?? null;
+  };
+
+  // Returns the resolved UOM profile for the BOQ item linked to a progress entry,
+  // or null when no BOQ item is linked (no-BOQ DPRs derive profile from dimensions).
+  const entryBoqProfile = (entry: ProgressEntry) => {
+    const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
+    return boqItem ? resolveBoqUomProfile(boqItem) : null;
   };
 
   const calculateHours = (startTime: string, endTime: string): number => {
@@ -1840,38 +1847,49 @@ export default function SiteEntry() {
                       data-testid={`input-progress-length-${idx}`}
                     />
                   </div>
-                  <div>
-                    <Label className="text-sm">W (m)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0"
-                      value={entry.width ?? ""}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
-                        setProgress(updated);
-                      }}
-                      data-testid={`input-progress-width-${idx}`}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm">T (m)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0"
-                      value={entry.thickness ?? ""}
-                      onChange={(e) => {
-                        const updated = [...progress];
-                        updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
-                        updated[idx].quantity = calculateQuantity(updated[idx]);
-                        setProgress(updated);
-                      }}
-                      data-testid={`input-progress-thickness-${idx}`}
-                    />
-                  </div>
+                  {(() => {
+                    const prof = entryBoqProfile(entry);
+                    const showW = !prof || prof.dims.includes("W");
+                    const showT = !prof || prof.dims.includes("T");
+                    return (<>
+                      {showW && (
+                        <div>
+                          <Label className="text-sm">W (m)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0"
+                            value={entry.width ?? ""}
+                            onChange={(e) => {
+                              const updated = [...progress];
+                              updated[idx].width = e.target.value ? parseFloat(e.target.value) : null;
+                              updated[idx].quantity = calculateQuantity(updated[idx]);
+                              setProgress(updated);
+                            }}
+                            data-testid={`input-progress-width-${idx}`}
+                          />
+                        </div>
+                      )}
+                      {showT && (
+                        <div>
+                          <Label className="text-sm">T (m)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0"
+                            value={entry.thickness ?? ""}
+                            onChange={(e) => {
+                              const updated = [...progress];
+                              updated[idx].thickness = e.target.value ? parseFloat(e.target.value) : null;
+                              updated[idx].quantity = calculateQuantity(updated[idx]);
+                              setProgress(updated);
+                            }}
+                            data-testid={`input-progress-thickness-${idx}`}
+                          />
+                        </div>
+                      )}
+                    </>);
+                  })()}
                   <div>
                     <Label className="text-sm flex items-center gap-1">
                       UOM
