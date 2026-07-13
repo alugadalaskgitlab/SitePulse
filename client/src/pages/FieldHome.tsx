@@ -158,6 +158,46 @@ function AllocBadge({ status }: { status?: string }) {
   );
 }
 
+const ITEM_ALLOC_CFG: Record<string, { label: string; color: string }> = {
+  available_in_store:       { label: "In Store",         color: "bg-green-100 text-green-700" },
+  issued:                   { label: "Issued",            color: "bg-emerald-100 text-emerald-700" },
+  expected_at_site:         { label: "Expected at site",  color: "bg-blue-100 text-blue-700" },
+  not_available:            { label: "Not available",     color: "bg-red-100 text-red-600" },
+  purchase_required:        { label: "Purchase needed",   color: "bg-violet-100 text-violet-700" },
+  sent_to_purchase:         { label: "→ Purchase",        color: "bg-violet-100 text-violet-700" },
+  direct_supply_arranged:   { label: "Direct supply",     color: "bg-teal-100 text-teal-700" },
+  need_clarification:       { label: "? Clarification",   color: "bg-amber-100 text-amber-700" },
+  allocated:                { label: "Allocated",          color: "bg-green-100 text-green-700" },
+  available_at_site:        { label: "Available",         color: "bg-green-100 text-green-700" },
+  alternative_arranged:     { label: "Alternative",       color: "bg-teal-100 text-teal-700" },
+  arranged:                 { label: "Arranged",          color: "bg-green-100 text-green-700" },
+  partly_arranged:          { label: "Partly arranged",   color: "bg-amber-100 text-amber-700" },
+  expected_by_time:         { label: "Expected",          color: "bg-blue-100 text-blue-700" },
+  sent_to_plant:            { label: "→ Plant",           color: "bg-cyan-100 text-cyan-700" },
+};
+
+function ItemAllocBadgeFH({ status }: { status?: string }) {
+  if (!status) return null;
+  const cfg = ITEM_ALLOC_CFG[status] ?? { label: status, color: "bg-gray-100 text-gray-600" };
+  return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>;
+}
+
+function getItemAllocFH(allocationStatus: any, category: string, index: number): any {
+  const arrayKey = category === "materials" ? "materialItems"
+    : category === "equipment" ? "equipmentItems"
+    : category === "labour" ? "labourItems"
+    : "immediateItems";
+  const items = allocationStatus?.[arrayKey];
+  if (!Array.isArray(items)) return null;
+  return items.find((item: any) => item.index === index) ?? null;
+}
+
+function hasItemLevelAllocFH(allocationStatus: any): boolean {
+  if (!allocationStatus) return false;
+  return !!(allocationStatus.materialItems?.length || allocationStatus.equipmentItems?.length ||
+    allocationStatus.labourItems?.length || allocationStatus.immediateItems?.length);
+}
+
 const READINESS_BTNS = [
   { value: "available",        label: "✓ Available",       active: "bg-green-500 text-white border-green-500" },
   { value: "expected_today",   label: "⏰ Expected today",  active: "bg-blue-500 text-white border-blue-500" },
@@ -328,27 +368,128 @@ function ReadinessSection() {
                 </div>
               )}
 
-              {/* PM allocation status */}
+              {/* Arrangement status — per item (item-level) or section-level fallback */}
               {req.allocationStatus && (
                 <div className="bg-slate-50 rounded-lg px-3 py-2.5 space-y-1.5">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">PM / Authority Allocation</p>
-                  {[
-                    { key: "materials",  remarkKey: "materialsRemark",  icon: Package,       label: "Materials" },
-                    { key: "equipment",  remarkKey: "equipmentRemark",  icon: Wrench,        label: "Equipment" },
-                    { key: "labour",     remarkKey: "labourRemark",     icon: Users,         label: "Labour" },
-                    { key: "immediate",  remarkKey: "immediateRemark",  icon: AlertTriangle, label: "Immediate" },
-                  ].filter(r => req.allocationStatus[r.key]).map(r => (
-                    <div key={r.key}>
-                      <div className="flex items-center gap-2">
-                        <r.icon className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        <span className="text-xs text-gray-600 flex-1">{r.label}</span>
-                        <AllocBadge status={req.allocationStatus[r.key]} />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stores / Equipment / PM Status</p>
+
+                  {/* Material items */}
+                  {req.materials?.map((m: any, i: number) => {
+                    const alloc = getItemAllocFH(req.allocationStatus, "materials", i);
+                    if (!alloc?.status) return null;
+                    return (
+                      <div key={`mat-${i}`} className="flex items-start gap-2">
+                        <Package className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-gray-700 font-medium">{m.materialName}</span>
+                            <span className="text-xs text-gray-400">{m.qty} {m.uom}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <ItemAllocBadgeFH status={alloc.status} />
+                            {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
+                          </div>
+                          {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
+                        </div>
                       </div>
-                      {req.allocationStatus[r.remarkKey] && (
-                        <p className="text-[11px] text-gray-400 italic pl-5 mt-0.5">{req.allocationStatus[r.remarkKey]}</p>
-                      )}
+                    );
+                  })}
+                  {/* Section-level fallback for materials when no item-level data */}
+                  {req.allocationStatus.materials && !req.allocationStatus.materialItems?.length && (
+                    <div className="flex items-center gap-2">
+                      <Package className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 flex-1">Materials</span>
+                      <AllocBadge status={req.allocationStatus.materials} />
                     </div>
-                  ))}
+                  )}
+
+                  {/* Equipment items */}
+                  {req.equipment?.map((e: any, i: number) => {
+                    const alloc = getItemAllocFH(req.allocationStatus, "equipment", i);
+                    if (!alloc?.status) return null;
+                    return (
+                      <div key={`eq-${i}`} className="flex items-start gap-2">
+                        <Wrench className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-gray-700 font-medium">{e.numberRequired}× {e.equipmentType}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <ItemAllocBadgeFH status={alloc.status} />
+                            {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
+                          </div>
+                          {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Section-level fallback for equipment */}
+                  {req.allocationStatus.equipment && !req.allocationStatus.equipmentItems?.length && (
+                    <div className="flex items-center gap-2">
+                      <Wrench className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 flex-1">Equipment</span>
+                      <AllocBadge status={req.allocationStatus.equipment} />
+                    </div>
+                  )}
+
+                  {/* Labour items */}
+                  {req.labour?.map((l: any, i: number) => {
+                    const alloc = getItemAllocFH(req.allocationStatus, "labour", i);
+                    if (!alloc?.status) return null;
+                    return (
+                      <div key={`lab-${i}`} className="flex items-start gap-2">
+                        <Users className="w-3 h-3 text-teal-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-gray-700 font-medium">{l.count} {l.labourType}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <ItemAllocBadgeFH status={alloc.status} />
+                            {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
+                          </div>
+                          {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Section-level fallback for labour */}
+                  {req.allocationStatus.labour && !req.allocationStatus.labourItems?.length && (
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 flex-1">Labour</span>
+                      <AllocBadge status={req.allocationStatus.labour} />
+                    </div>
+                  )}
+
+                  {/* Immediate items */}
+                  {req.immediateRequirements?.map((im: any, i: number) => {
+                    const alloc = getItemAllocFH(req.allocationStatus, "immediate", i);
+                    if (!alloc?.status) return null;
+                    return (
+                      <div key={`imm-${i}`} className="flex items-start gap-2">
+                        <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-gray-700 font-medium">{im.description}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <ItemAllocBadgeFH status={alloc.status} />
+                            {alloc.expectedBy && <span className="text-[10px] text-blue-600">⏰ {alloc.expectedBy}</span>}
+                          </div>
+                          {alloc.remarks && <p className="text-[11px] text-gray-400 italic">{alloc.remarks}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Section-level fallback for immediate */}
+                  {req.allocationStatus.immediate && !req.allocationStatus.immediateItems?.length && (
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 flex-1">Immediate</span>
+                      <AllocBadge status={req.allocationStatus.immediate} />
+                    </div>
+                  )}
+
                   {req.allocationStatus.updatedByName && (
                     <p className="text-[10px] text-gray-400 pt-1 border-t border-slate-200">
                       Updated by {req.allocationStatus.updatedByName}

@@ -13456,6 +13456,34 @@ export function registerSiteRequirementRoutes(app: Express) {
     }
   });
 
+  // PATCH /api/site-requirements/:id/item-status — PM/Store/Equipment updates per-item allocation status
+  app.patch("/api/site-requirements/:id/item-status", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.session?.role ?? "engineer";
+      if (role !== "admin" && role !== "manager") {
+        return res.status(403).json({ error: "Only managers or admins can update item allocation status" });
+      }
+      const { category, itemIndex, status, expectedBy, remarks } = req.body;
+      if (!category || itemIndex === undefined || itemIndex === null) {
+        return res.status(400).json({ error: "category and itemIndex are required" });
+      }
+      const allowed = ["materials", "equipment", "labour", "immediate"];
+      if (!allowed.includes(category)) {
+        return res.status(400).json({ error: "Invalid category" });
+      }
+      const row = await storage.updateSiteRequirementItemStatus(parseInt(req.params.id), category, Number(itemIndex), {
+        status: status ?? null,
+        expectedBy: expectedBy ?? null,
+        remarks: remarks ?? null,
+        updatedBy: req.session?.username ?? null,
+      });
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // PATCH /api/site-requirements/:id/readiness — engineer confirms morning readiness
   // Readiness confirmation is a morning site-check action (not an approval/allocation action).
   // Any authenticated user may save readiness — the separate allocation/status endpoints

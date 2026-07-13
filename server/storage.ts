@@ -1013,6 +1013,7 @@ export interface IStorage {
   getSiteRequirement(id: number): Promise<any | undefined>;
   updateSiteRequirementStatus(id: number, data: { status: string; pmRemarks?: string; reviewedBy?: number }): Promise<any | undefined>;
   updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined>;
+  updateSiteRequirementItemStatus(id: number, category: string, itemIndex: number, data: any): Promise<any | undefined>;
   updateSiteRequirementReadiness(id: number, data: any): Promise<any | undefined>;
   updateSiteRequirementContent(id: number, data: any): Promise<any | undefined>;
   requestSiteRequirementRevision(id: number, reason: string): Promise<any | undefined>;
@@ -22098,6 +22099,42 @@ export class DatabaseStorage implements IStorage {
   async updateSiteRequirementAllocation(id: number, data: any): Promise<any | undefined> {
     const [row] = await db.update(siteRequirements)
       .set({ allocationStatus: data })
+      .where(eq(siteRequirements.id, id))
+      .returning();
+    return row;
+  }
+
+  async updateSiteRequirementItemStatus(id: number, category: string, itemIndex: number, data: any): Promise<any | undefined> {
+    const existing = await this.getSiteRequirement(id);
+    if (!existing) return undefined;
+    const currentAlloc: any = (existing.allocationStatus as any) ?? {};
+    const arrayKey = category === "materials" ? "materialItems"
+      : category === "equipment" ? "equipmentItems"
+      : category === "labour" ? "labourItems"
+      : "immediateItems";
+    const currentItems: any[] = Array.isArray(currentAlloc[arrayKey]) ? [...currentAlloc[arrayKey]] : [];
+    const existingIdx = currentItems.findIndex((item: any) => item.index === itemIndex);
+    const newItem = {
+      index: itemIndex,
+      status: data.status ?? null,
+      expectedBy: data.expectedBy ?? null,
+      remarks: data.remarks ?? null,
+      updatedBy: data.updatedBy ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+    if (existingIdx >= 0) {
+      currentItems[existingIdx] = newItem;
+    } else {
+      currentItems.push(newItem);
+    }
+    const updatedAlloc = {
+      ...currentAlloc,
+      [arrayKey]: currentItems,
+      updatedByName: data.updatedBy ?? (currentAlloc.updatedByName ?? null),
+      updatedAt: new Date().toISOString(),
+    };
+    const [row] = await db.update(siteRequirements)
+      .set({ allocationStatus: updatedAlloc })
       .where(eq(siteRequirements.id, id))
       .returning();
     return row;

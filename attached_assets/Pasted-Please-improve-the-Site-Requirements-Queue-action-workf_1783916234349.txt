@@ -1,0 +1,216 @@
+Please improve the Site Requirements Queue action workflow.
+
+The queue is now visible in Dashboard, Site Operations, Stores, Equipment & Fleet etc. That is good.
+
+Current issue:
+The queue shows the submitted Tomorrow Plans and Immediate Requirements, but PM/Admin/Stores/Equipment users need a clear way to verify, arrange, allocate, and communicate status back to the site person.
+
+Required concept:
+Site person submits Tomorrow’s Plan / Immediate Requirement
+→ PM/Admin/Stores/Equipment verifies and updates arrangement/allocation status
+→ site person automatically sees those statuses in Readiness for Today’s Work
+→ site person confirms actual availability at site before starting work.
+
+A. Keep one common Site Requirements Queue
+
+Use the existing Site Requirements Queue page.
+
+Do not create separate duplicate pages.
+
+But the view/actions should depend on user role/module:
+
+1. PM/Admin/Owner
+Can see full requirement:
+- planned work
+- material requirement
+- equipment requirement
+- labour requirement
+- immediate requirement
+
+Can update overall status:
+- Accepted / Approved
+- Partly arranged
+- Fully arranged
+- Need clarification
+- Rejected
+
+Can assign responsibility:
+- Material → Stores / Purchase / Plant
+- Equipment → Equipment / Mechanical
+- Labour → PM / Site Admin
+- Immediate → Store / Equipment / Purchase / PM
+
+2. Stores user
+Should mainly see material-related requirements.
+
+For each material item, allow action/status:
+- Available in store
+- Issued
+- Expected at site by [date/time]
+- Not available
+- Purchase required
+- Sent to purchase
+- Direct supply arranged
+- Need clarification
+
+Examples:
+- Gravel for sub-grade — 250 cum
+- Gravel 3 loads — urgent
+- Cement bags
+- Steel
+- WMM / GSB / aggregates as direct supply item if applicable
+
+3. Equipment / Mechanical user
+Should mainly see equipment-related requirements.
+
+For each equipment item, allow action/status:
+- Allocated
+- Available at site
+- Expected at site by [date/time]
+- Not available
+- Alternative arranged
+- Need clarification
+
+Examples:
+- Tractor dozer
+- Water tanker
+- Roller
+- Paver
+- JCB
+
+4. PM / Site Admin for labour
+For labour items, allow action/status:
+- Arranged
+- Partly arranged
+- Expected by [time]
+- Not available
+- Need clarification
+
+B. Item-level statuses
+
+The status should be item-wise, not only one overall status for the full requirement.
+
+Example:
+Requirement contains:
+- Gravel 3 loads
+- Tractor dozer
+- 4 labour
+
+Stores should update Gravel status.
+Equipment should update Tractor dozer status.
+PM/Admin should update Labour status.
+
+Each item should show:
+- requested item
+- requested quantity
+- urgency
+- requested by
+- required date/time
+- current allocation status
+- updated by
+- updated at
+- remarks
+- expected at site date/time if applicable
+
+C. Site person visibility
+
+The site engineer/supervisor should automatically see these updated statuses on his Site Engineer Home under:
+
+Readiness for Today’s Work
+
+Example display:
+
+Material:
+- Gravel 3 loads — Expected at site by 10:30 AM
+- Gravel for sub-grade 250 cum — Direct supply arranged
+
+Equipment:
+- Tractor dozer — Allocated, expected by 9:00 AM
+- Water tanker — Available at site
+
+Labour:
+- 4 labour — Partly arranged, 3 available by 9:30 AM
+
+Immediate:
+- Subgrade correction material — Sent to purchase
+
+D. Site person readiness confirmation
+
+Site person should only confirm actual ground availability.
+
+Allow him to save:
+- Material: Available / Expected today / Partly available / Not available
+- Equipment: Available / Expected today / Partly available / Not available
+- Labour: Available / Expected today / Partly available / Not available
+- Immediate/special: Available / Pending / Issue
+- Remarks
+
+Important:
+Do not block this with “cannot update own submission”.
+Site person is not approving/arranging. He is only confirming readiness.
+
+E. Permission distinction
+
+Do not allow site engineer/supervisor to approve or arrange his own request.
+
+But allow site engineer/supervisor to:
+- view allocation/arranged status
+- confirm readiness
+- request clarification / add remarks
+- request revision if he missed something
+
+F. Queue UX
+
+Inside each requirement card, add clear action controls for PM/Admin/Store/Equipment users.
+
+Suggested simple buttons/dropdowns:
+- Update Material Status
+- Update Equipment Status
+- Update Labour Status
+- Update Overall Status
+- Add Remark
+- Need Clarification
+
+For now, keep it simple:
+Click item or button → small inline panel/modal → select status, expected date/time, remarks → save.
+
+G. Notifications / visibility
+
+After any responsible person updates status:
+- site person should see the updated status on home page
+- show “updated by [name] at [time]” if possible
+- if Need Clarification is marked, show alert to site person
+- if Not available / Cannot arrange is marked, show shortage alert to PM/Admin and site person
+
+H. Do not touch
+
+Do not touch:
+- DPR quantity calculation
+- BOQ mapping
+- plant production logic
+- stores stock ledger logic
+- Tomorrow Plan form design
+- FieldHome layout except displaying updated allocation statuses
+- permissions redesign beyond this status-action distinction
+- lazy loading
+
+I. Test cases
+
+Please test:
+
+1. Site engineer submits Tomorrow Plan with material, equipment and labour.
+2. Admin opens Site Requirements Queue and sees full requirement.
+3. Stores opens queue and updates material status as Expected at site by 10:30 AM.
+4. Equipment opens queue and updates equipment status as Allocated / Expected by 9:00 AM.
+5. PM/Admin updates labour as Partly arranged.
+6. Site engineer opens home page and sees all updated statuses under Readiness for Today’s Work.
+7. Site engineer confirms readiness and starts site work.
+8. Site engineer should not be able to approve/arrange his own request.
+9. Immediate Requirement should follow the same flow and appear in the same queue.
+
+After implementation, report:
+- item-level status fields added/used
+- which roles can update which statuses
+- how site person sees the updates
+- how readiness confirmation is saved
+- test results
