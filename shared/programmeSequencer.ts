@@ -169,7 +169,11 @@ function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
 
   // 1. Use (corrected) planningWorkType as the track hint.
   if (effectivePWT === "road") {
-    const stage = wt !== null ? (PAVEMENT_STAGE[wt] ?? 99) : 99;
+    // When the WorkType classifier cannot identify this description, we have no
+    // basis to place it in the pavement sequence. Return "other" so the item
+    // is added to unclassifiedItemIds and the caller can mark it needsReview.
+    if (wt === null) return { track: "other", stage: 99 };
+    const stage = PAVEMENT_STAGE[wt] ?? 99;
     return { track: "pavement", stage };
   }
 

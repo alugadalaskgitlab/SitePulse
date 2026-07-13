@@ -10313,10 +10313,14 @@ export async function registerRoutes(
         const newCategory = item.needsReview || !(item as any).workCategory?.trim()
           ? (suggestedCategory ?? (item as any).workCategory ?? null)
           : (item as any).workCategory;
+        // Only clear needsReview when the category is actually resolved.
+        // If we still have no category, keep the flag so the item stays
+        // visible in the "Needs Mapping" queue.
+        const stillNeedsReview = !newCategory;
         await storage.updateBoqItem(item.id, {
           displayName: shortName || null,
           workCategory: newCategory,
-          needsReview: false,
+          needsReview: stillNeedsReview,
         } as any);
         updated++;
       }
