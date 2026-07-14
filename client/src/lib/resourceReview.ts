@@ -7,6 +7,8 @@ export interface ReviewItem {
   unit?: string | null;
   description?: string | null;
   layerType?: string | null;
+  workCategory?: string | null;
+  categoryName?: string | null;
   equipment?: { equipmentName?: string | null; count?: number | null }[];
   labour?: { designation?: string | null; count?: number | null }[];
   materials?: { materialName?: string | null }[];
@@ -18,12 +20,38 @@ const TANKER = /water\s*tanker|bowser|water\s*browser/i;
 const MANUAL_CREW = /manual|labour[\s-]?based|labor[\s-]?based|coolie|mazdoor|by\s*hand/i;
 const BITUMEN_MAT = /bitumen|\bvg[\s-]?\d+\b|emulsion|crmb|pmb/i;
 
-function unitNorm(u?: string | null) { return (u || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+/**
+ * Normalise a BOQ unit string to a canonical uppercase token.
+ *
+ * Handles:
+ *   - Leading numeric prefixes: "1 Cum", "1.00 Cum" → "CUM"
+ *   - Common cubic-metre aliases: Cu.m, Cu M, m3, cubic metre/meter → "CUM"
+ *   - Punctuation / spacing / case variations for all other units
+ */
+export function unitNorm(u?: string | null): string {
+  let s = (u ?? "").trim();
+  // Strip leading numeric prefix like "1 " or "1.00 " (with or without trailing space)
+  s = s.replace(/^\d+(\.\d+)?\s*/i, "");
+  // Expand known cubic-metre aliases before stripping punctuation
+  if (/^m\.?3$/i.test(s) || /^cu\.?\s*m(etre|eter)?s?$/i.test(s) || /^cubic\s*m(etre|eter)?s?$/i.test(s)) {
+    return "CUM";
+  }
+  return s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Earthwork description detector — matches the four false-flagged item types and peers. */
+const EARTHWORK_DESC = /embankment|roadway\s*excavat|earth(?:[\s-]*work|[\s-]*fill|[\s-]*excavat)|filling\s*(?:with\s*)?(?:excavated\s*|borrowed\s*)?earth|borrow(?:ed)?(?:\s*(?:earth|soil|material|pit))?|selected\s*soil|subgrade(?!\s*(?:with\s*)?(?:pcc|rcc|plain\s*cement|reinforced|gsb|wmm|granular))|earthen\s*shoulder|approved\s*(?:borrow|earth|fill\s*material)/i;
+
+/** Work-category strings (persisted) that conclusively indicate earthwork. */
+const EARTHWORK_CAT = /earthwork|subbase|shoulder|embankment/i;
 
 export function classifyItem(item: ReviewItem): ItemClass {
   const d = (item.description || "").toLowerCase();
   const u = unitNorm(item.unit);
   const layer = (item.layerType || "").toLowerCase();
+  // Persisted work category / bill category as a hint
+  const wc = ((item.workCategory || item.categoryName || "")).toLowerCase();
+
   if (/prime\s*coat|tack\s*coat|seal\s*coat/i.test(d) || layer === "spray_coat") return "spray";
   if (layer === "bituminous" || layer === "granular" ||
       /\bwmm\b|wet\s*mix|granular\s*sub[\s-]?base|\bgsb\b|\bdbm\b|bituminous concrete|\bbc\b|bituminous macadam|\bsdbc\b/i.test(d)) return "pavement";
@@ -31,12 +59,23 @@ export function classifyItem(item: ReviewItem): ItemClass {
   if (layer === "concrete" || /\bpcc\b|\brcc\b|cement concrete|reinforced concrete/i.test(d)) return "concrete";
   if (["NOS", "NO", "EACH", "NUMBER", "EA"].includes(u)) return "counted";
   if (["LS", "JOB", "LOT", "PERCENT", "PCT"].includes(u) || u === "") return "lumpsum";
-  if (u === "CUM" && /embankment|excavation|earth\s*work|filling|borrow/i.test(d)) return "earthwork";
+
+  // Earthwork: triggered by description terms OR persisted category — unit is NOT required.
+  // This is intentional: imported BOQs may carry unusual unit strings (e.g. "1 Cum", "Cu.m")
+  // that normalise to "CUM" with the improved unitNorm, but classification must not break
+  // when a future import produces yet another variant.
+  if (EARTHWORK_DESC.test(d) || (u === "CUM" && EARTHWORK_CAT.test(wc)) || EARTHWORK_CAT.test(wc)) {
+    return "earthwork";
+  }
+
   if (/culvert|abutment|\bpier\b|foundation|retaining\s*wall|\bwall\b|\bdeck\b|\bbox\b|bridge|headwall|wing\s*wall|parapet|footing|\bpile\b|drain/i.test(d)) return "structural";
   return "other";
 }
 
 export interface Anomaly { level: "high" | "med"; code: string; message: string }
+
+/** Classes for which a water tanker is a legitimate resource. */
+const TANKER_OK_CLASSES: ItemClass[] = ["pavement", "earthwork", "concrete", "spray"];
 
 export function detectAnomalies(item: ReviewItem): Anomaly[] {
   const cls = classifyItem(item);
@@ -46,12 +85,13 @@ export function detectAnomalies(item: ReviewItem): Anomaly[] {
   const heavy = eq.filter(n => HEAVY_PLANT.test(n));
   const earth = eq.filter(n => EARTHMOVING.test(n));
   const tanker = eq.filter(n => TANKER.test(n));
+
   if ((cls === "counted" || cls === "lumpsum") && heavy.length)
     flags.push({ level: "high", code: "plant_on_counted", message: `Heavy plant on a ${item.unit ?? cls} item: ${heavy.join(", ")}` });
   if (cls === "structural" && earth.length >= 2)
     flags.push({ level: "high", code: "earthmoving_on_structure", message: `Earthmoving fleet on a structural item: ${earth.join(", ")}` });
-  if (tanker.length && !["pavement", "earthwork", "concrete"].includes(cls))
-    flags.push({ level: "high", code: "tanker", message: `Water tanker on a ${cls} item` });
+  if (tanker.length && !TANKER_OK_CLASSES.includes(cls))
+    flags.push({ level: "high", code: "tanker", message: `Water tanker on an item classified as '${cls.charAt(0).toUpperCase() + cls.slice(1)}'` });
   if (mat.some(n => BITUMEN_MAT.test(n)) && cls !== "pavement" && cls !== "spray")
     flags.push({ level: "high", code: "bitumen_wrong", message: `Bitumen material on a non-bituminous item` });
   if (eq.some(n => MANUAL_CREW.test(n)))

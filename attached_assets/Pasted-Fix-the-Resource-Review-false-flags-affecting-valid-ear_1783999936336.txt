@@ -1,0 +1,80 @@
+Fix the Resource Review false flags affecting valid earthwork recipes.
+
+Current defect:
+Imported BOQ units may contain a quantity prefix such as “1 Cum”. The Resource Review unit normalisation converts this to “1CUM”, but the earthwork classifier checks only for an exact “CUM” match. As a result, valid embankment, borrow-earth, subgrade and earthen-shoulder items are classified as “other”, and their valid water tanker is incorrectly flagged as “Water tanker on a other item”.
+
+1. Correct the unit normalisation used by Resource Review so these equivalent values are recognised as CUM:
+   - Cum
+   - 1 Cum
+   - 1.00 Cum
+   - Cu.m
+   - Cu M
+   - m3
+   - cubic metre / cubic meter
+   - similar harmless spacing, punctuation and case variations
+
+2. Do not make earthwork classification depend only on an exact unit match.
+
+3. Classify an item as earthwork when its description clearly contains recognised earthwork terms such as:
+   - roadway excavation
+   - earthwork excavation
+   - embankment
+   - borrowed earth / borrow earth / borrow pits
+   - selected soil
+   - subgrade constructed with soil or approved earth
+   - earthen shoulders
+   - earth filling
+   - filling with excavated earth
+
+4. Use all available reliable context when classifying:
+   - full description
+   - normalised unit
+   - layerType
+   - persisted Work Category/category name, where available
+
+5. Where the persisted Work Category clearly identifies Earthwork, Subgrade or Earthen Shoulders, do not classify the item as “other” merely because the unit format is unusual.
+
+6. Keep description matching case-insensitive and tolerant of punctuation, spacing and common wording variations.
+
+7. A water tanker must be treated as a valid resource for:
+   - excavation where watering is applicable
+   - embankment
+   - borrow-earth filling
+   - soil subgrade
+   - earthen shoulders
+   - GSB/WMM and other pavement layers
+   - concrete where applicable
+
+8. After correcting classification, the four items presently shown in Resource Review must no longer be flagged merely for having a water tanker:
+   - embankment with excavated roadway earth
+   - embankment with borrowed earth
+   - subgrade with approved borrow material
+   - earthen shoulders with selected soil
+
+9. Do not remove the water tanker or alter the recipes of these items as part of this fix.
+
+10. Resource Review may continue reviewing BOQ items whether or not they are presently included in the Work Program, but its classification and warning message must be technically correct.
+
+11. Improve the warning grammar so future messages say:
+   - “Water tanker on an item classified as ‘Other’”
+   instead of:
+   - “Water tanker on a other item”
+
+12. Add focused tests covering:
+   - unit “Cum”
+   - unit “1 Cum”
+   - embankment descriptions
+   - borrow-earth descriptions
+   - soil subgrade descriptions
+   - earthen-shoulder descriptions
+   - legitimate water tanker usage
+   - genuinely unrelated “Other” items that should still be flagged
+
+Do not touch:
+- the actual equipment, labour or material recipes
+- Work Program scheduling or sequencing
+- BOQ category mapping covered by Instruction 005
+- DPR or BOM flows
+- BOQ quantities, rates or amounts
+- unrelated Resource Review anomaly rules
+- auto-clean behaviour for genuinely incorrect heavy equipment

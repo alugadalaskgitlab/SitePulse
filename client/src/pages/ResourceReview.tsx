@@ -12,7 +12,7 @@ import { shortItemName } from "@/lib/itemName";
 
 type RecipeItem = {
   id: number; itemCode: string | null; description: string; unit: string;
-  categoryName?: string | null; sortOrder?: number | null;
+  categoryName?: string | null; workCategory?: string | null; sortOrder?: number | null;
   layerConfig?: { layerType?: string } | null;
   equipment: any[]; labour: any[]; materials: any[];
 };
