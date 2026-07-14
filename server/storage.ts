@@ -317,7 +317,8 @@ import { canonicalizeMachineType } from "@shared/canonicalize";
 import { normaliseUnit } from "@shared/planningEngine";
 import { convertSolidQty } from "@shared/uomConvert";
 import { canonMaterialName } from "@shared/materialMatch";
-import { suggestWorkCategory } from "@shared/boqWorkCategories";
+import { suggestWorkCategory, suggestWorkCategoryFromDescription } from "@shared/boqWorkCategories";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 import {
   HEATING_TRENDS_HOT_OIL_END_TEMP_MIN_C,
   HEATING_TRENDS_HOT_OIL_DELTA_MIN_C,
@@ -12130,6 +12131,61 @@ export class DatabaseStorage implements IStorage {
     console.log("ensureStructureBarColumns: all structure-bar and boq_items columns verified/added");
   }
 
+  /**
+   * Idempotent startup migration for canonical BOQ unit normalisation.
+   *
+   * Pass 1 — DDL:  Adds canonical_unit column if it does not yet exist.
+   * Pass 2 — DML:  For every row where canonical_unit IS NULL, computes
+   *                canonicalizeUnit(unit) and writes it.  Rows that already
+   *                have a canonical_unit value are untouched (safe to re-run).
+   * Pass 3 — WC:   For every row where work_category IS NULL, attempts to
+   *                infer the category from description + canonical unit via
+   *                suggestWorkCategoryFromDescription.  Never overwrites a
+   *                manually-set or import-set work_category.
+   */
+  async ensureBoqCanonicalUnit(): Promise<{ units: number; categories: number }> {
+    // Pass 1 — DDL
+    await db.execute(sql.raw("ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS canonical_unit text"));
+
+    // Pass 2+3 — Fetch rows needing at least one of the two backfills
+    const rows = await db.execute(sql.raw(
+      "SELECT id, unit, description, canonical_unit, work_category FROM boq_items " +
+      "WHERE canonical_unit IS NULL OR work_category IS NULL"
+    ));
+
+    let units = 0;
+    let categories = 0;
+
+    for (const row of rows.rows as Array<{
+      id: number; unit: string; description: string;
+      canonical_unit: string | null; work_category: string | null;
+    }>) {
+      const needsUnit = row.canonical_unit == null;
+      const needsCategory = row.work_category == null;
+
+      const canonical = canonicalizeUnit(row.unit ?? "");
+
+      let wc: string | null = null;
+      if (needsCategory) {
+        wc = suggestWorkCategoryFromDescription(row.description ?? "", canonical) ?? null;
+      }
+
+      if (needsUnit && needsCategory && wc) {
+        await db.execute(sql`UPDATE boq_items SET canonical_unit = ${canonical}, work_category = ${wc} WHERE id = ${row.id}`);
+        units++;
+        categories++;
+      } else if (needsUnit) {
+        await db.execute(sql`UPDATE boq_items SET canonical_unit = ${canonical} WHERE id = ${row.id}`);
+        units++;
+      } else if (needsCategory && wc) {
+        await db.execute(sql`UPDATE boq_items SET work_category = ${wc} WHERE id = ${row.id}`);
+        categories++;
+      }
+    }
+
+    return { units, categories };
+  }
+
   async ensureHeatingSessionDipColumns(): Promise<void> {
     const cols = [
       "ldo_tank1_opening_dip",
@@ -20397,6 +20453,7 @@ export class DatabaseStorage implements IStorage {
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         unit: boqItems.unit,
+        canonicalUnit: boqItems.canonicalUnit,
         boqQty: boqItems.boqQty,
         currentQty: boqItems.currentQty,
         clientRate: boqItems.clientRate,
@@ -20554,7 +20611,11 @@ export class DatabaseStorage implements IStorage {
         clientRate: item.clientRate ?? null,
         clientAmount,
         sortOrder: item.sortOrder ?? i,
-        workCategory: item.workCategory ?? suggestWorkCategory(item.itemCode) ?? null,
+        canonicalUnit: canonicalizeUnit(item.unit),
+        workCategory: item.workCategory
+          ?? suggestWorkCategory(item.itemCode)
+          ?? suggestWorkCategoryFromDescription(item.description, canonicalizeUnit(item.unit))
+          ?? null,
         includedInPlanning,
         planningWorkType,
       }).returning({ id: boqItems.id });

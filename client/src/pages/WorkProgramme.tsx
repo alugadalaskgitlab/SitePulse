@@ -1469,7 +1469,7 @@ function InlineGanttTable({
     const _addLc = item.layerConfig as LayerConfig | null;
     const addItemType = (_addLc?.mixType ?? _addLc?.layerType) ?? null;
     const dur = qty > 0 && (equipment.length || productivitySettings?.mode === "project")
-      ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays,
+      ? calculateAutoDurationFull(qty, (item as any).canonicalUnit ?? item.unit, equipment, workingHrs, workingDays,
           productivitySettings, addItemType)
       : null;
     const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;
@@ -1608,14 +1608,14 @@ function InlineGanttTable({
                                   {item.description}
                                 </p>
                                 <p className="mt-2 text-xs text-muted-foreground">
-                                  {fmt(item.currentQty)} {item.unit}
+                                  {fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}
                                 </p>
                               </HoverCardContent>
                             </HoverCard>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap min-w-0">
-                            <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {item.unit}</span>
-                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
+                            <span className="text-[12px] text-muted-foreground flex-shrink-0 whitespace-nowrap">{fmt(item.currentQty)} {(item as any).canonicalUnit ?? item.unit}</span>
+                            <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
                             {!hasEquipment && (
                               <span className="text-xs text-amber-500 flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
                                 <Info className="w-2.5 h-2.5" /> no equipment
@@ -1697,9 +1697,9 @@ function InlineGanttTable({
                           className="flex items-center gap-2 px-3 bg-slate-50 dark:bg-slate-900/30 border-r border-slate-200 dark:border-slate-700"
                         >
                           <span className="text-[12px] text-slate-500 font-semibold">
-                            Total: {fmtQty(totalPlanned, 1)} {item.unit}
+                            Total: {fmtQty(totalPlanned, 1)} {(item as any).canonicalUnit ?? item.unit}
                           </span>
-                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
+                          <CoverageBadge planned={totalPlanned} boqQty={item.currentQty} unit={(item as any).canonicalUnit ?? item.unit} isStructureItem={isStructureOrLocationScheduledItem(item as any, { hasStructureImportBar: structureImportItemIds.has(item.id) })} />
                         </div>
                         <div style={{ width: totalRightW, minWidth: totalRightW, flexShrink: 0 }} />
                       </div>
@@ -1905,13 +1905,13 @@ function MonthlyPlanView({
                               {item.description}
                             </p>
                             <p className="mt-2 text-xs text-muted-foreground">
-                              {fmtQty(item.currentQty, 1)} {item.unit}
+                              {fmtQty(item.currentQty, 1)} {(item as any).canonicalUnit ?? item.unit}
                             </p>
                           </HoverCardContent>
                         </HoverCard>
                       </td>
                       <td className="px-2 py-1.5 text-right font-mono text-slate-600 font-semibold">{fmtQty(item.currentQty, 1)}</td>
-                      <td className="px-2 py-1.5 text-right text-muted-foreground">{item.unit}</td>
+                      <td className="px-2 py-1.5 text-right text-muted-foreground">{(item as any).canonicalUnit ?? item.unit}</td>
                       {months.map(m => {
                         const val = g[m] ?? 0;
                         return (
@@ -2415,7 +2415,7 @@ export default function WorkProgramme() {
       const lc = item.layerConfig as LayerConfig | null;
       const itemType = (lc?.mixType ?? lc?.layerType) ?? null;
       const dur = qty > 0 && (equipment.length || prodSettings?.mode === "project")
-        ? calculateAutoDurationFull(qty, item.unit, equipment, workingHrs, workingDays, prodSettings, itemType)
+        ? calculateAutoDurationFull(qty, (item as any).canonicalUnit ?? item.unit, equipment, workingHrs, workingDays, prodSettings, itemType)
         : null;
       const sm = 1;
       const em = dur?.months ? +(sm + dur.months).toFixed(2) : sm + 1;

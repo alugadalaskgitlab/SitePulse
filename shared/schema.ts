@@ -2456,6 +2456,7 @@ export const boqItems = pgTable("boq_items", {
   itemCode: text("item_code"),
   description: text("description").notNull(),
   unit: text("unit").notNull(),
+  canonicalUnit: text("canonical_unit"),           // normalised unit for logic & display (backfilled by startup migration)
   boqQty: real("boq_qty").notNull().default(0),   // original contract quantity — never overwritten
   currentQty: real("current_qty").notNull().default(0), // updated when a revision is activated
   clientRate: real("client_rate"),
@@ -2738,7 +2739,7 @@ export const insertBoqMixTemplateLinkSchema = createInsertSchema(boqMixTemplateL
 export type InsertBoqMixTemplateLink = z.infer<typeof insertBoqMixTemplateLinkSchema>;
 
 // Composite types for API responses
-export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null; isComposite?: boolean | null };
+export type BoqItemWithCategory = BoqItem & { categoryName: string | null; workCategory: string | null; canonicalUnit?: string | null; snlMappingStatus?: string | null; snlItemId?: number | null; snlItemCode?: string | null; snlConfidence?: number | null; snlItemDescription?: string | null; isComposite?: boolean | null };
 export type BoqRevisionWithItems = BoqRevision & { items: (BoqRevisionItem & { description: string; unit: string })[] };
 export type BoqProjectWithCounts = BoqProject & { siteName: string | null; itemCount: number; activeRevision: string | null; barCount: number };
 export type WorkProgramBarWithItem = WorkProgramBar & {

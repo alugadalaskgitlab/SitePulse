@@ -166,6 +166,15 @@ app.use((req, res, next) => {
   }
 
   try {
+    const r = await (storage as any).ensureBoqCanonicalUnit();
+    if (r.units > 0 || r.categories > 0) {
+      console.log(`Startup: ensureBoqCanonicalUnit — backfilled units: ${r.units}, work categories: ${r.categories}`);
+    }
+  } catch (e) {
+    console.error("Startup: Failed to ensure BOQ canonical units:", e);
+  }
+
+  try {
     await storage.ensureHeatingSessionDipColumns();
   } catch (e) {
     console.error("Startup: Failed to ensure heating session dip columns:", e);

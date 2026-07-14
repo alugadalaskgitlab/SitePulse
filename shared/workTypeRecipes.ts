@@ -114,8 +114,13 @@ interface WorkTypeRecipe {
  *   "SQM"     → "SQM"
  *   "MT"      → "MT"
  */
+// Import from the shared canonical-unit service and re-export so call sites that
+// previously imported normaliseBoqUnit from here can also get canonicalizeUnit.
+import { canonicalizeUnit } from "./boqNormalise";
+export { canonicalizeUnit };
+
 export function normaliseBoqUnit(raw: string): string {
-  return raw.replace(/^\d+(\.\d+)?\s*/i, "").toUpperCase().trim();
+  return canonicalizeUnit(raw).toUpperCase();
 }
 
 export function classifyWorkType(description: string, unit: string): WorkType | null {

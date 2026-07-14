@@ -133,7 +133,10 @@ function ItemEditRow({
           ? <span className="truncate max-w-[120px] block">{item.categoryName}</span>
           : <span className="text-amber-400">—</span>}
       </td>
-      <td className="py-2 px-3 text-xs text-slate-500 whitespace-nowrap">{item.unit}</td>
+      <td className="py-2 px-3 text-xs text-slate-500 whitespace-nowrap"
+          title={item.canonicalUnit && item.canonicalUnit !== item.unit ? `Canonical: ${item.canonicalUnit} (imported: ${item.unit})` : item.unit}>
+        {item.canonicalUnit ?? item.unit}
+      </td>
       <td className="py-2 px-3 min-w-[130px]">
         <Select
           value={workType}

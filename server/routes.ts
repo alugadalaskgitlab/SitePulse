@@ -11529,13 +11529,27 @@ export async function registerRoutes(
       // Build sequencer input — when structure fronts are disabled, exclude structure-type
       // items entirely so the sequencer only schedules road/linear work. Their bars were
       // already pre-deleted above; any imported structure_location bars are untouched.
+      // skippedItems captures every excluded item with a human-readable reason so the UI
+      // can surface a useful actionable message rather than a bare count.
+      const skippedItems: { id: number; description: string; reason: string }[] = [];
+
       const seqItems = (items as any[])
         .filter((it) => {
-          if ((it.currentQty ?? 0) <= 0) return false;
+          if (it.includedInPlanning === false) {
+            skippedItems.push({ id: it.id, description: ((it.description ?? "") as string).slice(0, 80), reason: "Excluded from planning (non-construction item)" });
+            return false;
+          }
+          if ((it.currentQty ?? 0) <= 0) {
+            skippedItems.push({ id: it.id, description: ((it.description ?? "") as string).slice(0, 80), reason: "Missing quantity — currentQty is 0" });
+            return false;
+          }
           if (
             disableStructureFronts &&
             isStructureOrLocationScheduledItem(it, { hasStructureImportBar: _structureImportIds.has(it.id) })
-          ) return false;
+          ) {
+            skippedItems.push({ id: it.id, description: ((it.description ?? "") as string).slice(0, 80), reason: "Structure/point-location item — bars imported from structure schedule" });
+            return false;
+          }
           return true;
         })
         .map((it) => {
@@ -11553,7 +11567,7 @@ export async function registerRoutes(
           }));
           const dur = calculateAutoDurationFull(
             it.currentQty ?? 0,
-            it.unit ?? "",
+            it.canonicalUnit ?? it.unit ?? "",
             equipment,
             workingHrs,
             workingDays,
@@ -11563,7 +11577,7 @@ export async function registerRoutes(
           return {
             boqItemId: it.id,
             description: it.description ?? "",
-            unit: it.unit ?? "",
+            unit: it.canonicalUnit ?? it.unit ?? "",
             totalQty: it.currentQty ?? 0,
             fullDurationMonths: dur.months > 0 ? dur.months : 1,
             // Pass stored planningWorkType so user-overridden classifications are respected
@@ -11623,11 +11637,13 @@ export async function registerRoutes(
           insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
         }
       }
-      // Build human-readable skip info for unclassified items so the UI
-      // can surface a useful "N items skipped — fix in BOQ Item Review" message.
+      // Build human-readable skip info for unclassified items and add them
+      // to the comprehensive skippedItems array with an actionable reason.
       const unclassifiedItems = unclassifiedItemIds.map((id) => {
         const it = (items as any[]).find((i) => i.id === id);
-        return { id, description: ((it?.description ?? "") as string).slice(0, 80) };
+        const desc = ((it?.description ?? "") as string).slice(0, 80);
+        skippedItems.push({ id, description: desc, reason: "Work type unresolved — assign a Work Category in BOQ Item Review" });
+        return { id, description: desc };
       });
 
       res.json({
@@ -11639,6 +11655,13 @@ export async function registerRoutes(
         unclassifiedCount: unclassifiedItemIds.length,
         unclassifiedItemIds,
         unclassifiedItems,
+        // skippedItems lists every item that did NOT get a bar, with an actionable reason:
+        //   "Excluded from planning"  — includedInPlanning=false (non-construction charge items)
+        //   "Missing quantity"        — currentQty=0 or null
+        //   "Structure/point-location" — structure schedule items excluded from linear sequencer
+        //   "Work type unresolved"    — no recipe match; needs workCategory in BOQ Item Review
+        skippedItems,
+        skippedCount: skippedItems.length,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
       });

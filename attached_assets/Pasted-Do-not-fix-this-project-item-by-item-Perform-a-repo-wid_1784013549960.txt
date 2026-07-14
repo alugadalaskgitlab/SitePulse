@@ -1,0 +1,167 @@
+Do not fix this project item-by-item.
+
+Perform a repo-wide audit and create one universal BOQ data normalisation, classification and sequencing flow that works for every existing and future project.
+
+Current systemic problem:
+Different modules are interpreting the same BOQ item differently. One page shows the correct category, another shows Uncategorised, another skips sequencing, and unit values such as “1 Cum”, “1 Hect” and “1 Sqm” remain inconsistent.
+
+1. Audit every place in the repo where BOQ item data is:
+   - imported
+   - normalised
+   - classified
+   - grouped
+   - sequenced
+   - displayed
+   - used in recipes
+   - used in Resource Review
+   - used in Work Programme
+   - used in BOM
+   - used in DPR
+   - used in Tomorrow’s Plan
+   - used in Site Requirements
+   - used in reports and selectors
+
+2. Identify and remove duplicated or conflicting logic for:
+   - unit normalisation
+   - work category
+   - work type
+   - layer type
+   - item short name
+   - sequencing eligibility
+   - description matching
+
+3. Create one shared canonical BOQ normalisation service and use it everywhere.
+
+4. Canonical unit handling must convert harmless variations into one standard unit.
+
+   Examples:
+   - 1 Cum, 1.00 Cum, Cu.m, Cu M, m3 → Cum
+   - 1 Sqm, Sq.m, m2 → Sqm
+   - 1 Hect, Hectare, Ha → Hect
+   - similar harmless quantity prefixes, punctuation, spacing and case variations
+
+5. Store and use:
+   - original imported unit for audit/history
+   - canonical unit for all app logic and operational display
+
+6. Repair all existing imported BOQ records, not only future imports.
+
+7. Create one shared BOQ work-classification engine used by all modules.
+
+8. Classification fallback order must be:
+   - manually saved Work Category
+   - manually saved work type/layer type
+   - imported category
+   - short name
+   - full description
+   - unit/context-based inference
+   - review required only when genuinely unresolved
+
+9. A failed description match must never override a valid manually saved Work Category.
+
+10. Classification must be:
+   - case-insensitive
+   - punctuation-tolerant
+   - spacing-tolerant
+   - abbreviation-aware
+   - spelling-variation tolerant
+   - based on construction meaning, not only exact keywords or item codes
+
+11. Item code must be optional.
+
+12. Auto-Sequence must work without item codes.
+
+13. Auto-Sequence must use the same canonical classification engine as BOQ Review and Work Programme.
+
+14. Auto-Sequence must not silently skip a planning-enabled item.
+
+15. For every unprogrammed item, either:
+   - create programme bars for the valid balance quantity, or
+   - return and display one precise reason why it cannot be programmed
+
+16. Valid reasons may include:
+   - missing quantity
+   - invalid unit
+   - excluded from programming
+   - unresolved work classification
+   - no valid project planning window
+   - already fully programmed
+   - manually locked
+
+17. Do not use generic silent failure or leave items as “Not programmed” without reason.
+
+18. Work Programme category grouping must use the same canonical persisted Work Category as BOQ Item Review.
+
+19. “Uncategorised” must appear only when the shared classifier genuinely cannot resolve the item.
+
+20. Use Short Name as the primary operational label outside the detailed BOQ page.
+
+21. Apply Short Name consistently in:
+   - Work Programme
+   - DPR selectors
+   - BOM
+   - Tomorrow’s Plan
+   - Site Requirements
+   - compact planning/progress tables
+
+22. Use fallback:
+   - Short Name
+   - sensible shortened description
+   - full description
+
+23. Preserve full BOQ description in:
+   - BOQ detail page
+   - tooltip/secondary text
+   - formal reports
+   - exports
+
+24. Add one migration/backfill process to repair all existing projects for:
+   - canonical units
+   - persisted Work Category
+   - work type/layer type
+   - short name fallback
+   - sequencing eligibility
+
+25. The migration must be safe and repeatable.
+
+26. Do not overwrite manually corrected categories, short names, work types, sequences or locked programme bars.
+
+27. After backfill:
+   - invalidate/refetch affected queries
+   - recalculate category counters
+   - recalculate unprogrammed counts
+   - refresh Work Programme grouping
+
+28. Add automated tests covering:
+   - BOQs with item codes
+   - BOQs without item codes
+   - varied unit formats
+   - long descriptions
+   - spelling variations
+   - manual category overrides
+   - imported category fallback
+   - existing projects
+   - unseen representative road-work items
+
+29. Test against all existing imported projects in the database, not only one selected project.
+
+30. Do not report completion merely because Takkadpally-Sirur works.
+
+31. Completion criteria:
+   - all modules use the same canonical BOQ fields
+   - BOQ Review and Work Programme show the same category
+   - unit values display canonically
+   - valid planning-enabled items are programmed or show a precise reason
+   - no existing manual programme data is lost
+   - no project-specific hard-coded patch is introduced
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- submitted DPR workflow
+- approval flows
+- Site Requirements approvals
+- permissions
+- accounting logic
+- unrelated reports
+- existing manually entered programme dates or locked bars
+- resource recipes except where they only need to read canonical BOQ fields
