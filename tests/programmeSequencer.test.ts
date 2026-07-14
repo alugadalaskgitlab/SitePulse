@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateSequencedProgramme } from "../shared/programmeSequencer";
-import { classifyWorkType } from "../shared/workTypeRecipes";
+import { classifyWorkType, normaliseBoqUnit } from "../shared/workTypeRecipes";
 
 // ─── classifyWorkType: roadway_excavation vs earthwork ───────────────────────
 
@@ -196,5 +196,148 @@ describe("generateSequencedProgramme — roadway_excavation and earthwork start 
       // GSB must start at or after the earthwork stage ends (with lag)
       expect(gsbStart).toBeGreaterThanOrEqual(earthworkEnd);
     }
+  });
+});
+
+// ─── normaliseBoqUnit — strip leading numeric prefix ─────────────────────────
+
+describe("normaliseBoqUnit", () => {
+  it("passes plain CUM through unchanged", () => {
+    expect(normaliseBoqUnit("CUM")).toBe("CUM");
+  });
+
+  it("strips leading '1 ' from '1 Cum' and uppercases", () => {
+    expect(normaliseBoqUnit("1 Cum")).toBe("CUM");
+  });
+
+  it("strips leading '1.00 ' from '1.00 Cum' and uppercases", () => {
+    expect(normaliseBoqUnit("1.00 Cum")).toBe("CUM");
+  });
+
+  it("strips leading integer without space ('1CUM')", () => {
+    expect(normaliseBoqUnit("1CUM")).toBe("CUM");
+  });
+
+  it("leaves non-numeric-prefixed units alone ('SQM')", () => {
+    expect(normaliseBoqUnit("SQM")).toBe("SQM");
+  });
+
+  it("leaves 'MT' alone", () => {
+    expect(normaliseBoqUnit("MT")).toBe("MT");
+  });
+
+  it("strips '2 ' from '2 NOS'", () => {
+    expect(normaliseBoqUnit("2 NOS")).toBe("NOS");
+  });
+});
+
+// ─── classifyWorkType: "1 Cum" unit variant (BOQ import prefix bug) ──────────
+
+describe("classifyWorkType — unit '1 Cum' (BOQ numeric-prefix import format)", () => {
+  it("classifies roadway excavation with '1 Cum' as roadway_excavation", () => {
+    expect(classifyWorkType("Roadway Excavation in Ordinary Soil", "1 Cum")).toBe("roadway_excavation");
+  });
+
+  it("classifies roadway excavation with '1.00 Cum' as roadway_excavation", () => {
+    expect(classifyWorkType("Roadway Excavation in Hard Rock", "1.00 Cum")).toBe("roadway_excavation");
+  });
+
+  it("classifies embankment with borrow earth with '1 Cum' as earthwork", () => {
+    expect(classifyWorkType("Embankment with Borrow Earth", "1 Cum")).toBe("earthwork");
+  });
+
+  it("classifies embankment with excavated earth with '1 Cum' as earthwork", () => {
+    expect(classifyWorkType("Embankment with Excavated Earth", "1 Cum")).toBe("earthwork");
+  });
+
+  it("classifies construction of subgrade with '1 Cum' as earthwork", () => {
+    expect(classifyWorkType("Construction of Subgrade using Embankment Material", "1 Cum")).toBe("earthwork");
+  });
+
+  it("classifies earthen shoulders with '1 Cum' as earthwork", () => {
+    expect(classifyWorkType("Construction of Earthen Shoulders", "1 Cum")).toBe("earthwork");
+  });
+});
+
+// ─── generateSequencedProgramme: workCategory fallback ───────────────────────
+
+describe("generateSequencedProgramme — workCategory fallback when classifyWorkType returns null", () => {
+  const BASE_OPTS = { fronts: 1, staggerMonths: 0, lagMonths: 0 };
+
+  it("sequences an EARTHWORK-category item that has an unrecognisable unit ('UNIT')", () => {
+    const items = [
+      {
+        boqItemId: 1,
+        description: "Some unusual earthwork description XYZ-99",
+        unit: "UNIT",   // classifyWorkType will return null for this
+        totalQty: 1000,
+        fullDurationMonths: 3,
+        workCategory: "EARTHWORK",
+      },
+    ];
+    const { bars, unclassifiedItemIds } = generateSequencedProgramme(items, BASE_OPTS);
+    expect(unclassifiedItemIds).not.toContain(1);
+    expect(bars.some(b => b.boqItemId === 1)).toBe(true);
+  });
+
+  it("sequences a BITUMINOUS-category item that has an unrecognisable unit", () => {
+    const items = [
+      {
+        boqItemId: 2,
+        description: "Some bituminous item with weird unit",
+        unit: "UNIT",
+        totalQty: 5000,
+        fullDurationMonths: 2,
+        workCategory: "BITUMINOUS",
+      },
+    ];
+    const { bars, unclassifiedItemIds } = generateSequencedProgramme(items, BASE_OPTS);
+    expect(unclassifiedItemIds).not.toContain(2);
+    expect(bars.some(b => b.boqItemId === 2)).toBe(true);
+  });
+
+  it("still places item in unclassifiedItemIds when workCategory is null and unit is unrecognisable", () => {
+    const items = [
+      {
+        boqItemId: 3,
+        description: "Completely unknown item type",
+        unit: "UNIT",
+        totalQty: 100,
+        fullDurationMonths: 1,
+        workCategory: null,
+      },
+    ];
+    const { unclassifiedItemIds } = generateSequencedProgramme(items, BASE_OPTS);
+    expect(unclassifiedItemIds).toContain(3);
+  });
+
+  it("EARTHWORK workCategory items are sequenced before SUBBASE_BASE items", () => {
+    const items = [
+      {
+        boqItemId: 10,
+        description: "Unknown earthwork item XYZ",
+        unit: "UNIT",
+        totalQty: 500,
+        fullDurationMonths: 2,
+        workCategory: "EARTHWORK",
+      },
+      {
+        boqItemId: 11,
+        description: "Unknown subbase item XYZ",
+        unit: "UNIT",
+        totalQty: 500,
+        fullDurationMonths: 2,
+        workCategory: "SUBBASE_BASE",
+      },
+    ];
+    const { bars } = generateSequencedProgramme(items, BASE_OPTS);
+    const earthworkBars = bars.filter(b => b.boqItemId === 10);
+    const subbaseBars  = bars.filter(b => b.boqItemId === 11);
+    expect(earthworkBars.length).toBeGreaterThan(0);
+    expect(subbaseBars.length).toBeGreaterThan(0);
+    const earthworkEnd = Math.max(...earthworkBars.map(b => b.endMonth));
+    const subbaseStart = Math.min(...subbaseBars.map(b => b.startMonth));
+    // Subbase must start after or at earthwork end (dependency ordering)
+    expect(subbaseStart).toBeGreaterThanOrEqual(earthworkEnd);
   });
 });

@@ -101,9 +101,26 @@ interface WorkTypeRecipe {
 // Returns null for items that cannot be confidently classified (they go into the
 // "unrecipied" list — no wrong guesses).
 // ──────────────────────────────────────────────────────────────────────────────
+/**
+ * Strip leading numeric prefix from BOQ unit strings and normalise to uppercase.
+ * Some BOQ import formats encode quantity-in-unit (e.g. "1 Cum", "1.00 Cum").
+ * Stripping the prefix lets the downstream regex checks work correctly.
+ *
+ * Examples:
+ *   "1 Cum"   → "CUM"
+ *   "1.00 Cum"→ "CUM"
+ *   "1CUM"    → "CUM"
+ *   "CUM"     → "CUM"
+ *   "SQM"     → "SQM"
+ *   "MT"      → "MT"
+ */
+export function normaliseBoqUnit(raw: string): string {
+  return raw.replace(/^\d+(\.\d+)?\s*/i, "").toUpperCase().trim();
+}
+
 export function classifyWorkType(description: string, unit: string): WorkType | null {
   const d = description.toLowerCase();
-  const u = unit.toUpperCase().trim();
+  const u = normaliseBoqUnit(unit);
 
   // ── Clearing & Grubbing (MoRTH Cl. 201) — MUST be first check ──────────────
   if (/clearing\s*(and|&)\s*grubbing|clear\s*(and|&)\s*grub|grubbing|removal\s*of\s*(trees?|stumps?|vegetation|bushes?)|felling\s*of\s*trees?|uprooting|removal\s*of\s*shrubs?/i.test(d)) return "clearing_grubbing";
@@ -211,9 +228,9 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "roadway_excavation";
 
-  // ── Road earthwork / embankment (MoRTH Cl. 305) — fill, borrow, subgrade ───
+  // ── Road earthwork / embankment (MoRTH Cl. 305) — fill, borrow, subgrade, shoulders ──
   if (
-    /embankment|earth\s*work|earthwork|cut\s*(and|&)\s*fill|subgrade|borrow|formation\s*fill/i.test(d) &&
+    /embankment|earth\s*work|earthwork|cut\s*(and|&)\s*fill|subgrade|borrow|formation\s*fill|earthen\s*shoulder/i.test(d) &&
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u)
   ) return "earthwork";
 

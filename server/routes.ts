@@ -11570,6 +11570,9 @@ export async function registerRoutes(
             planningWorkType: (it.planningWorkType === "road" || it.planningWorkType === "structure")
               ? it.planningWorkType as "road" | "structure"
               : undefined,
+            // Pass workCategory so the sequencer can use it as a fallback classifier
+            // when classifyWorkType cannot match description+unit (e.g. "1 Cum" units).
+            workCategory: it.workCategory ?? null,
           };
         });
 
@@ -11620,6 +11623,13 @@ export async function registerRoutes(
           insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
         }
       }
+      // Build human-readable skip info for unclassified items so the UI
+      // can surface a useful "N items skipped — fix in BOQ Item Review" message.
+      const unclassifiedItems = unclassifiedItemIds.map((id) => {
+        const it = (items as any[]).find((i) => i.id === id);
+        return { id, description: ((it?.description ?? "") as string).slice(0, 80) };
+      });
+
       res.json({
         success: true,
         fronts,
@@ -11628,6 +11638,7 @@ export async function registerRoutes(
         itemsConsidered: seqItems.length,
         unclassifiedCount: unclassifiedItemIds.length,
         unclassifiedItemIds,
+        unclassifiedItems,
         errorCount: insertErrors.length,
         sampleError: insertErrors[0] ?? null,
       });

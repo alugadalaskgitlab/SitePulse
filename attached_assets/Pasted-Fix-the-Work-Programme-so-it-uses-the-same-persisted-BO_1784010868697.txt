@@ -1,0 +1,140 @@
+Fix the Work Programme so it uses the same persisted BOQ work classification as BOQ Item Review and so Auto-Sequence does not silently skip valid BOQ items.
+
+Current defects:
+- BOQ Item Review shows correct Work Categories.
+- The Work Programme groups all items under “Uncategorised”.
+- Six valid BOQ items remain “Not programmed” even though their recipes exist.
+- The imported BOQ may not contain item codes, so description-based classification must work reliably.
+
+1. Trace the complete data flow for each BOQ item through:
+   - BOQ import
+   - BOQ Item Review
+   - saved BOQ item record
+   - Auto-Sequence
+   - Work Programme API response
+   - Gantt grouping
+
+2. Use one consistent persisted source of truth for operational Work Category.
+
+3. Work Programme category grouping must use this fallback order:
+   - persisted Work Category selected/saved in BOQ Item Review
+   - imported BOQ category name
+   - description-based mapped Work Category
+   - “Uncategorised” only when all of the above are genuinely absent
+
+4. Do not group items only by `categoryName` if the saved Work Category exists in another field.
+
+5. Ensure the Work Programme API returns the saved operational Work Category for every BOQ item.
+
+6. After category changes in BOQ Item Review:
+   - persist the change
+   - invalidate/refetch the relevant Work Programme queries
+   - show the updated category immediately in Gantt
+
+7. Fix Auto-Sequence so it works even when the BOQ item code is blank.
+
+8. Auto-Sequence must classify and order items using:
+   - full description
+   - short name
+   - persisted Work Category
+   - work type/layer type
+   - unit
+   - item code only when available
+
+9. Recognise at least these road-work descriptions:
+   - clearing and grubbing
+   - scarifying existing BT surface
+   - roadway excavation
+   - embankment with excavated earth
+   - embankment with borrow earth
+   - subgrade
+   - earthen shoulders
+   - GSB / granular sub-base
+   - WMM / wet mix macadam
+   - prime coat
+   - tack coat
+   - DBM
+   - BC / bituminous concrete / wearing course
+
+10. Use normal execution order broadly as:
+   - clearing and grubbing
+   - scarifying/removal
+   - excavation
+   - embankment
+   - subgrade
+   - GSB
+   - WMM/base course
+   - prime coat
+   - tack coat
+   - DBM
+   - BC/wearing course
+   - shoulders/finishing as appropriate
+
+11. Auto-Sequence must attempt to create programme bars for every planning-enabled BOQ item that has:
+   - valid quantity
+   - valid unit
+   - valid project duration or planning window
+   - recognised work classification
+
+12. Do not skip an item merely because:
+   - BOQ item code is missing
+   - imported category name is blank
+   - unit contains formatting such as “1 Cum”
+   - description is long
+
+13. For every item Auto-Sequence cannot program, return and display a clear reason, such as:
+   - missing quantity
+   - missing unit
+   - no recognised work type
+   - invalid duration
+   - excluded from programming
+   - already fully programmed
+
+14. Do not silently leave valid items as “Not programmed”.
+
+15. Specifically investigate and fix why these current items were skipped:
+   - roadway excavation
+   - embankment with excavated earth
+   - embankment with borrow earth
+   - construction of subgrade
+   - construction of earthen shoulders
+   - wet mix macadam
+
+16. Keep recipe status and programme status separate:
+   - green recipe status means resources are mapped
+   - programmed status means one or more Gantt stretches/bars exist
+
+17. Do not change the meaning of either status.
+
+18. Preserve:
+   - existing manually created programme bars
+   - manually adjusted dates
+   - manually adjusted stretch quantities
+   - manually set sequence unless the user explicitly runs Auto-Sequence
+
+19. When Auto-Sequence is rerun:
+   - do not duplicate existing bars
+   - create bars only for unprogrammed balance quantity
+   - do not overwrite locked/manual programme entries
+
+20. Test specifically with:
+   - NH-167 project
+   - Takkadpally-Sirur project where BOQ item codes are absent
+
+21. Confirm after the fix that:
+   - items are grouped under their correct Work Categories in Gantt
+   - the project no longer shows all items under “Uncategorised”
+   - the six valid items are programmed or show a precise skip reason
+   - no existing programme bars are duplicated or deleted
+   - BOQ Item Review and Work Programme show consistent category data
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- resource recipes
+- Resource Review logic from Instruction 006
+- DPR workflow
+- Site Requirements workflow
+- permissions
+- unrelated reports
+- existing manually programmed bars
+- BOQ page grouping that is already working

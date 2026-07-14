@@ -34,6 +34,7 @@ import {
 } from "@shared/planningEngine";
 import { SEQUENCE_RULES } from "@shared/programmeSequencer";
 import { isStructureOrLocationScheduledItem } from "@shared/workTypeRecipes";
+import { getWorkCategoryLabel } from "@shared/boqWorkCategories";
 import { shortItemName } from "@/lib/itemName";
 import { PlanVsActualTable } from "@/components/PlanVsActualTable";
 import type {
@@ -1333,7 +1334,14 @@ function InlineGanttTable({
     const m: Record<string, BoqItemWithCategory[]> = {};
     for (const it of items) {
       if (it.includedInPlanning === false) continue;
-      const cat = it.categoryName ?? "__uncategorised__";
+      // Fallback chain: persisted workCategory → imported categoryName → uncategorised.
+      // Using workCategory as the primary key ensures items appear under their correct
+      // operational group even when the imported BOQ has no categoryId / categoryName.
+      const cat = it.workCategory
+        ? `wc:${it.workCategory}`
+        : it.categoryName
+          ? `cat:${it.categoryName}`
+          : "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
     }
@@ -1525,7 +1533,13 @@ function InlineGanttTable({
         {/* ── Category groups ── */}
         {allCategoryKeys.map((cat, catIdx) => {
           const catItems = grouped[cat] ?? [];
-          const catLabel = cat === "__uncategorised__" ? "Uncategorised" : cat;
+          const catLabel = cat === "__uncategorised__"
+            ? "Uncategorised"
+            : cat.startsWith("wc:")
+              ? getWorkCategoryLabel(cat.slice(3))
+              : cat.startsWith("cat:")
+                ? cat.slice(4)
+                : cat;
           const color = getCatColor(catIdx);
           const collapsed = collapsedCats[cat] ?? false;
 
@@ -1765,7 +1779,12 @@ function MonthlyPlanView({
     for (const it of items) {
       // Show if: included in planning OR already has bars (keep programmed items visible)
       if (it.includedInPlanning === false) continue;
-      const cat = it.categoryName ?? "__uncategorised__";
+      // Fallback chain: persisted workCategory → imported categoryName → uncategorised.
+      const cat = it.workCategory
+        ? `wc:${it.workCategory}`
+        : it.categoryName
+          ? `cat:${it.categoryName}`
+          : "__uncategorised__";
       if (!m[cat]) m[cat] = [];
       m[cat].push(it);
     }
@@ -1839,7 +1858,13 @@ function MonthlyPlanView({
         <tbody>
           {allCategoryKeys.map((cat, catIdx) => {
             const catItems = grouped[cat] ?? [];
-            const catLabel = cat === "__uncategorised__" ? "Uncategorised" : cat;
+            const catLabel = cat === "__uncategorised__"
+              ? "Uncategorised"
+              : cat.startsWith("wc:")
+                ? getWorkCategoryLabel(cat.slice(3))
+                : cat.startsWith("cat:")
+                  ? cat.slice(4)
+                  : cat;
             const color = getCatColor(catIdx);
             const catHasBars = catItems.some(it => monthlyGrid[it.id] && Object.keys(monthlyGrid[it.id]).length > 0);
             if (!catHasBars) return null;
@@ -2288,13 +2313,16 @@ export default function WorkProgramme() {
       return res.json();
     },
     onMutate: pushSnapshot,
-    onSuccess: async (data: { bars?: number; fronts?: number }) => {
+    onSuccess: async (data: { bars?: number; fronts?: number; unclassifiedCount?: number; unclassifiedItems?: { id: number; description: string }[] }) => {
       setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
+      const skipNote = data?.unclassifiedCount
+        ? ` · ${data.unclassifiedCount} item(s) skipped — no recognised work type. Open BOQ Item Review to assign them a Work Category.`
+        : "";
       toast({
         title: "Programme sequenced",
-        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.`,
+        description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.${skipNote}`,
       });
     },
     onError: (err: any) =>

@@ -105,6 +105,9 @@ export interface SeqInputItem {
   totalQty: number;
   fullDurationMonths: number; // duration for totalQty at a single front
   planningWorkType?: "road" | "structure"; // stored DB hint — overrides classifier
+  /** Persisted operational work-category code (e.g. "EARTHWORK", "BITUMINOUS").
+   *  Used as a fallback when classifyWorkType cannot match the description+unit. */
+  workCategory?: string | null;
   needsReview?: boolean; // if already flagged, still try to classify
 }
 
@@ -187,7 +190,22 @@ function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
   }
 
   // 2. No stored hint — classify from WorkType + description.
-  if (wt === null) return { track: "other", stage: 99 };
+  if (wt === null) {
+    // Fallback: use persisted workCategory when classifyWorkType cannot match
+    // description+unit (e.g. unusual unit format that normaliseBoqUnit did not
+    // handle, or a very long description that no regex captured).
+    if (it.workCategory) {
+      const wc = it.workCategory;
+      if (wc === "SITE_CLEARANCE")                    return { track: "pavement", stage: 2 };
+      if (wc === "EARTHWORK" || wc === "SHOULDERS_MEDIANS") return { track: "pavement", stage: 3 };
+      if (wc === "SUBBASE_BASE")                      return { track: "pavement", stage: 4 };
+      if (wc === "BITUMINOUS")                        return { track: "pavement", stage: 7 };
+      if (wc === "CONCRETE")                          return { track: "structure", stage: 3 };
+      if (wc === "DRAINAGE" || wc === "CROSS_DRAINAGE") return { track: "structure", stage: 3 };
+      if (wc === "MAJOR_BRIDGES")                     return { track: "bridge",    stage: 3 };
+    }
+    return { track: "other", stage: 99 };
+  }
 
   if (wt in PAVEMENT_STAGE) {
     return { track: "pavement", stage: PAVEMENT_STAGE[wt]! };
