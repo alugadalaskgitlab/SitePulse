@@ -2285,12 +2285,22 @@ export default function WorkProgramme() {
       const res = await apiRequest("POST", `/api/boq/projects/${projectId}/auto-build-recipes`, {});
       return res.json();
     },
-    onSuccess: async (data: { recipied?: number; totalItems?: number; unrecipiedCount?: number }) => {
+    onSuccess: async (data: { recipied?: number; snlRecipied?: number; totalItems?: number; unrecipiedCount?: number; unrecipied?: Array<{ id: number; description: string; workCategory: string | null; reason: string; suggestion: string }> }) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "item-equipment"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
+      const snlNote = data?.snlRecipied ? ` (${data.snlRecipied} from SDB norms)` : "";
+      let skipNote = "";
+      if (data?.unrecipiedCount && data.unrecipiedCount > 0) {
+        const items = data.unrecipied ?? [];
+        if (items.length === 1) {
+          skipNote = ` · 1 item needs attention: "${(items[0].description ?? "").slice(0, 60)}" — ${items[0].reason}`;
+        } else {
+          skipNote = ` · ${data.unrecipiedCount} items need attention — open BOQ Item Review to assign Work Categories or run SNL Auto-Map.`;
+        }
+      }
       toast({
         title: "Recipes built",
-        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${data?.unrecipiedCount ? ` · ${data.unrecipiedCount} need a work-type` : ""}.`,
+        description: `${data?.recipied ?? 0} of ${data?.totalItems ?? 0} items got equipment & labour${snlNote}.${skipNote}`,
       });
     },
     onError: (err: any) =>

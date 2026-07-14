@@ -78,6 +78,155 @@ export const WORK_TYPE_PLAN_CATEGORY: Record<WorkType, "road" | "structure"> = {
   bridge_crash_barrier:   "structure",
 };
 
+/**
+ * Maps high-level BOQ work category codes to the planning track ("road" | "structure").
+ * Used when classifyWorkType() is unavailable — e.g. for SNL-mapped items or items where
+ * workCategory was set manually but no description regex matched.
+ */
+export const WORK_CAT_PLAN_CATEGORY: Record<string, "road" | "structure"> = {
+  EARTHWORK:         "road",
+  SITE_CLEARANCE:    "road",
+  SUBBASE_BASE:      "road",
+  BITUMINOUS:        "road",
+  SHOULDERS_MEDIANS: "road",
+  ROAD_FURNITURE:    "road",
+  PRELIM:            "road",
+  ELECTRICAL:        "road",
+  BUILDINGS:         "road",
+  ENVIRONMENTAL:     "road",
+  DRAINAGE:          "structure",
+  CROSS_DRAINAGE:    "structure",
+  MAJOR_BRIDGES:     "structure",
+  CONCRETE:          "structure",
+};
+
+/**
+ * Maps BOQ work category codes to the most representative WorkType when
+ * classifyWorkType() returns null.  Used as a secondary fallback by
+ * resolveWorkType() so items with a valid workCategory always get a recipe
+ * rather than appearing in the "unrecipied" list.
+ *
+ * Categories with multiple subtypes (EARTHWORK, SUBBASE_BASE, BITUMINOUS,
+ * CONCRETE) are handled by sub-classification logic inside resolveWorkType().
+ */
+export const WORK_CAT_FALLBACK_WORK_TYPE: Partial<Record<string, WorkType>> = {
+  EARTHWORK:         "earthwork",       // sub-classified by description below
+  SITE_CLEARANCE:    "clearing_grubbing",
+  SUBBASE_BASE:      "gsb",             // sub-classified by description below
+  BITUMINOUS:        "bituminous_base", // sub-classified by description below
+  CONCRETE:          "pcc",             // sub-classified by description below
+  DRAINAGE:          "drain_masonry",
+  CROSS_DRAINAGE:    "drain_masonry",
+  SHOULDERS_MEDIANS: "earthwork",
+};
+
+export interface WorkTypeResolution {
+  workType: WorkType | null;
+  /** How the work type was resolved. */
+  resolvedBy: "classifier" | "workCategory" | "none";
+  /** Confidence of the result. */
+  confidence: "high" | "medium" | "none";
+  /** Human-readable explanation shown in unrecipied diagnostic messages. */
+  reason: string;
+}
+
+/**
+ * Context-aware BOQ work-type resolver.
+ *
+ * Resolution order:
+ *   1. classifyWorkType(desc, effectiveUnit) — deterministic regex (high confidence)
+ *   2. workCategory → sub-classified WorkType  (medium confidence)
+ *   3. null + explanation (none)
+ *
+ * Pass canonicalUnit when available so the regex unit checks operate on the
+ * normalised form ("Cum", "MT" …) rather than the raw imported value ("1 Cum").
+ *
+ * A manually set or SNL-derived workCategory is used as strong matching context:
+ * e.g. workCategory="EARTHWORK" + description contains "excavation" resolves to
+ * roadway_excavation even when the exact regex didn't fire.
+ */
+export function resolveWorkType(
+  description: string,
+  unit: string,
+  context?: {
+    workCategory?: string | null;
+    canonicalUnit?: string | null;
+  },
+): WorkTypeResolution {
+  const effectiveUnit = context?.canonicalUnit ?? unit;
+
+  // 1. Deterministic regex classifier — highest confidence.
+  const wt = classifyWorkType(description, effectiveUnit);
+  if (wt) {
+    return {
+      workType: wt,
+      resolvedBy: "classifier",
+      confidence: "high",
+      reason: `Matched by description pattern (${wt})`,
+    };
+  }
+
+  // 2. workCategory-based sub-classification — medium confidence.
+  const wc = context?.workCategory;
+  if (wc) {
+    const d = description.toLowerCase();
+    let fallback: WorkType | null = null;
+
+    if (wc === "EARTHWORK") {
+      if (/\bexcavat/i.test(d)) {
+        if (/foundation|footing|abutment|\bpier\b|culvert|trench|\bpit\b/i.test(d)) {
+          fallback = "excavation_structure";
+        } else {
+          fallback = "roadway_excavation";
+        }
+      } else {
+        fallback = "earthwork"; // embankment / fill / subgrade / shoulders
+      }
+    } else if (wc === "SUBBASE_BASE") {
+      fallback = /\bwmm\b|wet[\s-]*mix/i.test(d) ? "wmm" : "gsb";
+    } else if (wc === "BITUMINOUS") {
+      if (/\btack[\s-]*coat\b/i.test(d))       fallback = "tack_coat";
+      else if (/\bprime[\s-]*coat\b|\bprimer\b/i.test(d)) fallback = "prime_coat";
+      else if (/\bbc\b|\bsdbc\b|wearing/i.test(d)) fallback = "bituminous_wearing";
+      else fallback = "bituminous_base";
+    } else if (wc === "CONCRETE") {
+      if (/\brcc\b|reinforced/i.test(d))          fallback = "rcc";
+      else if (/\bpqc\b|pavement[\s-]*quality/i.test(d)) fallback = "pqc";
+      else if (/\bdlc\b|dry[\s-]*lean/i.test(d))  fallback = "dlc";
+      else fallback = "pcc";
+    } else {
+      fallback = WORK_CAT_FALLBACK_WORK_TYPE[wc] ?? null;
+    }
+
+    if (fallback) {
+      return {
+        workType: fallback,
+        resolvedBy: "workCategory",
+        confidence: "medium",
+        reason: `Inferred from work category "${wc}" → ${fallback} ` +
+          `(description pattern did not match; verify the generated recipe is correct)`,
+      };
+    }
+
+    // workCategory known but no recipe template (ROAD_FURNITURE, ELECTRICAL, etc.)
+    return {
+      workType: null,
+      resolvedBy: "none",
+      confidence: "none",
+      reason: `Work category "${wc}" has no automated recipe template — ` +
+        `assign an SNL match via Auto-Map or set the recipe manually`,
+    };
+  }
+
+  // 3. No category, no match.
+  return {
+    workType: null,
+    resolvedBy: "none",
+    confidence: "none",
+    reason: "No work category set — assign one in BOQ Item Review, then re-run",
+  };
+}
+
 interface EquipmentLine {
   name: string;               // must match MORTH_EQUIPMENT_SEED name exactly
   preferredUnit: string;      // BOQ unit to try against standard outputs

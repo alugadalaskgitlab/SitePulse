@@ -12490,12 +12490,18 @@ export async function registerRoutes(
     }
   });
 
-  // Auto-build equipment + labour recipes for every BOQ item — deterministic, no fuzzy matching.
+  // Auto-build equipment + labour recipes for every BOQ item.
+  // Resolution order per item:
+  //   1. SNL mapping exists (snlItemId set) → applySnlMappingToRecipes (authoritative SDB data)
+  //   2. classifyWorkType regex match → WORK_TYPE_RECIPES (existing path)
+  //   3. workCategory context → resolveWorkType fallback (medium-confidence recipe)
+  //   4. Unresolvable → unrecipied list with exact reason + suggestion
   app.post("/api/boq/projects/:id/auto-build-recipes", async (req, res) => {
     try {
       if (!assertEdit(req, res, "qto_boq")) return;
       const projectId = parseInt(req.params.id);
-      const { classifyWorkType, buildEquipmentRows, buildLabourRows, WORK_TYPE_PLAN_CATEGORY } = await import("@shared/workTypeRecipes");
+      const { resolveWorkType, buildEquipmentRows, buildLabourRows, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY } = await import("@shared/workTypeRecipes");
+      const user = (req as any).user?.username ?? "auto";
 
       // Ensure the planning master is seeded with standard norms (idempotent).
       await storage.seedPlanningMorthDefaults();
@@ -12512,38 +12518,103 @@ export async function registerRoutes(
       for (const t of labourTypes) labourIndex.set(t.designation.toLowerCase(), { id: t.id, outputs: (t.standardOutputs ?? []) as Array<{ unit: string; outputPerDay: number }> });
 
       let recipied = 0;
-      const unrecipied: Array<{ id: number; itemCode: string | null; description: string }> = [];
+      let snlRecipied = 0;
+      const unrecipied: Array<{
+        id: number;
+        itemCode: string | null;
+        description: string;
+        workCategory: string | null;
+        canonicalUnit: string | null;
+        snlMappingStatus: string;
+        reason: string;
+        suggestion: string;
+      }> = [];
+
       for (const item of items) {
-        // Skip items that are excluded from planning
+        // Skip items excluded from planning
         if ((item as any).includedInPlanning === false) continue;
-        const wt = classifyWorkType(item.description ?? "", item.unit ?? "");
-        if (!wt) {
-          unrecipied.push({ id: item.id, itemCode: (item as any).itemCode ?? null, description: item.description ?? "" });
+
+        const snlItemId = (item as any).snlItemId as number | null | undefined;
+        const workCategory = (item as any).workCategory as string | null | undefined;
+        const canonicalUnit = (item as any).canonicalUnit as string | null | undefined;
+        const snlMappingStatus = (item as any).snlMappingStatus as string ?? "unmapped";
+
+        // ── Path 1: SNL mapping exists ──────────────────────────────────────────
+        // applySnlMappingToRecipes uses the full SDB norm data (equipment, labour,
+        // materials, productivity) — this is the most authoritative recipe source.
+        if (snlItemId) {
+          try {
+            await storage.applySnlMappingToRecipes(item.id, snlItemId, "MEDIUM", null, user);
+            // Derive planningWorkType from workCategory (BOQ's own category reflects SNL's)
+            const planCat = workCategory ? WORK_CAT_PLAN_CATEGORY[workCategory] : null;
+            if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
+            snlRecipied++;
+            recipied++;
+          } catch (snlErr: any) {
+            // SNL apply failed (e.g. SNL item deleted) — fall through to regex path
+            console.warn(`auto-build-recipes: SNL apply failed for item ${item.id}:`, snlErr?.message ?? snlErr);
+          }
           continue;
         }
-        const eqRows = buildEquipmentRows(wt, item.unit ?? "", equipIndex).map((r) => ({
-          equipmentName: r.equipmentName,
-          planningEquipmentTypeId: r.planningEquipmentTypeId,
-          qtyPerBoqUnit: r.qtyPerBoqUnit,
-          count: r.count,
-          sortOrder: r.sortOrder,
-        }));
-        const labRows = buildLabourRows(wt, item.unit ?? "", labourIndex).map((r) => ({
-          designation: r.designation,
-          planningLabourTypeId: r.planningLabourTypeId,
-          qtyPerBoqUnit: r.qtyPerBoqUnit,
-          count: r.count,
-          sortOrder: r.sortOrder,
-        }));
-        await storage.upsertBoqItemEquipment(item.id, eqRows);
-        await storage.upsertBoqItemLabour(item.id, labRows);
-        // Auto-set planningWorkType ("road" | "structure") based on classifier result
-        const planCat = WORK_TYPE_PLAN_CATEGORY[wt];
-        if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
-        recipied++;
+
+        // ── Path 2 & 3: Regex classifier + workCategory fallback ────────────────
+        const resolution = resolveWorkType(
+          item.description ?? "",
+          item.unit ?? "",
+          { workCategory, canonicalUnit },
+        );
+
+        if (resolution.workType) {
+          const wt = resolution.workType;
+          const effectiveUnit = canonicalUnit ?? item.unit ?? "";
+          const eqRows = buildEquipmentRows(wt, effectiveUnit, equipIndex).map((r) => ({
+            equipmentName: r.equipmentName,
+            planningEquipmentTypeId: r.planningEquipmentTypeId,
+            qtyPerBoqUnit: r.qtyPerBoqUnit,
+            count: r.count,
+            sortOrder: r.sortOrder,
+          }));
+          const labRows = buildLabourRows(wt, effectiveUnit, labourIndex).map((r) => ({
+            designation: r.designation,
+            planningLabourTypeId: r.planningLabourTypeId,
+            qtyPerBoqUnit: r.qtyPerBoqUnit,
+            count: r.count,
+            sortOrder: r.sortOrder,
+          }));
+          await storage.upsertBoqItemEquipment(item.id, eqRows);
+          await storage.upsertBoqItemLabour(item.id, labRows);
+          // Set planningWorkType from WorkType → WORK_TYPE_PLAN_CATEGORY, or
+          // fall back to workCategory → WORK_CAT_PLAN_CATEGORY for category-inferred types.
+          const planCat = WORK_TYPE_PLAN_CATEGORY[wt] ?? (workCategory ? WORK_CAT_PLAN_CATEGORY[workCategory] : undefined);
+          if (planCat) await storage.updateBoqItemWorkType(item.id, planCat);
+          recipied++;
+        } else {
+          // ── Path 4: Unresolvable — return exact identity + reason ──────────────
+          const hasCat = Boolean(workCategory);
+          const suggestion = hasCat
+            ? `Work category "${workCategory}" is set — run SNL Auto-Map to find an SDB match, or assign the recipe manually.`
+            : "No work category set — assign one in BOQ Item Review, then re-run Auto-build Recipes.";
+          unrecipied.push({
+            id: item.id,
+            itemCode: (item as any).itemCode ?? null,
+            description: item.description ?? "",
+            workCategory: workCategory ?? null,
+            canonicalUnit: canonicalUnit ?? item.unit ?? null,
+            snlMappingStatus,
+            reason: resolution.reason,
+            suggestion,
+          });
+        }
       }
 
-      res.json({ success: true, totalItems: items.length, recipied, unrecipiedCount: unrecipied.length, unrecipied });
+      res.json({
+        success: true,
+        totalItems: items.length,
+        recipied,
+        snlRecipied,
+        unrecipiedCount: unrecipied.length,
+        unrecipied,
+      });
     } catch (err: any) {
       console.error("auto-build-recipes:", err);
       res.status(500).json({ error: `Failed to auto-build recipes: ${err?.message ?? String(err)}` });

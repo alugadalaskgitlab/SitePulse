@@ -8,3 +8,4 @@
 - [DPR form dead code trap](dpr-form-dead-code.md) — DprForm.tsx/NewDpr.tsx are unrouted dead code; the real live DPR form is SiteEntry.tsx.
 - [SiteEntry showPreview early-return trap](siteentry-preview-early-return.md) — any confirm dialog wired through handleSubmit must render in both the showPreview and main return branches, or it's unreachable from Preview.
 - [BOQ Canonical Unit System](boq-canonical-unit.md) — shared/boqNormalise.ts is the single source of truth for BOQ unit normalisation; canonical_unit DB column backfilled on startup; 286 units + 117 work_categories fixed on first run.
+- [Auto-build-recipes SNL Integration](auto-build-recipes-snl.md) — resolveWorkType() is the canonical resolver; auto-build-recipes uses SNL→regex→workCategory in priority order; classifier requires unit+keyword combo to fire (unit guards prevent false positives).

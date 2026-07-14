@@ -1,0 +1,140 @@
+Fix the BOQ classification and recipe-mapping regression at the system level.
+
+The app already contains the SDB/Schedule of Rates item library and is expected to compare imported BOQ descriptions against that library to determine the correct work type, category, layer and resource recipe.
+
+Current defect:
+- BOQ Item Review may show a valid Work Category.
+- Auto-build Recipes still reports that one or more items need a work type/category.
+- Auto-Sequence may leave valid items unprogrammed.
+- This previously worked better, including for this BOQ, which suggests a regression or that some newer code path is bypassing the SDB matching engine.
+
+1. Trace the complete current classification flow used by:
+   - BOQ import
+   - BOQ Item Review
+   - Auto-build Recipes
+   - Resource Review
+   - Auto-Sequence
+   - Work Programme
+   - BOM
+   - DPR selectors
+
+2. Identify where the SDB-library comparison is being bypassed, overridden or replaced by narrower keyword-only logic.
+
+3. Restore one shared SDB-based BOQ matching service as the primary automatic classification engine for all projects.
+
+4. For every imported BOQ item, compare the normalised:
+   - full description
+   - short name
+   - item code, when available
+   - unit
+   - imported category
+   - manually saved Work Category
+
+   against the complete SDB/Schedule of Rates library available in the app.
+
+5. Matching must not depend on exact wording.
+
+6. The matching engine must support:
+   - semantic description similarity
+   - important construction-term matching
+   - abbreviations
+   - spelling variations and minor errors
+   - punctuation and spacing differences
+   - missing item codes
+   - long or shortened BOQ descriptions
+   - different SDB/state wording for equivalent work
+
+7. Use the best matched SDB item to derive the canonical:
+   - Work Category
+   - work type
+   - layer/subtype
+   - standard unit
+   - recipe template
+   - normal construction sequence
+
+8. A manually selected Work Category must be respected and used as strong matching context, but it must not be mistaken for the complete technical work type.
+
+9. If the Work Category is Earthwork and the description is roadway excavation, the system must resolve the appropriate excavation work type and recipe from the SDB library instead of reporting that the item has no work type.
+
+10. Do not solve this by adding project-specific or item-specific hard-coded exceptions.
+
+11. Remove or consolidate duplicate classifiers so all connected modules call the same shared SDB matching service.
+
+12. Auto-build Recipes must not use a separate legacy keyword classifier if the shared SDB matcher is available.
+
+13. Auto-Sequence must use the same canonical classification produced by the SDB matcher.
+
+14. Resource Review, BOM and DPR must read the same persisted canonical classification and must not independently reinterpret the description.
+
+15. Persist the resolved SDB match and canonical classification against each BOQ item, including:
+   - matched SDB item/reference
+   - match confidence
+   - canonical Work Category
+   - canonical work type
+   - canonical layer/subtype
+   - canonical unit
+   - recipe source
+
+16. Do not overwrite manually corrected category, work type, short name or recipe unless the user explicitly asks for automatic remapping.
+
+17. For low-confidence or genuinely unresolved matches:
+   - do not silently fail
+   - return the exact BOQ item
+   - show the best suggested SDB matches
+   - show a precise reason requiring review
+
+18. Replace misleading messages such as:
+   - “1 item needs work category”
+   - “1 item needs work type”
+
+   with an exact result such as:
+   - item short name/description
+   - current Work Category
+   - whether an SDB match was found
+   - why recipe generation failed
+   - suggested corrective match
+
+19. Re-run/backfill the shared SDB classification safely for all existing BOQ items that:
+   - have no canonical work type
+   - have no SDB match
+   - were previously marked unresolved
+   - have inconsistent category/work-type data
+
+20. Do not remap items already manually confirmed unless their stored technical classification is missing.
+
+21. Ensure all future BOQ imports automatically use this same SDB matching pipeline.
+
+22. Add regression tests covering:
+   - projects with and without item codes
+   - descriptions from different state SDBs
+   - equivalent descriptions with different wording
+   - abbreviations and spelling variations
+   - manual Work Category with missing technical work type
+   - recipe generation
+   - Auto-Sequence
+   - existing imported projects
+   - future imports
+
+23. Compare behaviour before and after the recent BOQ/classification changes and identify the exact regression that caused previously mapped items to become unresolved.
+
+24. Completion must be verified across all existing projects, including NH-167 and Takkadpally-Sirur, but the solution must remain universal for every new project.
+
+25. Do not report completion merely because one presently failing item is fixed.
+
+Completion criteria:
+- every module uses the same SDB-derived canonical classification
+- valid BOQ descriptions map without requiring an item code
+- Auto-build Recipes no longer reports a missing work type when a valid SDB match exists
+- Auto-Sequence uses the same resolved classification
+- unresolved items show their exact identity and reason
+- no project-specific patch is introduced
+- future imports use the same engine automatically
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- manually confirmed categories, recipes or programme bars
+- DPR submission and approval flows
+- Site Requirements approvals
+- permissions
+- accounting logic
+- unrelated modules
