@@ -174,7 +174,12 @@ export function resolveWorkType(
 
     if (wc === "EARTHWORK") {
       if (/\bexcavat/i.test(d)) {
-        if (/foundation|footing|abutment|\bpier\b|culvert|trench|\bpit\b/i.test(d)) {
+        // "road way" / "road level" / SDR signals road-formation cutting (MoRTH Cl. 301),
+        // NOT structure excavation — even when "trench" appears (e.g. "trench cutting").
+        const hasRoadCtx = /road[\s-]*way\b|road\s+level|\bSDR\b/i.test(d);
+        const hasStructureCtx = /foundation|footing|abutment|\bpier\b|culvert|\bpit\b/i.test(d);
+        const hasTrench = /\btrench\b/i.test(d);
+        if ((hasStructureCtx || hasTrench) && !hasRoadCtx) {
           fallback = "excavation_structure";
         } else {
           fallback = "roadway_excavation";
@@ -364,12 +369,16 @@ export function classifyWorkType(description: string, unit: string): WorkType | 
 
   // ── Structure excavation — MUST be checked BEFORE generic earthwork ─────────
   // Foundation pits, abutment trenches, pier holes, culvert cuts, etc.
-  // Exclude embankment items that merely cite structure excavation as a *material source*
-  // (e.g. "embankment with approved materials obtained from structure excavation").
+  // Exclusions:
+  //   · embankment items that merely cite structure excavation as a *material source*
+  //   · road-way / SDR items: "trench cutting" in MoRTH Cl. 301 road earthwork descriptions
+  //     is road formation cutting, NOT a culvert/foundation trench — presence of "road way"
+  //     or "road level" or explicit SDR context unambiguously signals road work.
   if (
     /foundation|footing|abutment|pier|culvert|trench|pit\s*excavat|excavat.*structure|structure.*excavat|box\s*cut|excavat.*(bridge|drain|retaining\s*wall)|(bridge|drain|retaining\s*wall).*excavat/i.test(d) &&
     /^(CUM|CUB|M3|CU\.?M)$/i.test(u) &&
-    !/\bembankment\b/i.test(d)
+    !/\bembankment\b/i.test(d) &&
+    !/road[\s-]*way\b|road\s+level|\bSDR\b/i.test(d)
   ) return "excavation_structure";
 
   // ── Roadway excavation (MoRTH Cl. 301) — cutting of hills/formation ─────────

@@ -1,0 +1,68 @@
+The diagnostic task is complete. Now fix the actual sequencing defect.
+
+1. In `programmeSequencer.ts`, remove the old sequencing dependency on direct:
+   - `classifyWorkType(description, unit)`
+
+2. Use the shared context-aware:
+   - `resolveWorkType(...)`
+
+   for Auto-Sequence.
+
+3. Pass into `resolveWorkType()`:
+   - original full BOQ description
+   - short name as secondary context only
+   - canonical unit, falling back to raw unit only if canonical unit is absent
+   - persisted Work Category
+   - planning work type
+   - layer/subtype
+   - imported category
+   - SNL/SDB mapping fields where available
+
+4. Do not send an item to:
+   - `track: "other"`
+   - `stage: 99`
+
+   merely because the direct description classifier fails.
+
+5. A valid saved Work Category must still be used even when `planningWorkType` is already set to `road`.
+
+6. Use the resolved work type to determine the correct sequence stage.
+
+7. Verify specifically that:
+   - Roadway Excavation resolves to the excavation stage
+   - Wet Mix Macadam resolves to the WMM/base-course stage
+   - missing BOQ item code does not prevent sequencing
+   - spelling variation does not prevent sequencing when saved category/context is sufficient
+
+8. Use the dry-run diagnostic endpoint already added to confirm the exact resolution path for the two remaining Takkadpally-Sirur items before applying changes.
+
+9. After the code fix:
+   - rerun Auto-Sequence only for unprogrammed balance quantities
+   - preserve all existing manual, adjusted and locked programme bars
+   - do not duplicate existing bars
+   - do not delete the project
+   - do not require BOQ reimport
+
+10. Return a clear before/after result for each previously skipped item:
+   - item ID
+   - short name
+   - full description
+   - canonical unit
+   - saved Work Category
+   - resolved work type
+   - sequence stage
+   - bar created or exact reason not created
+
+11. Add integration tests proving that the Auto-Sequence route itself uses `resolveWorkType()` and creates bars for valid items.
+
+12. Do not report completion based only on passing unit tests. Confirm the existing Takkadpally-Sirur project no longer has valid items left unprogrammed without a precise reason.
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- resource recipe contents
+- manually confirmed Work Categories
+- existing manual or locked programme bars
+- DPR workflow
+- Site Requirements workflow
+- permissions
+- unrelated modules

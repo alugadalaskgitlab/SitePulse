@@ -237,21 +237,38 @@ function classifyItem(it: SeqInputItem): ClassifyResult {
   if (wt !== null && effectivePWT) {
     const wtCategory = WORK_TYPE_PLAN_CATEGORY[wt]; // "road" | "structure" | undefined
     if (wtCategory === "road" && effectivePWT === "structure") effectivePWT = "road";
-    if (wtCategory === "structure" && effectivePWT === "road") effectivePWT = "structure";
+    // Only flip road→structure when workCategory ALSO confirms structure (or is unset).
+    // Prevents Tier-1 description-regex false positives from overriding an explicitly
+    // road planningWorkType + road workCategory — e.g. "Earthwork excavation in road
+    // way...for trench cutting" matching excavation_structure despite wc=EARTHWORK.
+    if (wtCategory === "structure" && effectivePWT === "road") {
+      const catResult = it.workCategory ? stageByWorkCategory(it.workCategory) : null;
+      if (!catResult || catResult.track !== "pavement") {
+        // workCategory is either not set or itself indicates structure → trust the WType
+        effectivePWT = "structure";
+      }
+      // else: workCategory is a road category (EARTHWORK, SUBBASE_BASE, BITUMINOUS…)
+      //       Keep effectivePWT=road — saved categories take precedence over regex.
+    }
   }
 
   // 1. planningWorkType = "road" ─────────────────────────────────────────────
   if (effectivePWT === "road") {
     if (wt !== null) {
-      const stage = PAVEMENT_STAGE[wt] ?? 99;
-      return { track: "pavement", stage, resolvedWorkType: wt, skipReason: null };
+      const stage = PAVEMENT_STAGE[wt];
+      if (stage !== undefined) {
+        return { track: "pavement", stage, resolvedWorkType: wt, skipReason: null };
+      }
+      // wt is not in PAVEMENT_STAGE (e.g. a structure-family WorkType that slipped
+      // through on a confirmed road item — "excavation_structure" on wc=EARTHWORK).
+      // Fall through to the workCategory stage map rather than silently using stage 99.
     }
-    // resolveWorkType also returned null — try workCategory direct stage map
-    // before giving up.  This handles ROAD_FURNITURE, ELECTRICAL, BUILDINGS etc.
-    // which have no canonical WorkType but are valid road construction items.
+    // resolveWorkType returned null OR wt is not in PAVEMENT_STAGE —
+    // try workCategory direct stage map before giving up.
+    // Handles ROAD_FURNITURE, ELECTRICAL, BUILDINGS, and wt-mismatch cases.
     if (it.workCategory) {
       const catResult = stageByWorkCategory(it.workCategory);
-      if (catResult) return { ...catResult, resolvedWorkType: null, skipReason: null };
+      if (catResult) return { ...catResult, resolvedWorkType: wt, skipReason: null };
     }
     return {
       track: "other",

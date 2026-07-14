@@ -26,6 +26,12 @@
  * 17. diagnostics — wouldHaveBar=true for classified, false for "other" track items
  * 18. diagnostics — skipReason=null for classified items
  * 19. diagnostics — fieldAudit: description is the classification field (not itemName)
+ * 20. "Earthwork excavation in road way…for trench cutting" (MoRTH 301) must land on
+ *     pavement track (stage 3), NOT structure — "road way" vetoes the Tier-1 trench regex
+ * 21. Effectivive-PWT override guard: wt=excavation_structure + planningWorkType=road +
+ *     workCategory=EARTHWORK must keep effectivePWT=road (workCategory wins the tie)
+ * 22. Road-branch fallthrough: when wt is structure-family but effectivePWT=road,
+ *     stageByWorkCategory provides the correct pavement stage rather than stage 99
  */
 
 import { describe, it, expect } from "vitest";
@@ -543,5 +549,86 @@ describe("Auto-Sequence — diagnostics array (per-item classification trace)", 
       const orig = items.find((it) => it.boqItemId === d.boqItemId)!;
       expect(d.description).toBe(orig.description); // must match exactly — no truncation, no substitution
     }
+  });
+});
+
+// ─── Tests 20–22: Road-way "trench cutting" false-positive fix ────────────────
+// Before the fix:
+//   classifyWorkType("Earthwork excavation in road way...for trench cutting", "Cum")
+//   → "excavation_structure" (Tier-1 regex fired on "trench")
+//   → WORK_TYPE_PLAN_CATEGORY["excavation_structure"] = "structure"
+//   → classifyItem() overrode effectivePWT from "road" to "structure"
+//   → item landed on structure track (no bar generated because disableStructureFronts=true)
+//
+// After the fix (three layers of defence):
+//   1. Tier-1 regex now excludes descriptions containing "road way" / "road level" / "SDR"
+//   2. Tier-2 EARTHWORK sub-classifier uses a road-context veto so "trench" alone
+//      does not return excavation_structure when "road way" is present
+//   3. classifyItem() effectivePWT override guarded by stageByWorkCategory(workCategory):
+//      if workCategory is a road category (e.g. EARTHWORK), the override is suppressed
+
+const TS_ITEM_1148_DESC =
+  "Earthwork excavation  in road way  soils upto SDR  by mechanical means  including " +
+  "trimming bottom and side slopes in accordance with requirements of lines, grades and " +
+  "cross sections etc.,  complete  including  for finished item of work for trench " +
+  "cutting as per MoRT&H specification 301(5th Revision)  and as directed by the " +
+  "Engineer-in-Charge";
+
+describe("Auto-Sequence — road-way earthwork excavation (fix: trench-cutting false positive)", () => {
+  it("20 — item lands on pavement track (stage 3), NOT structure, even though description contains 'trench'", () => {
+    const items: SeqInputItem[] = [
+      mkItem({
+        boqItemId: 1148,
+        description: TS_ITEM_1148_DESC,
+        unit: "Cum",
+        planningWorkType: "road",
+        workCategory: "EARTHWORK",
+      }),
+    ];
+    const result = generateSequencedProgramme(items, { ...DEFAULT_OPTS, disableStructureFronts: true });
+    const d = result.diagnostics.find((x) => x.boqItemId === 1148)!;
+    expect(d).toBeDefined();
+    expect(d.track).toBe("pavement");
+    expect(d.stage).toBe(3); // EARTHWORK → stage 3 (concurrent with roadway excavation)
+    expect(d.wouldHaveBar).toBe(true);
+    expect(result.bars.some((b) => b.boqItemId === 1148)).toBe(true);
+  });
+
+  it("21 — effectivePWT override guard: planningWorkType=road + workCategory=EARTHWORK prevents wt=excavation_structure from flipping to structure", () => {
+    // Even if the description matches excavation_structure (Tier-1 false positive),
+    // workCategory=EARTHWORK (a road category) must keep the item on road track.
+    const items: SeqInputItem[] = [
+      mkItem({
+        boqItemId: 200,
+        description: TS_ITEM_1148_DESC,
+        unit: "Cum",
+        planningWorkType: "road",
+        workCategory: "EARTHWORK",
+      }),
+    ];
+    const result = generateSequencedProgramme(items, { ...DEFAULT_OPTS, disableStructureFronts: true });
+    const d = result.diagnostics.find((x) => x.boqItemId === 200)!;
+    expect(d.track).not.toBe("structure");
+    expect(d.track).not.toBe("bridge");
+    expect(d.track).toBe("pavement");
+  });
+
+  it("22 — real structure excavation (culvert foundation, no 'road way') still resolves to structure track", () => {
+    // Regression guard: the road-way veto must NOT suppress genuine structure items.
+    const items: SeqInputItem[] = [
+      mkItem({
+        boqItemId: 201,
+        description: "Earthwork excavation for foundation of culvert including trimming and disposal",
+        unit: "Cum",
+        planningWorkType: "structure",
+        workCategory: "CROSS_DRAINAGE",
+      }),
+    ];
+    // With enableStructureFronts (so structure bars ARE generated)
+    const result = generateSequencedProgramme(items, { ...DEFAULT_OPTS, disableStructureFronts: false });
+    const d = result.diagnostics.find((x) => x.boqItemId === 201)!;
+    expect(d).toBeDefined();
+    expect(d.track).toBe("structure");
+    expect(d.wouldHaveBar).toBe(true);
   });
 });
