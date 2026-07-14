@@ -30,6 +30,16 @@ Only fires when classifier returns null. Sub-classification:
 - BITUMINOUS: tack > prime > bc/sdbc/wearing > default `bituminous_base`
 - CONCRETE: rcc > pqc > dlc > default `pcc`
 
+## Auto-Sequence Integration
+
+`classifyItem()` in `shared/programmeSequencer.ts` now uses `resolveWorkType()` instead of `classifyWorkType()`.
+Key additions:
+- `stageByWorkCategory()` helper covers last-resort category-to-stage mapping for ROAD_FURNITURE (stage 9), ELECTRICAL, PRELIM, SITE_CLEARANCE, EARTHWORK, SUBBASE_BASE, BITUMINOUS, CONCRETE, DRAINAGE, CROSS_DRAINAGE, MAJOR_BRIDGES.
+- Critical bug fixed: `effectivePWT=road + wt=null` previously returned "other" immediately; now tries `stageByWorkCategory` first.
+- `SeqResult.unclassifiedItems` carries rich `{boqItemId, description, workCategory, unit, resolvedWorkType, skipReason}` — no bare ID-only arrays.
+
+Tests in `tests/autoSequence.integration.test.ts` (29 tests, 22nd test file).
+
 ## Testing Note
 
 Test descriptions for "workCategory fallback" path MUST NOT trigger the classifier.

@@ -3,7 +3,7 @@
 // where each reach (front) runs the crust sequence in dependency order, reaches run
 // in parallel (staggered), and the critical chain is scaled to fit the project duration.
 
-import { classifyWorkType, WORK_TYPE_PLAN_CATEGORY, type WorkType } from "./workTypeRecipes";
+import { resolveWorkType, WORK_TYPE_PLAN_CATEGORY, WORK_CAT_PLAN_CATEGORY, type WorkType } from "./workTypeRecipes";
 
 export type Track = "pavement" | "structure" | "bridge" | "other";
 
@@ -111,11 +111,23 @@ export interface SeqInputItem {
   needsReview?: boolean; // if already flagged, still try to classify
 }
 
+/** Rich diagnostic record for a BOQ item that could not be placed in any stage. */
+export interface UnclassifiedSeqItem {
+  boqItemId: number;
+  description: string;
+  workCategory: string | null;
+  unit: string;
+  resolvedWorkType: WorkType | null;
+  skipReason: string;
+}
+
 export interface SeqResult {
   bars: SeqBar[];
   /** Item IDs that could not be classified to any construction stage.
-   *  The caller should mark these needsReview = true in the DB. */
+   *  Kept for backward compatibility — prefer unclassifiedItems for display. */
   unclassifiedItemIds: number[];
+  /** Richer diagnostic records for every unclassified item. */
+  unclassifiedItems: UnclassifiedSeqItem[];
 }
 
 export interface SeqOptions {
@@ -154,9 +166,50 @@ export interface SeqBar {
   source: "auto-sequence";
 }
 
+// ─── Internal classify result ─────────────────────────────────────────────────
+interface ClassifyResult {
+  track: Track;
+  stage: number;
+  resolvedWorkType: WorkType | null;
+  skipReason: string | null;
+}
+
+// ─── workCategory → track + stage (last-resort, when wt still null) ──────────
+// Fires only when resolveWorkType could not derive a WorkType from the description
+// or workCategory (e.g. ROAD_FURNITURE, ELECTRICAL, BUILDINGS which have no
+// recipe template and therefore no canonical WorkType in WORK_CAT_FALLBACK_WORK_TYPE).
+function stageByWorkCategory(wc: string): { track: Track; stage: number } | null {
+  // Road-side works installed before everything else
+  if (wc === "PRELIM" || wc === "MOBILISATION")              return { track: "pavement", stage: 1 };
+  if (wc === "SITE_CLEARANCE")                               return { track: "pavement", stage: 2 };
+  if (wc === "EARTHWORK" || wc === "SHOULDERS_MEDIANS")     return { track: "pavement", stage: 3 };
+  if (wc === "SUBBASE_BASE")                                 return { track: "pavement", stage: 4 };
+  if (wc === "BITUMINOUS")                                   return { track: "pavement", stage: 7 };
+  // Road furniture / electrical / misc civil — installed after pavement is complete
+  if (wc === "ROAD_FURNITURE" || wc === "ELECTRICAL" ||
+      wc === "BUILDINGS"       || wc === "ENVIRONMENTAL")   return { track: "pavement", stage: 9 };
+  // Structure types
+  if (wc === "CONCRETE")                                     return { track: "structure", stage: 3 };
+  if (wc === "DRAINAGE" || wc === "CROSS_DRAINAGE")         return { track: "structure", stage: 3 };
+  if (wc === "MAJOR_BRIDGES")                                return { track: "bridge",    stage: 3 };
+  return null;
+}
+
 // ─── Item classifier ──────────────────────────────────────────────────────────
-function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
-  const wt = classifyWorkType(it.description, it.unit);
+// Uses resolveWorkType() — the same shared resolver used by Auto-build Recipes —
+// so items with a saved Work Category are correctly classified even when the
+// description-only regex returns null.  This fixes the regression where items
+// such as "Roadway Excavation (EARTHWORK)" and "WMM base course (SUBBASE_BASE)"
+// were placed in "other" simply because their descriptions did not match a regex.
+function classifyItem(it: SeqInputItem): ClassifyResult {
+  // Resolve via the shared three-tier resolver:
+  //   Tier 1: classifyWorkType (description + canonical unit regex)
+  //   Tier 2: WORK_CAT_FALLBACK_WORK_TYPE[workCategory] with sub-classification
+  //   Tier 3: null + diagnostic reason
+  const resolution = resolveWorkType(it.description, it.unit, {
+    workCategory: it.workCategory,
+  });
+  const wt = resolution.workType;
 
   // Resolve effective planning track.
   // The stored planningWorkType is the primary hint, BUT if the WorkType
@@ -170,57 +223,75 @@ function classifyItem(it: SeqInputItem): { track: Track; stage: number } {
     if (wtCategory === "structure" && effectivePWT === "road") effectivePWT = "structure";
   }
 
-  // 1. Use (corrected) planningWorkType as the track hint.
+  // 1. planningWorkType = "road" ─────────────────────────────────────────────
   if (effectivePWT === "road") {
-    // When the WorkType classifier cannot identify this description, we have no
-    // basis to place it in the pavement sequence. Return "other" so the item
-    // is added to unclassifiedItemIds and the caller can mark it needsReview.
-    if (wt === null) return { track: "other", stage: 99 };
-    const stage = PAVEMENT_STAGE[wt] ?? 99;
-    return { track: "pavement", stage };
+    if (wt !== null) {
+      const stage = PAVEMENT_STAGE[wt] ?? 99;
+      return { track: "pavement", stage, resolvedWorkType: wt, skipReason: null };
+    }
+    // resolveWorkType also returned null — try workCategory direct stage map
+    // before giving up.  This handles ROAD_FURNITURE, ELECTRICAL, BUILDINGS etc.
+    // which have no canonical WorkType but are valid road construction items.
+    if (it.workCategory) {
+      const catResult = stageByWorkCategory(it.workCategory);
+      if (catResult) return { ...catResult, resolvedWorkType: null, skipReason: null };
+    }
+    return {
+      track: "other",
+      stage: 99,
+      resolvedWorkType: null,
+      skipReason: resolution.reason
+        ?? `planningWorkType=road but no work type or category stage could be derived (workCategory: ${it.workCategory ?? "not set"})`,
+    };
   }
 
+  // 2. planningWorkType = "structure" ────────────────────────────────────────
   if (effectivePWT === "structure") {
     if (isBridgeDesc(it.description)) {
       const stage = wt !== null ? (BRIDGE_STAGE[wt] ?? 99) : 99;
-      return { track: "bridge", stage };
+      return { track: "bridge", stage, resolvedWorkType: wt, skipReason: null };
     }
     const stage = wt !== null ? (CULVERT_STAGE[wt] ?? 99) : 99;
-    return { track: "structure", stage };
+    return { track: "structure", stage, resolvedWorkType: wt, skipReason: null };
   }
 
-  // 2. No stored hint — classify from WorkType + description.
+  // 3. No stored planningWorkType — classify from WorkType + description ─────
   if (wt === null) {
-    // Fallback: use persisted workCategory when classifyWorkType cannot match
-    // description+unit (e.g. unusual unit format that normaliseBoqUnit did not
-    // handle, or a very long description that no regex captured).
+    // resolveWorkType already tried both the description regex AND the
+    // workCategory fallback.  The only remaining option is the direct
+    // category-to-stage map for categories with no canonical WorkType.
     if (it.workCategory) {
-      const wc = it.workCategory;
-      if (wc === "SITE_CLEARANCE")                    return { track: "pavement", stage: 2 };
-      if (wc === "EARTHWORK" || wc === "SHOULDERS_MEDIANS") return { track: "pavement", stage: 3 };
-      if (wc === "SUBBASE_BASE")                      return { track: "pavement", stage: 4 };
-      if (wc === "BITUMINOUS")                        return { track: "pavement", stage: 7 };
-      if (wc === "CONCRETE")                          return { track: "structure", stage: 3 };
-      if (wc === "DRAINAGE" || wc === "CROSS_DRAINAGE") return { track: "structure", stage: 3 };
-      if (wc === "MAJOR_BRIDGES")                     return { track: "bridge",    stage: 3 };
+      const catResult = stageByWorkCategory(it.workCategory);
+      if (catResult) return { ...catResult, resolvedWorkType: null, skipReason: null };
     }
-    return { track: "other", stage: 99 };
+    return {
+      track: "other",
+      stage: 99,
+      resolvedWorkType: null,
+      skipReason: resolution.reason
+        ?? `No work type or category recognised — assign a Work Category in BOQ Item Review`,
+    };
   }
 
   if (wt in PAVEMENT_STAGE) {
-    return { track: "pavement", stage: PAVEMENT_STAGE[wt]! };
+    return { track: "pavement", stage: PAVEMENT_STAGE[wt]!, resolvedWorkType: wt, skipReason: null };
   }
 
   // Structure work types — distinguish bridge from culvert by description.
   if (isBridgeDesc(it.description)) {
-    return { track: "bridge", stage: BRIDGE_STAGE[wt] ?? 99 };
+    return { track: "bridge", stage: BRIDGE_STAGE[wt] ?? 99, resolvedWorkType: wt, skipReason: null };
   }
 
   if (wt in CULVERT_STAGE) {
-    return { track: "structure", stage: CULVERT_STAGE[wt]! };
+    return { track: "structure", stage: CULVERT_STAGE[wt]!, resolvedWorkType: wt, skipReason: null };
   }
 
-  return { track: "other", stage: 99 };
+  return {
+    track: "other",
+    stage: 99,
+    resolvedWorkType: wt,
+    skipReason: `Work type "${wt}" has no sequence stage — not in pavement, culvert, or bridge stage maps`,
+  };
 }
 
 // ─── Main sequencer ───────────────────────────────────────────────────────────
@@ -242,6 +313,14 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
   // the caller can mark them needsReview = true in the DB.
   const oth = classified.filter((c) => c.track === "other");
   const unclassifiedItemIds = oth.map((c) => c.it.boqItemId);
+  const unclassifiedItems: UnclassifiedSeqItem[] = oth.map((c) => ({
+    boqItemId: c.it.boqItemId,
+    description: c.it.description,
+    workCategory: c.it.workCategory ?? null,
+    unit: c.it.unit,
+    resolvedWorkType: c.resolvedWorkType,
+    skipReason: c.skipReason ?? "No work type or category recognised — assign a Work Category in BOQ Item Review",
+  }));
 
   const bars: SeqBar[] = [];
 
@@ -366,7 +445,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     }
   }
 
-  if (!bars.length) return { bars, unclassifiedItemIds };
+  if (!bars.length) return { bars, unclassifiedItemIds, unclassifiedItems };
 
   // Scale the critical chain so the last bar ends at (totalMonths - 1), then
   // shift everything to 1-indexed month numbers (Month 1 = project start).
@@ -381,5 +460,5 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     if (b.endMonth <= b.startMonth) b.endMonth = +(b.startMonth + 0.1).toFixed(2);
   }
 
-  return { bars, unclassifiedItemIds };
+  return { bars, unclassifiedItemIds, unclassifiedItems };
 }

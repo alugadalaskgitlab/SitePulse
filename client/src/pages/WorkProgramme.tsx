@@ -2323,13 +2323,33 @@ export default function WorkProgramme() {
       return res.json();
     },
     onMutate: pushSnapshot,
-    onSuccess: async (data: { bars?: number; fronts?: number; unclassifiedCount?: number; unclassifiedItems?: { id: number; description: string }[] }) => {
+    onSuccess: async (data: {
+      bars?: number;
+      fronts?: number;
+      unclassifiedCount?: number;
+      unclassifiedItems?: {
+        id: number;
+        description: string;
+        workCategory: string | null;
+        unit: string;
+        resolvedWorkType: string | null;
+        skipReason: string;
+      }[];
+    }) => {
       setSeqDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "programme"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/boq/projects", projectId, "program-settings"] });
-      const skipNote = data?.unclassifiedCount
-        ? ` · ${data.unclassifiedCount} item(s) skipped — no recognised work type. Open BOQ Item Review to assign them a Work Category.`
-        : "";
+      let skipNote = "";
+      if (data?.unclassifiedCount) {
+        const count = data.unclassifiedCount;
+        if (count === 1 && data.unclassifiedItems?.[0]) {
+          const u = data.unclassifiedItems[0];
+          const cat = u.workCategory ? ` (${u.workCategory})` : "";
+          skipNote = ` · 1 item skipped${cat}: ${u.skipReason}`;
+        } else {
+          skipNote = ` · ${count} item(s) skipped — no recognised work type or stage. Open BOQ Item Review to assign Work Categories.`;
+        }
+      }
       toast({
         title: "Programme sequenced",
         description: `${data?.bars ?? 0} bars across ${data?.fronts ?? 0} reach-wise fronts, dependency-ordered.${skipNote}`,

@@ -1,0 +1,102 @@
+Fix the remaining Auto-Sequence integration gap.
+
+Current position:
+- `resolveWorkType()` has been added and tested.
+- Auto-build Recipes now uses the improved context-aware resolution.
+- Work Categories display correctly.
+- However, Auto-Sequence still uses the older direct `classifyWorkType()` path and therefore leaves valid items such as Roadway Excavation and Wet Mix Macadam as “Not programmed”.
+
+1. In the programme sequencing flow, stop using a separate direct description-only classification path.
+
+2. Replace the current direct call to:
+   - `classifyWorkType(description, unit)`
+
+   with the shared:
+   - `resolveWorkType(...)`
+
+3. Pass all available canonical context into `resolveWorkType()`:
+   - full description
+   - short name
+   - canonicalUnit, falling back to raw unit only when necessary
+   - persisted Work Category
+   - planning work type
+   - layer type/subtype
+   - imported category
+   - SNL/SDB mapping fields where available
+
+4. Auto-Sequence must use the same resolved canonical work type already used by Auto-build Recipes.
+
+5. Do not immediately classify an item as:
+   - `track: "other"`
+   - `stage: 99`
+
+   merely because the description-only classifier returns null.
+
+6. Before placing an item in “other” or skipping it, use the full fallback chain from `resolveWorkType()`.
+
+7. A valid persisted Work Category must be respected.
+
+8. Specifically verify that:
+   - Roadway Excavation with Earthwork category resolves to the correct excavation sequence stage
+   - Wet Mix Macadam with Sub-base & Base category resolves to the WMM/base-course sequence stage
+   - spelling variations or missing item codes do not prevent sequencing when category/context is sufficient
+
+9. Use canonical units throughout sequencing.
+
+10. Do not use raw values such as:
+   - `1 Cum`
+   - `1 Sqm`
+   - `1 Hect`
+
+   when the canonical unit is available.
+
+11. For every item Auto-Sequence still cannot program, return and display:
+   - item ID
+   - short name
+   - full description
+   - saved Work Category
+   - canonical unit
+   - resolved work type, if any
+   - exact skip reason
+
+12. Do not leave an item as “Not programmed” without a precise reason.
+
+13. When Auto-Sequence is rerun:
+   - do not duplicate existing programme bars
+   - do not overwrite manually adjusted or locked bars
+   - create bars only for the remaining unprogrammed balance quantity
+
+14. Add integration tests for the complete flow:
+   - BOQ item with saved Work Category
+   - `resolveWorkType()`
+   - programme stage resolution
+   - Auto-Sequence bar creation
+
+15. Include tests for:
+   - Roadway Excavation
+   - Wet Mix Macadam
+   - missing item code
+   - canonical unit derived from “1 Cum”
+   - spelling variation in description
+   - valid manual Work Category fallback
+
+16. Re-run Auto-Sequence for all existing projects after the fix and verify there are no valid planning-enabled items left unprogrammed without a stated reason.
+
+17. Do not create another classifier or another project-specific exception.
+
+Completion criteria:
+- Auto-build Recipes and Auto-Sequence use the same shared resolver
+- Roadway Excavation and Wet Mix Macadam are correctly programmed
+- no valid BOQ item is skipped because only the old description regex failed
+- all remaining unprogrammed items show an exact reason
+- no existing manual programme data is altered
+
+Do not touch:
+- resource recipe contents
+- BOQ quantities, rates or amounts
+- manually confirmed Work Categories
+- existing manual or locked programme bars
+- DPR workflow
+- Site Requirements workflow
+- permissions
+- unrelated modules

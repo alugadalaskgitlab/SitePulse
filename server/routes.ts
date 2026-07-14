@@ -11590,7 +11590,7 @@ export async function registerRoutes(
           };
         });
 
-      const { bars, unclassifiedItemIds } = generateSequencedProgramme(seqItems, {
+      const { bars, unclassifiedItemIds, unclassifiedItems: seqUnclassifiedItems } = generateSequencedProgramme(seqItems, {
         fronts,
         totalMonths,
         roadLengthKm,
@@ -11637,13 +11637,23 @@ export async function registerRoutes(
           insertErrors.push(`item ${b.boqItemId}: ${e?.message ?? String(e)}`);
         }
       }
-      // Build human-readable skip info for unclassified items and add them
-      // to the comprehensive skippedItems array with an actionable reason.
-      const unclassifiedItems = unclassifiedItemIds.map((id) => {
-        const it = (items as any[]).find((i) => i.id === id);
-        const desc = ((it?.description ?? "") as string).slice(0, 80);
-        skippedItems.push({ id, description: desc, reason: "Work type unresolved — assign a Work Category in BOQ Item Review" });
-        return { id, description: desc };
+      // Use the sequencer's rich unclassified-item records.
+      // Each record already has: boqItemId, description, workCategory, unit,
+      // resolvedWorkType, skipReason — built inside generateSequencedProgramme.
+      const unclassifiedItems = seqUnclassifiedItems.map((u) => {
+        skippedItems.push({
+          id: u.boqItemId,
+          description: u.description.slice(0, 80),
+          reason: u.skipReason,
+        });
+        return {
+          id: u.boqItemId,
+          description: u.description.slice(0, 120),
+          workCategory: u.workCategory,
+          unit: u.unit,
+          resolvedWorkType: u.resolvedWorkType,
+          skipReason: u.skipReason,
+        };
       });
 
       res.json({
@@ -11656,10 +11666,10 @@ export async function registerRoutes(
         unclassifiedItemIds,
         unclassifiedItems,
         // skippedItems lists every item that did NOT get a bar, with an actionable reason:
-        //   "Excluded from planning"  — includedInPlanning=false (non-construction charge items)
-        //   "Missing quantity"        — currentQty=0 or null
-        //   "Structure/point-location" — structure schedule items excluded from linear sequencer
-        //   "Work type unresolved"    — no recipe match; needs workCategory in BOQ Item Review
+        //   "Excluded from planning"    — includedInPlanning=false (non-construction charge items)
+        //   "Missing quantity"          — currentQty=0 or null
+        //   "Structure/point-location"  — structure schedule items excluded from linear sequencer
+        //   "Work type unresolved"      — no recipe match; needs workCategory in BOQ Item Review
         skippedItems,
         skippedCount: skippedItems.length,
         errorCount: insertErrors.length,
