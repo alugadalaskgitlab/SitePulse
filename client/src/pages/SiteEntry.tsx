@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deriveDprUom, computeDprQty, boqUomProfile, resolveBoqUomProfile } from "@/lib/dprUom";
+import { deriveDprUom, computeDprQty, resolveBoqUomProfile } from "@/lib/dprUom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -157,7 +157,7 @@ type PlanVsActualRow = {
 };
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"];
-const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS"];
+const UOM_OPTIONS = ["SQM", "CUM", "RMT", "MT", "NOS", "LS"];
 const LABOUR_CATEGORIES = ["Skilled", "Semi-Skilled", "Unskilled"];
 const GENDER_OPTIONS = ["Male", "Female"];
 const STRUCTURE_UOM_OPTIONS = ["m³", "m²", "m", "MT", "Nos", "RM"];
@@ -868,8 +868,11 @@ export default function SiteEntry() {
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
     if (boqItem) {
       const prof = resolveBoqUomProfile(boqItem);
-      if (prof.dimClass !== "count") return prof.uom;
-      return UOM_OPTIONS.includes(prof.uom) ? prof.uom : "NOS";
+      // Return the resolved UOM for all profiles — formula-based and manual alike.
+      // For explicit dprMeasurementMethod values (LS_manual, MT_manual, etc.) the
+      // prof.uom is always a known value; the UOM_OPTIONS guard would incorrectly
+      // map LS → NOS, so we return prof.uom directly and let the Select handle it.
+      return prof.uom;
     }
     return deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness);
   };
@@ -1189,7 +1192,7 @@ export default function SiteEntry() {
         if (p.noSiteWork || p.boqItemId == null) continue;
         const boqItem = siteBoqItems.find(it => it.id === p.boqItemId);
         if (!boqItem) continue;
-        const prof = boqUomProfile(boqItem.unit);
+        const prof = resolveBoqUomProfile(boqItem);
         const L = getEffectiveLength(p);
         const missing: string[] = [];
         if (prof.dims.includes("L") && !(L && L > 0)) missing.push("Length");
