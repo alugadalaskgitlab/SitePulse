@@ -1,0 +1,79 @@
+Investigate whether the recent short-name display changes caused classification, recipe mapping or Auto-Sequence to use the BOQ item short name instead of the original full BOQ description.
+
+1. Audit every BOQ classification and sequencing route and confirm the correct field usage:
+
+   Use the original/full BOQ description for:
+   - SNL/SDB matching
+   - work-type classification
+   - Work Category inference
+   - recipe mapping
+   - Resource Review classification
+   - Auto-Sequence
+   - programme-stage resolution
+
+   Use the short name only for:
+   - Gantt display
+   - DPR selectors
+   - BOM display
+   - Tomorrow’s Plan display
+   - Site Requirements display
+   - compact tables and operational labels
+
+2. Do not use:
+   - short name
+   - truncated description
+   - UI display label
+
+   as the primary source for technical classification or sequencing.
+
+3. Ensure all connected modules link through the BOQ item ID and fetch the canonical BOQ fields from the item record.
+
+4. Trace the Takkadpally-Sirur items that remain “Not programmed” and log exactly which values Auto-Sequence receives:
+   - BOQ item ID
+   - full description
+   - short name
+   - raw unit
+   - canonical unit
+   - saved Work Category
+   - planning work type
+   - resolved work type
+   - final sequence stage
+   - skip reason
+
+5. Confirm whether the current Auto-Sequence route is receiving the full description or the short name.
+
+6. If any route is using the short name for classification, correct it to use the full description and retain short name only for display.
+
+7. After correcting the route, safely repair the existing Takkadpally-Sirur project:
+   - rerun canonical BOQ normalisation
+   - rerun SNL/SDB matching only for unresolved or inconsistent items
+   - preserve manually confirmed categories, short names, recipes and programme bars
+   - rerun Auto-Sequence only for the remaining unprogrammed balance
+
+8. Do not require deletion and reimport of the existing project unless the stored source BOQ description itself is genuinely missing or corrupted.
+
+9. If stored source data is corrupted, report:
+   - the exact affected item
+   - which field is corrupted
+   - why it cannot be safely repaired
+   - whether reimport is necessary
+
+10. Verify the fix with both:
+   - the existing Takkadpally-Sirur project
+   - a fresh test import using the same BOQ data
+
+11. Completion criteria:
+   - technical matching always uses the original full description
+   - short name remains display-only
+   - existing Takkadpally-Sirur items are repaired without deleting the project
+   - a fresh import also classifies and sequences correctly
+   - no valid item remains “Not programmed” without an exact reason
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- manually confirmed Work Categories
+- existing manual or locked programme bars
+- DPR submission or approval flows
+- Site Requirements flows
+- permissions
+- unrelated modules

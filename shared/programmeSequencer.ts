@@ -121,6 +121,21 @@ export interface UnclassifiedSeqItem {
   skipReason: string;
 }
 
+/** Per-item classification trace — returned by generateSequencedProgramme so callers
+ *  can surface exactly how each item was resolved (or why it was skipped). */
+export interface SeqDiagItem {
+  boqItemId: number;
+  description: string;
+  unit: string;
+  workCategory: string | null;
+  planningWorkType: "road" | "structure" | undefined;
+  resolvedWorkType: WorkType | null;
+  track: Track;
+  stage: number;
+  wouldHaveBar: boolean;
+  skipReason: string | null;
+}
+
 export interface SeqResult {
   bars: SeqBar[];
   /** Item IDs that could not be classified to any construction stage.
@@ -128,6 +143,8 @@ export interface SeqResult {
   unclassifiedItemIds: number[];
   /** Richer diagnostic records for every unclassified item. */
   unclassifiedItems: UnclassifiedSeqItem[];
+  /** Per-item classification trace for all items that reached the sequencer. */
+  diagnostics: SeqDiagItem[];
 }
 
 export interface SeqOptions {
@@ -322,6 +339,21 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     skipReason: c.skipReason ?? "No work type or category recognised — assign a Work Category in BOQ Item Review",
   }));
 
+  // Build per-item diagnostic trace for all items (classified and unclassified).
+  const classifiedIds = new Set(classified.filter(c => c.track !== "other").map(c => c.it.boqItemId));
+  const diagnostics: SeqDiagItem[] = classified.map((c) => ({
+    boqItemId: c.it.boqItemId,
+    description: c.it.description,
+    unit: c.it.unit,
+    workCategory: c.it.workCategory ?? null,
+    planningWorkType: c.it.planningWorkType,
+    resolvedWorkType: c.resolvedWorkType,
+    track: c.track,
+    stage: c.stage,
+    wouldHaveBar: classifiedIds.has(c.it.boqItemId),
+    skipReason: c.skipReason,
+  }));
+
   const bars: SeqBar[] = [];
 
   const mkBar = (
@@ -445,7 +477,7 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     }
   }
 
-  if (!bars.length) return { bars, unclassifiedItemIds, unclassifiedItems };
+  if (!bars.length) return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics };
 
   // Scale the critical chain so the last bar ends at (totalMonths - 1), then
   // shift everything to 1-indexed month numbers (Month 1 = project start).
@@ -460,5 +492,5 @@ export function generateSequencedProgramme(items: SeqInputItem[], opts: SeqOptio
     if (b.endMonth <= b.startMonth) b.endMonth = +(b.startMonth + 0.1).toFixed(2);
   }
 
-  return { bars, unclassifiedItemIds, unclassifiedItems };
+  return { bars, unclassifiedItemIds, unclassifiedItems, diagnostics };
 }

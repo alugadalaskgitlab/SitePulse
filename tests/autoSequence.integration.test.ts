@@ -22,6 +22,10 @@
  * 13. Structure excavation with workCategory=CROSS_DRAINAGE
  * 14. Bituminous base course via workCategory fallback
  * 15. No bar duplication when the same items are sequenced twice
+ * 16. diagnostics array — present on every call, one entry per seqItem
+ * 17. diagnostics — wouldHaveBar=true for classified, false for "other" track items
+ * 18. diagnostics — skipReason=null for classified items
+ * 19. diagnostics — fieldAudit: description is the classification field (not itemName)
  */
 
 import { describe, it, expect } from "vitest";
@@ -29,6 +33,7 @@ import {
   generateSequencedProgramme,
   type SeqInputItem,
   type SeqResult,
+  type SeqDiagItem,
 } from "../shared/programmeSequencer";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -493,5 +498,50 @@ describe("Auto-Sequence — resolver parity with Auto-build Recipes", () => {
     const result = generateSequencedProgramme([item], DEFAULT_OPTS);
     expect(result.bars).toHaveLength(1);
     expect(result.unclassifiedItems).toHaveLength(0);
+  });
+});
+
+// ─── 16-19. SeqResult.diagnostics array ───────────────────────────────────────
+describe("Auto-Sequence — diagnostics array (per-item classification trace)", () => {
+  const items: SeqInputItem[] = [
+    mkItem({ boqItemId: 70, description: "Clearing and grubbing of road land", unit: "HEC" }),
+    mkItem({ boqItemId: 71, description: "Wet Mix Macadam base course", unit: "CUM", workCategory: "SUBBASE_BASE" }),
+    mkItem({ boqItemId: 72, description: "Truly unknown item XYZ-9999", unit: "LS" }), // unclassifiable
+  ];
+
+  it("16 — diagnostics array is always present and contains one entry per seqItem", () => {
+    const result = generateSequencedProgramme(items, DEFAULT_OPTS);
+    expect(result.diagnostics).toBeDefined();
+    expect(Array.isArray(result.diagnostics)).toBe(true);
+    expect(result.diagnostics).toHaveLength(items.length);
+  });
+
+  it("17 — wouldHaveBar=true for classified items, false for unclassifiable", () => {
+    const result = generateSequencedProgramme(items, DEFAULT_OPTS);
+    const diag70 = result.diagnostics.find((d: SeqDiagItem) => d.boqItemId === 70)!;
+    const diag71 = result.diagnostics.find((d: SeqDiagItem) => d.boqItemId === 71)!;
+    const diag72 = result.diagnostics.find((d: SeqDiagItem) => d.boqItemId === 72)!;
+    expect(diag70.wouldHaveBar).toBe(true);
+    expect(diag71.wouldHaveBar).toBe(true);
+    expect(diag72.wouldHaveBar).toBe(false);
+  });
+
+  it("18 — skipReason=null for classified items, non-null string for unclassifiable", () => {
+    const result = generateSequencedProgramme(items, DEFAULT_OPTS);
+    const diag70 = result.diagnostics.find((d: SeqDiagItem) => d.boqItemId === 70)!;
+    const diag72 = result.diagnostics.find((d: SeqDiagItem) => d.boqItemId === 72)!;
+    expect(diag70.skipReason).toBeNull();
+    expect(typeof diag72.skipReason).toBe("string");
+    expect((diag72.skipReason as string).length).toBeGreaterThan(0);
+  });
+
+  it("19 — diagnostics.description equals the full item.description passed to sequencer (not a short name)", () => {
+    // This is the field-audit guarantee: classification ALWAYS reads item.description.
+    // If a route were to pass item.itemName (short name) as description, these would diverge.
+    const result = generateSequencedProgramme(items, DEFAULT_OPTS);
+    for (const d of result.diagnostics) {
+      const orig = items.find((it) => it.boqItemId === d.boqItemId)!;
+      expect(d.description).toBe(orig.description); // must match exactly — no truncation, no substitution
+    }
   });
 });

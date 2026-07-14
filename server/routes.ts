@@ -11474,17 +11474,23 @@ export async function registerRoutes(
         ? Boolean(req.body.disableStructureFronts)
         : req.body?.enableStructureFronts !== true;
 
+      // dryRun=true: classify items and return diagnostics WITHOUT touching bars or DB.
+      const dryRun = req.body?.dryRun === true;
+
       // Persist sequence options so the UI can pre-populate the dialog next time.
-      await storage.upsertBoqProgramSettings(projectId, {
-        sequenceOptions: {
-          fronts: requestedFronts >= 1 ? fronts : null,
-          staggerMonths,
-          lagMonths,
-          structureGroups: _strGroups >= 1 ? structureGroups : null,
-          bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
-          enableStructureFronts: !disableStructureFronts,
-        },
-      } as any);
+      // Skipped in dry-run mode so the diagnostic call doesn't mutate saved settings.
+      if (!dryRun) {
+        await storage.upsertBoqProgramSettings(projectId, {
+          sequenceOptions: {
+            fronts: requestedFronts >= 1 ? fronts : null,
+            staggerMonths,
+            lagMonths,
+            structureGroups: _strGroups >= 1 ? structureGroups : null,
+            bridgeGroups: _brgGroups >= 1 ? bridgeGroups : null,
+            enableStructureFronts: !disableStructureFronts,
+          },
+        } as any);
+      }
 
       // Non-destructive rerun: only remove previously auto-generated bars so that
       // any bars the planner manually placed (source = "manual") are preserved.
@@ -11494,7 +11500,8 @@ export async function registerRoutes(
       // When structure fronts are disabled, pre-delete auto-sequence bars that belong to
       // structure-type BOQ items NOW — outside the "no bars" safety guard — so that old
       // linear bars don't persist for items that already have imported structure_location bars.
-      if (disableStructureFronts) {
+      // Dry-run skips all deletions so the DB remains untouched.
+      if (!dryRun && disableStructureFronts) {
         // Items with at least one structure_import bar are implicitly structure-planned
         // even if planningWorkType was never set manually.
         const structureImportIds = new Set(
@@ -11590,7 +11597,12 @@ export async function registerRoutes(
           };
         });
 
-      const { bars, unclassifiedItemIds, unclassifiedItems: seqUnclassifiedItems } = generateSequencedProgramme(seqItems, {
+      const {
+        bars,
+        unclassifiedItemIds,
+        unclassifiedItems: seqUnclassifiedItems,
+        diagnostics: seqDiagnostics,
+      } = generateSequencedProgramme(seqItems, {
         fronts,
         totalMonths,
         roadLengthKm,
@@ -11601,6 +11613,45 @@ export async function registerRoutes(
         bridgeGroups,
         disableStructureFronts,
       });
+
+      // ── Dry-run: return per-item classification trace without touching bars or DB ──
+      if (dryRun) {
+        const itemById = new Map((items as any[]).map((it: any) => [it.id, it]));
+        const diagItems = seqDiagnostics.map((d) => {
+          const raw = itemById.get(d.boqItemId);
+          return {
+            id: d.boqItemId,
+            itemCode: raw?.itemCode ?? null,
+            description: d.description,          // full BOQ description — what classification receives
+            shortName: raw?.itemName ?? raw?.displayName ?? null,  // display-only, never used for classification
+            rawUnit: raw?.unit ?? d.unit,         // unit as stored in DB
+            canonicalUnit: raw?.canonicalUnit ?? d.unit,  // normalised unit passed to sequencer
+            workCategory: d.workCategory,         // saved category on BOQ item
+            planningWorkType: d.planningWorkType ?? null,  // user-overridden work type (if any)
+            resolvedWorkType: d.resolvedWorkType,  // what resolveWorkType() returned
+            track: d.track,                        // "pavement" | "structure" | "bridge" | "other"
+            stage: d.wouldHaveBar ? d.stage : null,
+            wouldHaveBar: d.wouldHaveBar,
+            skipReason: d.skipReason ?? null,
+          };
+        });
+        return res.json({
+          dryRun: true,
+          fieldAudit: {
+            note: "Classification always reads item.description (full BOQ text). item_name/itemName/shortName is display-only.",
+            classificationField: "description",
+            shortNameField: "itemName (display label only — Gantt rows, DPR selectors, BOM breakdown)",
+          },
+          projectId,
+          fronts,
+          totalMonths,
+          roadLengthKm,
+          skippedBeforeSequencer: skippedItems,
+          sequencerItems: diagItems,
+          wouldCreateBars: bars.length,
+          unclassifiedCount: unclassifiedItemIds.length,
+        });
+      }
 
       // Mark unclassifiable items as needsReview in the DB (fire-and-forget).
       if (unclassifiedItemIds.length > 0) {
