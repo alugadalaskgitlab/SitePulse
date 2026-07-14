@@ -504,6 +504,7 @@ export interface BomInputItem {
   itemCode?: string | null;
   itemName?: string | null;
   unit: string;
+  canonicalUnit?: string | null;
   currentQty: number; // total BOQ qty
   layerConfig?: LayerConfig | null;
   workCategory?: string | null;
@@ -983,7 +984,7 @@ export function calculateBomDemand(
           itemDescription: item.itemName || item.description,
           fullDescription: item.description,
           itemCode: item.itemCode,
-          unit: item.unit,
+          unit: item.canonicalUnit ?? item.unit,
           compositeLabel: (item as any).compositeLabel ?? undefined,
           qtyPerUnit: effQtyPerUnit,
           workQty,
@@ -1020,7 +1021,7 @@ export function calculateBomDemand(
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineHours += lineHours; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, hrsPerUnit: e.qtyPerBoqUnit, workQty, lineHours });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyHours[month] = (row.monthlyHours[month] ?? 0) + e.qtyPerBoqUnit * mwq * cnt;
@@ -1090,7 +1091,7 @@ export function calculateBomDemand(
         const bk = String((item.itemCode ?? "") + "|" + (item.description ?? ""));
         const exB = row.breakdown.find((b: any) => ((b.itemCode ?? "") + "|" + (b.fullDescription ?? "")) === bk);
         if (exB) { exB.lineDays += lineDays; exB.workQty += workQty; }
-        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
+        else row.breakdown.push({ itemDescription: item.itemName || item.description, fullDescription: item.description, itemCode: item.itemCode, unit: item.canonicalUnit ?? item.unit, daysPerUnit: l.qtyPerBoqUnit, workQty, lineDays });
       }
       for (const [month, mwq] of monthlyWork) {
         row.monthlyDays[month] = (row.monthlyDays[month] ?? 0) + l.qtyPerBoqUnit * mwq;

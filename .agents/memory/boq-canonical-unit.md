@@ -1,37 +1,30 @@
 ---
 name: BOQ Canonical Unit System
-description: shared/boqNormalise.ts is the single canonical unit service. canonical_unit DB column backfilled at startup. All modules use this.
+description: How canonical unit normalisation works end-to-end, and which layers to fix when raw units surface in the UI.
 ---
 
-# BOQ Canonical Unit System
+## The Rule
+`shared/boqNormalise.ts` (`canonicalizeUnit`) is the single source of truth. Every BOQ unit display must come from `canonical_unit` (DB column), not raw `unit`.
 
-## Rule
-`shared/boqNormalise.ts` is the one canonical unit normalisation service. Every module that needs to work with BOQ units imports from here. Do NOT add another unit normaliser anywhere else.
+## DB Setup
+- `ensureBoqCanonicalUnit()` runs at startup: backfills any row where `canonical_unit IS NULL` OR starts with a digit (stale import artifact).
+- 286 units + 117 work_categories fixed on first run.
 
-## How it works
-- `canonicalizeUnit(raw)` — strips numeric prefix ("1 Cum" → "Cum"), collapses punctuation ("Cu.m" → "Cum"), looks up comprehensive `CANONICAL_UNIT_MAP` (60+ entries), falls back to de-prefixed original for unknown units
-- `normaliseBoqUnit(raw)` — deprecated alias returning uppercase; kept for backwards-compat with regex classifiers in workTypeRecipes.ts
+## Fix Pattern
+**Frontend:** `(item as any).canonicalUnit ?? item.unit`
+**Storage functions:** `item.canonicalUnit ?? item.unit` (or SQL `COALESCE(canonical_unit, unit)`)
+**planningEngine breakdown items:** `item.canonicalUnit ?? item.unit` (BomInputItem interface now includes `canonicalUnit?: string | null`)
 
-## DB Column
-`canonical_unit text` in `boq_items` — added via `ensureBoqCanonicalUnit()` startup migration in storage.ts. ALWAYS NULL-guarded: only writes rows where canonical_unit IS NULL. Original `unit` column never touched.
+## Locations Fixed (complete as of Jul 2026)
+- **storage.getWorkProgramBars** — selects `canonicalUnit` from the JOIN alongside raw `unit`
+- **storage.getPlanVsActual** — returns `unit: item.canonicalUnit ?? item.unit`
+- **storage.getBoqRevisions** — revision items use `COALESCE(canonical_unit, unit)`
+- **planningEngine.ts** — all 3 breakdown push locations (materials/equipment/labour) use canonical; BomInputItem interface has `canonicalUnit?: string | null`
+- **routes.ts computeProjectBom** — `deriveMaterialsFromLayerConfig` call uses canonical
+- **Frontend pages** — WorkProgramme, SiteEntry, BoqItemRecipes, WorkDemand, BoqProjectDetail (form init + revision display), ResourceReview, FieldHome all use canonical pattern
 
-## Startup Migration (`ensureBoqCanonicalUnit`)
-Called from server/index.ts just after `ensureStructureBarColumns`. On first run:
-- Adds column (`ALTER TABLE IF NOT EXISTS`)
-- Backfills canonical_unit for all rows (first run: 286 items on the Takkadpally-Sirur project)
-- Also backfills work_category for NULL rows using suggestWorkCategoryFromDescription (first run: 117 items)
-- Idempotent: subsequent runs process 0 rows (fast)
+## Why
+Raw imported data often has "1 Cum", "1.00 Cum", "Cu.m" etc. as the unit string. The canonical_unit column stores the normalised form ("Cum"). Always read canonical_unit, not the raw unit column, for any user-facing display.
 
-## Import flow
-`importBoqItems` (storage.ts) now sets `canonical_unit = canonicalizeUnit(item.unit)` and uses a 3-level workCategory fallback: `item.workCategory ?? suggestWorkCategory(itemCode) ?? suggestWorkCategoryFromDescription(desc, canonical) ?? null`
-
-## No circular deps
-`boqNormalise.ts` has zero imports from other shared modules. Import chain: boqNormalise ← workTypeRecipes ← boqWorkCategories (no cycle).
-
-**Why:** workTypeRecipes.ts previously imported nothing for its inline normaliser. boqWorkCategories imports classifyWorkType from workTypeRecipes. If boqNormalise imported from boqWorkCategories, it would create boqNormalise → boqWorkCategories → workTypeRecipes → boqNormalise (circular).
-
-## Tests
-`tests/boqNormalise.test.ts` — 106 tests covering all major unit variants (Cum, Sqm, Ha, Rmt, MT, Kg, Nos, LS, KL), prefix stripping, pass-through for unknowns, and normaliseBoqUnit compatibility.
-
-## Display
-All key BOQ unit displays in WorkProgramme.tsx (Gantt qty label, Plan vs Actual table, coverage badges, calculateAutoDurationFull calls) and BoqItemReview.tsx use `(item as any).canonicalUnit ?? item.unit`. BoqItemReview shows tooltip with original when canonical differs.
+## How to Apply
+When adding a new screen that displays BOQ item units: always use `canonicalUnit ?? unit` pattern. When adding a new storage function that returns BOQ items: include `canonicalUnit` in the select, or use SQL COALESCE.

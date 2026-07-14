@@ -229,10 +229,10 @@ function StretchRow({
     if (effectiveQty <= 0 && !productivitySettings) return null;
     if (effectiveQty <= 0) return null;
     return calculateAutoDurationFull(
-      effectiveQty, item.unit, equipment, workingHrs, workingDays,
+      effectiveQty, (item as any).canonicalUnit ?? item.unit, equipment, workingHrs, workingDays,
       productivitySettings, itemType,
     );
-  }, [effectiveQty, item.unit, equipment, workingHrs, workingDays, productivitySettings, itemType]);
+  }, [effectiveQty, (item as any).canonicalUnit ?? item.unit, equipment, workingHrs, workingDays, productivitySettings, itemType]);
 
   // ── Chainage overlap detection ────────────────────────────────────────────
   const hasChainageOverlap = useMemo(() => {
@@ -449,7 +449,7 @@ function StretchRow({
                   ? "border-orange-400 text-orange-600 dark:text-orange-400"
                   : "border-slate-300 dark:border-slate-600"
               }`}
-              title={defaultRate != null ? `Default rate: ${fmtQty(defaultRate, 4)} ${item.unit}/km` : "Multiplier (qty per km)"}
+              title={defaultRate != null ? `Default rate: ${fmtQty(defaultRate, 4)} ${(item as any).canonicalUnit ?? item.unit}/km` : "Multiplier (qty per km)"}
               data-testid={`input-mult-${bar.id}`}
             />
           </>
@@ -601,7 +601,7 @@ function StretchRow({
                 : "text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400"
             }`}
             title={[
-              `Requires ${fmtQty(requiredOutput.monthlyOutput, 1)} ${bar.unit}/month`,
+              `Requires ${fmtQty(requiredOutput.monthlyOutput, 1)} ${(bar as any).canonicalUnit ?? bar.unit}/month`,
               `(${fmtQty(requiredOutput.dailyOutput, 2)}/day over ${fmtQty(requiredOutput.durationWorkingDays, 0)} working days)`,
               requiredOutput.capacityPct != null
                 ? `= ${requiredOutput.capacityPct}% of equipment capacity`
@@ -614,7 +614,7 @@ function StretchRow({
           >
             {requiredOutput.exceedsCapacity && <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />}
             <span className="truncate">
-              {fmtQty(requiredOutput.monthlyOutput, 1)}/{bar.unit.toLowerCase() || "unit"}/mo
+              {fmtQty(requiredOutput.monthlyOutput, 1)}/{((bar as any).canonicalUnit ?? bar.unit).toLowerCase() || "unit"}/mo
               {requiredOutput.capacityPct != null && (
                 <span className="opacity-75"> ({requiredOutput.capacityPct}%)</span>
               )}
@@ -674,7 +674,7 @@ function StretchRow({
           }}
           title={(() => {
             const ch = `Ch ${validCh ? cfNum : (bar.chainageFrom ?? "?")} – ${validCh ? ctNum : (bar.chainageTo ?? "?")} km`;
-            const qty = `${fmtQty(liveQty, 1)} ${bar.unit}`;
+            const qty = `${fmtQty(liveQty, 1)} ${(bar as any).canonicalUnit ?? bar.unit}`;
             const span = project.startDate
               ? `${formatDateForInput(monthIndexToDate(liveStart, project.startDate))} → ${formatDateForInput(monthIndexToDate(liveEnd, project.startDate))} (${fmtQty(durationMonths, 2)} mo)`
               : `M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)} (${fmtQty(durationMonths, 2)} mo)`;
@@ -692,7 +692,7 @@ function StretchRow({
               className="absolute inset-0 flex items-center px-1.5 pointer-events-none select-none overflow-hidden"
             >
               <span className="text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis opacity-90 drop-shadow-sm">
-                {fmtQty(liveQty, 1)} {bar.unit} | {(durationMonths * workingDays).toFixed(1)}d
+                {fmtQty(liveQty, 1)} {(bar as any).canonicalUnit ?? bar.unit} | {(durationMonths * workingDays).toFixed(1)}d
                 {autoDuration?.bottleneckEquipment && (
                   <span className="opacity-70 font-normal"> · {autoDuration.bottleneckEquipment}</span>
                 )}
@@ -778,7 +778,7 @@ function StructureLocationRow({
             </span>
           )}
           <span className="text-[10px] font-mono text-violet-600 dark:text-violet-300 flex-shrink-0 ml-auto whitespace-nowrap">
-            {fmtQty(bar.plannedQty, 2)} {(bar as any).unit ?? ""}
+            {fmtQty(bar.plannedQty, 2)} {(bar as any).canonicalUnit ?? (bar as any).unit ?? ""}
           </span>
         </div>
         {/* Row 3: start date + duration + delete */}
@@ -819,12 +819,12 @@ function StructureLocationRow({
         <div
           className="absolute rounded overflow-hidden select-none"
           style={{ top: 7, left: barLeft, width: barWidth, height: 24, backgroundColor: "#7c3aed", opacity: 0.80 }}
-          title={`${b.structureId ?? ""} | ${fmtQty(bar.plannedQty, 1)} ${(bar as any).unit ?? ""} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)}`}
+          title={`${b.structureId ?? ""} | ${fmtQty(bar.plannedQty, 1)} ${(bar as any).canonicalUnit ?? (bar as any).unit ?? ""} | M${fmtQty(liveStart, 1)} → M${fmtQty(liveEnd, 1)}`}
         >
           {barWidth >= 50 && (
             <div className="absolute inset-0 flex items-center px-1.5 pointer-events-none overflow-hidden">
               <span className="text-white text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis opacity-90 drop-shadow-sm">
-                {fmtQty(bar.plannedQty, 1)} {(bar as any).unit ?? ""}
+                {fmtQty(bar.plannedQty, 1)} {(bar as any).canonicalUnit ?? (bar as any).unit ?? ""}
               </span>
             </div>
           )}

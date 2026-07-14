@@ -11131,7 +11131,7 @@ export async function registerRoutes(
           } else {
             derived = deriveMaterialsFromLayerConfig(
               effLc,
-              item.unit,
+              (item as any).canonicalUnit ?? item.unit,
               mixTemplate ?? undefined,
               concreteDesign
                 ? {

@@ -1,0 +1,123 @@
+Fix unit normalisation universally across SitePulse.
+
+Current defect:
+Imported BOQ units such as:
+- 1 Cum
+- 1.00 Cum
+- 1 Sqm
+- 1 Hect
+are still being shown in operational screens even after earlier normalisation changes.
+
+This means some modules are still reading the raw imported unit instead of the canonical unit.
+
+1. Audit every place in the repo where BOQ or linked operational units are:
+   - imported
+   - stored
+   - normalised
+   - compared
+   - displayed
+   - used in calculations
+   - used in sequencing
+   - used in recipes
+   - used in DPR
+   - used in BOM
+   - used in Site Requirements
+   - used in Material Receipt
+   - used in Tomorrow’s Plan
+   - used in reports and selectors
+
+2. Create or use one shared canonical unit normalisation function only.
+
+3. Remove harmless leading quantity prefixes from imported unit values.
+
+Examples:
+- 1 Cum → Cum
+- 1.00 Cum → Cum
+- 1 Sqm → Sqm
+- 1.00 Sqm → Sqm
+- 1 Hect → Hect
+- 1.00 Hect → Hect
+
+4. Also normalise common equivalent forms.
+
+Examples:
+- Cu.m, Cu M, m3, cubic metre, cubic meter → Cum
+- Sq.m, Sq M, m2, square metre, square meter → Sqm
+- Hectare, Hectares, Ha → Hect
+- Metric Ton, Metric Tonne, Tonne, Ton → MT where applicable
+- Number, Numbers, No, Nos → Nos
+
+5. Preserve the original imported unit only for audit/history if required.
+
+6. Use the canonical unit for:
+   - all operational display
+   - classification
+   - recipe matching
+   - Auto-Sequence
+   - quantity comparisons
+   - DPR
+   - BOM
+   - Site Requirements
+   - Material Receipt
+   - Tomorrow’s Plan
+   - progress and planning screens
+   - reports and selectors
+
+7. No operational screen should display:
+   - 1 Cum
+   - 1 Sqm
+   - 1 Hect
+   when the canonical unit is available.
+
+8. Fix existing imported projects, not only future imports.
+
+9. Add a safe repeatable backfill/migration for all existing BOQ items and linked records.
+
+10. Do not alter:
+   - quantity
+   - rate
+   - amount
+   - conversion factor
+   - density
+   - resource recipe quantities
+
+11. After backfill:
+   - invalidate/refetch affected queries
+   - refresh Work Programme
+   - refresh BOQ Item Review
+   - refresh DPR/BOM/Requirements displays
+
+12. Add tests for:
+   - 1 Cum
+   - 1.00 Cum
+   - Cu.m
+   - m3
+   - 1 Sqm
+   - Sq.m
+   - m2
+   - 1 Hect
+   - Hectare
+   - Ha
+   - MT
+   - Nos
+   - mixed case, spacing and punctuation
+
+13. Verify against all existing projects, including NH-167 and Takkadpally-Sirur.
+
+Completion criteria:
+- all modules use the same canonical unit
+- existing records are corrected
+- future imports are corrected automatically
+- no screen shows leading quantity prefixes such as “1 Cum”, “1 Sqm” or “1 Hect”
+- no BOQ quantity, rate or amount is changed
+
+Do not touch:
+- BOQ quantities, rates or amounts
+- unit conversion calculations unrelated to harmless text normalisation
+- density logic
+- resource recipes
+- programme dates or bars
+- DPR workflow
+- Site Requirements approval flow
+- permissions
+- unrelated modules

@@ -287,8 +287,8 @@ function LayerConfigTab({
     const tmpl = templateDetail
       ? { bitumenPercent: templateDetail.template.bitumenPercent, components: templateDetail.components.map(c => ({ materialName: c.materialName, percent: c.percent })) }
       : null;
-    return deriveMaterialsFromLayerConfig(layerConfig, item.unit, tmpl);
-  }, [layerConfig, templateDetail, item.unit]);
+    return deriveMaterialsFromLayerConfig(layerConfig, (item as any).canonicalUnit ?? item.unit, tmpl);
+  }, [layerConfig, templateDetail, (item as any).canonicalUnit ?? item.unit]);
 
   // Dirty tracking — compare serialised current config against the last-saved value
   const lastSavedLcRef = useRef(JSON.stringify(existingLc));
@@ -464,12 +464,12 @@ function LayerConfigTab({
       {/* Live preview */}
       {derivedRows.length > 0 && (
         <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3">
-          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived Material Preview ({item.unit})</p>
+          <p className="text-[12px] font-semibold text-teal-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3" />Derived Material Preview ({(item as any).canonicalUnit ?? item.unit})</p>
           <div className="space-y-1">
             {derivedRows.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
                 <span className="flex-1 text-slate-700">{r.materialName}</span>
-                <span className="text-muted-foreground">{fmtQty(r.qtyPerBoqUnit, 4)} {r.uom} / {item.unit}</span>
+                <span className="text-muted-foreground">{fmtQty(r.qtyPerBoqUnit, 4)} {r.uom} / {(item as any).canonicalUnit ?? item.unit}</span>
               </div>
             ))}
           </div>
@@ -1571,7 +1571,7 @@ export function BoqItemRecipeDialog({
               <DialogTitle className="text-base flex items-center gap-2 min-w-0">
                 <Package className="w-4 h-4 text-teal-600 flex-shrink-0" />
                 <span className="truncate" title={currentItem.description}>{itemLabel}</span>
-                <span className="text-sm font-normal text-muted-foreground flex-shrink-0">({currentItem.unit})</span>
+                <span className="text-sm font-normal text-muted-foreground flex-shrink-0">({(currentItem as any).canonicalUnit ?? currentItem.unit})</span>
                 {existingMapping && (
                   <Badge variant="outline" className="text-xs h-4 px-1.5 border-teal-300 text-teal-700 flex-shrink-0">
                     <BookOpen className="w-2.5 h-2.5 mr-0.5" />SNL
@@ -1593,9 +1593,9 @@ export function BoqItemRecipeDialog({
                 <TabsTrigger value="materials" className="flex items-center gap-1.5 text-sm"><Package className="w-3.5 h-3.5" />Materials</TabsTrigger>
               </TabsList>
               <TabsContent value="layer-config"><LayerConfigTab item={currentItem} projectId={currentItem.boqProjectId} onLayerConfigChange={setLocalLayerConfig} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} /></TabsContent>
-              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="equipment"><EquipmentTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} masterList={masterList} layerConfig={localLayerConfig} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="labour"><LabourTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} labourTypeList={labourTypeList} onPendingSave={handlePendingSave} /></TabsContent>
+              <TabsContent value="materials"><MaterialsTab boqItemId={currentItem.id} boqUnit={(currentItem as any).canonicalUnit ?? currentItem.unit} projectId={currentItem.boqProjectId} onPendingSave={handlePendingSave} /></TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="pt-2 border-t flex items-center justify-between">

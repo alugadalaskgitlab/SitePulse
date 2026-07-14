@@ -574,7 +574,7 @@ export default function SiteEntry() {
     const bar = loc?.bars.find((b) => b.boqItemId === boqItemId);
     if (!bar) return null;
     const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
-    const unit = boqItem?.unit ?? "";
+    const unit = (boqItem as any)?.canonicalUnit ?? boqItem?.unit ?? "";
     const totalActual = structureActualByKey.get(`${boqItemId}::${structureId}`) ?? 0;
     const balance = Math.round((bar.plannedQty - totalActual) * 1000) / 1000;
     return { currentQty: bar.plannedQty, totalActual, balance, unit };
@@ -1202,7 +1202,7 @@ export default function SiteEntry() {
         if (missing.length) {
           toast({
             title: `Row ${i + 1}: missing ${prof.uom} input`,
-            description: `${boqItem.itemCode ? boqItem.itemCode + " · " : ""}This item is measured in ${boqItem.unit}. Please enter ${missing.join(", ")} before saving.`,
+            description: `${boqItem.itemCode ? boqItem.itemCode + " · " : ""}This item is measured in ${(boqItem as any).canonicalUnit ?? boqItem.unit}. Please enter ${missing.join(", ")} before saving.`,
             variant: "destructive",
           });
           return;
@@ -1604,7 +1604,7 @@ export default function SiteEntry() {
                         setStructureItems((prev) =>
                           prev.map((s, i) =>
                             i === idx
-                              ? { ...s, boqItemId: id, uom: it?.unit ? it.unit : s.uom }
+                              ? { ...s, boqItemId: id, uom: it ? ((it as any).canonicalUnit ?? it.unit) : s.uom }
                               : s,
                           ),
                         );
@@ -1930,14 +1930,14 @@ export default function SiteEntry() {
                           return (
                             <span
                               className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 normal-case"
-                              title={`DPR qty × ${f} → ${boqItem.unit} for Plan vs Actual`}
+                              title={`DPR qty × ${f} → ${(boqItem as any).canonicalUnit ?? boqItem.unit} for Plan vs Actual`}
                             >
-                              → {boqItem.unit}
+                              → {(boqItem as any).canonicalUnit ?? boqItem.unit}
                             </span>
                           );
                         }
                         return (
-                          <span className="text-[10px] text-slate-400 font-normal">{boqItem.unit}</span>
+                          <span className="text-[10px] text-slate-400 font-normal">{(boqItem as any).canonicalUnit ?? boqItem.unit}</span>
                         );
                       })()}
                     </Label>

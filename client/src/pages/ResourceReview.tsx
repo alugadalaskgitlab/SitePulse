@@ -115,7 +115,7 @@ export default function ResourceReview() {
                     {r.it.itemCode && <span className="font-mono text-xs text-slate-500">{r.it.itemCode}</span>}
                     <span className="font-semibold text-sm" title={r.it.description}>{shortItemName(r.it.description)}</span>
                     <Badge className={`text-[10px] ${clsColor[r.cls]}`}>{r.cls}</Badge>
-                    <span className="text-[11px] text-slate-400">{r.it.unit} · {r.it.equipment.length} eq · {r.it.labour.length} lab · {r.it.materials.length} mat</span>
+                    <span className="text-[11px] text-slate-400">{(r.it as any).canonicalUnit ?? r.it.unit} · {r.it.equipment.length} eq · {r.it.labour.length} lab · {r.it.materials.length} mat</span>
                   </div>
                   <div className="mt-1 space-y-0.5">
                     {r.flags.length === 0 && <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Looks correct</span>}

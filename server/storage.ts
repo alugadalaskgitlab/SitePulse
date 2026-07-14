@@ -12147,10 +12147,13 @@ export class DatabaseStorage implements IStorage {
     // Pass 1 — DDL
     await db.execute(sql.raw("ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS canonical_unit text"));
 
-    // Pass 2+3 — Fetch rows needing at least one of the two backfills
+    // Pass 2+3 — Fetch rows needing at least one of the two backfills.
+    // Also re-normalises rows where canonical_unit still carries a leading numeric
+    // prefix (e.g. "1 Cum") from an older backfill run before prefix-stripping was
+    // added to canonicalizeUnit().
     const rows = await db.execute(sql.raw(
       "SELECT id, unit, description, canonical_unit, work_category FROM boq_items " +
-      "WHERE canonical_unit IS NULL OR work_category IS NULL"
+      "WHERE canonical_unit IS NULL OR work_category IS NULL OR canonical_unit ~ '^[0-9]'"
     ));
 
     let units = 0;
@@ -20869,7 +20872,7 @@ export class DatabaseStorage implements IStorage {
             revisedQty: boqRevisionItems.revisedQty,
             changeReason: boqRevisionItems.changeReason,
             description: boqItems.description,
-            unit: boqItems.unit,
+            unit: sql<string>`COALESCE(${boqItems.canonicalUnit}, ${boqItems.unit})`,
           })
           .from(boqRevisionItems)
           .innerJoin(boqItems, eq(boqRevisionItems.boqItemId, boqItems.id))
@@ -20999,6 +21002,7 @@ export class DatabaseStorage implements IStorage {
         itemCode: boqItems.itemCode,
         description: boqItems.description,
         unit: boqItems.unit,
+        canonicalUnit: boqItems.canonicalUnit,
         categoryName: boqCategories.name,
         categoryId: boqItems.categoryId,
         sortOrder: boqItems.sortOrder,
@@ -21191,7 +21195,7 @@ export class DatabaseStorage implements IStorage {
         boqItemId: item.id,
         itemCode: item.itemCode,
         description: item.description,
-        unit: item.unit,
+        unit: item.canonicalUnit ?? item.unit,
         categoryName: item.categoryName,
         currentQty: item.currentQty,
         totalPlanned,

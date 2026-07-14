@@ -79,7 +79,7 @@ function ItemEditDialog({
   const [form, setForm] = useState({
     description: item.description,
     itemName: (item as any).itemName ?? "",
-    unit: item.unit,
+    unit: (item as any).canonicalUnit ?? item.unit,
     itemCode: item.itemCode ?? "",
     clientRate: item.clientRate != null ? String(item.clientRate) : "",
     workCategory: item.workCategory ?? "__none__",
@@ -387,7 +387,7 @@ function CategorySection({
                     <td className="px-3 py-1.5 text-slate-700 max-w-[460px]" title={item.description}>
                       <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
                     </td>
-                    <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-500">{(item as any).canonicalUnit ?? item.unit}</td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">
                       {fmt(item.boqQty)}
                     </td>
@@ -628,7 +628,7 @@ function NewRevisionDialog({
                           <td className="px-3 py-1.5 text-slate-700 max-w-[400px]" title={item.description}>
                             <span className="block whitespace-normal leading-snug text-justify">{item.description}</span>
                           </td>
-                          <td className="px-3 py-1.5 text-right text-slate-500">{item.unit}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{(item as any).canonicalUnit ?? item.unit}</td>
                           <td className="px-3 py-1.5 text-right text-slate-700 font-medium">
                             {fmt(item.currentQty)}
                           </td>

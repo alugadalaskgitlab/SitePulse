@@ -668,7 +668,7 @@ function computePlanVsActual(
       boqItemId: item.id,
       itemCode: item.itemCode ?? null,
       description: item.description,
-      unit: item.unit,
+      unit: (item as any).canonicalUnit ?? item.unit,
       plannedEquipHours: planned.equipment.reduce((s, e) => s + e.totalHours, 0),
       actualEquipHours,
       actualEquipKm,
