@@ -255,11 +255,15 @@ interface PurchaseUpdateData {
   purchaseRemarks: string;
 }
 
-function getStatusBadge(status: string, storesStatus?: string | null) {
+function getStatusBadge(status: string, storesStatus?: string | null, piType?: string) {
+  const isMaterial = piType === "material";
   switch (status) {
     case "pending":
       if (storesStatus === "verified") {
         return <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-700" data-testid="badge-status-pending-verified">AWAITING APPROVAL</Badge>;
+      }
+      if (isMaterial) {
+        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING APPROVAL</Badge>;
       }
       return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700" data-testid="badge-status-pending">PENDING STORES</Badge>;
     case "stores_check":
@@ -2472,7 +2476,8 @@ export default function PurchaseIndents() {
                           {(() => {
                             const ss = (indent as any).storesStatus as string | null;
                             const storesNotVerified = !ss || ss !== "verified";
-                            if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores)) return null;
+                            const _piType = (indent as any).piType ?? "stores";
+                            if (!((indent.status === "stores_check" || indent.status === "pending") && storesNotVerified && canCreateStores && _piType !== "material")) return null;
                             return (
                               <button
                                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-300 dark:border-cyan-700 px-2 py-0.5 rounded-full hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors"
@@ -2538,7 +2543,7 @@ export default function PurchaseIndents() {
                           ) : (
                             <Badge variant="outline" className="text-[12px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700" data-testid={`badge-pi-type-${indent.id}`}>STORE</Badge>
                           )}
-                          {getStatusBadge(indent.status, (indent as any).storesStatus)}
+                          {getStatusBadge(indent.status, (indent as any).storesStatus, (indent as any).piType)}
                         </div>
                       </div>
                     </CardContent>
@@ -2904,7 +2909,7 @@ export default function PurchaseIndents() {
                     <PackageCheck className="w-4 h-4 text-cyan-600" />
                     {selectedIndent.indentNo} — Stores Verification
                   </CardTitle>
-                  {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+                  {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus, (selectedIndent as any).piType)}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-2">
@@ -3120,7 +3125,7 @@ export default function PurchaseIndents() {
                         <Trash2 className="w-3 h-3 mr-1" /> DELETE
                       </Button>
                     )}
-                    {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+                    {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus, (selectedIndent as any).piType)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -3188,7 +3193,8 @@ export default function PurchaseIndents() {
                       show an info bar instead of the approval action panel */}
                   {(() => {
                     const _ss = (selectedIndent as any).storesStatus as string | null;
-                    const _blocked = canCreateStores && (!_ss || _ss !== "verified");
+                    const _piType2 = (selectedIndent as any).piType ?? "stores";
+                    const _blocked = canCreateStores && (!_ss || _ss !== "verified") && _piType2 !== "material";
                     if (!_blocked) return null;
                     return (
                       <Card className="shadow-none border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
@@ -3339,7 +3345,8 @@ export default function PurchaseIndents() {
                           </div>
                           {st.action === 'pending' && (() => {
                             const _ss2 = (selectedIndent as any).storesStatus as string | null;
-                            const _blocked2 = canCreateStores && (!_ss2 || _ss2 !== "verified");
+                            const _piType3 = (selectedIndent as any).piType ?? "stores";
+                            const _blocked2 = canCreateStores && (!_ss2 || _ss2 !== "verified") && _piType3 !== "material";
                             if (_blocked2) return null;
                             return (
                               <div className="grid grid-cols-3 gap-2 mt-1">
@@ -3546,7 +3553,7 @@ export default function PurchaseIndents() {
                     </div>
                     <div className="flex flex-col gap-1 items-end shrink-0">
                       <div className="flex items-center gap-2 flex-wrap justify-end">
-                        {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus)}
+                        {getStatusBadge(selectedIndent.status, (selectedIndent as any).storesStatus, (selectedIndent as any).piType)}
                         {canViewStores && indentGrnCounts?.[selectedIndent.indentNo] ? (
                           <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-600/80 text-white border border-emerald-400/40 rounded-full px-2 py-0.5" data-testid="badge-grn-count">
                             <Package className="w-3 h-3" />

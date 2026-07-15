@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
@@ -28,6 +28,7 @@ export default function StoresHub() {
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
   const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
+  const canPi = sectionVisible("purchase_indents_view");
 
   const { data: stock = [] } = useQuery<any[]>({
     queryKey: ["/api/stores/stock-summary"],
@@ -44,7 +45,17 @@ export default function StoresHub() {
     enabled: canIrn,
   });
 
+  const { data: indents = [] } = useQuery<any[]>({
+    queryKey: ["/api/purchase-indents"],
+    enabled: canPi,
+  });
+
   const pendingIrns = irns.filter((r: any) => r.status === "pending_stores" || r.status === "stores_verified").length;
+  const pendingStoresIndents = indents.filter((r: any) =>
+    (r.status === "stores_check" || r.status === "pending") &&
+    r.piType !== "material" &&
+    (!r.storesStatus || r.storesStatus !== "verified")
+  ).length;
 
   const totalItems = stock.length;
   const lowStockCount = stock.filter((s: any) => s.isLowStock).length;
@@ -154,6 +165,27 @@ export default function StoresHub() {
                 iconBg="bg-indigo-100"
                 badge={pendingIrns > 0 ? `${pendingIrns} pending` : undefined}
                 enabled={sectionVisible("irn_view")}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Purchase Indents — stores verification queue */}
+        {canPi && (
+          <div>
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+              Purchase Indents
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <HubActionTile
+                href={`/plant/purchase-indents?status=stores_check&returnTo=${HUB}`}
+                icon={ShoppingCart}
+                title="Purchase Indents"
+                description="Verify stock availability for indents raised by HMP & site teams — awaiting stores check before manager approval"
+                accent="cyan"
+                iconBg="bg-cyan-100"
+                badge={pendingStoresIndents > 0 ? `${pendingStoresIndents} need verification` : undefined}
+                enabled={canPi}
               />
             </div>
           </div>
