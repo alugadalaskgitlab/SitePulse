@@ -104,8 +104,12 @@ export default function PlantStockReassign() {
     setPreviewLoading(true);
     try {
       const res = await apiRequest("POST", "/api/plant-module/reassign-ledger/preview", buildBody());
-      const rows = (await res.json()) as PreviewRow[];
-      setPreview(rows);
+      const raw = (await res.json()) as PreviewRow[];
+      setPreview(raw.map(r => ({
+        ...r,
+        quantityIn: r.quantityIn == null ? null : Number(r.quantityIn),
+        quantityOut: r.quantityOut == null ? null : Number(r.quantityOut),
+      })));
     } catch (err) {
       toast({ title: "Preview failed", description: getErrorMessage(err), variant: "destructive" });
     } finally {

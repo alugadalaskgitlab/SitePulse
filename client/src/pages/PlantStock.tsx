@@ -44,6 +44,14 @@ type ProcessedLedgerEntry = StockLedgerEntry & {
   _originalQtyOut?: number;
 };
 
+const n = (v: unknown): number | null => (v == null ? null : Number(v));
+const normLedger = (e: StockLedgerEntry): StockLedgerEntry => ({
+  ...e,
+  quantityIn: n(e.quantityIn) as typeof e.quantityIn,
+  quantityOut: n(e.quantityOut) as typeof e.quantityOut,
+  balanceAfter: n(e.balanceAfter) as typeof e.balanceAfter,
+});
+
 export default function PlantStock() {
   const { toast } = useToast();
   const { sectionCan, isAdmin } = useAuth();
@@ -148,6 +156,7 @@ export default function PlantStock() {
   const { data: materials } = useQuery<PlantMaterial[]>({ queryKey: ["/api/plant-module/materials"] });
   const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
+    select: (rows) => rows.map(r => ({ ...r, balance: Number(r.balance) })),
   });
   const { data: allTemplateComponents } = useQuery<{ id: number; templateId: number; materialId: number; percent: number | null; moistureContent?: number | null; wastageFactor?: number | null }[]>({
     queryKey: ["/api/plant-module/mix-template-components"],
@@ -221,6 +230,24 @@ export default function PlantStock() {
   const { data: stmtData, isLoading: stmtLoading, refetch: refetchStmt } = useQuery<PartyStatementResult>({
     queryKey: [stmtUrl],
     enabled: !!stmtUrl,
+    select: (d) => ({
+      summary: {
+        totalReceived: Number(d.summary.totalReceived),
+        dispatchedOwn: Number(d.summary.dispatchedOwn),
+        borrowedFromHlc: Number(d.summary.borrowedFromHlc),
+        replenishedToHlc: Number(d.summary.replenishedToHlc),
+        outstanding: Number(d.summary.outstanding),
+        uom: d.summary.uom,
+      },
+      entries: d.entries.map(e => ({
+        ...normLedger(e as StockLedgerEntry),
+        displayType: e.displayType,
+        borrowedQty: Number(e.borrowedQty),
+        runningBalance: Number(e.runningBalance),
+        templateQty: e.templateQty == null ? undefined : Number(e.templateQty),
+        ownQty: e.ownQty == null ? undefined : Number(e.ownQty),
+      })),
+    }),
   });
   const { data: reconData, isLoading: reconLoading, refetch: refetchRecon } = useQuery<HlcReconResult>({
     queryKey: [reconUrl],
@@ -228,13 +255,15 @@ export default function PlantStock() {
   });
 
   const { data: ledger, isLoading: ledgerLoading } = useQuery<StockLedgerEntry[]>({ 
-    queryKey: [buildLedgerUrl()] 
+    queryKey: [buildLedgerUrl()],
+    select: (rows) => rows.map(normLedger),
   });
 
   // All-time ledger for Current Balances tab — only fetched when that tab is active
   const { data: allTimeLedger, isLoading: allTimeLedgerLoading } = useQuery<StockLedgerEntry[]>({ 
     queryKey: [buildAllTimeLedgerUrl()],
     enabled: activeTab === "balances",
+    select: (rows) => rows.map(normLedger),
   });
 
   // Aggregate opening-balance query — used instead of full allTimeLedger when dateFrom is set
@@ -242,6 +271,12 @@ export default function PlantStock() {
   const { data: balanceAsOf, isLoading: balanceAsOfLoading } = useQuery<StockBalanceAsOf[]>({
     queryKey: [balanceAsOfUrl],
     enabled: !!balanceAsOfUrl,
+    select: (rows) => rows.map(r => ({
+      ...r,
+      totalIn: Number(r.totalIn), totalOut: Number(r.totalOut),
+      t1TotalIn: Number(r.t1TotalIn), t1TotalOut: Number(r.t1TotalOut),
+      t2TotalIn: Number(r.t2TotalIn), t2TotalOut: Number(r.t2TotalOut),
+    })),
   });
 
   const getMaterialName = (id: number) => materials?.find((m) => m.id === id)?.name || `Material ${id}`;

@@ -62,6 +62,12 @@ export default function PlantDieselProcurementReport() {
       const res = await fetch(`/api/plant-module/stock-ledger?${params}`);
       return res.json();
     },
+    select: (rows) => rows.map(e => ({
+      ...e,
+      quantityIn: e.quantityIn == null ? null : Number(e.quantityIn),
+      quantityOut: e.quantityOut == null ? null : Number(e.quantityOut),
+      balanceAfter: e.balanceAfter == null ? null : Number(e.balanceAfter),
+    })),
     enabled: !!dieselMaterialId,
   });
 
