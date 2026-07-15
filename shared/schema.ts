@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, integer, timestamp, date, boolean, index, jsonb, uniqueIndex, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -565,7 +565,7 @@ export const stockBalances = pgTable("stock_balances", {
   id: serial("id").primaryKey(),
   partyId: integer("party_id"), // NULL for plant-common stock
   materialId: integer("material_id").notNull(),
-  balance: real("balance").notNull().default(0),
+  balance: numeric("balance", { precision: 20, scale: 6, mode: 'number' }).notNull().default(0),
   uom: text("uom"),
   lastUpdated: timestamp("last_updated").defaultNow(),
 });
@@ -578,9 +578,9 @@ export const stockLedger = pgTable("stock_ledger", {
   materialId: integer("material_id").notNull(),
   transactionType: text("transaction_type").notNull(), // "receipt", "dispatch", "issue", "opening", "adjustment"
   referenceId: integer("reference_id"), // ID of receipt, dispatch, or issue
-  quantityIn: real("quantity_in").default(0),
-  quantityOut: real("quantity_out").default(0),
-  balanceAfter: real("balance_after"),
+  quantityIn: numeric("quantity_in", { precision: 20, scale: 6, mode: 'number' }).default(0),
+  quantityOut: numeric("quantity_out", { precision: 20, scale: 6, mode: 'number' }).default(0),
+  balanceAfter: numeric("balance_after", { precision: 20, scale: 6, mode: 'number' }),
   uom: text("uom"),
   notes: text("notes"),
   tankNumber: integer("tank_number"), // For bitumen: which physical tank (1 or 2) this movement belongs to

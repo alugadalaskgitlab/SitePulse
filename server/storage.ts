@@ -3176,27 +3176,8 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Get current balance
-      const condition = targetPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, receipt.materialId))
-        : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, receipt.materialId));
-      
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance || 0) + stockQuantity;
-      
-      // Update stock balance (using converted quantity)
-      if (existing) {
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: targetPartyId,
-          materialId: receipt.materialId,
-          balance: stockQuantity,
-          uom: stockUom,
-        });
-      }
+      // Update stock balance with row-level locking (prevents lost-update race conditions)
+      const { newBalance } = await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, stockQuantity, stockUom);
       
       // Add ledger entry (store converted quantity for stock, note original in notes)
       const conversionNote = stockQuantity !== receipt.quantity 
@@ -3286,18 +3267,9 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Reverse old stock balance
+      // Reverse old stock balance (row-level locking)
       const oldTargetPartyId = existing.isPlantCommon ? null : (existing.partyId ?? null);
-      const oldCondition = oldTargetPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, existing.materialId))
-        : and(eq(stockBalances.partyId, oldTargetPartyId), eq(stockBalances.materialId, existing.materialId));
-      
-      const [oldBalance] = await tx.select().from(stockBalances).where(oldCondition).limit(1);
-      if (oldBalance) {
-        await tx.update(stockBalances)
-          .set({ balance: oldBalance.balance - oldStockQuantity, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, oldBalance.id));
-      }
+      await this._adjustStockBalance(tx, existing.materialId, oldTargetPartyId, -oldStockQuantity, oldStockUom);
 
       // Clean up existing store ledger entry for this receipt id
       await tx.delete(stockLedger).where(and(
@@ -3305,27 +3277,9 @@ export class DatabaseStorage implements IStorage {
         eq(stockLedger.referenceId, id)
       ));
 
-      // Apply new stock balance and ledger
+      // Apply new stock balance (row-level locking)
       const newTargetPartyId = newIsPlantCommon ? null : (newPartyId ?? null);
-      const newCondition = newTargetPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
-        : and(eq(stockBalances.partyId, newTargetPartyId), eq(stockBalances.materialId, newMaterialId));
-      
-      const [newBalance] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-      const finalBalance = (newBalance?.balance || 0) + newStockQuantity;
-      
-      if (newBalance) {
-        await tx.update(stockBalances)
-          .set({ balance: finalBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, newBalance.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: newTargetPartyId,
-          materialId: newMaterialId,
-          balance: newStockQuantity,
-          uom: newStockUom,
-        });
-      }
+      const { newBalance: finalBalance } = await this._adjustStockBalance(tx, newMaterialId, newTargetPartyId, newStockQuantity, newStockUom);
       
       const conversionNote = newStockQuantity !== newQuantity 
         ? `From ${updates.supplier || existing.supplier || 'Supplier'} (${newQuantity} ${newUom} converted to ${newStockQuantity.toFixed(3)} ${newStockUom})`
@@ -3404,18 +3358,9 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Reverse the stock balance
+      // Reverse the stock balance (row-level locking)
       const targetPartyId = receipt.isPlantCommon ? null : (receipt.partyId ?? null);
-      const condition = targetPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, receipt.materialId))
-        : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, receipt.materialId));
-      
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      if (existing) {
-        await tx.update(stockBalances)
-          .set({ balance: existing.balance - stockQuantity, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      }
+      await this._adjustStockBalance(tx, receipt.materialId, targetPartyId, -stockQuantity, null);
       
       // Delete related ledger entry
       await tx.delete(stockLedger).where(and(
@@ -3853,28 +3798,8 @@ export class DatabaseStorage implements IStorage {
         
         if (dieselMaterial) {
           if (dieselSource === 'plant_stock') {
-            // Deduct from HLC stock
-            const [existingBalance] = await tx.select().from(stockBalances)
-              .where(and(
-                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-                eq(stockBalances.materialId, dieselMaterial.id)
-              ))
-              .limit(1);
-            
-            const newBalance = (existingBalance?.balance || 0) - dieselIssued;
-            
-            if (existingBalance) {
-              await tx.update(stockBalances)
-                .set({ balance: newBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, existingBalance.id));
-            } else {
-              await tx.insert(stockBalances).values({
-                partyId: hlcPartyId,
-                materialId: dieselMaterial.id,
-                balance: newBalance,
-                uom: dieselMaterial.defaultUom || 'Liters',
-              });
-            }
+            // Deduct from HLC stock (row-level locking)
+            const { newBalance } = await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselIssued, dieselMaterial.defaultUom || 'Liters');
             
             // Create ledger entry for equipment diesel issue (stock deduction)
             await tx.insert(stockLedger).values({
@@ -4063,67 +3988,17 @@ export class DatabaseStorage implements IStorage {
         // Handle stock balance restoration/deduction based on source changes
         // If old source affected stock but new doesn't, restore the old amount
         if (oldAffectsStock && !newAffectsStock && oldDieselIssued > 0) {
-          const [existingBalance] = await tx.select().from(stockBalances)
-            .where(and(
-              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ))
-            .limit(1);
-          
-          const newBalance = (existingBalance?.balance || 0) + oldDieselIssued;
-          if (existingBalance) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existingBalance.id));
-          }
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, oldDieselIssued, null);
         }
         
         // If new source affects stock but old didn't, deduct the new amount
         if (!oldAffectsStock && newAffectsStock && newDieselIssued > 0) {
-          const [existingBalance] = await tx.select().from(stockBalances)
-            .where(and(
-              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ))
-            .limit(1);
-          
-          const newBalance = (existingBalance?.balance || 0) - newDieselIssued;
-          if (existingBalance) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existingBalance.id));
-          } else {
-            await tx.insert(stockBalances).values({
-              partyId: hlcPartyId,
-              materialId: dieselMaterial.id,
-              balance: newBalance,
-              uom: dieselMaterial.defaultUom || 'Liters',
-            });
-          }
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -newDieselIssued, dieselMaterial.defaultUom || 'Liters');
         }
         
         // If both old and new affect stock, handle the difference
         if (oldAffectsStock && newAffectsStock && dieselDiff !== 0) {
-          const [existingBalance] = await tx.select().from(stockBalances)
-            .where(and(
-              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ))
-            .limit(1);
-          
-          const newBalance = (existingBalance?.balance || 0) - dieselDiff;
-          if (existingBalance) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existingBalance.id));
-          } else {
-            await tx.insert(stockBalances).values({
-              partyId: hlcPartyId,
-              materialId: dieselMaterial.id,
-              balance: newBalance,
-              uom: dieselMaterial.defaultUom || 'Liters',
-            });
-          }
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, -dieselDiff, dieselMaterial.defaultUom || 'Liters');
         }
         
         // Create new ledger entry based on current source
@@ -4207,29 +4082,8 @@ export class DatabaseStorage implements IStorage {
         const hlcPartyId = hlcParty?.id || null;
         
         if (dieselMaterial) {
-          // Restore to HLC stock
-          const [existingBalance] = await tx.select().from(stockBalances)
-            .where(and(
-              hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-              eq(stockBalances.materialId, dieselMaterial.id)
-            ))
-            .limit(1);
-          
-          const newBalance = (existingBalance?.balance || 0) + dieselIssued;
-          
-          if (existingBalance) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existingBalance.id));
-          } else {
-            // Create balance if it doesn't exist (edge case - shouldn't normally happen)
-            await tx.insert(stockBalances).values({
-              partyId: hlcPartyId,
-              materialId: dieselMaterial.id,
-              balance: newBalance,
-              uom: dieselMaterial.defaultUom || 'Liters',
-            });
-          }
+          // Restore to HLC stock (row-level locking)
+          await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, dieselIssued, dieselMaterial.defaultUom || 'Liters');
         }
       }
       
@@ -4427,6 +4281,51 @@ export class DatabaseStorage implements IStorage {
     const tonsProducedMT = dispatches.reduce((s, d) => s + (d.loadWeight || 0), 0);
 
     return { openingStockL, ldoReceivedL, ldoConsumedL, closingStockL, tonsProducedMT, hasFlowReadings };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Shared stock-balance helper — used by every live API that adjusts stock.
+  // Uses SELECT … FOR UPDATE so concurrent requests never produce lost updates.
+  // delta > 0 = add, delta < 0 = deduct.
+  // Returns the new balance so callers can embed it in the ledger entry.
+  // ─────────────────────────────────────────────────────────────────────────
+  private async _adjustStockBalance(
+    tx: any,
+    materialId: number,
+    partyId: number | null,
+    delta: number,
+    uom: string | null = null,
+  ): Promise<{ id: number; newBalance: number }> {
+    const partyClause = partyId === null
+      ? sql`party_id IS NULL`
+      : sql`party_id = ${partyId}`;
+
+    const locked = await tx.execute(sql`
+      SELECT id, balance, uom
+      FROM stock_balances
+      WHERE material_id = ${materialId} AND ${partyClause}
+      LIMIT 1
+      FOR UPDATE
+    `);
+
+    const row = locked.rows?.[0] as { id: number; balance: string | number; uom: string | null } | undefined;
+    // Round to 6 decimal places to eliminate floating-point accumulation errors.
+    const newBalance = Math.round(((Number(row?.balance) || 0) + delta) * 1e6) / 1e6;
+
+    if (row) {
+      await tx.update(stockBalances)
+        .set({ balance: newBalance, lastUpdated: new Date() })
+        .where(eq(stockBalances.id, Number(row.id)));
+      return { id: Number(row.id), newBalance };
+    } else {
+      const [inserted] = await tx.insert(stockBalances).values({
+        materialId,
+        partyId,
+        balance: newBalance,
+        uom: uom ?? 'Units',
+      }).returning();
+      return { id: inserted.id, newBalance };
+    }
   }
 
   // Stock Balances
@@ -5131,10 +5030,13 @@ export class DatabaseStorage implements IStorage {
       // using the material's conversion factor before deducting (e.g. Ton dispatch
       // from a CFT-denominated opening balance like 6MM Down).
       const deductFromSource = async (pId: number | null, matId: number, qty: number, uom: string, notes: string, tankNum?: number | null) => {
-        const condition = pId === null 
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
-          : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
-        const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
+        // Lock the row for update to prevent concurrent dispatch races
+        const lockResult = await tx.execute(
+          pId === null
+            ? sql`SELECT id, balance, uom FROM stock_balances WHERE party_id IS NULL AND material_id = ${matId} FOR UPDATE`
+            : sql`SELECT id, balance, uom FROM stock_balances WHERE party_id = ${pId} AND material_id = ${matId} FOR UPDATE`
+        );
+        const existing = lockResult.rows[0] as { id: number; balance: string | number; uom: string } | undefined;
 
         // UOM mismatch check: convert qty to the balance's UOM when they differ
         let deductQty = qty;
@@ -5160,8 +5062,9 @@ export class DatabaseStorage implements IStorage {
             }
           }
         }
-        
-        const newBalance = (existing?.balance || 0) - deductQty;
+
+        const rawBal = existing?.balance;
+        const newBalance = +(((typeof rawBal === 'string' ? parseFloat(rawBal) : (rawBal ?? 0)) - deductQty).toFixed(6));
         
         if (existing) {
           await tx.update(stockBalances)
@@ -7139,25 +7042,7 @@ export class DatabaseStorage implements IStorage {
         // shows it correctly and it is NOT counted as theoretical consumption.
         // Actual LDO/Diesel consumption is tracked via shift log dip readings.
         {
-          const condition = stockPartyId === null 
-            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
-            : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, issue.materialId));
-          
-          const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-          const newBalance = (existing?.balance || 0) - stockQuantity;
-          
-          if (existing) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existing.id));
-          } else {
-            await tx.insert(stockBalances).values({
-              partyId: stockPartyId,
-              materialId: issue.materialId,
-              balance: newBalance,
-              uom: stockUom,
-            });
-          }
+          const { newBalance } = await this._adjustStockBalance(tx, issue.materialId, stockPartyId, -stockQuantity, stockUom);
           
           // LDO or Diesel issued directly into a boiler/dryer tank = store→tank transfer
           const isTankFill = issue.ldoTankNumber != null && material &&
@@ -7259,16 +7144,7 @@ export class DatabaseStorage implements IStorage {
 
         if (existingIssueLedger != null) {
           const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
-          const origCondition = originalStockPartyId === null 
-            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
-            : and(eq(stockBalances.partyId, originalStockPartyId), eq(stockBalances.materialId, original.materialId));
-          
-          const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
-          if (origBal) {
-            await tx.update(stockBalances)
-              .set({ balance: origBal.balance + origStockQuantity, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, origBal.id));
-          }
+          await this._adjustStockBalance(tx, original.materialId, originalStockPartyId, origStockQuantity, null);
         }
       
       // Update the issue record
@@ -7303,25 +7179,7 @@ export class DatabaseStorage implements IStorage {
 
       // Always apply new stock impact and write ledger entry (including LDO-tank issues).
         {
-          const newCondition = newStockPartyId === null 
-            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
-            : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
-          
-          const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-          const newBalance = (newBal?.balance || 0) - newStockQuantity;
-          
-          if (newBal) {
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, newBal.id));
-          } else {
-            await tx.insert(stockBalances).values({
-              partyId: newStockPartyId,
-              materialId: newMaterialId,
-              balance: newBalance,
-              uom: newStockUom,
-            });
-          }
+          const { newBalance } = await this._adjustStockBalance(tx, newMaterialId, newStockPartyId, -newStockQuantity, newStockUom);
           
           const newLdoTankNum = issue.ldoTankNumber !== undefined ? issue.ldoTankNumber : original.ldoTankNumber;
           const isNewTankFill = newLdoTankNum != null && /^(ldo|diesel)$/i.test(newMaterial.name.trim());
@@ -7403,19 +7261,9 @@ export class DatabaseStorage implements IStorage {
       
       // Always restore stock balance and delete ledger entry on issue deletion.
         {
-          // Reverse stock balance with converted quantity
+          // Reverse stock balance with row-level locking
           const stockPartyId = issue.isPlantCommon ? null : issue.partyId;
-          const condition = stockPartyId === null 
-            ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, issue.materialId))
-            : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, issue.materialId));
-          
-          const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-          if (existing) {
-            const newBalance = existing.balance + stockQuantity;
-            await tx.update(stockBalances)
-              .set({ balance: newBalance, lastUpdated: new Date() })
-              .where(eq(stockBalances.id, existing.id));
-          }
+          await this._adjustStockBalance(tx, issue.materialId, stockPartyId, stockQuantity, null);
           
           await tx.delete(stockLedger).where(
             and(inArray(stockLedger.transactionType, ["issue", "tank_transfer"]), eq(stockLedger.referenceId, id))
@@ -7502,26 +7350,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
-
-      const condition = stockPartyId === null
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ret.materialId))
-        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, ret.materialId));
-
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance || 0) + stockQuantity;
-
-      if (existing) {
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: stockPartyId,
-          materialId: ret.materialId,
-          balance: newBalance,
-          uom: stockUom,
-        });
-      }
+      const { newBalance } = await this._adjustStockBalance(tx, ret.materialId, stockPartyId, stockQuantity, stockUom);
 
       const conversionNote = stockQuantity !== ret.quantity
         ? `Return from issue #${ret.originalIssueId}${ret.returnedBy ? ` by ${ret.returnedBy}` : ''} (${ret.quantity} ${ret.uom} = ${stockQuantity.toFixed(3)} ${stockUom})`
@@ -7561,18 +7390,9 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      // Reverse original stock balance
+      // Reverse original stock balance (row-level locking)
       const origStockPartyId = original.isPlantCommon ? null : original.partyId;
-      const origCondition = origStockPartyId === null
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
-        : and(eq(stockBalances.partyId, origStockPartyId!), eq(stockBalances.materialId, original.materialId));
-
-      const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
-      if (origBal) {
-        await tx.update(stockBalances)
-          .set({ balance: origBal.balance - origStockQuantity, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, origBal.id));
-      }
+      await this._adjustStockBalance(tx, original.materialId, origStockPartyId, -origStockQuantity, origStockUom);
 
       // Validate new quantity against original issue remaining (considering this return already exists)
       const newQuantity = updates.quantity ?? original.quantity;
@@ -7620,25 +7440,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      const newCondition = newPartyId === null
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
-        : and(eq(stockBalances.partyId, newPartyId!), eq(stockBalances.materialId, newMaterialId));
-
-      const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-      const newBalance = (newBal?.balance ?? 0) + newStockQuantity;
-
-      if (newBal) {
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, newBal.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: newPartyId,
-          materialId: newMaterialId,
-          balance: newBalance,
-          uom: newStockUom,
-        });
-      }
+      const { newBalance } = await this._adjustStockBalance(tx, newMaterialId, newPartyId, newStockQuantity, newStockUom);
 
       // Delete old ledger entry and create new one
       await tx.delete(stockLedger).where(
@@ -7685,17 +7487,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const stockPartyId = ret.isPlantCommon ? null : ret.partyId;
-      const condition = stockPartyId === null
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ret.materialId))
-        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, ret.materialId));
-
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      if (existing) {
-        const newBalance = existing.balance - stockQuantity;
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      }
+      await this._adjustStockBalance(tx, ret.materialId, stockPartyId, -stockQuantity, null);
 
       await tx.delete(stockLedger).where(
         and(eq(stockLedger.transactionType, "return"), eq(stockLedger.referenceId, id))
@@ -7758,26 +7550,8 @@ export class DatabaseStorage implements IStorage {
         stockUom = openingMaterial.conversionToUom;
       }
       
-      // Update stock balance
-      const condition = stockPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, stock.materialId))
-        : and(eq(stockBalances.partyId, stockPartyId!), eq(stockBalances.materialId, stock.materialId));
-      
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const newBalance = (existing?.balance ?? 0) + stockQuantity;
-      
-      if (existing) {
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: stockPartyId,
-          materialId: stock.materialId,
-          balance: newBalance,
-          uom: stockUom,
-        });
-      }
+      // Update stock balance (row-level locking)
+      const { newBalance } = await this._adjustStockBalance(tx, stock.materialId, stockPartyId, stockQuantity, stockUom);
       
       // Add ledger entry for opening stock (always in the stock UOM after conversion)
       const conversionNote = stockQuantity !== stock.quantity
@@ -7822,18 +7596,9 @@ export class DatabaseStorage implements IStorage {
         oldStockQuantity = original.quantity * oldMaterial.conversionFactor;
       }
       
-      // Reverse original stock balance using the converted amount
+      // Reverse original stock balance (row-level locking)
       const originalStockPartyId = original.isPlantCommon ? null : original.partyId;
-      const origCondition = originalStockPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, original.materialId))
-        : and(eq(stockBalances.partyId, originalStockPartyId), eq(stockBalances.materialId, original.materialId));
-      
-      const [origBal] = await tx.select().from(stockBalances).where(origCondition).limit(1);
-      if (origBal) {
-        await tx.update(stockBalances)
-          .set({ balance: origBal.balance - oldStockQuantity, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, origBal.id));
-      }
+      await this._adjustStockBalance(tx, original.materialId, originalStockPartyId, -oldStockQuantity, null);
       
       // Update the opening stock record
       const [result] = await tx.update(materialOpeningStocks)
@@ -7862,25 +7627,7 @@ export class DatabaseStorage implements IStorage {
         newStockUom = newMaterial.conversionToUom;
       }
       
-      const newCondition = newStockPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, newMaterialId))
-        : and(eq(stockBalances.partyId, newStockPartyId), eq(stockBalances.materialId, newMaterialId));
-      
-      const [newBal] = await tx.select().from(stockBalances).where(newCondition).limit(1);
-      const newBalance = (newBal?.balance ?? 0) + newStockQuantity;
-      
-      if (newBal) {
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, newBal.id));
-      } else {
-        await tx.insert(stockBalances).values({
-          partyId: newStockPartyId,
-          materialId: newMaterialId,
-          balance: newBalance,
-          uom: newStockUom,
-        });
-      }
+      const { newBalance } = await this._adjustStockBalance(tx, newMaterialId, newStockPartyId, newStockQuantity, newStockUom);
       
       // Delete old ledger entry and create new one in the stock UOM
       await tx.delete(stockLedger).where(
@@ -7934,19 +7681,9 @@ export class DatabaseStorage implements IStorage {
         reverseUom = mat.conversionToUom;
       }
       
-      // Reverse stock balance using the converted amount
+      // Reverse stock balance (row-level locking)
       const stockPartyId = stock.isPlantCommon ? null : stock.partyId;
-      const condition = stockPartyId === null 
-        ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, stock.materialId))
-        : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, stock.materialId));
-      
-      const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      if (existing) {
-        const newBalance = existing.balance - reverseQuantity;
-        await tx.update(stockBalances)
-          .set({ balance: newBalance, lastUpdated: new Date() })
-          .where(eq(stockBalances.id, existing.id));
-      }
+      await this._adjustStockBalance(tx, stock.materialId, stockPartyId, -reverseQuantity, null);
       
       // Delete ledger entries for this opening stock
       await tx.delete(stockLedger).where(
@@ -19502,19 +19239,101 @@ export class DatabaseStorage implements IStorage {
     return this._buildBatchRecordWithDesign(rows[0]);
   }
 
+  // Deduct (or restore when reverse=true) plant stock for an RMC batch based on the
+  // mix design's componentProportions (kg/m³ → Ton via totalVolumeM3 / 1000).
+  // Materials are matched by fuzzy name against plantMaterials; unmatched keys are silently skipped.
+  private async _deductRmcMaterials(
+    tx: any,
+    batch: RmcBatchRecord,
+    reverse = false,
+  ): Promise<void> {
+    const [design] = await tx
+      .select()
+      .from(rmcMixDesigns)
+      .where(eq(rmcMixDesigns.id, batch.mixDesignId))
+      .limit(1);
+    if (!design?.componentProportions) return;
+    const proportions = design.componentProportions as Record<string, number>;
+    const volM3 = batch.totalVolumeM3;
+    if (!volM3) return;
+
+    const keyToPatterns: [string, string[]][] = [
+      ['cement',      ['cement']],
+      ['fineAgg',     ['fine agg', 'm sand', 'fine aggregate', 'fine sand']],
+      ['coarseAgg10', ['10mm', 'coarse agg 10', '10 mm', 'aggregate 10', '10mm down']],
+      ['coarseAgg20', ['20mm', 'coarse agg 20', '20 mm', 'aggregate 20', '20mm down']],
+    ];
+
+    const allMats = await tx.select({ id: plantMaterials.id, name: plantMaterials.name }).from(plantMaterials);
+
+    for (const [key, patterns] of keyToPatterns) {
+      const kgPerM3 = proportions[key];
+      if (!kgPerM3 || kgPerM3 <= 0) continue;
+      const qtyTon = +(kgPerM3 * volM3 / 1000).toFixed(6);
+      if (qtyTon < 0.000001) continue;
+
+      const mat = (allMats as { id: number; name: string }[]).find(m =>
+        patterns.some(p => m.name.toLowerCase().includes(p))
+      );
+      if (!mat) continue;
+
+      const delta = reverse ? qtyTon : -qtyTon;
+      const { newBalance } = await this._adjustStockBalance(tx, mat.id, null, delta, 'Ton');
+
+      if (!reverse) {
+        await tx.insert(stockLedger).values({
+          date: batch.date,
+          partyId: null,
+          materialId: mat.id,
+          transactionType: 'rmc_batch',
+          referenceId: batch.id,
+          quantityOut: qtyTon,
+          balanceAfter: newBalance,
+          uom: 'Ton',
+          notes: `RMC ${design.grade} — ${volM3.toFixed(3)} m³`,
+        });
+      }
+    }
+  }
+
   async createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<RmcBatchRecord> {
-    const rows = await db.insert(rmcBatchRecords).values(r).returning();
-    return rows[0];
+    return db.transaction(async (tx) => {
+      const [result] = await tx.insert(rmcBatchRecords).values(r).returning();
+      await this._deductRmcMaterials(tx, result);
+      return result;
+    });
   }
 
   async updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<RmcBatchRecord | undefined> {
-    const rows = await db.update(rmcBatchRecords).set(r).where(eq(rmcBatchRecords.id, id)).returning();
-    return rows[0];
+    return db.transaction(async (tx) => {
+      const [original] = await tx.select().from(rmcBatchRecords).where(eq(rmcBatchRecords.id, id)).limit(1);
+      if (!original) return undefined;
+      // Reverse original stock consumption then delete old ledger entries
+      await this._deductRmcMaterials(tx, original, true);
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, 'rmc_batch'), eq(stockLedger.referenceId, id))
+      );
+      // Apply update and write new ledger entries
+      const [result] = await tx.update(rmcBatchRecords).set(r).where(eq(rmcBatchRecords.id, id)).returning();
+      if (!result) return undefined;
+      await this._deductRmcMaterials(tx, result);
+      return result;
+    });
   }
 
   async deleteRmcBatchRecord(id: number): Promise<boolean> {
-    const res = await db.delete(rmcBatchRecords).where(eq(rmcBatchRecords.id, id));
-    return (res.rowCount ?? 0) > 0;
+    return db.transaction(async (tx) => {
+      const [original] = await tx.select().from(rmcBatchRecords).where(eq(rmcBatchRecords.id, id)).limit(1);
+      if (!original) return false;
+      // Restore stock balances
+      await this._deductRmcMaterials(tx, original, true);
+      // Delete ledger entries and the batch record
+      await tx.delete(stockLedger).where(
+        and(eq(stockLedger.transactionType, 'rmc_batch'), eq(stockLedger.referenceId, id))
+      );
+      await tx.delete(rmcBatchRecords).where(eq(rmcBatchRecords.id, id));
+      return true;
+    });
   }
 
   async getRmcCubeTests(filters?: { batchRecordId?: number; ageDays?: number; dateFrom?: string; dateTo?: string }): Promise<RmcCubeTest[]> {
@@ -20196,18 +20015,8 @@ export class DatabaseStorage implements IStorage {
           }
         }
 
-        // Update stock_balances
-        const balCond = stockPartyId === null
-          ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, reqItem.materialId))
-          : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, reqItem.materialId));
-        const [existing] = await tx.select().from(stockBalances).where(balCond).limit(1);
-        const newBalance = (existing?.balance ?? 0) - stockQty;
-        if (existing) {
-          await tx.update(stockBalances).set({ balance: newBalance, lastUpdated: new Date() })
-            .where(eq(stockBalances.id, existing.id));
-        } else {
-          await tx.insert(stockBalances).values({ partyId: stockPartyId, materialId: reqItem.materialId, balance: newBalance, uom: stockUom });
-        }
+        // Update stock_balances (row-level locking)
+        const { newBalance } = await this._adjustStockBalance(tx, reqItem.materialId, stockPartyId, -stockQty, stockUom);
 
         // Insert stock_ledger row
         await tx.insert(stockLedger).values({

@@ -10,3 +10,4 @@
 - [BOQ Canonical Unit System](boq-canonical-unit.md) — shared/boqNormalise.ts is the single source of truth for BOQ unit normalisation; canonical_unit DB column backfilled on startup; 286 units + 117 work_categories fixed on first run.
 - [Auto-build-recipes SNL Integration](auto-build-recipes-snl.md) — resolveWorkType() is the canonical resolver; auto-build-recipes uses SNL→regex→workCategory in priority order; classifier requires unit+keyword combo to fire (unit guards prevent false positives).
 - [Sequencer road-way earthwork veto](sequencer-trench-road-veto.md) — "trench cutting" in MoRTH 301 road-earthwork descriptions false-fires excavation_structure; 3-layer fix in workTypeRecipes.ts + programmeSequencer.ts.
+- [Stock Ledger Locking](stock-ledger-locking.md) — _adjustStockBalance helper + numeric(20,6) columns; drizzle-kit push is interactive (--force not sufficient), use direct ALTER TABLE for unblocked schema migrations.
