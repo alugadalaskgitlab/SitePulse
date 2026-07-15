@@ -182,8 +182,8 @@ export default function StoresHub() {
                 icon={ShoppingCart}
                 title="Purchase Indents"
                 description="Verify stock availability for indents raised by HMP & site teams — awaiting stores check before manager approval"
-                accent="cyan"
-                iconBg="bg-cyan-100"
+                accent="teal"
+                iconBg="bg-teal-100"
                 badge={pendingStoresIndents > 0 ? `${pendingStoresIndents} need verification` : undefined}
                 enabled={canPi}
               />
