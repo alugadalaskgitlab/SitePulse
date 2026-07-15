@@ -380,11 +380,16 @@ export default function PlantStock() {
         // Always maintain per-party attribution (for Party Balance column in all-party mode)
         if (partyBalances[partyKey] === undefined) partyBalances[partyKey] = 0;
         partyBalances[partyKey] = roundBalance(partyBalances[partyKey] + contribution);
-        // Per-tank opening balances (also apply conversion factor, use globalKey)
+        // Per-tank opening balances (also apply conversion factor, use globalKey).
+        // Entries with no tankNumber ("untagged") are distributed evenly between T1 and T2
+        // so that T1+T2 always equals Global Balance — no drift possible.
         if (t1GroupBalances[globalKey] === undefined) t1GroupBalances[globalKey] = 0;
         if (t2GroupBalances[globalKey] === undefined) t2GroupBalances[globalKey] = 0;
-        t1GroupBalances[globalKey] = roundBalance(t1GroupBalances[globalKey] + (row.t1TotalIn * factor) - (row.t1TotalOut * factor));
-        t2GroupBalances[globalKey] = roundBalance(t2GroupBalances[globalKey] + (row.t2TotalIn * factor) - (row.t2TotalOut * factor));
+        const t1Seed = roundBalance((row.t1TotalIn - row.t1TotalOut) * factor);
+        const t2Seed = roundBalance((row.t2TotalIn - row.t2TotalOut) * factor);
+        const untaggedSeed = roundBalance(contribution - t1Seed - t2Seed);
+        t1GroupBalances[globalKey] = roundBalance(t1GroupBalances[globalKey] + t1Seed + untaggedSeed / 2);
+        t2GroupBalances[globalKey] = roundBalance(t2GroupBalances[globalKey] + t2Seed + untaggedSeed / 2);
       });
     }
 
@@ -536,11 +541,22 @@ export default function PlantStock() {
       groupBalances[globalKey] = roundBalance(groupBalances[globalKey] + convertedIn - convertedOut);
       partyBalances[partyKey]  = roundBalance(partyBalances[partyKey]  + convertedIn - convertedOut);
 
-      // Per-tank running balances — only entries with an explicit tankNumber move a tank balance
+      // Per-tank running balances.
+      // Tagged entries move only their assigned tank; untagged (tankNumber=null) entries are
+      // split proportionally across T1 and T2 (by positive balances, 50/50 fallback) so that
+      // T1+T2 always equals Global Balance — no drift possible.
+      const tankDelta = convertedIn - convertedOut;
       if (entry.tankNumber === 1) {
-        t1Balances[globalKey] = roundBalance(t1Balances[globalKey] + convertedIn - convertedOut);
+        t1Balances[globalKey] = roundBalance(t1Balances[globalKey] + tankDelta);
       } else if (entry.tankNumber === 2) {
-        t2Balances[globalKey] = roundBalance(t2Balances[globalKey] + convertedIn - convertedOut);
+        t2Balances[globalKey] = roundBalance(t2Balances[globalKey] + tankDelta);
+      } else if (tankDelta !== 0) {
+        const pos1 = Math.max(t1Balances[globalKey], 0);
+        const pos2 = Math.max(t2Balances[globalKey], 0);
+        const posTotal = pos1 + pos2;
+        const r1 = posTotal > 0 ? pos1 / posTotal : 0.5;
+        t1Balances[globalKey] = roundBalance(t1Balances[globalKey] + tankDelta * r1);
+        t2Balances[globalKey] = roundBalance(t2Balances[globalKey] + tankDelta * (1 - r1));
       }
 
       const row: ProcessedLedgerEntry = {

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Pencil, Trash2, Printer, FlaskConical, FileDown } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Printer, FlaskConical, FileDown, RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -157,12 +157,45 @@ export default function RmcBatchRecords() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/rmc/batch-records"] });
-      toast({ title: editingId ? "Batch record updated" : "Batch record saved" });
       setOpen(false);
+      const warnings: string[] = result?.warnings ?? [];
+      if (warnings.length > 0) {
+        toast({
+          title: editingId ? "Batch record updated — stock gap detected" : "Batch record saved — stock gap detected",
+          description: `Stock was NOT deducted for: ${warnings.join(", ")}. No matching plant material found. Use the Reprocess tool once the material name is corrected.`,
+          variant: "destructive",
+          duration: 12000,
+        });
+      } else {
+        toast({ title: editingId ? "Batch record updated" : "Batch record saved" });
+      }
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const reprocessMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/rmc/batch-records/reprocess-missed-deductions");
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json() as Promise<{ batchesScanned: number; deductionsApplied: Array<{ batchId: number; grade: string; component: string; materialName: string; qtyTon: number }>; warnings: string[] }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rmc/batch-records"] });
+      const n = result.deductionsApplied.length;
+      if (n === 0) {
+        toast({ title: "Reprocess complete", description: `${result.batchesScanned} batches scanned — no missed deductions found.` });
+      } else {
+        const lines = result.deductionsApplied.map(d => `Batch #${d.batchId} (${d.grade}): ${d.component} → ${d.materialName} — ${d.qtyTon.toFixed(3)} Ton`);
+        toast({
+          title: `Reprocess complete — ${n} deduction${n !== 1 ? "s" : ""} applied`,
+          description: lines.slice(0, 6).join("\n") + (lines.length > 6 ? `\n…and ${lines.length - 6} more` : ""),
+          duration: 10000,
+        });
+      }
+    },
+    onError: (e: any) => toast({ title: "Reprocess failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -267,6 +300,24 @@ export default function RmcBatchRecords() {
               data-testid="btn-export-excel"
             >
               <FileDown className="w-4 h-4 mr-2" />Export Excel
+            </Button>
+          )}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm("Scan all batch records and apply any missing stock deductions? This is safe to run multiple times.")) {
+                  reprocessMutation.mutate();
+                }
+              }}
+              disabled={reprocessMutation.isPending}
+              data-testid="btn-reprocess-missed"
+              title="Re-process missed stock deductions for past batches"
+            >
+              {reprocessMutation.isPending
+                ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                : <AlertTriangle className="w-4 h-4 mr-2 text-amber-500" />}
+              Reprocess
             </Button>
           )}
           {canCreate && (

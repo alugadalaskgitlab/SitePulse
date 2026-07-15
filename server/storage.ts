@@ -981,9 +981,10 @@ export interface IStorage {
 
   getRmcBatchRecords(filters?: { plantName?: string; dateFrom?: string; dateTo?: string; mixDesignId?: number }): Promise<RmcBatchRecordWithDesign[]>;
   getRmcBatchRecord(id: number): Promise<RmcBatchRecordWithDesign | undefined>;
-  createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<RmcBatchRecord>;
-  updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<RmcBatchRecord | undefined>;
+  createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<{ batch: RmcBatchRecord; warnings: string[] }>;
+  updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<{ batch: RmcBatchRecord; warnings: string[] } | undefined>;
   deleteRmcBatchRecord(id: number): Promise<boolean>;
+  reprocessRmcMissedDeductions(): Promise<{ batchesScanned: number; deductionsApplied: Array<{ batchId: number; grade: string; component: string; materialName: string; qtyTon: number }>; warnings: string[] }>;
 
   getRmcCubeTests(filters?: { batchRecordId?: number; ageDays?: number; dateFrom?: string; dateTo?: string }): Promise<RmcCubeTest[]>;
   createRmcCubeTest(t: InsertRmcCubeTest): Promise<RmcCubeTest>;
@@ -19255,23 +19256,24 @@ export class DatabaseStorage implements IStorage {
     tx: any,
     batch: RmcBatchRecord,
     reverse = false,
-  ): Promise<void> {
+  ): Promise<string[]> {
+    const missed: string[] = [];
     const [design] = await tx
       .select()
       .from(rmcMixDesigns)
       .where(eq(rmcMixDesigns.id, batch.mixDesignId))
       .limit(1);
-    if (!design?.componentProportions) return;
+    if (!design?.componentProportions) return missed;
     const proportions = design.componentProportions as Record<string, number>;
     const volM3 = batch.totalVolumeM3;
-    if (!volM3) return;
+    if (!volM3) return missed;
 
     // Canonical search patterns per component key.
     // Any key NOT listed here falls back to a pattern derived from the key name itself,
     // so new ingredients added to mix designs are matched automatically.
     const KEY_TO_PATTERNS: Record<string, string[]> = {
       cement:      ['cement'],
-      fineAgg:     ['fine agg', 'm sand', 'fine aggregate', 'fine sand'],
+      fineAgg:     ['fine agg', 'm sand', 'fine aggregate', 'fine sand', 'dust'],
       coarseAgg10: ['10mm', 'coarse agg 10', '10 mm', 'aggregate 10', '10mm down'],
       coarseAgg20: ['20mm', 'coarse agg 20', '20 mm', 'aggregate 20', '20mm down'],
       admixture:   ['admixture', 'plasticizer', 'superplasticizer', 'concrete admix', 'admix'],
@@ -19303,6 +19305,7 @@ export class DatabaseStorage implements IStorage {
           `(batch #${batch.id}, mix design #${batch.mixDesignId}, grade ${design.grade}) — ` +
           `${qtyTon} Ton NOT deducted from stock. Add a plant material whose name contains one of: ${patterns.join(', ')}`
         );
+        missed.push(key);
         continue;
       }
 
@@ -19333,17 +19336,18 @@ export class DatabaseStorage implements IStorage {
         });
       }
     }
+    return missed;
   }
 
-  async createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<RmcBatchRecord> {
+  async createRmcBatchRecord(r: InsertRmcBatchRecord): Promise<{ batch: RmcBatchRecord; warnings: string[] }> {
     return db.transaction(async (tx) => {
       const [result] = await tx.insert(rmcBatchRecords).values(r).returning();
-      await this._deductRmcMaterials(tx, result);
-      return result;
+      const warnings = await this._deductRmcMaterials(tx, result);
+      return { batch: result, warnings };
     });
   }
 
-  async updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<RmcBatchRecord | undefined> {
+  async updateRmcBatchRecord(id: number, r: Partial<InsertRmcBatchRecord>): Promise<{ batch: RmcBatchRecord; warnings: string[] } | undefined> {
     return db.transaction(async (tx) => {
       const [original] = await tx.select().from(rmcBatchRecords).where(eq(rmcBatchRecords.id, id)).limit(1);
       if (!original) return undefined;
@@ -19355,9 +19359,94 @@ export class DatabaseStorage implements IStorage {
       // Apply update and write new ledger entries
       const [result] = await tx.update(rmcBatchRecords).set(r).where(eq(rmcBatchRecords.id, id)).returning();
       if (!result) return undefined;
-      await this._deductRmcMaterials(tx, result);
-      return result;
+      const warnings = await this._deductRmcMaterials(tx, result);
+      return { batch: result, warnings };
     });
+  }
+
+  async reprocessRmcMissedDeductions(): Promise<{
+    batchesScanned: number;
+    deductionsApplied: Array<{ batchId: number; grade: string; component: string; materialName: string; qtyTon: number }>;
+    warnings: string[];
+  }> {
+    const allBatches = await db.select().from(rmcBatchRecords).orderBy(rmcBatchRecords.id);
+    const allDesigns = await db.select().from(rmcMixDesigns);
+    const allMats = await db.select({ id: plantMaterials.id, name: plantMaterials.name }).from(plantMaterials);
+
+    const designMap = new Map(allDesigns.map(d => [d.id, d]));
+
+    // Build set of already-deducted (batchId-materialId) pairs
+    const existingLedger = await db
+      .select({ referenceId: stockLedger.referenceId, materialId: stockLedger.materialId })
+      .from(stockLedger)
+      .where(eq(stockLedger.transactionType, 'rmc_batch'));
+    const existingSet = new Set(existingLedger.map(e => `${e.referenceId}-${e.materialId}`));
+
+    const KEY_TO_PATTERNS: Record<string, string[]> = {
+      cement:      ['cement'],
+      fineAgg:     ['fine agg', 'm sand', 'fine aggregate', 'fine sand', 'dust'],
+      coarseAgg10: ['10mm', 'coarse agg 10', '10 mm', 'aggregate 10', '10mm down'],
+      coarseAgg20: ['20mm', 'coarse agg 20', '20 mm', 'aggregate 20', '20mm down'],
+      admixture:   ['admixture', 'plasticizer', 'superplasticizer', 'concrete admix', 'admix'],
+      water:       ['water'],
+    };
+    const patternsForKey = (key: string): string[] => {
+      if (KEY_TO_PATTERNS[key]) return KEY_TO_PATTERNS[key];
+      const spaced = key.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1').toLowerCase().trim();
+      return [spaced, key.toLowerCase()];
+    };
+
+    const deductionsApplied: Array<{ batchId: number; grade: string; component: string; materialName: string; qtyTon: number }> = [];
+    const warnings: string[] = [];
+
+    for (const batch of allBatches) {
+      const design = designMap.get(batch.mixDesignId);
+      if (!design?.componentProportions) continue;
+      const proportions = design.componentProportions as Record<string, number>;
+      const volM3 = batch.totalVolumeM3;
+      if (!volM3) continue;
+
+      for (const [key, kgPerM3] of Object.entries(proportions)) {
+        if (!kgPerM3 || (kgPerM3 as number) <= 0) continue;
+        const qtyTon = +((kgPerM3 as number) * volM3 / 1000).toFixed(6);
+        if (qtyTon < 0.000001) continue;
+
+        const patterns = patternsForKey(key);
+        const matches = (allMats as { id: number; name: string }[]).filter(m =>
+          patterns.some(p => m.name.toLowerCase().includes(p))
+        );
+
+        if (matches.length === 0) {
+          warnings.push(`Batch #${batch.id} (${design.grade}): no plant material for "${key}" — still unmatched`);
+          continue;
+        }
+
+        const mat = matches[0];
+        const ledgerKey = `${batch.id}-${mat.id}`;
+        if (existingSet.has(ledgerKey)) continue; // already deducted
+
+        // Apply the missing deduction
+        await db.transaction(async (tx) => {
+          const { newBalance } = await this._adjustStockBalance(tx, mat.id, null, -qtyTon, 'Ton');
+          await tx.insert(stockLedger).values({
+            date: batch.date,
+            partyId: null,
+            materialId: mat.id,
+            transactionType: 'rmc_batch',
+            referenceId: batch.id,
+            quantityOut: qtyTon,
+            balanceAfter: newBalance,
+            uom: 'Ton',
+            notes: `RMC ${design.grade} — ${volM3.toFixed(3)} m³ [reprocessed]`,
+          });
+        });
+
+        deductionsApplied.push({ batchId: batch.id, grade: design.grade, component: key, materialName: mat.name, qtyTon });
+        existingSet.add(ledgerKey); // prevent duplicate if same batch+material appears again
+      }
+    }
+
+    return { batchesScanned: allBatches.length, deductionsApplied, warnings };
   }
 
   async deleteRmcBatchRecord(id: number): Promise<boolean> {

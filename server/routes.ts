@@ -9310,8 +9310,8 @@ export async function registerRoutes(
         const seq = String(existing.length + 1).padStart(3, '0');
         data.dcNumber = `DC-${dateStr}-${seq}`;
       }
-      const row = await storage.createRmcBatchRecord(data);
-      res.status(201).json(row);
+      const { batch, warnings } = await storage.createRmcBatchRecord(data);
+      res.status(201).json(warnings.length > 0 ? { ...batch, warnings } : batch);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
       res.status(500).json({ message: err.message });
@@ -9322,11 +9322,22 @@ export async function registerRoutes(
     try {
       if (!assertEdit(req, res, "plant_production")) return;
       const data = insertRmcBatchRecordSchema.partial().parse(req.body);
-      const row = await storage.updateRmcBatchRecord(Number(req.params.id), data);
-      if (!row) return res.status(404).json({ message: "Batch record not found" });
-      res.json(row);
+      const result = await storage.updateRmcBatchRecord(Number(req.params.id), data);
+      if (!result) return res.status(404).json({ message: "Batch record not found" });
+      const { batch, warnings } = result;
+      res.json(warnings.length > 0 ? { ...batch, warnings } : batch);
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/rmc/batch-records/reprocess-missed-deductions", async (req, res) => {
+    try {
+      if (!assertAdmin(req, res)) return;
+      const result = await storage.reprocessRmcMissedDeductions();
+      res.json(result);
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
