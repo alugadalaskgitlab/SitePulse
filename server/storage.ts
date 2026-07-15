@@ -2413,7 +2413,7 @@ export class DatabaseStorage implements IStorage {
           ))
           .limit(1);
 
-        const newBalance = (existingBalance?.balance || 0) - dieselQty;
+        const newBalance = Number(existingBalance?.balance ?? 0) - dieselQty;
 
         if (existingBalance) {
           await tx.update(stockBalances)
@@ -2482,7 +2482,7 @@ export class DatabaseStorage implements IStorage {
               .limit(1);
 
             if (existingBalance) {
-              const restoredBalance = (existingBalance.balance || 0) + ledgerEntry.quantityOut;
+              const restoredBalance = Number(existingBalance.balance ?? 0) + Number(ledgerEntry.quantityOut ?? 0);
               await tx.update(stockBalances)
                 .set({ balance: restoredBalance, lastUpdated: new Date() })
                 .where(eq(stockBalances.id, existingBalance.id));
@@ -3554,7 +3554,7 @@ export class DatabaseStorage implements IStorage {
             const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
             if (bal) {
               await tx.update(stockBalances)
-                .set({ balance: bal.balance + diff, lastUpdated: new Date() })
+                .set({ balance: Number(bal.balance ?? 0) + diff, lastUpdated: new Date() })
                 .where(eq(stockBalances.id, bal.id));
             }
           }
@@ -3597,7 +3597,7 @@ export class DatabaseStorage implements IStorage {
             const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
             if (bal) {
               await tx.update(stockBalances)
-                .set({ balance: bal.balance + diff, lastUpdated: new Date() })
+                .set({ balance: Number(bal.balance ?? 0) + diff, lastUpdated: new Date() })
                 .where(eq(stockBalances.id, bal.id));
             }
           }
@@ -4019,7 +4019,7 @@ export class DatabaseStorage implements IStorage {
               transactionType: "equipment_usage",
               referenceId: result.id,
               quantityOut: newDieselIssued,
-              balanceAfter: currentBalance?.balance || 0,
+              balanceAfter: currentBalance?.balance != null ? Number(currentBalance.balance) : 0,
               uom: dieselMaterial.defaultUom || 'Liters',
               notes: `Diesel issued to ${equipment?.name || 'Equipment'}`,
             });
@@ -4357,7 +4357,7 @@ export class DatabaseStorage implements IStorage {
     if (existing) {
       const [result] = await db.update(stockBalances)
         .set({ 
-          balance: roundBalance(existing.balance + quantity),
+          balance: roundBalance(Number(existing.balance ?? 0) + quantity),
           lastUpdated: new Date()
         })
         .where(eq(stockBalances.id, existing.id))
@@ -4836,7 +4836,7 @@ export class DatabaseStorage implements IStorage {
       // Get the selected party's current balance for this material
       const condition = and(eq(stockBalances.partyId, data.partyId), eq(stockBalances.materialId, data.materialId));
       const [existing] = await tx.select().from(stockBalances).where(condition).limit(1);
-      const previousBalance = existing?.balance ?? 0;
+      const previousBalance = existing?.balance != null ? Number(existing.balance) : 0;
       const adjustment = data.physicalQty - previousBalance;
       // Always use the existing balance's UOM so the ledger stays consistent.
       // The caller's uom is only a fallback when no balance row exists yet.
@@ -5126,7 +5126,7 @@ export class DatabaseStorage implements IStorage {
           ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, matId))
           : and(eq(stockBalances.partyId, pId), eq(stockBalances.materialId, matId));
         const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
-        return { balance: bal?.balance || 0, uom: bal?.uom || null };
+        return { balance: bal?.balance != null ? Number(bal.balance) : 0, uom: bal?.uom || null };
       };
 
       // Helper: look up material conversion info from matRows (pre-fetched below).
@@ -8668,7 +8668,7 @@ export class DatabaseStorage implements IStorage {
       const oldQtyOut = oldEntries.reduce((s: number, e: any) => s + (Number(e.quantityOut) || 0), 0);
       if (oldQtyOut > 0 && ldoLitersBal) {
         await tx.update(stockBalances)
-          .set({ balance: ldoLitersBal.balance + oldQtyOut, lastUpdated: new Date() })
+          .set({ balance: Number(ldoLitersBal.balance ?? 0) + oldQtyOut, lastUpdated: new Date() })
           .where(eq(stockBalances.id, ldoLitersBal.id));
       }
       await tx.delete(stockLedger).where(inArray(stockLedger.id, oldEntries.map((e: any) => e.id)));
@@ -8700,7 +8700,7 @@ export class DatabaseStorage implements IStorage {
         ? eq(stockBalances.partyId, storePartyId)
         : sql`${stockBalances.partyId} IS NULL`,
     )).limit(1);
-    const newBalance = (freshBal?.balance ?? 0) - consumption;
+    const newBalance = Number(freshBal?.balance ?? 0) - consumption;
 
     if (freshBal) {
       await tx.update(stockBalances)
@@ -9363,11 +9363,11 @@ export class DatabaseStorage implements IStorage {
       for (const bd of entry.breakdowns) {
         const bU = bd.uom;
         if (bU === reqU || (_isTon(bU) && _isTon(reqU))) {
-          total += bd.balance;
+          total += Number(bd.balance ?? 0);
         } else if (cf && cfFrom && bU === cfFrom.toUpperCase().trim()) {
-          total += bd.balance * cf;
+          total += Number(bd.balance ?? 0) * cf;
         } else if (cf && cfFrom && _isTon(bU) && reqU === cfFrom.toUpperCase().trim()) {
-          total += bd.balance / cf;
+          total += Number(bd.balance ?? 0) / cf;
         }
         // else: unconvertible — skip
       }
@@ -12319,7 +12319,7 @@ export class DatabaseStorage implements IStorage {
             : and(eq(stockBalances.partyId, targetPartyId), eq(stockBalances.materialId, rcpt.materialId));
 
           const [balRow] = await tx.select().from(stockBalances).where(partyCondition).limit(1);
-          const newBalance = (balRow?.balance ?? 0) + stockQty;
+          const newBalance = Number(balRow?.balance ?? 0) + stockQty;
 
           if (balRow) {
             await tx.update(stockBalances)
@@ -12477,7 +12477,7 @@ export class DatabaseStorage implements IStorage {
             eq(stockBalances.materialId, ldoMatId),
             eq(stockBalances.uom, "Liters"),
           )).limit(1);
-          const newBalance = (bal?.balance ?? 0) - consumption;
+          const newBalance = Number(bal?.balance ?? 0) - consumption;
 
           if (bal) {
             await tx.update(stockBalances)
@@ -17588,7 +17588,7 @@ export class DatabaseStorage implements IStorage {
               : and(eq(stockBalances.partyId, stockPartyId), eq(stockBalances.materialId, row.material_id));
 
             const [existing] = await tx.select().from(stockBalances).where(cond).limit(1);
-            const newBalance = (existing?.balance ?? 0) - stockQty;
+            const newBalance = Number(existing?.balance ?? 0) - stockQty;
 
             if (existing) {
               await tx.update(stockBalances)
