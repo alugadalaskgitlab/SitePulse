@@ -159,6 +159,9 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       const anyItemMatchesContext = mainNavItems.some((i) => i.contextKey === activeContext);
       if (anyItemMatchesContext) return item.contextKey === activeContext;
     }
+    // /plant/rmc/* routes belong to RMC Operations — must be tested before the
+    // generic /plant prefix so they don't accidentally highlight HMP Operations.
+    if (location.startsWith("/plant/rmc")) return item.contextKey === "rmc";
     if (item.matchPrefix) return location.startsWith(item.matchPrefix);
     return location.startsWith(item.href);
   };
