@@ -9378,6 +9378,22 @@ export class DatabaseStorage implements IStorage {
     const allPlantMaterials = await db.select({ id: plantMaterials.id, name: plantMaterials.name })
       .from(plantMaterials).where(eq(plantMaterials.isActive, 1));
 
+    // 4th-pass: RMC raw-material stock (cement, aggregates tracked in rmcRawMaterialReceipts, not stockBalances)
+    const rmcStockRaw = await this.getRmcStockSummary();
+    // UOM conversion for RMC balances (balanceKg is always in kg)
+    const _rmcUomToKg = (uom: string): number | null => {
+      const u = uom.trim().toLowerCase();
+      if (u === 'kg') return 1;
+      if (u === 'mt' || u === 't' || u === 'tonne') return 1000;
+      if (u === 'bag' || u === 'bags') return 50;
+      return null;
+    };
+    // Map: normalised material name → { balanceKg }
+    const rmcStockByName = new Map<string, { balanceKg: number | null; balance: number; uom: string }>();
+    for (const r of rmcStockRaw) {
+      rmcStockByName.set(r.materialName.toLowerCase().trim(), { balanceKg: r.balanceKg, balance: r.balance, uom: r.uom });
+    }
+
     const enrichedItems = (indent as any).items.map((item: any) => {
       const descLower = (item.description as string).toLowerCase().trim();
       const requestedUom: string = (item.uom as string) || "";
@@ -9409,6 +9425,27 @@ export class DatabaseStorage implements IStorage {
         if (plantQty !== null) {
           return { ...item, liveStockQty: plantQty, liveStoreItemName: null };
         }
+      }
+
+      // 4th: RMC raw-material stock (cement, aggregates, admixture)
+      const rmcMatch = Array.from(rmcStockByName.entries()).find(([name]) => {
+        return name === descLower || name.includes(descLower) || descLower.includes(name);
+      });
+      if (rmcMatch) {
+        const [, rmcEntry] = rmcMatch;
+        let liveQty: number | null = null;
+        if (rmcEntry.balanceKg !== null) {
+          const reqFactor = _rmcUomToKg(requestedUom);
+          if (reqFactor) {
+            liveQty = Math.max(0, Math.round((rmcEntry.balanceKg / reqFactor) * 100) / 100);
+          } else {
+            // Requested UOM unknown — fall back to balance in original receipt UOM
+            liveQty = Math.max(0, rmcEntry.balance);
+          }
+        } else {
+          liveQty = Math.max(0, rmcEntry.balance);
+        }
+        return { ...item, liveStockQty: liveQty, liveStoreItemName: 'RMC Stock' };
       }
 
       return { ...item, liveStockQty: null, liveStoreItemName: null };
@@ -19423,6 +19460,16 @@ export class DatabaseStorage implements IStorage {
       uom: v.uom,
     }));
 
+    // Canonical display names for mix-design component proportion keys
+    const COMPONENT_DISPLAY_NAMES: Record<string, string> = {
+      cement: 'Cement',
+      fineAgg: 'Fine Aggregate',
+      coarseAgg10: 'Coarse Aggregate 10mm',
+      coarseAgg20: 'Coarse Aggregate 20mm',
+      admixture: 'Admixture',
+      water: 'Water',
+    };
+
     // Compute material consumption from mix design proportions × batch volume
     const consumedMap: Map<string, number> = new Map();
     for (const br of batchRecords) {
@@ -19431,7 +19478,8 @@ export class DatabaseStorage implements IStorage {
         const props = design.componentProportions as Record<string, number>;
         for (const [material, kgPerM3] of Object.entries(props)) {
           if (typeof kgPerM3 === 'number' && kgPerM3 > 0) {
-            consumedMap.set(material, (consumedMap.get(material) ?? 0) + kgPerM3 * br.totalVolumeM3);
+            const displayName = COMPONENT_DISPLAY_NAMES[material] ?? material;
+            consumedMap.set(displayName, (consumedMap.get(displayName) ?? 0) + kgPerM3 * br.totalVolumeM3);
           }
         }
       }
