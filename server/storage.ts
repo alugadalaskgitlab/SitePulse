@@ -2474,19 +2474,7 @@ export class DatabaseStorage implements IStorage {
           const hlcPartyId = hlcPartyCleanup?.id || null;
 
           if (dieselMaterial) {
-            const [existingBalance] = await tx.select().from(stockBalances)
-              .where(and(
-                hlcPartyId ? eq(stockBalances.partyId, hlcPartyId) : sql`${stockBalances.partyId} IS NULL`,
-                eq(stockBalances.materialId, dieselMaterial.id)
-              ))
-              .limit(1);
-
-            if (existingBalance) {
-              const restoredBalance = Number(existingBalance.balance ?? 0) + Number(ledgerEntry.quantityOut ?? 0);
-              await tx.update(stockBalances)
-                .set({ balance: restoredBalance, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, existingBalance.id));
-            }
+            await this._adjustStockBalance(tx, dieselMaterial.id, hlcPartyId, +Number(ledgerEntry.quantityOut ?? 0), null);
           }
         }
 
@@ -3548,15 +3536,7 @@ export class DatabaseStorage implements IStorage {
               .where(eq(stockLedger.id, row.id));
 
             // Update stock_balances incrementally
-            const condition = row.partyId === null
-              ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, bitumenMat.id))
-              : and(eq(stockBalances.partyId, row.partyId), eq(stockBalances.materialId, bitumenMat.id));
-            const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
-            if (bal) {
-              await tx.update(stockBalances)
-                .set({ balance: Number(bal.balance ?? 0) + diff, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, bal.id));
-            }
+            await this._adjustStockBalance(tx, bitumenMat.id, row.partyId ?? null, diff, null);
           }
         }
       }
@@ -3591,15 +3571,7 @@ export class DatabaseStorage implements IStorage {
               .set({ quantityOut: newEffectiveLdoQty })
               .where(eq(stockLedger.id, row.id));
 
-            const condition = row.partyId === null
-              ? and(sql`${stockBalances.partyId} IS NULL`, eq(stockBalances.materialId, ldoMat.id))
-              : and(eq(stockBalances.partyId, row.partyId), eq(stockBalances.materialId, ldoMat.id));
-            const [bal] = await tx.select().from(stockBalances).where(condition).limit(1);
-            if (bal) {
-              await tx.update(stockBalances)
-                .set({ balance: Number(bal.balance ?? 0) + diff, lastUpdated: new Date() })
-                .where(eq(stockBalances.id, bal.id));
-            }
+            await this._adjustStockBalance(tx, ldoMat.id, row.partyId ?? null, diff, null);
           }
         }
       }
@@ -19294,26 +19266,56 @@ export class DatabaseStorage implements IStorage {
     const volM3 = batch.totalVolumeM3;
     if (!volM3) return;
 
-    const keyToPatterns: [string, string[]][] = [
-      ['cement',      ['cement']],
-      ['fineAgg',     ['fine agg', 'm sand', 'fine aggregate', 'fine sand']],
-      ['coarseAgg10', ['10mm', 'coarse agg 10', '10 mm', 'aggregate 10', '10mm down']],
-      ['coarseAgg20', ['20mm', 'coarse agg 20', '20 mm', 'aggregate 20', '20mm down']],
-    ];
+    // Canonical search patterns per component key.
+    // Any key NOT listed here falls back to a pattern derived from the key name itself,
+    // so new ingredients added to mix designs are matched automatically.
+    const KEY_TO_PATTERNS: Record<string, string[]> = {
+      cement:      ['cement'],
+      fineAgg:     ['fine agg', 'm sand', 'fine aggregate', 'fine sand'],
+      coarseAgg10: ['10mm', 'coarse agg 10', '10 mm', 'aggregate 10', '10mm down'],
+      coarseAgg20: ['20mm', 'coarse agg 20', '20 mm', 'aggregate 20', '20mm down'],
+      admixture:   ['admixture', 'plasticizer', 'superplasticizer', 'concrete admix', 'admix'],
+      water:       ['water'],
+    };
+
+    // Derive patterns from a camelCase key: "fineAgg" → "fine agg", "coarseAgg10" → "coarse agg 10"
+    const patternsForKey = (key: string): string[] => {
+      if (KEY_TO_PATTERNS[key]) return KEY_TO_PATTERNS[key];
+      const spaced = key.replace(/([A-Z])/g, ' $1').replace(/([0-9]+)/g, ' $1').toLowerCase().trim();
+      return [spaced, key.toLowerCase()];
+    };
 
     const allMats = await tx.select({ id: plantMaterials.id, name: plantMaterials.name }).from(plantMaterials);
 
-    for (const [key, patterns] of keyToPatterns) {
-      const kgPerM3 = proportions[key];
-      if (!kgPerM3 || kgPerM3 <= 0) continue;
-      const qtyTon = +(kgPerM3 * volM3 / 1000).toFixed(6);
+    for (const [key, kgPerM3] of Object.entries(proportions)) {
+      if (!kgPerM3 || (kgPerM3 as number) <= 0) continue;
+      const qtyTon = +((kgPerM3 as number) * volM3 / 1000).toFixed(6);
       if (qtyTon < 0.000001) continue;
 
-      const mat = (allMats as { id: number; name: string }[]).find(m =>
+      const patterns = patternsForKey(key);
+      const matches = (allMats as { id: number; name: string }[]).filter(m =>
         patterns.some(p => m.name.toLowerCase().includes(p))
       );
-      if (!mat) continue;
 
+      if (matches.length === 0) {
+        console.warn(
+          `[RMC] _deductRmcMaterials: no plant material found for component "${key}" ` +
+          `(batch #${batch.id}, mix design #${batch.mixDesignId}, grade ${design.grade}) — ` +
+          `${qtyTon} Ton NOT deducted from stock. Add a plant material whose name contains one of: ${patterns.join(', ')}`
+        );
+        continue;
+      }
+
+      if (matches.length > 1) {
+        console.warn(
+          `[RMC] _deductRmcMaterials: ${matches.length} plant materials matched for component "${key}" ` +
+          `(batch #${batch.id}) — using first match "${matches[0].name}" (id=${matches[0].id}). ` +
+          `Matched: ${matches.map(m => `"${m.name}"`).join(', ')}. ` +
+          `Consider disambiguating material names.`
+        );
+      }
+
+      const mat = matches[0];
       const delta = reverse ? qtyTon : -qtyTon;
       const { newBalance } = await this._adjustStockBalance(tx, mat.id, null, delta, 'Ton');
 
