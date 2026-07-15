@@ -3,7 +3,7 @@ import { useState } from "react";
   import { Info, X } from "lucide-react";
   import type { Party, PlantMaterial } from "@shared/schema";
 
-  type Balance = { id: number; partyId: number | null; balance: number; uom: string };
+  type Balance = { id: number; partyId: number | null; balance: number | string; uom: string };
   type MultiBalance = Balance & { materialId: number };
 
   interface Props {
@@ -28,7 +28,7 @@ import { useState } from "react";
       const mat = materials?.find(m => m.id === matId);
       return mat ? /bitumen|ldo/i.test(mat.name) : false;
     };
-    const negs = balances.filter(b => b.balance < -0.0001 && !isTankMat(b.materialId));
+    const negs = balances.filter(b => Number(b.balance) < -0.0001 && !isTankMat(b.materialId));
     if (dismissed || negs.length === 0) return null;
 
     const grouped = new Map<number, MultiBalance[]>();
@@ -58,7 +58,7 @@ import { useState } from "react";
                       const pname = parties?.find(p => p.id === b.partyId)?.name || (b.partyId == null ? "PlantCommon" : `Party #${b.partyId}`);
                       return (
                         <span key={b.id} data-testid={`negative-row-${matId}-${b.partyId ?? 'common'}`}>
-                          {idx > 0 ? ", " : ""}{pname} ({b.balance.toFixed(3)} {b.uom})
+                          {idx > 0 ? ", " : ""}{pname} ({Number(b.balance).toFixed(3)} {b.uom})
                         </span>
                       );
                     })}
@@ -87,7 +87,7 @@ import { useState } from "react";
 
   export function NegativeBalanceBanner({ balances, parties, material, testid }: Props) {
     const [dismissed, setDismissed] = useState(false);
-    const negs = balances.filter(b => b.balance < -0.0001);
+    const negs = balances.filter(b => Number(b.balance) < -0.0001);
     if (dismissed || negs.length === 0) return null;
     return (
       <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-800 p-3 text-sm" data-testid={testid}>
@@ -102,7 +102,7 @@ import { useState } from "react";
                 const pname = parties?.find(p => p.id === b.partyId)?.name || `Party #${b.partyId}`;
                 return (
                   <li key={b.id} data-testid={`negative-party-${b.partyId}`}>
-                    <span className="font-medium">{pname}</span>: {b.balance.toFixed(3)} {b.uom}
+                    <span className="font-medium">{pname}</span>: {Number(b.balance).toFixed(3)} {b.uom}
                   </li>
                 );
               })}
