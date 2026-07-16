@@ -84,6 +84,9 @@ export const SECTION_KEYS = [
   // ── Stores ────────────────────────────────────────────────────────────────
   "stores_inventory",
 
+  // ── Site Requirements — domain-specific allocation roles ─────────────────
+  "labour_management",          // can update labour allocation status on site requirements
+
   // ── Rate Calculators & Estimator Portal ───────────────────────────────────
   "estimator_portal",
   "mix_calculator",
@@ -200,6 +203,9 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
   // Stores
   stores_inventory: "Stores — GRNs, Issues & Ledger",
+
+  // Site Requirements — allocation roles
+  labour_management: "Site Requirements — Labour Allocation",
 
   // Rate Calculators
   estimator_portal: "Estimator Portal (login + hub)",

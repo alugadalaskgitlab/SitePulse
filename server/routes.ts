@@ -13754,8 +13754,9 @@ export function registerSiteRequirementRoutes(app: Express) {
       const u = req.authUser;
       const perms = req.authPermissions ?? {};
       const isManagerOrAdmin = !!(u?.isAdmin || u?.isOwner || req.session?.role === "manager");
-      const canStores   = isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
+      const canStores    = isManagerOrAdmin || !!(perms["stores_inventory"]?.create);
       const canEquipment = isManagerOrAdmin || !!(perms["plant_equipment"]?.create);
+      const canLabour    = isManagerOrAdmin || !!(perms["labour_management"]?.create);
 
       const { category, itemIndex, status, expectedBy, remarks } = req.body;
       if (!category || itemIndex === undefined || itemIndex === null) {
@@ -13773,8 +13774,8 @@ export function registerSiteRequirementRoutes(app: Express) {
       if (category === "equipment" && !canEquipment) {
         return res.status(403).json({ error: "Updating equipment allocation requires Equipment & Fleet access" });
       }
-      if (category === "labour" && !isManagerOrAdmin) {
-        return res.status(403).json({ error: "Only PM/Admin can update labour allocation" });
+      if (category === "labour" && !canLabour) {
+        return res.status(403).json({ error: "Updating labour allocation requires Labour Management access" });
       }
       if (category === "immediate" && !(isManagerOrAdmin || canStores || canEquipment)) {
         return res.status(403).json({ error: "Updating immediate requirements requires Stores, Equipment, or PM access" });

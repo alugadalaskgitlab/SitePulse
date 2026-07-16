@@ -999,7 +999,7 @@ export default function SiteRequirementsList() {
   // Role-aware update flags — permission-based, not just role
   const canUpdateMaterials = isManager || sectionVisible("stores_inventory");
   const canUpdateEquipment = isManager || sectionVisible("plant_equipment");
-  const canUpdateLabour    = isManager;
+  const canUpdateLabour    = isManager || sectionVisible("labour_management");
   const canUpdateImmediate = isManager || sectionVisible("stores_inventory") || sectionVisible("plant_equipment");
 
   // Site engineers cannot approve/arrange their own requirements
