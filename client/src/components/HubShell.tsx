@@ -37,6 +37,23 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const { rmcEnabled, companyName } = useFeatureFlags();
   const [location] = useLocation();
   const searchString = useSearch();
+
+  // Module visibility: read from the sites the current user can access.
+  // If ANY of their sites enables HMP (or has no restriction), show HMP.
+  // An empty enabledModules array means "all modules visible" (default).
+  const { data: sitesList = [] } = useQuery<Array<{ id: number; enabledModules: string[] }>>({
+    queryKey: ["/api/sites"],
+    staleTime: 60_000,
+  });
+  const moduleVisible = (moduleKey: string): boolean => {
+    if (isAdmin) return true; // Admin always sees everything
+    if (sitesList.length === 0) return true; // No sites data yet — show all (safe default)
+    // If ALL sites restrict modules and NONE of them include this moduleKey → hide it
+    const restrictedSites = sitesList.filter(s => (s.enabledModules ?? []).length > 0);
+    if (restrictedSites.length === 0) return true; // All sites use default (unrestricted)
+    // User sees module if at least one of their sites allows it
+    return restrictedSites.some(s => (s.enabledModules ?? []).includes(moduleKey));
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -127,8 +144,8 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" },
-    { href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" },
-    ...(rmcEnabled ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
+    ...(moduleVisible("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
+    ...(rmcEnabled && moduleVisible("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
     { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" },
     { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" },
     { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },

@@ -1399,6 +1399,11 @@ export const sites = pgTable("sites", {
   partyId: integer("party_id"),
   isActive: integer("is_active").default(1),
   createdAt: timestamp("created_at").defaultNow(),
+  // Module packaging: which optional modules are enabled for this site.
+  // Empty array = all modules visible (default / backward-compatible).
+  // Use explicit values to restrict: ["hmp"] enables HMP; ["hmp","rmc"] enables both;
+  // ["roads"] alone (no "hmp", no "rmc") hides both plant modules.
+  enabledModules: text("enabled_modules").array().notNull().default([]),
 });
 
 export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, createdAt: true });

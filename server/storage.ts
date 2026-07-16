@@ -11963,6 +11963,11 @@ export class DatabaseStorage implements IStorage {
       console.log("ensureSiteIdColumns: site_id, raised_from and source_irn_id columns verified/added on diesel_requirements and purchase_indents");
     }
 
+    async ensureSiteEnabledModulesColumn(): Promise<void> {
+      await db.execute(sql.raw(`ALTER TABLE sites ADD COLUMN IF NOT EXISTS enabled_modules text[] NOT NULL DEFAULT '{}'`));
+      console.log("ensureSiteEnabledModulesColumn: enabled_modules column verified/added on sites");
+    }
+
   async backfillSiteIdsOnDieselAndIndents(): Promise<{ dieselScanned: number; dieselResolved: number; dieselUnresolved: number; indentsScanned: number; indentsResolved: number; indentsUnresolved: number }> {
     // IDEMPOTENCY: guarded by app_settings key "backfill_site_ids_diesel_indents_v1".
     // Neither diesel_requirements nor purchase_indents carry any FK that can be

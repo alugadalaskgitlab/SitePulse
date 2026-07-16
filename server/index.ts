@@ -193,6 +193,12 @@ app.use((req, res, next) => {
   }
 
   try {
+    await (storage as any).ensureSiteEnabledModulesColumn();
+  } catch (e) {
+    console.error("Startup: Failed to ensure enabled_modules column on sites:", e);
+  }
+
+  try {
     const siteBackfill = await storage.backfillSiteIdsOnDieselAndIndents();
     console.log(`Startup: backfillSiteIdsOnDieselAndIndents — diesel: scanned ${siteBackfill.dieselScanned}, resolved ${siteBackfill.dieselResolved}, unresolved ${siteBackfill.dieselUnresolved} | indents: scanned ${siteBackfill.indentsScanned}, resolved ${siteBackfill.indentsResolved}, unresolved ${siteBackfill.indentsUnresolved}`);
   } catch (e) {
