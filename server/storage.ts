@@ -11890,9 +11890,23 @@ export class DatabaseStorage implements IStorage {
    *                suggestWorkCategoryFromDescription.  Never overwrites a
    *                manually-set or import-set work_category.
    */
-  async ensureBoqCanonicalUnit(): Promise<{ units: number; categories: number }> {
+  async ensureBoqCanonicalUnit(): Promise<{ units: number; categories: number; unitsCleaned: number }> {
     // Pass 1 — DDL
     await db.execute(sql.raw("ALTER TABLE boq_items ADD COLUMN IF NOT EXISTS canonical_unit text"));
+
+    // Pass 0 — Clean raw unit column: strip "Per X" / leading-digit prefixes on existing rows
+    // (new imports are already normalized via importBoqItems; this fixes pre-existing data)
+    let unitsCleaned = 0;
+    const dirtyUnitRows = await db.execute(sql.raw(
+      `SELECT id, unit FROM boq_items WHERE unit ~* '^per\\s+' OR unit ~ '^[0-9]'`
+    ));
+    for (const row of (dirtyUnitRows.rows as Array<{ id: number; unit: string }>)) {
+      const cleaned = canonicalizeUnit(row.unit ?? "");
+      if (cleaned !== (row.unit ?? "")) {
+        await db.execute(sql`UPDATE boq_items SET unit = ${cleaned} WHERE id = ${row.id}`);
+        unitsCleaned++;
+      }
+    }
 
     // Pass 2+3 — Fetch rows needing at least one of the two backfills.
     // Also re-normalises rows where canonical_unit still carries a leading numeric
@@ -11933,7 +11947,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    return { units, categories };
+    return { units, categories, unitsCleaned };
   }
 
   async ensureHeatingSessionDipColumns(): Promise<void> {
@@ -20561,7 +20575,7 @@ export class DatabaseStorage implements IStorage {
         itemCode: item.itemCode ?? null,
         snlCode: item.snlCode ?? null,
         description: item.description,
-        unit: item.unit,
+        unit: canonicalizeUnit(item.unit),
         boqQty: item.boqQty ?? 0,
         currentQty: item.boqQty ?? 0,
         clientRate: item.clientRate ?? null,

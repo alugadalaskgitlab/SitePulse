@@ -111,8 +111,10 @@ const CANONICAL_UNIT_MAP: Record<string, string> = {
  */
 export function canonicalizeUnit(raw: string): string {
   if (!raw || !raw.trim()) return raw ?? "";
-  // Step 1: strip leading numeric quantity prefix (e.g. "1 ", "1.00 ", "1.")
-  const dePrefix = raw.replace(/^\d+(\.\d+)?\s*/i, "").trim();
+  // Step 0: strip leading "Per" / "per" prefix (e.g. "Per 1 Sqm" → "1 Sqm", "Per Sqm" → "Sqm")
+  let s = raw.trim().replace(/^[Pp][Ee][Rr]\s+/i, "").trim();
+  // Step 1: strip leading numeric quantity prefix (e.g. "1 Cum" → "Cum", "1.00 " → "")
+  const dePrefix = s.replace(/^\d+(\.\d+)?\s*/i, "").trim();
   if (!dePrefix) return raw.trim();
   // Step 2: collapse punctuation and spaces for map key lookup
   const key = dePrefix.replace(/[\s.]/g, "").toUpperCase();

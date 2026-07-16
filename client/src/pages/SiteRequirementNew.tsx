@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { BillItemPicker } from "@/components/BillItemPicker";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, Send,
   HardHat, Package, Wrench, Users, AlertTriangle, ClipboardList,
@@ -134,9 +135,40 @@ export default function SiteRequirementNew() {
   const [boqItemId, setBoqItemId] = useState<number | null>(null);
   const [chainageFrom, setChainageFrom] = useState("");
   const [chainageTo, setChainageTo] = useState("");
+  const [pwWidth, setPwWidth] = useState("");
+  const [pwThickness, setPwThickness] = useState("");
   const [plannedQty, setPlannedQty] = useState("");
   const [plannedUom, setPlannedUom] = useState("");
   const [pwRemarks, setPwRemarks] = useState("");
+
+  // Derived from selected BOQ item unit — determines which dimension fields to show
+  const selectedBoqItem = useMemo(() => siteBoqItems.find(it => it.id === boqItemId) ?? null, [siteBoqItems, boqItemId]);
+  const itemUnit = useMemo(() => selectedBoqItem ? canonicalizeUnit(selectedBoqItem.unit ?? "") : "", [selectedBoqItem]);
+  const showWidth = itemUnit === "Cum" || itemUnit === "Sqm";
+  const showThickness = itemUnit === "Cum";
+
+  // Auto-calculate planned qty from chainage length × dimensions
+  useEffect(() => {
+    const cf = parseFloat(chainageFrom);
+    const ct = parseFloat(chainageTo);
+    if (isNaN(cf) || isNaN(ct) || cf === ct) return;
+    const lengthM = Math.abs(ct - cf) * 1000; // km → metres
+    const w = parseFloat(pwWidth);
+    const t = parseFloat(pwThickness);
+    let qty: number | null = null;
+    if (itemUnit === "Cum" && !isNaN(w) && w > 0 && !isNaN(t) && t > 0) {
+      qty = lengthM * w * t;
+    } else if (itemUnit === "Sqm" && !isNaN(w) && w > 0) {
+      qty = lengthM * w;
+    } else if (itemUnit === "Rmt") {
+      qty = lengthM;
+    }
+    if (qty !== null) {
+      const qtyStr = String(Math.round(qty * 1000) / 1000);
+      setPlannedQty(qtyStr);
+      setMaterials(prev => prev.map(m => m.qty === "" ? { ...m, qty: qtyStr } : m));
+    }
+  }, [chainageFrom, chainageTo, pwWidth, pwThickness, itemUnit]);
 
   // Prefill from existing requirement when editing
   const prefillDone = useRef(false);
@@ -154,6 +186,8 @@ export default function SiteRequirementNew() {
       setPlannedQty(existingReq.plannedWork.plannedQty ?? "");
       setPlannedUom(existingReq.plannedWork.plannedUom ?? "");
       setPwRemarks(existingReq.plannedWork.remarks ?? "");
+      setPwWidth(existingReq.plannedWork.pwWidth != null ? String(existingReq.plannedWork.pwWidth) : "");
+      setPwThickness(existingReq.plannedWork.pwThickness != null ? String(existingReq.plannedWork.pwThickness) : "");
     }
     if (existingReq.materials?.length) setMaterials(existingReq.materials);
     if (existingReq.equipment?.length) setEquipment(existingReq.equipment);
@@ -163,7 +197,7 @@ export default function SiteRequirementNew() {
 
   // Section B — Materials
   const [materials, setMaterials] = useState<MaterialLine[]>([]);
-  const addMaterial = () => setMaterials(p => [...p, emptyMaterial()]);
+  const addMaterial = () => setMaterials(p => [...p, { ...emptyMaterial(), qty: plannedQty || "" }]);
   const updateMaterial = (i: number, field: keyof MaterialLine, val: string) =>
     setMaterials(p => p.map((m, idx) => idx === i ? { ...m, [field]: val } : m));
   const removeMaterial = (i: number) => setMaterials(p => p.filter((_, idx) => idx !== i));
@@ -195,7 +229,12 @@ export default function SiteRequirementNew() {
       const chFrom = chainageFrom !== "" ? parseFloat(chainageFrom) : null;
       const chTo = chainageTo !== "" ? parseFloat(chainageTo) : null;
       if (activity || boqItemId != null || chFrom != null || chTo != null || plannedQty || pwRemarks) {
-        body.plannedWork = { activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo, plannedQty, plannedUom, remarks: pwRemarks };
+        body.plannedWork = {
+          activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo,
+          pwWidth: pwWidth !== "" ? parseFloat(pwWidth) : null,
+          pwThickness: pwThickness !== "" ? parseFloat(pwThickness) : null,
+          plannedQty, plannedUom, remarks: pwRemarks,
+        };
       }
       const filteredMaterials = materials.filter(m => m.materialName);
       const filteredEquipment = equipment.filter(e => e.equipmentType);
@@ -320,6 +359,9 @@ export default function SiteRequirementNew() {
                   onChange={(id, it) => {
                     setBoqItemId(id);
                     setActivity(it ? it.description : "");
+                    if (it) setPlannedUom(canonicalizeUnit(it.unit ?? ""));
+                    setPwWidth("");
+                    setPwThickness("");
                   }}
                 />
               ) : (
@@ -345,6 +387,23 @@ export default function SiteRequirementNew() {
                 </div>
               </div>
             </div>
+            {/* Conditional dimension inputs — shown only when the BOQ item's unit requires them */}
+            {(showWidth || showThickness) && (
+              <div className={`grid gap-2 ${showThickness ? "grid-cols-2" : "grid-cols-1 max-w-[50%]"}`}>
+                {showWidth && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Width (m)</label>
+                    <Input value={pwWidth} onChange={e => setPwWidth(e.target.value)} type="number" step="0.01" min="0" placeholder="e.g. 7.000" className="text-sm" data-testid="input-pw-width" />
+                  </div>
+                )}
+                {showThickness && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Thickness / Depth (m)</label>
+                    <Input value={pwThickness} onChange={e => setPwThickness(e.target.value)} type="number" step="0.001" min="0" placeholder="e.g. 0.075" className="text-sm" data-testid="input-pw-thickness" />
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Remarks</label>
               <Textarea value={pwRemarks} onChange={e => setPwRemarks(e.target.value)} placeholder="Any notes about tomorrow's plan..." className="text-sm resize-none" rows={2} data-testid="input-pw-remarks" />

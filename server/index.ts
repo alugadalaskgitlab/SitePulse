@@ -167,8 +167,8 @@ app.use((req, res, next) => {
 
   try {
     const r = await (storage as any).ensureBoqCanonicalUnit();
-    if (r.units > 0 || r.categories > 0) {
-      console.log(`Startup: ensureBoqCanonicalUnit — backfilled units: ${r.units}, work categories: ${r.categories}`);
+    if (r.units > 0 || r.categories > 0 || r.unitsCleaned > 0) {
+      console.log(`Startup: ensureBoqCanonicalUnit — backfilled units: ${r.units}, work categories: ${r.categories}, raw units cleaned: ${r.unitsCleaned}`);
     }
   } catch (e) {
     console.error("Startup: Failed to ensure BOQ canonical units:", e);
