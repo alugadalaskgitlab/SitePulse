@@ -9,8 +9,10 @@ import {
   ACTIONS,
   ACTION_LABELS,
   PERMISSION_GROUPS,
+  ROLE_TEMPLATES,
   emptyMatrix,
   fullMatrix,
+  applyRoleTemplate,
   type PermissionMatrix,
   type SectionKey,
   type Action,
@@ -767,6 +769,21 @@ function PermissionsDialog({ userId, users, onClose }: { userId: number; users: 
         <div className="flex flex-wrap items-center gap-2 mb-2">
           {!isPartialManager && (
             <>
+              <Select
+                onValueChange={(val) => setMatrix(applyRoleTemplate(val))}
+                value=""
+              >
+                <SelectTrigger className="h-8 text-xs w-44" data-testid="select-role-template">
+                  <SelectValue placeholder="Load role template…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_TEMPLATES.map((t) => (
+                    <SelectItem key={t.id} value={t.id} data-testid={`template-${t.id}`}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button size="sm" variant="outline" onClick={() => setMatrix(fullMatrix())} data-testid="button-perms-all">
                 Grant all
               </Button>

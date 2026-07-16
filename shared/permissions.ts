@@ -295,6 +295,83 @@ export function fullMatrix(): PermissionMatrix {
   return out;
 }
 
+// ── Role templates ────────────────────────────────────────────────────────────
+// Pre-defined permission sets for common Roads deployment roles.
+// Admins apply these as a starting point and fine-tune afterwards.
+// Key spec rule: Site Engineer gets irn_raise but NOT purchase_indents_raise.
+// PM gets both.
+
+export type RoleTemplate = {
+  id: string;
+  label: string;
+  description: string;
+};
+
+function buildTemplateMatrix(
+  viewCreate: SectionKey[],
+  approveSections: SectionKey[] = [],
+  editSections: SectionKey[] = [],
+): PermissionMatrix {
+  const m = emptyMatrix();
+  for (const k of viewCreate)       m[k] = { ...m[k], view: true, create: true };
+  for (const k of approveSections)  m[k] = { ...m[k], view: true, approve: true };
+  for (const k of editSections)     m[k] = { ...m[k], view: true, edit: true };
+  return m;
+}
+
+const _SITE_ENGINEER_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "site_hub", "reports_hub", "stores_hub",
+    "site_dprs", "site_materials",
+    "purchase_indents_view",   // view PIs only — raise is intentionally excluded
+    "irn_view", "irn_raise",  // full IRN raise access
+    "stores_inventory",
+    "qto_boq",
+  ],
+);
+
+const _PM_MATRIX = buildTemplateMatrix(
+  [
+    "dashboard",
+    "site_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub",
+    "site_dprs", "site_materials",
+    "purchase_indents_view", "purchase_indents_raise",
+    "irn_view", "irn_raise",
+    "stores_inventory",
+    "vendor_bills_view",
+    "report_management", "report_site_purchases",
+    "qto_boq",
+  ],
+  // approve
+  ["purchase_indents_approve", "irn_approve", "vendor_bills_approve", "site_dprs"],
+  // edit
+  ["qto_boq"],
+);
+
+export const ROLE_TEMPLATES: RoleTemplate[] = [
+  {
+    id: "site_engineer",
+    label: "Site Engineer",
+    description: "On-site field role. Files DPRs, logs materials, raises IRNs. Cannot raise Purchase Indents.",
+  },
+  {
+    id: "project_manager",
+    label: "Project Manager",
+    description: "Oversight role. Approves PIs, DPRs, IRNs, and Vendor Bills. Full procurement access.",
+  },
+];
+
+export function applyRoleTemplate(templateId: string): PermissionMatrix {
+  const base = templateId === "site_engineer" ? _SITE_ENGINEER_MATRIX
+    : templateId === "project_manager" ? _PM_MATRIX
+    : null;
+  if (!base) return emptyMatrix();
+  return Object.fromEntries(
+    Object.entries(base).map(([k, v]) => [k, { ...v }])
+  ) as PermissionMatrix;
+}
+
 // ── Permission groups for the admin UI ────────────────────────────────────────
 // Each group has an id, a display label, and an ordered list of section keys.
 export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKey[] }[] = [

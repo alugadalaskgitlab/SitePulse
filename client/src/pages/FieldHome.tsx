@@ -239,6 +239,8 @@ function ReadinessOptionRow({
 function ReadinessSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { sectionVisible } = useAuth();
+  const canRaiseIrn = sectionVisible("irn_raise");
   const [collapsed, setCollapsed] = useState(false);
   const [matStatus, setMatStatus] = useState("");
   const [eqStatus,  setEqStatus]  = useState("");
@@ -538,6 +540,38 @@ function ReadinessSection() {
                   )}
                 </div>
               )}
+
+              {/* IRN CTA — appears when shortage is confirmed and user can raise IRNs */}
+              {shortage && canRaiseIrn && (() => {
+                const shortMats = (req.materials ?? []).filter((m: any) => m.materialName);
+                const first = shortMats[0];
+                const params = new URLSearchParams({ from: "readiness", returnTo: "/" });
+                if (req.siteId) params.set("siteId", String(req.siteId));
+                if (first?.materialName) params.set("material", first.materialName);
+                if (first?.qty)         params.set("qty",      String(first.qty));
+                if (first?.uom)         params.set("uom",      first.uom);
+                const irnHref = `/irn/new?${params.toString()}`;
+                const label = shortMats.length > 0
+                  ? shortMats.length === 1
+                    ? `You're short on ${shortMats[0].materialName}. Raise an IRN now?`
+                    : `You have shortages on ${shortMats.length} materials. Raise an IRN now?`
+                  : "A shortage was flagged. Raise an IRN to request from central store?";
+                return (
+                  <div className="bg-indigo-50 rounded-lg px-3 py-2.5 border border-indigo-200 space-y-2" data-testid="irn-shortage-cta">
+                    <p className="text-xs text-indigo-800 font-medium">{label}</p>
+                    <Link href={irnHref}>
+                      <Button
+                        size="sm"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 gap-2 text-xs"
+                        data-testid="button-raise-irn-shortage"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        Raise an IRN
+                      </Button>
+                    </Link>
+                  </div>
+                );
+              })()}
 
               {/* Not yet confirmed — readiness form */}
               {!alreadyConfirmed && (

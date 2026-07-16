@@ -29,22 +29,23 @@ const FROM_MAP: Record<string, string> = {
   hmp: "HMP Plant",
   equipment: "Equipment & Fleet",
   rmc: "RMC Operations",
+  readiness: "Tomorrow's Plan — Shortage",
 };
 
 function parseQueryParams() {
   const params = new URLSearchParams(window.location.search);
   const editIdRaw = params.get("editId");
   const qtyRaw = params.get("qty");
+  const siteIdRaw = params.get("siteId");
   return {
     fromParam: params.get("from") ?? "",
     returnTo: params.get("returnTo") ?? "",
     editId: editIdRaw ? Number(editIdRaw) : null,
-    // Task #1240 — pass-through only: prefills the first line item from a
-    // shortage/demand link. Does not change the IRN schema or workflow.
     prefillMaterial: params.get("material") ?? "",
     prefillQty: qtyRaw ? Number(qtyRaw) : null,
     prefillUom: params.get("uom") ?? "",
     prefillBoqProjectId: params.get("boqProjectId") ?? "",
+    prefillSiteId: siteIdRaw ? Number(siteIdRaw) : null,
   };
 }
 
@@ -187,7 +188,7 @@ export default function IrnRaisePage() {
   const { toast } = useToast();
   const today = format(new Date(), "yyyy-MM-dd");
 
-  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom, prefillBoqProjectId } = parseQueryParams();
+  const { fromParam, returnTo, editId, prefillMaterial, prefillQty, prefillUom, prefillBoqProjectId, prefillSiteId } = parseQueryParams();
   const prefillLabel = FROM_MAP[fromParam] ?? "";
   const isLocked = !!prefillLabel && !editId;
   const backHref = returnTo || "/finance/hub";
@@ -207,15 +208,15 @@ export default function IrnRaisePage() {
     defaultValues: {
       raisedFrom: prefillLabel || "Site Operations",
       raisedBy: user?.fullName?.toUpperCase() ?? user?.email ?? "",
-      siteId: null,
+      siteId: prefillSiteId ?? null,
       remarks: "",
       items: [{
         material: prefillMaterial || "",
         materialId: null,
         qty: prefillQty ?? 0,
         uom: prefillUom || "MT",
-        urgency: "normal",
-        purpose: prefillMaterial ? "Work programme shortage — procurement" : "",
+        urgency: prefillMaterial ? "urgent" : "normal",
+        purpose: prefillMaterial ? "Tomorrow's Plan — material shortage" : "",
         needByDate: "",
       }],
     },
