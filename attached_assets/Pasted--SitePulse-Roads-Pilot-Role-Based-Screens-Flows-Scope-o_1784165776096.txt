@@ -1,0 +1,193 @@
+# SitePulse — Roads Pilot: Role-Based Screens & Flows
+
+**Scope of this document:** the trial/demo build for friend contractors — Roads (small structures: pipe/box/slab culverts), no hotmix plant, no RMC. Modules in scope: **Site Operations (DPR)**, **Stores & Inventory**, **Work Programme & BOQ**, **Requisitions/Procurement**, **Reports**, **Admin/Masters**.
+
+Everything below is mapped to permission sections that already exist in the app (`site_dprs`, `purchase_indents_*`, `stores_inventory`, `qto_boq`, `vendor_bills_*`, `user_management`, etc.) — so this is a configuration and UI-focused exercise, not a request for new backend plumbing.
+
+**Golden rule for this pilot:** if a contractor has no hotmix plant and no RMC, they should never see "HMP Operations" or "RMC Operations" in their sidebar at all — not greyed out, not visible-but-empty. Fully hidden. First impressions matter more here than completeness.
+
+---
+
+## 1. Site Engineer
+
+**Who they are:** the person physically on site every day. Mobile-first — most of this role's work happens standing at a site, often with patchy signal. Every screen for this role should assume a phone in one hand, not a desk and a mouse.
+
+### Landing page (on login)
+
+A single scrollable dashboard, not a grid of unrelated tiles. Top to bottom:
+
+1. **Today's snapshot strip** — Site name, date, weather (already have a weather tool available), and a **time-aware DPR status** rather than a flat pass/fail message:
+   - Before midday: *"DPR: not yet started"* (neutral tone — the day just hasn't happened yet)
+   - Afternoon/evening, still not filed: *"DPR: pending for today"* (neutral nudge)
+   - Past a site-specific cutoff (e.g. 8 PM) with nothing filed: *"DPR: overdue"* (fair to flag as red/amber here — the day is genuinely over)
+   - Filed: *"DPR filed at 6:40 PM"*
+
+   The point: a message that reads like a scolding first thing in the morning is a bad daily first impression. Status should match what time of day it actually is.
+2. **Quick-action buttons** (large, thumb-friendly): **File Today's DPR**, **Log Material Receipt**, **Raise IRN (Internal Requisition)**, **View Today's Work Programme Target**. *(Note: Purchase Indent is intentionally not a Site Engineer action — see "Who raises PI vs IRN" below.)*
+3. **Pending on you** — a short list: any store-verification tasks waiting on them, any rejected/returned entries needing correction, any low-stock alerts for materials they manage.
+4. **Recent activity** — their last 5 DPRs / receipts, tap to view or edit (within the edit-window your app already enforces).
+
+No financial data, no other sites' data, no admin tools — a site engineer's world is *their* site, today.
+
+### Daily flow (the actual sequence of their day)
+
+```
+Morning
+ └─ Open app → Landing page shows time-aware DPR status (see above)
+ └─ Check Today's Work Programme Target tile → see planned quantity/activity for today
+ └─ Confirm Tomorrow's Plan readiness (see "Tomorrow's Plan → auto-prompt IRN" below)
+
+During the day
+ └─ Material arrives at site → Log Material Receipt (against IRN if applicable)
+ └─ Store verification needed → Pending on You → Verify → Approve/Flag discrepancy
+ └─ Running low on something → Raise IRN to central store → auto-suggested quantity from norms
+
+Evening
+ └─ File Today's DPR:
+     ├─ Labour (headcount by trade, auto-suggested from yesterday)
+     ├─ Equipment (hours run, idle, breakdown — auto-listed from site's assigned equipment)
+     ├─ Material consumed (auto-suggested from today's activity + BOM, editable)
+     ├─ Progress (quantity done today, against BOQ item)
+     ├─ Weather / remarks
+     └─ Photos (optional but encouraged)
+ └─ Submit → status shows "Submitted, pending PM review" until PM approves
+```
+
+### Screens/tiles this role should see
+
+| Screen | Purpose |
+|---|---|
+| Landing Dashboard | As above |
+| File DPR | The core daily form |
+| DPR History | List of past DPRs for their site(s) only, with status (draft/submitted/approved/returned) |
+| Material Receipts | Log/view receipts against PI |
+| Material Issues (if store-authorized) | Issue material to a sub-activity |
+| Raise IRN (Internal Requisition) | Request materials from central store, auto-suggested quantities |
+| Tomorrow's Plan / Readiness | Log tomorrow's material/equipment/labour need; auto-prompts an IRN if a shortage is flagged (see §4b) |
+| Today's Work Programme View | Read-only — today's planned target, this week's schedule, tomorrow's plan |
+| My Site's Stock (read-only) | What's physically at their site right now |
+| Notifications | PI approved/rejected, DPR returned for correction, low stock alerts |
+
+**Explicitly should NOT see:** other sites, financial/vendor bill data, company-wide reports, user management, master data editing, work programme *editing* (only viewing their own site's slice).
+
+---
+
+## 2. Project Manager (PM)
+
+**Who they are:** oversees one or more sites, doesn't do daily data entry, spends their time reviewing, approving, and catching problems before they become expensive. Desktop-first, but should work fine on a tablet/phone for approvals on the go.
+
+### Landing page (on login)
+
+A command-center dashboard, organized around **exceptions and approvals**, not raw data:
+
+1. **Approvals queue** (top of page, impossible to miss) — pending Purchase Indents, pending DPR approvals, pending vendor bills, grouped and counted (e.g., *"5 PIs • 2 DPRs • 1 Bill awaiting your action"*).
+2. **Site health strip** — one row per site under them: today's DPR filed? (yes/no), progress vs. plan (on track / behind / ahead), any open critical-material shortages.
+3. **Programme vs. Actual** — a simple progress bar or chart per active site: planned % complete vs. actual % complete to date, pulled from the Work Programme/BOQ module.
+4. **Critical items** — materials flagged as below-reorder-level or blocking an upcoming activity, across all their sites.
+5. **Recent vendor bills** awaiting approval, with amount and vendor name.
+
+### Flow
+
+```
+Login → Landing dashboard
+ └─ Approvals Queue → work through PIs (approve/reject/query), DPRs (approve/return for correction)
+ └─ Site Health Strip → tap a site showing "behind plan" → drill into that site's programme detail
+ └─ Critical Items → tap a shortage → see which activity it blocks → raise/escalate procurement
+ └─ Reports → weekly/monthly progress report, cost vs. BOQ, material reconciliation across sites
+```
+
+### Screens/tiles this role should see
+
+| Screen | Purpose |
+|---|---|
+| Landing Dashboard (multi-site) | As above |
+| Approvals — PIs | Approve/reject with quantity/rate visibility |
+| Approvals — DPRs | Review and approve, or return for correction with a note |
+| Approvals — Vendor Bills | Approve/reject, view against PI/GRN |
+| Work Programme & BOQ (view + edit) | Full read/write on programme for their sites, BOM comparison, critical item view |
+| Site Comparison Report | Progress, cost, material variance across all their sites side by side |
+| Stock Overview (all their sites) | Aggregated stock/theoretical-vs-physical view |
+| Requisitions | View/approve IRNs |
+| Reports Hub | Progress, cost, material, labour reports |
+
+**Explicitly should NOT see (unless also given admin rights):** user management, company-wide master data editing, billing/subscription settings, sites outside their assigned projects.
+
+---
+
+## 3. Admin
+
+**Who they are:** you, or whoever runs the company-side setup — not a daily user of DPR/stock screens, but the person who configures the system so everyone else's day works smoothly. Desktop-first.
+
+### Landing page (on login)
+
+Less a "dashboard," more a **control panel**:
+
+1. **System health strip** — active users today, any failed logins/device-approval requests pending, any sites with no DPR filed in 2+ days (a red flag worth an admin's attention).
+2. **Setup checklist** (especially valuable during friend-pilot onboarding) — e.g., *"3 sites configured • 2 SDB norms missing mix data • 1 user pending approval."*
+3. **Quick links** — User Management, Site/Project Setup, Master Data, Module Settings.
+
+### Flow
+
+```
+Login → Control panel
+ └─ New site onboarding: Site Setup → assign PM/Site Engineers → configure BOQ import → set module access (Roads only, no HMP/RMC tiles)
+ └─ New user: User Management → create user → assign role (Site Engineer/PM/Admin) → assign site(s) → approve device
+ └─ Ongoing: Masters → maintain Materials list, Equipment list, SDB/Norms Library, Party/Vendor list
+ └─ Periodic: Edit Requests → review any post-submission correction requests
+ └─ Periodic: Admin Ledger Tools → run reconciliation checks, review flagged discrepancies
+```
+
+### Screens/tiles this role should see
+
+| Screen | Purpose |
+|---|---|
+| Control Panel Dashboard | As above |
+| User Management | Create/edit users, assign roles and site access, approve new devices |
+| Permission Manager | Fine-tune what each role/user can see (maps to the section keys already in your permissions system) |
+| Site Management | Create/edit sites/projects, assign team, toggle which modules are visible per site (this is your module-packaging switch in action) |
+| Masters — Materials | Add/edit material master list (this is where "DUST" vs "Fine Aggregate" naming gets standardized, tying back to what we found earlier) |
+| Masters — Equipment | Equipment master list |
+| Masters — Parties/Vendors | Vendor/party master list |
+| Norms Library (SNL) | Manage productivity norms used by the planning engine |
+| Edit Requests | Approve/reject post-submission correction requests |
+| Admin Ledger Tools | Run reconciliation, view/fix stock discrepancies |
+| Reports Hub (full access) | Every report, every site |
+| App Settings | Company name/logo/branding (ties to the Batch 3 item from earlier) |
+
+---
+
+## 4. Decisions made — please implement
+
+### 4a. Who raises Purchase Indent (PI) vs. Internal Requisition (IRN)
+
+**Decision:** Site Engineers get **IRN raise only**, not Purchase Indent. PI-raising is restricted to PM (or a dedicated Store/Procurement role, if introduced later).
+
+**Reasoning:** IRN moves material the company already owns (central store → site) — low risk if the quantity is a little off. PI is a step toward committing company money with an outside vendor — that decision point should sit with whoever is accountable for cost and vendor relationships, not with whoever happens to be on site that day. Your permission system already separates these cleanly (`irn_raise`/`irn_approve` vs. `purchase_indents_raise`/`purchase_indents_approve`) — this is a role-assignment decision, not new plumbing.
+
+**What to build:** ensure the Site Engineer role template has `irn_raise` enabled and `purchase_indents_raise` disabled. The PM role template should have both.
+
+### 4b. Tomorrow's Plan → auto-prompt IRN when there's a shortage
+
+**Current state (confirmed in code):** there's already a "Tomorrow's Plan" / "Readiness for Today's Work" feature where a Site Engineer logs planned material/equipment/labour and marks readiness as "confirmed OK" or "confirmed with shortage." Today, a shortage just shows a passive red "Shortage" badge on the dashboard — nothing actively prompts the Site Engineer to do anything about it, and the shortage flag itself is **self-reported** rather than checked against real stock numbers.
+
+**What to change:**
+1. When a Site Engineer marks (or the system detects) a shortage on the Tomorrow's Plan / Readiness screen, immediately show a clear call-to-action — e.g. *"You're short on [material]. Raise an IRN now?"* — with a button that opens a pre-filled IRN (site, material, and shortfall quantity carried over automatically), rather than just displaying a badge and leaving the Site Engineer to remember to act separately.
+2. Where possible, don't rely purely on self-reported shortage — compare the logged "Tomorrow's Plan" material/equipment/labour requirement against actual current site stock (and the Work Programme/BOM where available) and flag a shortage automatically, with the self-reported flag as a backup/override rather than the only source of truth.
+3. Same logic should apply to equipment and labour shortfalls where relevant (e.g. equipment shortfall could similarly prompt an equipment-transfer request, if that flow exists).
+
+---
+
+## 5. Cross-cutting notes
+
+- **Store verification role:** you mentioned store verification separately earlier — worth deciding now whether "Store" is its own role (a storekeeper who isn't the site engineer) or a permission flag a Site Engineer can also hold. For a small road contractor pilot, it's likely the same person — but the screens above are built so a dedicated Store role could be split out later without a redesign.
+- **Approval chain length:** for the pilot, keep it simple — Site Engineer raises, PM approves. Don't introduce a second approval tier (e.g., Admin also approving PIs) unless a specific friend contractor's workflow genuinely needs it — remember the "real bug vs. their specific way of working" distinction from earlier.
+- **Notifications:** every role above has a "pending on you" or "approvals queue" concept — worth confirming with Replit that push/in-app notifications actually fire for each of these (PI submitted → PM notified; PI approved/rejected → Site Engineer notified; DPR returned → Site Engineer notified).
+- **Mobile vs. desktop:** Site Engineer screens should be tested on an actual phone before the pilot, not just a resized browser window — that's where the daily-use friction will actually show up.
+
+---
+
+## 6. Open questions for you to decide
+
+1. Is "Store" a separate role for your friend contractors, or folded into Site Engineer for now?
+2. Should PMs see vendor bill *amounts* (financial visibility), or just approve on quantity/quality with amounts restricted to Admin? This is a real trust/access decision, not just a UI one.
+3. For the pilot specifically — do you want Admin (you) to also see everything Site Engineers and PMs see, or keep Admin purely as configuration and route reporting through the PM view? (Most setups just make Admin see everything, but worth confirming.)
