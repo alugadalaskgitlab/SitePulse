@@ -428,7 +428,11 @@ function RequirementCard({
             <div>
               <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1">Planned Work</p>
               <p className="text-sm text-slate-700 dark:text-slate-200">{req.plannedWork.activity}</p>
-              {req.plannedWork.chainage && <p className="text-xs text-slate-400">Chainage: {req.plannedWork.chainage}</p>}
+              {req.plannedWork.chainageFrom != null || req.plannedWork.chainageTo != null ? (
+                <p className="text-xs text-slate-400">Ch. {req.plannedWork.chainageFrom ?? "?"} – {req.plannedWork.chainageTo ?? "?"} km</p>
+              ) : req.plannedWork.chainage ? (
+                <p className="text-xs text-slate-400">Chainage: {req.plannedWork.chainage}</p>
+              ) : null}
               {req.plannedWork.plannedQty && (
                 <p className="text-xs text-slate-400">Qty: {req.plannedWork.plannedQty} {req.plannedWork.plannedUom}</p>
               )}

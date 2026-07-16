@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
@@ -10,10 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { BillItemPicker } from "@/components/BillItemPicker";
 import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, Send,
   HardHat, Package, Wrench, Users, AlertTriangle, ClipboardList,
 } from "lucide-react";
+
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null };
 
 const TOMORROW = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
@@ -90,6 +93,31 @@ export default function SiteRequirementNew() {
   const [date, setDate] = useState(isImmediateMode ? format(new Date(), "yyyy-MM-dd") : TOMORROW);
   const [siteId, setSiteId] = useState<string>("");
 
+  // Fetch BOQ projects and items for the selected site — reuses same pattern as SiteEntry.tsx
+  const { data: siteBoqProjects = [] } = useQuery<Array<{ id: number; name: string; status?: string; barCount?: number }>>({
+    queryKey: ["/api/boq/projects", siteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects?siteId=${siteId}`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteId,
+  });
+  const siteBoqProjectId = useMemo(() => {
+    if (!siteBoqProjects.length) return null;
+    const activeWithBars = siteBoqProjects.find((p) => p.status === "active" && (p.barCount ?? 0) > 0);
+    if (activeWithBars) return activeWithBars.id;
+    const active = siteBoqProjects.find((p) => p.status === "active");
+    return active?.id ?? siteBoqProjects[0].id;
+  }, [siteBoqProjects]);
+  const { data: siteBoqItems = [] } = useQuery<SiteBoqItem[]>({
+    queryKey: ["/api/boq/projects", siteBoqProjectId, "items"],
+    queryFn: async () => {
+      const res = await fetch(`/api/boq/projects/${siteBoqProjectId}/items`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: !!siteBoqProjectId,
+  });
+
   // Section open state — immediate mode auto-opens Section E only
   const [openSections, setOpenSections] = useState({
     plannedWork: !isImmediateMode,
@@ -103,7 +131,9 @@ export default function SiteRequirementNew() {
 
   // Section A — Planned work
   const [activity, setActivity] = useState("");
-  const [chainage, setChainage] = useState("");
+  const [boqItemId, setBoqItemId] = useState<number | null>(null);
+  const [chainageFrom, setChainageFrom] = useState("");
+  const [chainageTo, setChainageTo] = useState("");
   const [plannedQty, setPlannedQty] = useState("");
   const [plannedUom, setPlannedUom] = useState("");
   const [pwRemarks, setPwRemarks] = useState("");
@@ -117,7 +147,10 @@ export default function SiteRequirementNew() {
     setSiteId(existingReq.siteId ? String(existingReq.siteId) : "");
     if (existingReq.plannedWork) {
       setActivity(existingReq.plannedWork.activity ?? "");
-      setChainage(existingReq.plannedWork.chainage ?? "");
+      setBoqItemId(existingReq.plannedWork.boqItemId ?? null);
+      // Backward-compat: old records have a single `chainage` text field; new ones have chainageFrom/chainageTo numbers
+      setChainageFrom(existingReq.plannedWork.chainageFrom != null ? String(existingReq.plannedWork.chainageFrom) : (existingReq.plannedWork.chainage ?? ""));
+      setChainageTo(existingReq.plannedWork.chainageTo != null ? String(existingReq.plannedWork.chainageTo) : "");
       setPlannedQty(existingReq.plannedWork.plannedQty ?? "");
       setPlannedUom(existingReq.plannedWork.plannedUom ?? "");
       setPwRemarks(existingReq.plannedWork.remarks ?? "");
@@ -159,8 +192,10 @@ export default function SiteRequirementNew() {
   const saveMutation = useMutation({
     mutationFn: () => {
       const body: any = {};
-      if (activity || chainage || plannedQty || pwRemarks) {
-        body.plannedWork = { activity, chainage, plannedQty, plannedUom, remarks: pwRemarks };
+      const chFrom = chainageFrom !== "" ? parseFloat(chainageFrom) : null;
+      const chTo = chainageTo !== "" ? parseFloat(chainageTo) : null;
+      if (activity || boqItemId != null || chFrom != null || chTo != null || plannedQty || pwRemarks) {
+        body.plannedWork = { activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo, plannedQty, plannedUom, remarks: pwRemarks };
       }
       const filteredMaterials = materials.filter(m => m.materialName);
       const filteredEquipment = equipment.filter(e => e.equipmentType);
@@ -201,7 +236,7 @@ export default function SiteRequirementNew() {
 
   const hasAnyContent = isImmediateMode
     ? immediate.some(i => i.description)
-    : (activity || chainage || plannedQty ||
+    : (activity || boqItemId != null || chainageFrom || chainageTo || plannedQty ||
        materials.some(m => m.materialName) ||
        equipment.some(e => e.equipmentType) ||
        labour.some(l => l.labourType) ||
@@ -271,13 +306,36 @@ export default function SiteRequirementNew() {
         {!isImmediateMode && <Section title="A. Tomorrow's Planned Work" icon={ClipboardList} color="bg-orange-500" open={openSections.plannedWork} onToggle={() => toggleSection("plannedWork")}>
           <div className="space-y-3 mt-2">
             <div>
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Activity / BOQ Item</label>
-              <Input value={activity} onChange={e => setActivity(e.target.value)} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid="input-activity" />
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">
+                {siteBoqItems.length > 0 ? "BOQ Item" : "Activity / BOQ Item"}
+              </label>
+              {siteBoqItems.length > 0 ? (
+                <BillItemPicker
+                  items={siteBoqItems}
+                  value={boqItemId}
+                  stacked
+                  labels={false}
+                  testidPrefix="req-activity"
+                  reviewPath={siteBoqProjectId ? `/work-program/${siteBoqProjectId}/item-review` : undefined}
+                  onChange={(id, it) => {
+                    setBoqItemId(id);
+                    setActivity(it ? it.description : "");
+                  }}
+                />
+              ) : (
+                <Input value={activity} onChange={e => setActivity(e.target.value)} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid="input-activity" />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Chainage / Structure</label>
-                <Input value={chainage} onChange={e => setChainage(e.target.value)} placeholder="e.g. 5+000 to 5+500" className="text-sm" data-testid="input-chainage" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Chainage From (km)</label>
+                  <Input value={chainageFrom} onChange={e => setChainageFrom(e.target.value)} placeholder="e.g. 5.000" type="number" step="0.001" className="text-sm" data-testid="input-chainage-from" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Chainage To (km)</label>
+                  <Input value={chainageTo} onChange={e => setChainageTo(e.target.value)} placeholder="e.g. 5.500" type="number" step="0.001" className="text-sm" data-testid="input-chainage-to" />
+                </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Planned Qty</label>
