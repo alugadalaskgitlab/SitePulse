@@ -2148,7 +2148,6 @@ export function SitesMasterSection() {
   const [editingSiteId, setEditingSiteId] = useState<number | null>(null);
   const [editingSiteName, setEditingSiteName] = useState("");
   const [editingSitePartyId, setEditingSitePartyId] = useState<string>("all");
-  const [moduleDialogSiteId, setModuleDialogSiteId] = useState<number | null>(null);
 
   const { data: sitesList = [], isLoading: sitesLoading } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
@@ -2245,22 +2244,6 @@ export function SitesMasterSection() {
     },
     onError: () => {
       toast({ title: "Error", description: "Could not update site status.", variant: "destructive" });
-    },
-  });
-
-  const updateModulesMutation = useMutation({
-    mutationFn: async ({ id, enabledModules }: { id: number; enabledModules: string[] }) => {
-      const response = await apiRequest("PATCH", `/api/sites/${id}`, { enabledModules });
-      if (!response.ok) throw new Error("Failed to update site modules");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
-      setModuleDialogSiteId(null);
-      toast({ title: "Module settings saved", description: "Sidebar will update for all users on this site." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Could not save module settings.", variant: "destructive" });
     },
   });
 
@@ -2394,17 +2377,6 @@ export function SitesMasterSection() {
                         <Badge variant="outline" className="text-sm border-slate-400 text-slate-500" data-testid={`badge-closed-${site.id}`}>Closed</Badge>
                       )}
                     </div>
-                    {canEdit && isAdmin && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        title="Module visibility settings"
-                        onClick={() => setModuleDialogSiteId(site.id)}
-                        data-testid={`button-modules-site-${site.id}`}
-                      >
-                        <Settings className="w-3.5 h-3.5 text-slate-500" />
-                      </Button>
-                    )}
                     {canEdit && (
                       <Button
                         size="icon"
@@ -2459,104 +2431,6 @@ export function SitesMasterSection() {
       </CardContent>
     </Card>
 
-    {/* Module visibility dialog */}
-    {moduleDialogSiteId !== null && (() => {
-      const dialogSite = sitesList.find(s => s.id === moduleDialogSiteId);
-      if (!dialogSite) return null;
-      const mods: string[] = dialogSite.enabledModules ?? [];
-      const hasHmp = mods.includes("hmp");
-      const hasRmc = mods.includes("rmc");
-      const isUnrestricted = mods.length === 0;
-      return (
-        <Dialog open onOpenChange={(open) => { if (!open) setModuleDialogSiteId(null); }}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Module Visibility — {dialogSite.name}</DialogTitle>
-              <DialogDescription>
-                Choose which optional modules appear in the sidebar for users assigned to this site.
-                Leaving all toggles off shows all modules (default, backward-compatible).
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="rounded border p-3 bg-slate-50 dark:bg-slate-900/30 text-sm text-slate-600 dark:text-slate-400">
-                <strong>Current mode: </strong>
-                {isUnrestricted
-                  ? "All modules visible (no restriction)"
-                  : `Restricted to: ${[hasHmp && "HMP", hasRmc && "RMC"].filter(Boolean).join(", ") || "Roads only (no plant modules)"}`}
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">HMP Operations</p>
-                    <p className="text-xs text-muted-foreground">Hotmix plant — shift logs, LDO, bitumen, dispatches</p>
-                  </div>
-                  <Switch
-                    checked={isUnrestricted || hasHmp}
-                    disabled={isUnrestricted}
-                    onCheckedChange={(checked) => {
-                      const next = checked
-                        ? [...mods.filter(m => m !== "hmp"), "hmp"]
-                        : mods.filter(m => m !== "hmp");
-                      updateModulesMutation.mutate({ id: dialogSite.id, enabledModules: next });
-                    }}
-                    data-testid="switch-module-hmp"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">RMC Operations</p>
-                    <p className="text-xs text-muted-foreground">Ready-mix concrete — batch records, mix designs, cube tests</p>
-                  </div>
-                  <Switch
-                    checked={isUnrestricted || hasRmc}
-                    disabled={isUnrestricted}
-                    onCheckedChange={(checked) => {
-                      const next = checked
-                        ? [...mods.filter(m => m !== "rmc"), "rmc"]
-                        : mods.filter(m => m !== "rmc");
-                      updateModulesMutation.mutate({ id: dialogSite.id, enabledModules: next });
-                    }}
-                    data-testid="switch-module-rmc"
-                  />
-                </div>
-              </div>
-              <div className="border-t pt-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Presets</p>
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateModulesMutation.mutate({ id: dialogSite.id, enabledModules: [] })}
-                    disabled={updateModulesMutation.isPending || isUnrestricted}
-                    data-testid="button-preset-all"
-                  >
-                    All modules (default)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateModulesMutation.mutate({ id: dialogSite.id, enabledModules: ["roads"] })}
-                    disabled={updateModulesMutation.isPending || (mods.length === 1 && mods[0] === "roads")}
-                    data-testid="button-preset-roads"
-                  >
-                    Roads only (no HMP / RMC)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateModulesMutation.mutate({ id: dialogSite.id, enabledModules: ["hmp"] })}
-                    disabled={updateModulesMutation.isPending || (mods.length === 1 && mods[0] === "hmp")}
-                    data-testid="button-preset-hmp-only"
-                  >
-                    HMP only (no RMC)
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      );
-    })()}
   );
 }
 

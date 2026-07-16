@@ -130,7 +130,12 @@ export async function registerRoutes(
     const logoFile = process.env.COMPANY_LOGO_FILE
       ?? (await storage.getSetting("company_logo_file"))
       ?? "hlc-logo.jpg";
-    return { companyName, companyShortName, appTagline, logoFile };
+    // Licensed modules: deployment-wide setting stored as a JSON array.
+    // Empty array = all modules visible (default; backward-compatible for existing deployments).
+    // E.g. ["hmp"] = HMP licensed; ["hmp","rmc"] = both; [] = Roads Only (no plant modules).
+    const licensedModulesRaw = await storage.getSetting("licensed_modules");
+    const licensedModules: string[] = licensedModulesRaw ? JSON.parse(licensedModulesRaw) : [];
+    return { companyName, companyShortName, appTagline, logoFile, licensedModules };
   }
 
   function getCompanyLogoPath(logoFile: string): string {
@@ -156,6 +161,33 @@ export async function registerRoutes(
       res.json(cfg);
     } catch (e: any) {
       res.status(500).json({ message: e?.message ?? "Failed to load branding config" });
+    }
+  });
+
+  // Admin-only: get and set the deployment-wide licensed modules list
+  app.get("/api/admin/licensed-modules", requireAuth, async (_req, res) => {
+    try {
+      const raw = await storage.getSetting("licensed_modules");
+      const licensedModules: string[] = raw ? JSON.parse(raw) : [];
+      res.json({ licensedModules });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to load licensed modules" });
+    }
+  });
+
+  app.post("/api/admin/licensed-modules", requireAuth, async (req, res) => {
+    try {
+      const { licensedModules } = req.body;
+      if (!Array.isArray(licensedModules)) {
+        return res.status(400).json({ message: "licensedModules must be an array" });
+      }
+      const allowed = ["hmp", "rmc"];
+      const filtered = licensedModules.filter((m: string) => allowed.includes(m));
+      await storage.setSetting("licensed_modules", JSON.stringify(filtered));
+      // Bust the /api/config cache by returning the new value
+      res.json({ licensedModules: filtered });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to save licensed modules" });
     }
   });
 

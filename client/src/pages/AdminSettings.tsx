@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, Lock, Save, Loader2, Shield, Fuel, Building2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ChevronLeft, Lock, Save, Loader2, Shield, Fuel, Building2, Package2 } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -39,6 +40,46 @@ export default function AdminSettings() {
     queryKey: ["/api/admin/branding"],
     enabled: authenticated,
   });
+
+  // Licensed modules (deployment-wide)
+  const { data: licensedModulesData } = useQuery<{ licensedModules: string[] }>({
+    queryKey: ["/api/admin/licensed-modules"],
+    enabled: authenticated,
+  });
+  const licensedModules: string[] = licensedModulesData?.licensedModules ?? [];
+  const hmpLicensed = licensedModules.length === 0 || licensedModules.includes("hmp");
+  const rmcLicensed = licensedModules.length === 0 || licensedModules.includes("rmc");
+  const isUnrestricted = licensedModules.length === 0;
+
+  const saveLicensedModulesMutation = useMutation({
+    mutationFn: async (modules: string[]) => {
+      const response = await apiRequest("POST", "/api/admin/licensed-modules", { licensedModules: modules });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to save");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/licensed-modules"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      toast({ title: "Module licensing saved", description: "Sidebar will update for all users on next page load." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save", variant: "destructive" });
+    },
+  });
+
+  function toggleModule(key: string, on: boolean) {
+    // Switching from unrestricted → restricted: start with all modules, then remove the one being turned off
+    let current = isUnrestricted ? ["hmp", "rmc"] : [...licensedModules];
+    if (on) {
+      current = [...current.filter(m => m !== key), key];
+    } else {
+      current = current.filter(m => m !== key);
+    }
+    saveLicensedModulesMutation.mutate(current);
+  }
 
   const { data: ldoReceivedByData } = useQuery<{ tank1: string | null; tank2: string | null }>({
     queryKey: ["/api/admin/ldo-received-by"],
@@ -396,6 +437,102 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+              <Package2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <CardTitle>Module Licensing</CardTitle>
+              <CardDescription>
+                Deployment-wide setting — controls which optional modules appear in the sidebar for all users.
+                Toggle off to hide a module entirely (Roads-only deployments have both off).
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="rounded border p-3 bg-slate-50 dark:bg-slate-900/30 text-sm text-slate-600 dark:text-slate-400">
+            <strong>Current package: </strong>
+            {isUnrestricted
+              ? "Unrestricted — all modules visible (High Lane internal deployment)"
+              : licensedModules.length === 0
+                ? "Roads Only (no HMP, no RMC)"
+                : `Active: ${licensedModules.map(m => m.toUpperCase()).join(" + ")}`}
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">HMP Operations</p>
+                <p className="text-xs text-muted-foreground">Hotmix plant — shift logs, LDO flow, bitumen, dispatches, plant reports</p>
+              </div>
+              <Switch
+                checked={hmpLicensed}
+                onCheckedChange={(v) => toggleModule("hmp", v)}
+                disabled={saveLicensedModulesMutation.isPending}
+                data-testid="switch-license-hmp"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">RMC Operations</p>
+                <p className="text-xs text-muted-foreground">Ready-mix concrete — batch records, mix designs, cube tests, delivery challans</p>
+              </div>
+              <Switch
+                checked={rmcLicensed}
+                onCheckedChange={(v) => toggleModule("rmc", v)}
+                disabled={saveLicensedModulesMutation.isPending}
+                data-testid="switch-license-rmc"
+              />
+            </div>
+          </div>
+
+          <div className="border-t pt-4 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Quick Presets</p>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveLicensedModulesMutation.mutate([])}
+                disabled={saveLicensedModulesMutation.isPending || isUnrestricted}
+                data-testid="button-preset-unrestricted"
+              >
+                Unrestricted (HLC internal)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveLicensedModulesMutation.mutate(["roads"])}
+                disabled={saveLicensedModulesMutation.isPending || (!isUnrestricted && !hmpLicensed && !rmcLicensed)}
+                data-testid="button-preset-roads-only"
+              >
+                Roads Only (no HMP / RMC)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveLicensedModulesMutation.mutate(["hmp"])}
+                disabled={saveLicensedModulesMutation.isPending}
+                data-testid="button-preset-hmp-only"
+              >
+                Roads + HMP
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveLicensedModulesMutation.mutate(["hmp", "rmc"])}
+                disabled={saveLicensedModulesMutation.isPending}
+                data-testid="button-preset-hmp-rmc"
+              >
+                Roads + HMP + RMC
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
