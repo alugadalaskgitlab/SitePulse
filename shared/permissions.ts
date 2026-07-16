@@ -9,6 +9,7 @@ export const SECTION_KEYS = [
   // ── Hub navigation (toggle entire domain hubs on/off per user) ───────────
   "hmp_hub",
   "site_hub",
+  "equipment_hub",
   "reports_hub",
   "stores_hub",
   "finance_hub",
@@ -124,10 +125,11 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
   // Hub navigation
   hmp_hub: "HMP Hub (entry page)",
-  site_hub: "Site Hub (entry page)",
+  site_hub: "Site Operations Hub (entry page)",
+  equipment_hub: "Equipment & Fleet Hub (entry page)",
   reports_hub: "Reports Hub (entry page)",
-  stores_hub: "Stores Hub (entry page)",
-  finance_hub: "Finance Hub (entry page)",
+  stores_hub: "Stores & Inventory Hub (entry page)",
+  finance_hub: "Procurement & Billing Hub (entry page)",
   masters_hub: "Masters Hub (entry page)",
   admin_hub: "Admin Hub (entry page)",
   rmc_hub: "RMC Hub (entry page)",
@@ -322,7 +324,7 @@ function buildTemplateMatrix(
 const _SITE_ENGINEER_MATRIX = buildTemplateMatrix(
   [
     "dashboard",
-    "site_hub", "reports_hub", "stores_hub",
+    "site_hub", "equipment_hub", "reports_hub", "stores_hub",
     "site_dprs", "site_materials",
     "purchase_indents_view",   // view PIs only — raise is intentionally excluded
     "irn_view", "irn_raise",  // full IRN raise access
@@ -334,7 +336,7 @@ const _SITE_ENGINEER_MATRIX = buildTemplateMatrix(
 const _PM_MATRIX = buildTemplateMatrix(
   [
     "dashboard",
-    "site_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub",
+    "site_hub", "equipment_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub",
     "site_dprs", "site_materials",
     "purchase_indents_view", "purchase_indents_raise",
     "irn_view", "irn_raise",
@@ -383,7 +385,7 @@ export const PERMISSION_GROUPS: { id: string; label: string; sections: SectionKe
   {
     id: "hubs",
     label: "Hub Navigation (page access)",
-    sections: ["hmp_hub", "site_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub", "admin_hub", "rmc_hub"],
+    sections: ["hmp_hub", "site_hub", "equipment_hub", "reports_hub", "stores_hub", "finance_hub", "masters_hub", "admin_hub", "rmc_hub"],
   },
   {
     id: "site",

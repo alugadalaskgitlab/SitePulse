@@ -214,21 +214,9 @@ function Router() {
             <HmpHub />
           </RequireAuth>
         </Route>
-        <Route path="/equipment/hub">
-          <RequireAuth>
-            <EquipmentHub />
-          </RequireAuth>
-        </Route>
-        <Route path="/reports/hub">
-          <RequireAuth>
-            <ReportsHub />
-          </RequireAuth>
-        </Route>
-        <Route path="/site/hub">
-          <RequireAuth>
-            <SiteHub />
-          </RequireAuth>
-        </Route>
+        <Route path="/equipment/hub" component={gated(EquipmentHub, "equipment_hub")} />
+        <Route path="/reports/hub" component={gated(ReportsHub, "reports_hub")} />
+        <Route path="/site/hub" component={gated(SiteHub, "site_hub")} />
         <Route path="/admin/hub">
           <RequireAuth>
             <MastersHub />
@@ -239,16 +227,8 @@ function Router() {
             <AdminMastersHub />
           </RequireAuth>
         </Route>
-        <Route path="/stores/hub">
-          <RequireAuth>
-            <StoresHub />
-          </RequireAuth>
-        </Route>
-        <Route path="/finance/hub">
-          <RequireAuth>
-            <FinanceHub />
-          </RequireAuth>
-        </Route>
+        <Route path="/stores/hub" component={gated(StoresHub, "stores_hub")} />
+        <Route path="/finance/hub" component={gated(FinanceHub, "finance_hub")} />
         <Route path="/rmc/hub">
           <RequireAuth>
             <RmcHub />
@@ -378,8 +358,8 @@ function AuthedShell() {
           {/* Masters */}
           <Route path="/masters/section/:section" component={gatedEither(PlantMasters, "master_parties", "master_materials", "master_equipment", "master_personnel")} />
 
-          {/* Edit requests / misc */}
-          <Route path="/edit-requests" component={EditRequestsPage} />
+          {/* Edit requests — /edit-requests is the admin review queue; /mine is open to any authenticated user */}
+          <Route path="/edit-requests" component={gatedEither(EditRequestsPage, "admin_settings", "user_management")} />
           <Route path="/edit-requests/mine" component={EditRequestsPage} />
           <Route path="/notifications/preferences" component={NotificationPreferences} />
           <Route path="/account" component={Account} />

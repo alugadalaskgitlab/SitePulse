@@ -126,17 +126,17 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
   const mainNavItems: NavItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-    { href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" },
+    ...(sectionVisible("site_hub") || isAdmin ? [{ href: "/site/hub", icon: HardHat, label: "Site Operations", matchPrefix: "/site" }] : []),
     ...(moduleAllowed("hmp") ? [{ href: "/plant/hub", icon: Factory, label: "HMP Operations", matchPrefix: "/plant", contextKey: "hmp" }] : []),
     ...(rmcEnabled && moduleAllowed("rmc") ? [{ href: "/rmc/hub", icon: Building2, label: "RMC Operations", matchPrefix: "/rmc", contextKey: "rmc" }] : []),
-    { href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" },
-    { href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" },
-    { href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" },
+    ...(sectionVisible("equipment_hub") || isAdmin ? [{ href: "/equipment/hub", icon: Wrench, label: "Equipment & Fleet", matchPrefix: "/equipment", contextKey: "equipment" }] : []),
+    ...(sectionVisible("stores_hub") || isAdmin ? [{ href: "/stores/hub", icon: Package, label: "Stores & Inventory", matchPrefix: "/stores", contextKey: "stores" }] : []),
+    ...(sectionVisible("finance_hub") || isAdmin ? [{ href: "/finance/hub", icon: Receipt, label: "Procurement & Billing", matchPrefix: "/finance" }] : []),
     ...(canSeeIrn ? [{ href: "/irn", icon: ClipboardList, label: "Requisitions", matchPrefix: "/irn" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/work-program", icon: FileSpreadsheet, label: "Work Program & BOQ", matchPrefix: "/work-program" }] : []),
     ...(WP_ENABLED && (sectionVisible("qto_boq") || isAdmin) ? [{ href: "/norms", icon: BookOpen, label: "Norms Library (SNL)", matchPrefix: "/norms" }] : []),
-    { href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" },
-    { href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" },
+    ...(sectionVisible("reports_hub") || isAdmin ? [{ href: "/reports/hub", icon: BarChart2, label: "Reports", matchPrefix: "/reports" }] : []),
+    ...(isAdmin ? [{ href: "/edit-requests", icon: ShieldCheck, label: "Edit Requests", matchPrefix: "/edit-requests" }] : []),
   ];
 
   const bottomNavItems: NavItem[] = [
