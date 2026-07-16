@@ -24,7 +24,8 @@ import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 // full BOQ description to a familiar construction short name.
 
 function extractShortName(description: string, categoryName: string | null): string {
-  if (categoryName && categoryName.length <= 30) return categoryName;
+  // Always try the item's own description first — keyword shortcuts, then raw text.
+  // The category name is a last resort only when description is blank/unusable.
   const d = description.toUpperCase();
   if (d.includes("EMBANKMENT") && (d.includes("BORROW") || d.includes("IMPORT"))) return "Embankment — Borrow Earth";
   if (d.includes("EMBANKMENT") && d.includes("CUT"))  return "Embankment — Cut Material";
@@ -55,7 +56,11 @@ function extractShortName(description: string, categoryName: string | null): str
   if (d.includes("MEDIAN"))                            return "Median";
   if (d.includes("SIGN"))                              return "Signage";
   if (d.includes("EXCAVATION"))                        return "Excavation";
-  return description.length > 35 ? description.slice(0, 33) + "…" : description;
+  // No keyword matched — use the raw description if it has content.
+  if (description.trim()) return description.length > 35 ? description.slice(0, 33) + "…" : description;
+  // Description is blank/unusable — fall back to category name as a last resort.
+  if (categoryName?.trim()) return categoryName.length > 35 ? categoryName.slice(0, 33) + "…" : categoryName;
+  return "—";
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
