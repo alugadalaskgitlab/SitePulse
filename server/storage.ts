@@ -468,7 +468,7 @@ export interface IStorage {
 
   // DPRs
   getDprs(filters?: { site?: string; engineer?: string; dateFrom?: string; dateTo?: string; permittedSiteNames?: string[] }): Promise<Dpr[]>;
-  getDprsWithDetails(): Promise<DprWithDetails[]>;
+  getDprsWithDetails(opts?: { dateFrom?: string; dateTo?: string }): Promise<DprWithDetails[]>;
   getDpr(id: number): Promise<DprWithDetails | undefined>;
   createDpr(dpr: CreateDprRequest, clientTimestamp?: string): Promise<Dpr>;
   updateDraftDpr(id: number, dpr: CreateDprRequest): Promise<Dpr | undefined>;
@@ -1731,9 +1731,13 @@ export class DatabaseStorage implements IStorage {
     return dpr.id;
   }
 
-  async getDprsWithDetails(): Promise<DprWithDetails[]> {
+  async getDprsWithDetails(opts?: { dateFrom?: string; dateTo?: string }): Promise<DprWithDetails[]> {
     return await db.query.dprs.findMany({
-      where: eq(dprs.isSuperseded, false),
+      where: and(
+        eq(dprs.isSuperseded, false),
+        opts?.dateFrom ? gte(dprs.date, opts.dateFrom) : undefined,
+        opts?.dateTo   ? lte(dprs.date, opts.dateTo)   : undefined,
+      ),
       with: {
         progress: true,
         equipment: true,
@@ -21071,11 +21075,15 @@ export class DatabaseStorage implements IStorage {
   // --- Plan vs Actual ---
 
   async getPlanVsActual(boqProjectId: number, asOfDate?: string): Promise<PlanVsActualRow[]> {
-    const items = await this.getBoqItems(boqProjectId);
-    const bars = await this.getWorkProgramBars(boqProjectId);
+    // Run three independent DB fetches in parallel instead of sequentially
+    const [items, bars, project] = await Promise.all([
+      this.getBoqItems(boqProjectId),
+      this.getWorkProgramBars(boqProjectId),
+      this.getBoqProject(boqProjectId),
+    ]);
 
     // Get project start date to calculate "planned to date"
-    const project = await this.getBoqProject(boqProjectId);
+    // (project already resolved above via Promise.all)
     const startDate = project?.startDate ? new Date(project.startDate) : null;
 
     // Calculate month number for today (or asOfDate)

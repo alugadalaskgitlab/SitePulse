@@ -92,7 +92,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: true,   // refresh when you return to the tab
       refetchOnMount: true,         // refresh on every page open / navigation
       refetchOnReconnect: true,
-      staleTime: 15_000,            // treat data as fresh for 15s, then auto-refetch
+      staleTime: 2 * 60_000,        // treat data as fresh for 2 min — was 15s (too aggressive on mobile)
       retry: false,
     },
     mutations: {

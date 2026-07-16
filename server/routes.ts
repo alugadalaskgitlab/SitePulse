@@ -379,13 +379,23 @@ export async function registerRoutes(
   });
 
   // Get all DPRs with full details (for admin reports)
+  // Accepts optional ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD to limit result size.
+  // FieldHome passes today's date to avoid fetching the full history on every load.
   app.get("/api/dprs/with-details", async (req, res) => {
+    const t0 = Date.now();
     try {
+      const dateFrom = req.query.dateFrom as string | undefined;
+      const dateTo   = req.query.dateTo   as string | undefined;
       const permittedSiteNames = await getPermittedSiteNames(req);
-      let dprs = await storage.getDprsWithDetails();
+      let dprs = await storage.getDprsWithDetails({ dateFrom, dateTo });
       if (permittedSiteNames !== null) {
         const nameSet = new Set(permittedSiteNames);
         dprs = dprs.filter((d) => nameSet.has(d.site));
+      }
+      const dur = Date.now() - t0;
+      if (dur > 200 || process.env.NODE_ENV !== "production") {
+        const range = dateFrom ? ` [${dateFrom}→${dateTo ?? "∞"}]` : " [all]";
+        console.log(`[perf] GET /api/dprs/with-details${range} → ${dprs.length} DPRs in ${dur}ms`);
       }
       res.json(dprs);
     } catch (err) {
@@ -10680,9 +10690,14 @@ export async function registerRoutes(
   });
 
   app.get("/api/boq/projects/:id/plan-vs-actual", async (req, res) => {
+    const t0 = Date.now();
     try {
       const asOfDate = req.query.asOf as string | undefined;
       const rows = await storage.getPlanVsActual(parseInt(req.params.id), asOfDate);
+      const dur = Date.now() - t0;
+      if (dur > 200 || process.env.NODE_ENV !== "production") {
+        console.log(`[perf] GET /api/boq/projects/${req.params.id}/plan-vs-actual → ${rows.length} items in ${dur}ms`);
+      }
       res.json(rows);
     } catch (err) {
       console.error("GET /api/boq/projects/:id/plan-vs-actual:", err);
@@ -13655,6 +13670,7 @@ export function registerSiteRequirementRoutes(app: Express) {
   });
 
   app.get("/api/site-requirements", requireAuth, async (req: any, res) => {
+    const t0 = Date.now();
     try {
       const role = req.session?.role ?? "engineer";
       const filters: any = {};
@@ -13667,6 +13683,10 @@ export function registerSiteRequirementRoutes(app: Express) {
         filters.submittedBy = req.session?.userId;
       }
       const rows = await storage.listSiteRequirements(filters);
+      const dur = Date.now() - t0;
+      if (dur > 200 || process.env.NODE_ENV !== "production") {
+        console.log(`[perf] GET /api/site-requirements → ${rows.length} rows in ${dur}ms`);
+      }
       res.json(rows);
     } catch (err: any) {
       console.error("GET /api/site-requirements error:", err);

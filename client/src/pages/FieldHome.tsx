@@ -649,11 +649,13 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   const { data: sites = [] } = useQuery<any[]>({ queryKey: ["/api/sites"] });
 
-  // NOTE: /api/dprs/with-details ignores dateFrom/dateTo params on the server.
-  // We fetch all DPRs and filter by date + site in the frontend.
+  // Fetch only today's DPRs — the server now accepts dateFrom/dateTo to avoid
+  // returning the full history on every field-home load (was fetching 200+ DPRs).
   const { data: allDprsWithDetails = [] } = useQuery<any[]>({
-    queryKey: ["/api/dprs/with-details"],
-    queryFn: () => fetch("/api/dprs/with-details").then(r => r.json()),
+    queryKey: ["/api/dprs/with-details", todayStr],
+    queryFn: () =>
+      fetch(`/api/dprs/with-details?dateFrom=${todayStr}&dateTo=${todayStr}`)
+        .then(r => r.json()),
   });
 
   const { data: purchaseIndents = [] } = useQuery<any[]>({
