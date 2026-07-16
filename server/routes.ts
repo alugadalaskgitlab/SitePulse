@@ -131,8 +131,10 @@ export async function registerRoutes(
       ?? (await storage.getSetting("company_logo_file"))
       ?? "hlc-logo.jpg";
     // Licensed modules: deployment-wide setting stored as a JSON array.
-    // Empty array = all modules visible (default; backward-compatible for existing deployments).
-    // E.g. ["hmp"] = HMP licensed; ["hmp","rmc"] = both; [] = Roads Only (no plant modules).
+    // [] = unrestricted (HLC internal — all modules visible, backward-compatible default).
+    // "roads" is the explicit base marker for any restricted deployment.
+    // E.g. ["roads"] = Roads Only; ["roads","hmp"] = Roads+HMP; ["roads","rmc"] = Roads+RMC;
+    //      ["roads","hmp","rmc"] = Roads+HMP+RMC.
     const licensedModulesRaw = await storage.getSetting("licensed_modules");
     const licensedModules: string[] = licensedModulesRaw ? JSON.parse(licensedModulesRaw) : [];
     return { companyName, companyShortName, appTagline, logoFile, licensedModules };
@@ -181,7 +183,7 @@ export async function registerRoutes(
       if (!Array.isArray(licensedModules)) {
         return res.status(400).json({ message: "licensedModules must be an array" });
       }
-      const allowed = ["hmp", "rmc"];
+      const allowed = ["roads", "hmp", "rmc"];
       const filtered = licensedModules.filter((m: string) => allowed.includes(m));
       await storage.setSetting("licensed_modules", JSON.stringify(filtered));
       // Bust the /api/config cache by returning the new value

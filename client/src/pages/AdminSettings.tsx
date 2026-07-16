@@ -71,13 +71,23 @@ export default function AdminSettings() {
   });
 
   function toggleModule(key: string, on: boolean) {
-    // Switching from unrestricted → restricted: start with all modules, then remove the one being turned off
-    let current = isUnrestricted ? ["hmp", "rmc"] : [...licensedModules];
+    // "roads" is always the base marker for any restricted state.
+    // Switching from unrestricted: seed with all optional modules + roads, then apply the toggle.
+    let current: string[];
+    if (isUnrestricted) {
+      current = ["roads", "hmp", "rmc"];
+    } else {
+      current = [...licensedModules];
+      // Guard: ensure "roads" marker is present (handles legacy data without it)
+      if (!current.includes("roads")) current = ["roads", ...current];
+    }
     if (on) {
-      current = [...current.filter(m => m !== key), key];
+      if (!current.includes(key)) current = [...current, key];
     } else {
       current = current.filter(m => m !== key);
     }
+    // "roads" marker is never removed by a switch toggle — it's the base for restricted states
+    if (!current.includes("roads")) current = ["roads", ...current];
     saveLicensedModulesMutation.mutate(current);
   }
 
@@ -458,9 +468,13 @@ export default function AdminSettings() {
             <strong>Current package: </strong>
             {isUnrestricted
               ? "Unrestricted — all modules visible (High Lane internal deployment)"
-              : licensedModules.length === 0
-                ? "Roads Only (no HMP, no RMC)"
-                : `Active: ${licensedModules.map(m => m.toUpperCase()).join(" + ")}`}
+              : hmpLicensed && rmcLicensed
+                ? "Roads + HMP + RMC (both plant modules licensed)"
+                : hmpLicensed
+                  ? "Roads + HMP only (RMC hidden)"
+                  : rmcLicensed
+                    ? "Roads + RMC only (HMP hidden)"
+                    : "Roads Only (no HMP, no RMC)"}
           </div>
 
           <div className="space-y-4">
@@ -514,17 +528,26 @@ export default function AdminSettings() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => saveLicensedModulesMutation.mutate(["hmp"])}
-                disabled={saveLicensedModulesMutation.isPending}
-                data-testid="button-preset-hmp-only"
+                onClick={() => saveLicensedModulesMutation.mutate(["roads", "hmp"])}
+                disabled={saveLicensedModulesMutation.isPending || (!isUnrestricted && hmpLicensed && !rmcLicensed)}
+                data-testid="button-preset-roads-hmp"
               >
                 Roads + HMP
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => saveLicensedModulesMutation.mutate(["hmp", "rmc"])}
-                disabled={saveLicensedModulesMutation.isPending}
+                onClick={() => saveLicensedModulesMutation.mutate(["roads", "rmc"])}
+                disabled={saveLicensedModulesMutation.isPending || (!isUnrestricted && !hmpLicensed && rmcLicensed)}
+                data-testid="button-preset-roads-rmc"
+              >
+                Roads + RMC
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveLicensedModulesMutation.mutate(["roads", "hmp", "rmc"])}
+                disabled={saveLicensedModulesMutation.isPending || (!isUnrestricted && hmpLicensed && rmcLicensed)}
                 data-testid="button-preset-hmp-rmc"
               >
                 Roads + HMP + RMC
