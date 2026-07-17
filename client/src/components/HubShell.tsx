@@ -358,17 +358,17 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
 
           {/* Right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
+            <button
               onClick={handleRefresh}
               disabled={isRefreshing}
               aria-label="Refresh data"
               data-testid="button-global-refresh"
-              className="text-slate-500 hover:text-slate-700 h-8 w-8"
+              title="Refresh data"
+              className="flex items-center gap-1.5 h-8 px-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50 shadow-sm"
             >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </Button>
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span className="text-xs font-medium hidden sm:inline">Refresh</span>
+            </button>
             <div data-testid="button-notifications">
               <AdminNotifications />
             </div>

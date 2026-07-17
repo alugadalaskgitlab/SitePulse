@@ -157,6 +157,8 @@ export default function PlantStock() {
   const { data: allStockBalances } = useQuery<{ id: number; partyId: number | null; materialId: number; balance: number; uom: string }[]>({
     queryKey: ["/api/plant-module/stock-balances"],
     select: (rows) => rows.map(r => ({ ...r, balance: Number(r.balance) })),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
   const { data: allTemplateComponents } = useQuery<{ id: number; templateId: number; materialId: number; percent: number | null; moistureContent?: number | null; wastageFactor?: number | null }[]>({
     queryKey: ["/api/plant-module/mix-template-components"],

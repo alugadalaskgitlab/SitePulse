@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, ChevronDown, ChevronRight, ClipboardList, Package,
   Wrench, Users, AlertTriangle, CheckCircle, Clock, XCircle, Pencil, Send,
-  Pen,
+  Pen, RefreshCw,
 } from "lucide-react";
 
 // ── Item-level status options per category ────────────────────────────────────
@@ -977,6 +977,8 @@ const CONTEXT_CONFIG: Record<string, { title: string; subtitle: string; backLabe
 export default function SiteRequirementsList() {
   const { sectionVisible, user, isFieldEngineer } = useAuth();
   const search = useSearch();
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const role = (user as any)?.role ?? "engineer";
   const isManager = role === "admin" || role === "manager";
 
@@ -992,9 +994,24 @@ export default function SiteRequirementsList() {
     ? "Your submitted requirements"
     : cfg.subtitle;
 
-  const { data: reqs = [], isLoading } = useQuery<any[]>({
+  const { data: reqs = [], isLoading, dataUpdatedAt } = useQuery<any[]>({
     queryKey: ["/api/site-requirements"],
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
+
+  function handleRefresh() {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    queryClient
+      .invalidateQueries({ queryKey: ["/api/site-requirements"] })
+      .catch(() => {})
+      .finally(() => setTimeout(() => setIsRefreshing(false), 600));
+  }
+
+  const lastUpdated = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   // Role-aware update flags — permission-based, not just role
   const canUpdateMaterials = isManager || sectionVisible("stores_inventory");
@@ -1021,8 +1038,23 @@ export default function SiteRequirementsList() {
               </p>
             )}
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">{cfg.title}</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {subtitle}
+              {lastUpdated && (
+                <span className="ml-2 text-slate-400">· updated {lastUpdated}</span>
+              )}
+            </p>
           </div>
+          {/* Manual refresh */}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            aria-label="Refresh list"
+            data-testid="button-refresh-requirements"
+            className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 text-slate-600 ${isRefreshing ? "animate-spin" : ""}`} />
+          </button>
           {/* Only show + New for engineers / managers in non-filtered contexts */}
           {context !== "equipment" && context !== "stores" && (
             <div className="ml-auto">
