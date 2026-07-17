@@ -603,7 +603,9 @@ export default function SiteEntry() {
   ) => {
     const info = overrideInfo !== undefined ? overrideInfo : balanceInfo(boqItemId);
     if (!info) return null;
-    const over = qty != null && qty > info.balance + 0.0001;
+    const boqItem = siteBoqItems.find((bi) => bi.id === boqItemId);
+    const convFactor = boqItem?.dprConversionFactor ?? 1;
+    const over = qty != null && (qty * convFactor) > info.balance + 0.0001;
     return (
       <div className={`text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${over ? "text-amber-700" : "text-slate-500"}`}>
         <span>Planned: {info.currentQty} {info.unit}</span>
@@ -1175,11 +1177,16 @@ export default function SiteEntry() {
       if (r.boqItemId == null || r.qty == null) return;
       const info = r.structureId ? structureBalanceInfo(r.structureId, r.boqItemId) : balanceInfo(r.boqItemId);
       if (!info) return;
-      if (r.qty > info.balance + 0.0001) {
-        const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
+      const boqItem = siteBoqItems.find((b) => b.id === r.boqItemId);
+      const convFactor = boqItem?.dprConversionFactor ?? 1;
+      const convertedQty = r.qty * convFactor;
+      if (convertedQty > info.balance + 0.0001) {
         const label = boqItem?.itemCode || boqItem?.itemName || boqItem?.description || "This item";
         const scope = r.structureId ? ` at ${r.structureId}` : "";
-        warnings.push(`${label}${scope}: entering ${r.qty} ${info.unit} exceeds the remaining balance of ${info.balance} ${info.unit}`);
+        const qtyStr = convFactor !== 1
+          ? `${convertedQty.toFixed(3)} ${info.unit} (entered: ${r.qty})`
+          : `${r.qty} ${info.unit}`;
+        warnings.push(`${label}${scope}: entering ${qtyStr} exceeds the remaining balance of ${info.balance} ${info.unit}`);
       }
     });
     return warnings;
