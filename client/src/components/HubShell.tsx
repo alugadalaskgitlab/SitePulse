@@ -54,7 +54,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   function handleRefresh() {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    queryClient.invalidateQueries({}, { throwOnError: true }).then(() => {
+    queryClient.invalidateQueries({}).then(() => {
       toast({ description: "Data refreshed", duration: 2000 });
     }).catch(() => {}).finally(() => {
       setTimeout(() => setIsRefreshing(false), 600);

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useDpr } from "@/hooks/use-dprs";
 import { Link, useRoute, useLocation } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
-import { ChevronLeft, Loader2, Printer, Edit, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
+import { ChevronLeft, Loader2, Printer, Trash2, Fuel, Home, ShoppingCart, History, Ban } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import CancelDialog from "@/components/CancelDialog";
 import HistoryDialog from "@/components/HistoryDialog";
 import { ReportHeader } from "@/components/ReportHeader";
@@ -159,15 +160,15 @@ export default function SiteReport() {
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           {canEdit && (
-            <Button
+            <EditPermissionButton
+              recordType="dpr"
+              recordId={id}
+              onEditGranted={handleEditClick}
+              label="Edit"
+              size="sm"
               variant="secondary"
               className="gap-2"
-              onClick={handleEditClick}
-              data-testid="button-edit"
-            >
-              <Edit className="w-4 h-4" />
-              Edit
-            </Button>
+            />
           )}
           <Button
             variant="outline"
