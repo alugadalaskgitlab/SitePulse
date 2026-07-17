@@ -559,8 +559,11 @@ export async function registerRoutes(
   app.get("/api/site-material-stock", async (req, res) => {
     try {
       const permittedSiteNames = await getPermittedSiteNames(req);
+      const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
       const rows = await storage.getSiteMaterialReconciliation(
-        permittedSiteNames !== null ? { permittedSiteNames } : {},
+        permittedSiteNames !== null
+          ? { permittedSiteNames, dateFrom, dateTo }
+          : { dateFrom, dateTo },
       );
       res.json(rows);
     } catch (err) {

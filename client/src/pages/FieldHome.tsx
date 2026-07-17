@@ -8,6 +8,7 @@ import {
   Target, Zap, ClipboardList, Home, FileText, BarChart2, User,
   ChevronRight, Bell, ChevronDown, CalendarPlus,
   Package, Wrench, Users, CheckCheck, XCircle, Clock, ChevronUp,
+  Boxes, Info,
 } from "lucide-react";
 import { HubShell } from "@/components/HubShell";
 import { useAuth } from "@/lib/auth-context";
@@ -16,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import type { PlanVsActualRow, BoqProjectWithCounts } from "@shared/schema";
 
 // ─── Short name extraction ────────────────────────────────────────────────────
@@ -665,6 +666,28 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
 
   const canRaiseIrn = sectionVisible("irn_raise");
 
+  // ── Shortcut data ─────────────────────────────────────────────────────────
+  const tomorrowStr    = format(addDays(new Date(), 1), "yyyy-MM-dd");
+  const tomorrowDisplay = format(addDays(new Date(), 1), "EEE, d MMM");
+
+  const { data: tomorrowReqs = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-requirements", tomorrowStr],
+    queryFn: () =>
+      fetch(`/api/site-requirements?dateFrom=${tomorrowStr}&dateTo=${tomorrowStr}`)
+        .then(r => r.json()),
+    enabled: sectionVisible("site_dprs"),
+  });
+
+  const { data: stockRows = [] } = useQuery<any[]>({
+    queryKey: ["/api/site-material-stock"],
+    enabled: sectionVisible("site_materials"),
+  });
+
+  const { data: myIrns = [] } = useQuery<any[]>({
+    queryKey: ["/api/irn"],
+    enabled: canRaiseIrn,
+  });
+
   // ── Active sites (assigned to this user via permission filter on server) ──
   const activeSites = (sites as any[]).filter(s => s.isActive !== 0);
 
@@ -957,6 +980,32 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
   ];
   const visibleActions = allQuickActions.filter(a => a.perm !== false);
 
+  // ── Shortcut derived state ────────────────────────────────────────────────
+  const tomorrowPlan = (tomorrowReqs as any[]).find(
+    r => normSite(r.site ?? "") === currentSiteName || r.siteId === currentSiteId
+  ) ?? null;
+
+  const siteStockItems = (stockRows as any[])
+    .filter(r => r.site === currentSiteName)
+    .sort((a, b) => b.delivered - a.delivered)
+    .slice(0, 5);
+
+  const myIrnList = (myIrns as any[])
+    .filter(r =>
+      r.raisedByUserId === (user as any)?.id ||
+      r.raisedBy?.toLowerCase() === myName.toLowerCase()
+    )
+    .slice(0, 5);
+
+  const myPiList = (purchaseIndents as any[])
+    .filter(p =>
+      p.raisedBy?.toLowerCase() === myName.toLowerCase() ||
+      p.proposedBy?.toLowerCase() === myName.toLowerCase()
+    )
+    .slice(0, 4);
+
+  const showMyItems = myIrnList.length > 0 || myPiList.length > 0;
+
   // ── Layout width ──────────────────────────────────────────────────────────
   const containerWidth = deviceType === "mobile" ? "max-w-lg" : "max-w-2xl";
 
@@ -1241,7 +1290,241 @@ export default function FieldHome({ onViewFullDashboard }: { onViewFullDashboard
           )}
 
           {/* ══════════════════════════════════════════════════════
-              5. PENDING BEFORE SUBMIT
+              6. TOMORROW'S PLAN STATUS
+              ══════════════════════════════════════════════════════ */}
+          {sectionVisible("site_dprs") && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" data-testid="section-tomorrow-plan">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <CalendarPlus className="w-4 h-4 text-teal-500" />
+                    Tomorrow's Plan
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{tomorrowDisplay}</p>
+                </div>
+                <Link href={
+                  tomorrowPlan
+                    ? `/site/requirements/${tomorrowPlan.id}`
+                    : `/site/requirements/new?returnTo=/`
+                }>
+                  <a className="text-xs font-semibold text-teal-600 flex items-center gap-0.5 hover:text-teal-700 transition-colors"
+                     data-testid="link-tomorrow-plan">
+                    {tomorrowPlan ? "Edit" : "Create"} plan <ChevronRight className="w-3 h-3" />
+                  </a>
+                </Link>
+              </div>
+
+              {!tomorrowPlan ? (
+                <div className="px-4 py-4 flex items-start gap-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
+                  <div>
+                    <p className="text-sm text-gray-700 font-medium">No plan submitted yet for tomorrow</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Submit before end of day so the PM can arrange resources in advance
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Status badge */}
+                    {(() => {
+                      const cfg: Record<string, string> = {
+                        submitted:          "bg-blue-50 text-blue-700 border-blue-100",
+                        reviewed:           "bg-teal-50 text-teal-700 border-teal-100",
+                        approved:           "bg-green-50 text-green-700 border-green-100",
+                        rejected:           "bg-red-50 text-red-700 border-red-100",
+                        revision_requested: "bg-amber-50 text-amber-700 border-amber-100",
+                      };
+                      const label: Record<string, string> = {
+                        submitted: "Submitted", reviewed: "Reviewed", approved: "Approved",
+                        rejected: "Rejected", revision_requested: "Revision requested",
+                      };
+                      const s = tomorrowPlan.status ?? "submitted";
+                      return (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${cfg[s] ?? "bg-gray-50 text-gray-600 border-gray-100"}`}>
+                          {label[s] ?? s}
+                        </span>
+                      );
+                    })()}
+                    {/* Quick item counts */}
+                    {[
+                      { key: "workItems",           label: "work item",   val: (tomorrowPlan.workItems ?? tomorrowPlan.plannedWork?.workItems)?.length },
+                      { key: "materials",           label: "material",    val: tomorrowPlan.materials?.length },
+                      { key: "equipment",           label: "equipment",   val: tomorrowPlan.equipment?.length },
+                      { key: "immediateRequirements", label: "immediate", val: tomorrowPlan.immediateRequirements?.length },
+                    ]
+                      .filter(x => x.val > 0)
+                      .map(x => (
+                        <span key={x.key} className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded-full">
+                          {x.val} {x.label}{x.val !== 1 ? "s" : ""}
+                        </span>
+                      ))
+                    }
+                  </div>
+                  {tomorrowPlan.pmRemarks && (
+                    <p className="text-xs text-gray-500 italic border-l-2 border-teal-200 pl-2">
+                      PM: {tomorrowPlan.pmRemarks}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════
+              7. SITE MATERIAL STOCK (compact)
+              ══════════════════════════════════════════════════════ */}
+          {sectionVisible("site_materials") && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" data-testid="section-stock-shortcut">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Boxes className="w-4 h-4 text-emerald-500" />
+                  Material Stock
+                  {currentSiteName && (
+                    <span className="text-xs font-normal text-gray-400">— {currentSiteName}</span>
+                  )}
+                </h2>
+                <Link href="/site/material-stock?returnTo=/">
+                  <a className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5 hover:text-emerald-700 transition-colors"
+                     data-testid="link-stock-full">
+                    Full view <ChevronRight className="w-3 h-3" />
+                  </a>
+                </Link>
+              </div>
+
+              {siteStockItems.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-gray-400">
+                  No deliveries recorded for this site yet.
+                </div>
+              ) : (
+                <>
+                  <div className="divide-y divide-gray-50">
+                    {siteStockItems.map((r: any, i: number) => (
+                      <div key={i} className="px-4 py-2.5 flex items-center justify-between gap-3"
+                           data-testid={`stock-row-${i}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{r.material}</p>
+                          {r.lastDeliveryDate && (
+                            <p className="text-[10px] text-gray-400">
+                              Last: {format(new Date(r.lastDeliveryDate + "T00:00:00"), "d MMM")}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={`text-sm font-bold font-mono ${r.lying < 0 ? "text-red-600" : "text-gray-800"}`}>
+                            {r.lying.toLocaleString("en-IN", { maximumFractionDigits: 1 })} MT
+                          </p>
+                          <p className="text-[10px] text-gray-400">lying</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-mono text-green-700">
+                            {r.delivered.toLocaleString("en-IN", { maximumFractionDigits: 1 })} MT
+                          </p>
+                          <p className="text-[10px] text-gray-400">delivered</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-4 py-2 border-t border-gray-50">
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <Info className="w-3 h-3 flex-shrink-0" />
+                      "Lying" = Delivered − Consumed (theoretical norm). Negative means deliveries not yet logged.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════
+              8. MY RAISED IRNs / PIs
+              ══════════════════════════════════════════════════════ */}
+          {(canRaiseIrn || sectionVisible("site_procurement")) && showMyItems && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" data-testid="section-my-raised">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-violet-500" />
+                  My Indents &amp; Requisitions
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">Status of IRNs and PIs you have raised</p>
+              </div>
+
+              <div className="divide-y divide-gray-50">
+                {myIrnList.map((irn: any) => {
+                  const irnStatusCfg: Record<string, { label: string; color: string }> = {
+                    pending_stores: { label: "Pending stores", color: "bg-amber-50 text-amber-700 border-amber-100" },
+                    stores_verified:{ label: "Verified",       color: "bg-blue-50 text-blue-700 border-blue-100" },
+                    approved:       { label: "Approved",       color: "bg-green-50 text-green-700 border-green-100" },
+                    rejected:       { label: "Rejected",       color: "bg-red-50 text-red-700 border-red-100" },
+                    closed:         { label: "Closed",         color: "bg-gray-50 text-gray-500 border-gray-100" },
+                  };
+                  const sc = irnStatusCfg[irn.status] ?? { label: irn.status, color: "bg-gray-50 text-gray-600 border-gray-100" };
+                  return (
+                    <Link key={irn.id} href={`/irn/${irn.id}`}>
+                      <a className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50/60 transition-colors"
+                         data-testid={`irn-row-${irn.id}`}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">{irn.irnNo}</p>
+                          <p className="text-xs text-gray-400">{irn.date}</p>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${sc.color}`}>
+                          {sc.label}
+                        </span>
+                      </a>
+                    </Link>
+                  );
+                })}
+
+                {myPiList.map((pi: any) => {
+                  const piStatusCfg: Record<string, { label: string; color: string }> = {
+                    pending:      { label: "Pending",      color: "bg-amber-50 text-amber-700 border-amber-100" },
+                    submitted:    { label: "Submitted",    color: "bg-blue-50 text-blue-700 border-blue-100" },
+                    stores_check: { label: "Stores check", color: "bg-blue-50 text-blue-700 border-blue-100" },
+                    approved:     { label: "Approved",     color: "bg-green-50 text-green-700 border-green-100" },
+                    rejected:     { label: "Rejected",     color: "bg-red-50 text-red-700 border-red-100" },
+                    ordered:      { label: "Ordered",      color: "bg-teal-50 text-teal-700 border-teal-100" },
+                  };
+                  const pc = piStatusCfg[pi.status] ?? { label: pi.status, color: "bg-gray-50 text-gray-600 border-gray-100" };
+                  return (
+                    <Link key={pi.id} href={`/procurement/indents/${pi.id}`}>
+                      <a className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50/60 transition-colors"
+                         data-testid={`pi-row-${pi.id}`}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">{pi.indentNo}</p>
+                          <p className="text-xs text-gray-400">{pi.date}</p>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${pc.color}`}>
+                          {pc.label}
+                        </span>
+                      </a>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Footer links */}
+              <div className="px-4 py-2.5 border-t border-gray-50 flex items-center gap-4">
+                {canRaiseIrn && (
+                  <Link href="/irn">
+                    <a className="text-xs font-medium text-violet-600 hover:text-violet-700 transition-colors">
+                      All IRNs →
+                    </a>
+                  </Link>
+                )}
+                {sectionVisible("site_procurement") && (
+                  <Link href="/procurement/indents">
+                    <a className="text-xs font-medium text-violet-600 hover:text-violet-700 transition-colors">
+                      All PIs →
+                    </a>
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════
+              9. PENDING BEFORE SUBMIT
               Only meaningful when current user has an open draft.
               ══════════════════════════════════════════════════════ */}
           {(dprPhase === "draft-own" || dprPhase === "submitted-own") && (

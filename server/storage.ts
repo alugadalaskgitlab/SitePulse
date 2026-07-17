@@ -1090,9 +1090,10 @@ export interface IStorage {
   createSiteMaterialTrip(data: InsertSiteMaterialTrip): Promise<SiteMaterialTrip>;
   updateSiteMaterialTrip(id: number, data: Partial<InsertSiteMaterialTrip>): Promise<SiteMaterialTrip>;
   deleteSiteMaterialTrip(id: number): Promise<void>;
-  getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[] }): Promise<{
+  getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+    lastDeliveryDate: string | null;
   }[]>;
 
   // Combined Materials Received (site_material_trips + DPR material_logs type=Received)
@@ -7854,11 +7855,14 @@ export class DatabaseStorage implements IStorage {
 
   // ── Site Material Stock & Reconciliation (read-only, per site/front) ─────────
   // Settles everything in MT via convertSolidQty. Consumed uses the BOQ recipe norm.
-  async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[] }): Promise<{
+  async getSiteMaterialReconciliation(filters?: { permittedSiteNames?: string[]; dateFrom?: string; dateTo?: string }): Promise<{
     site: string; material: string; matched: boolean; uom: string;
     ordered: number; delivered: number; consumed: number; toSupply: number; lying: number;
+    lastDeliveryDate: string | null;
   }[]> {
     const permitted = filters?.permittedSiteNames;
+    const dateFrom  = filters?.dateFrom;
+    const dateTo    = filters?.dateTo;
     if (permitted !== undefined && permitted.length === 0) return [];
 
     // Material master → canonical map (bulk density + display name)
@@ -7871,31 +7875,44 @@ export class DatabaseStorage implements IStorage {
     const toMTsafe = (qty: number, uom: string | null | undefined, density: number | null) =>
       convertSolidQty(qty, uom, "MT", density);
 
-    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; consumed: number };
+    type Row = { site: string; material: string; matched: boolean; ordered: number; delivered: number; consumed: number; lastDeliveryDate: string | null };
     const map = new Map<string, Row>();
     const bucket = (site: string, materialName: string, matched: boolean): Row => {
       const k = `${site.toUpperCase().trim()}||${canonMaterialName(materialName)}`;
       let r = map.get(k);
-      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, consumed: 0 }; map.set(k, r); }
+      if (!r) { r = { site, material: materialName, matched, ordered: 0, delivered: 0, consumed: 0, lastDeliveryDate: null }; map.set(k, r); }
       return r;
     };
 
-    // 1) DELIVERED — site material trips
+    // 1) DELIVERED — site material trips (optionally date-filtered)
+    const tripConds: any[] = [];
+    if (permitted) tripConds.push(inArray(siteMaterialTrips.site, permitted));
+    if (dateFrom)  tripConds.push(gte(siteMaterialTrips.date, dateFrom));
+    if (dateTo)    tripConds.push(lte(siteMaterialTrips.date, dateTo));
     const trips = await db.select().from(siteMaterialTrips)
-      .where(permitted ? inArray(siteMaterialTrips.site, permitted) : undefined);
+      .where(tripConds.length ? and(...tripConds) : undefined);
     for (const t of trips) {
       if (!t.material || !t.site) continue;
       const m = resolve(t.material);
       const mt = toMTsafe(t.quantity ?? 0, t.uom, m?.bulkDensity ?? null);
       if (mt == null) continue;
-      bucket(t.site, m?.name ?? t.material, !!m).delivered += mt;
+      const row = bucket(t.site, m?.name ?? t.material, !!m);
+      row.delivered += mt;
+      // Track the most recent delivery date for this site+material bucket
+      if (t.date && (!row.lastDeliveryDate || t.date > row.lastDeliveryDate)) {
+        row.lastDeliveryDate = t.date;
+      }
     }
 
-    // 2) CONSUMED — DPR progress × recipe norm
+    // 2) CONSUMED — DPR progress × recipe norm (optionally date-filtered)
+    const progConds: any[] = [];
+    if (permitted) progConds.push(inArray(dprs.site, permitted));
+    if (dateFrom)  progConds.push(gte(dprs.date, dateFrom));
+    if (dateTo)    progConds.push(lte(dprs.date, dateTo));
     const prog = await db.select({
       site: dprs.site, boqItemId: progressEntries.boqItemId, quantity: progressEntries.quantity,
     }).from(progressEntries).innerJoin(dprs, eq(progressEntries.dprId, dprs.id))
-      .where(permitted ? inArray(dprs.site, permitted) : undefined);
+      .where(progConds.length ? and(...progConds) : undefined);
     const boqIds = Array.from(new Set(prog.map(p => p.boqItemId).filter((x): x is number => x != null)));
     const recipes = boqIds.length
       ? await db.select().from(boqItemMaterials).where(inArray(boqItemMaterials.boqItemId, boqIds))
@@ -7916,6 +7933,9 @@ export class DatabaseStorage implements IStorage {
     }
 
     // 3) ORDERED — purchase indent items (site from indent.siteId or raisedFrom)
+    // Previously unmatched PI items were silently dropped (if (!m) continue).
+    // Fix: include them with matched=false so the frontend shows an "unmatched" warning
+    // badge instead of silently omitting the row from the Ordered column.
     const siteRows = await db.select().from(sites);
     const siteNameById = new Map<number, string>(siteRows.map(s => [s.id, s.name]));
     const piItems = await db.select({
@@ -7928,10 +7948,13 @@ export class DatabaseStorage implements IStorage {
       if (!siteName) continue;
       if (permitted && !permitted.includes(siteName)) continue;
       const m = resolve(it.description);
-      if (!m) continue; // only roll up identifiable bulk materials into Ordered
-      const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, m.bulkDensity);
+      // Use the resolved master name when matched; otherwise fall back to the raw PI
+      // description so the row is always visible (with matched=false warning badge).
+      const displayName = m?.name ?? it.description;
+      const density = m?.bulkDensity ?? null;
+      const mt = toMTsafe(it.approvedQty ?? it.qty ?? 0, it.uom, density);
       if (mt == null) continue;
-      bucket(siteName, m.name, true).ordered += mt;
+      bucket(siteName, displayName, !!m).ordered += mt;
     }
 
     const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -7941,6 +7964,7 @@ export class DatabaseStorage implements IStorage {
         ordered: round(r.ordered), delivered: round(r.delivered), consumed: round(r.consumed),
         toSupply: round(Math.max(r.ordered - r.delivered, 0)),
         lying: round(r.delivered - r.consumed),
+        lastDeliveryDate: r.lastDeliveryDate,
       }))
       .sort((a, b) => a.site.localeCompare(b.site) || a.material.localeCompare(b.material));
   }
