@@ -14,7 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deriveDprUom, computeDprQty, resolveBoqUomProfile } from "@/lib/dprUom";
+import { deriveDprUom, resolveBoqUomProfile } from "@/lib/dprUom";
+import {
+  parseChainageToMeters,
+  calculateLengthFromChainage,
+  getEffectiveLength as getEffLengthShared,
+  calculateDprQuantity,
+  entryBoqProfile as entryBoqProfileShared,
+} from "@/lib/dprCalculations";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -175,29 +182,8 @@ interface SiteEntryFormData {
   sitePurchases: SitePurchaseEntry[];
 }
 
-// Helper to parse chainage like "0+500" or "1+250" or decimal km like "5.2" into meters
-function parseChainageToMeters(chainage: string): number | null {
-  if (!chainage) return null;
-  const match = chainage.match(/^(\d+)\+(\d+)$/);
-  if (match) {
-    const km = parseInt(match[1], 10);
-    const m = parseInt(match[2], 10);
-    return km * 1000 + m;
-  }
-  // Try parsing as decimal kilometers (e.g., "5.2" = 5.2 km = 5200 meters)
-  const num = parseFloat(chainage);
-  return isNaN(num) ? null : num * 1000;
-}
-
-// Calculate length from chainage difference
-function calculateLengthFromChainage(from: string, to: string): number | null {
-  const fromMeters = parseChainageToMeters(from);
-  const toMeters = parseChainageToMeters(to);
-  if (fromMeters !== null && toMeters !== null) {
-    return Math.abs(toMeters - fromMeters);
-  }
-  return null;
-}
+// parseChainageToMeters and calculateLengthFromChainage are imported from @/lib/dprCalculations.
+// Do not re-implement here — the shared module is the single source of truth.
 
 function formatTimeDuration(start: string, end: string): string | null {
   if (!start || !end) return null;
@@ -855,14 +841,9 @@ export default function SiteEntry() {
   const { confirmLeave } = useBeforeUnload(isDirty);
 
   // Calculate length from chainage if not manually entered
-  const getEffectiveLength = (entry: ProgressEntry): number | null => {
-    // If length is manually entered, use it
-    if (entry.length !== null && entry.length > 0) {
-      return entry.length;
-    }
-    // Otherwise calculate from chainage
-    return calculateLengthFromChainage(entry.chainageFrom, entry.chainageTo);
-  };
+  // Thin wrapper — delegates to shared getEffectiveLength in @/lib/dprCalculations
+  const getEffectiveLength = (entry: ProgressEntry): number | null =>
+    getEffLengthShared(entry.length ?? null, entry.chainageFrom, entry.chainageTo);
 
   // UOM follows the linked BOQ item's dprMeasurementMethod (explicit) or unit (derived).
   // Count/weight/lump-sum methods keep a manual quantity; formula methods auto-compute.
@@ -879,27 +860,21 @@ export default function SiteEntry() {
     return deriveDprUom(getEffectiveLength(entry), entry.width, entry.thickness);
   };
 
+  // Delegates core math to shared calculateDprQuantity in @/lib/dprCalculations.
+  // Preserves DPR-specific behaviour: uom side-effect + fallback to entry.quantity.
   const calculateQuantity = (entry: ProgressEntry): number | null => {
     const length = getEffectiveLength(entry);
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
-    if (boqItem) {
-      const prof = resolveBoqUomProfile(boqItem);
-      entry.uom = progressUom(entry) ?? entry.uom;
-      if (prof.dimClass === "volume") return (length && entry.width && entry.thickness) ? length * entry.width * entry.thickness : (entry.quantity ?? null);
-      if (prof.dimClass === "area") return (length && entry.width) ? length * entry.width : (entry.quantity ?? null);
-      if (prof.dimClass === "length") return length ?? (entry.quantity ?? null);
-      return entry.quantity ?? null; // count / weight / lump-sum → manual
-    }
-    const derivedUom = deriveDprUom(length, entry.width, entry.thickness);
-    if (derivedUom) { entry.uom = derivedUom; return computeDprQty(length, entry.width, entry.thickness); }
-    return entry.quantity ?? null;
+    entry.uom = progressUom(entry) ?? entry.uom;
+    const calc = calculateDprQuantity(length, entry.width, entry.thickness, boqItem);
+    if (calc !== null) return calc;
+    return entry.quantity ?? null; // fall back to existing quantity when dims are incomplete
   };
 
-  // Returns the resolved UOM profile for the BOQ item linked to a progress entry,
-  // or null when no BOQ item is linked (no-BOQ DPRs derive profile from dimensions).
+  // Thin wrapper — delegates to shared entryBoqProfile in @/lib/dprCalculations.
   const entryBoqProfile = (entry: ProgressEntry) => {
     const boqItem = entry.boqItemId != null ? siteBoqItems.find(i => i.id === entry.boqItemId) : null;
-    return boqItem ? resolveBoqUomProfile(boqItem) : null;
+    return entryBoqProfileShared(boqItem);
   };
 
   const calculateHours = (startTime: string, endTime: string): number => {

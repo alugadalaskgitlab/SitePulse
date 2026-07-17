@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { canonicalizeUnit } from "@shared/boqNormalise";
 import { resolveBoqUomProfile } from "@/lib/dprUom";
+import { calculateLengthFromChainage, calculateDprQuantity } from "@/lib/dprCalculations";
 import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, Send,
   HardHat, Package, Wrench, Users, AlertTriangle, ClipboardList,
@@ -153,30 +154,20 @@ export default function SiteRequirementNew() {
   const showWidth = !pwBoqProfile || pwBoqProfile.dims.includes("W");
   const showThickness = !pwBoqProfile || pwBoqProfile.dims.includes("T");
 
-  // Auto-set L (m) when both chainage values are present
+  // Auto-set L (m) from chainage using the same shared parser DPR uses
   useEffect(() => {
-    const cf = parseFloat(chainageFrom);
-    const ct = parseFloat(chainageTo);
-    if (!isNaN(cf) && !isNaN(ct) && cf !== ct) {
-      setPwLength(String(Math.round(Math.abs(ct - cf) * 1000)));
-    }
+    const l = calculateLengthFromChainage(chainageFrom, chainageTo);
+    if (l !== null) setPwLength(String(Math.round(l)));
   }, [chainageFrom, chainageTo]);
 
-  // Auto-calculate planned qty from L × W × T using the same dimClass logic DPR uses
+  // Auto-calculate planned qty using the same shared calculateDprQuantity DPR uses —
+  // identical code path guarantees identical numbers for the same inputs in both forms.
   useEffect(() => {
     const l = parseFloat(pwLength);
     if (isNaN(l) || l <= 0) return;
-    const w = parseFloat(pwWidth);
-    const t = parseFloat(pwThickness);
-    const profile = selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null;
-    let qty: number | null = null;
-    if (profile?.dimClass === "volume" && !isNaN(w) && w > 0 && !isNaN(t) && t > 0) {
-      qty = l * w * t;
-    } else if (profile?.dimClass === "area" && !isNaN(w) && w > 0) {
-      qty = l * w;
-    } else if (profile?.dimClass === "length") {
-      qty = l;
-    }
+    const w = parseFloat(pwWidth) || null;
+    const t = parseFloat(pwThickness) || null;
+    const qty = calculateDprQuantity(l, w ?? undefined, t ?? undefined, selectedBoqItem);
     if (qty !== null) {
       const qtyStr = String(Math.round(qty * 1000) / 1000);
       setPlannedQty(qtyStr);
