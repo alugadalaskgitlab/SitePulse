@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { BillItemPicker } from "@/components/BillItemPicker";
 import { canonicalizeUnit } from "@shared/boqNormalise";
+import { resolveBoqUomProfile } from "@/lib/dprUom";
 import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, Send,
   HardHat, Package, Wrench, Users, AlertTriangle, ClipboardList,
 } from "lucide-react";
 
-type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null };
+type SiteBoqItem = { id: number; description: string; itemCode: string | null; itemName: string | null; unit: string; dprConversionFactor: number | null; categoryName?: string | null; sortOrder?: number | null; dprMeasurementMethod?: string | null };
 
 const TOMORROW = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
@@ -145,11 +146,12 @@ export default function SiteRequirementNew() {
   const [plannedUom, setPlannedUom] = useState("");
   const [pwRemarks, setPwRemarks] = useState("");
 
-  // Derived from selected BOQ item unit — determines which dimension fields to show
+  // Derive profile exactly as DPR does: null when no item selected (both dims shown),
+  // resolveBoqUomProfile when item selected (dims determined by explicit method or unit).
   const selectedBoqItem = useMemo(() => siteBoqItems.find(it => it.id === boqItemId) ?? null, [siteBoqItems, boqItemId]);
-  const itemUnit = useMemo(() => selectedBoqItem ? canonicalizeUnit(selectedBoqItem.unit ?? "") : "", [selectedBoqItem]);
-  const showWidth = itemUnit === "Cum" || itemUnit === "Sqm";
-  const showThickness = itemUnit === "Cum";
+  const pwBoqProfile = useMemo(() => selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null, [selectedBoqItem]);
+  const showWidth = !pwBoqProfile || pwBoqProfile.dims.includes("W");
+  const showThickness = !pwBoqProfile || pwBoqProfile.dims.includes("T");
 
   // Auto-set L (m) when both chainage values are present
   useEffect(() => {
@@ -160,18 +162,19 @@ export default function SiteRequirementNew() {
     }
   }, [chainageFrom, chainageTo]);
 
-  // Auto-calculate planned qty from L × W × T (or L × W, or L) depending on unit
+  // Auto-calculate planned qty from L × W × T using the same dimClass logic DPR uses
   useEffect(() => {
     const l = parseFloat(pwLength);
     if (isNaN(l) || l <= 0) return;
     const w = parseFloat(pwWidth);
     const t = parseFloat(pwThickness);
+    const profile = selectedBoqItem ? resolveBoqUomProfile(selectedBoqItem) : null;
     let qty: number | null = null;
-    if (itemUnit === "Cum" && !isNaN(w) && w > 0 && !isNaN(t) && t > 0) {
+    if (profile?.dimClass === "volume" && !isNaN(w) && w > 0 && !isNaN(t) && t > 0) {
       qty = l * w * t;
-    } else if (itemUnit === "Sqm" && !isNaN(w) && w > 0) {
+    } else if (profile?.dimClass === "area" && !isNaN(w) && w > 0) {
       qty = l * w;
-    } else if (itemUnit === "Rmt") {
+    } else if (profile?.dimClass === "length") {
       qty = l;
     }
     if (qty !== null) {
@@ -179,7 +182,7 @@ export default function SiteRequirementNew() {
       setPlannedQty(qtyStr);
       setMaterials(prev => prev.map(m => m.qty === "" ? { ...m, qty: qtyStr } : m));
     }
-  }, [pwLength, pwWidth, pwThickness, itemUnit]);
+  }, [pwLength, pwWidth, pwThickness, selectedBoqItem]);
 
   // Prefill from existing requirement when editing
   const prefillDone = useRef(false);
@@ -361,7 +364,7 @@ export default function SiteRequirementNew() {
           <div className="space-y-3 mt-2">
             <div>
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">
-                {siteBoqItems.length > 0 ? "BOQ Item" : "Activity / BOQ Item"}
+                {siteBoqItems.length > 0 ? "BOQ Item / Activity" : "Activity"}
               </label>
               {siteBoqItems.length > 0 ? (
                 <BillItemPicker
