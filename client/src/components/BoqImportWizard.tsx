@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BOQ_WORK_CATEGORIES, suggestWorkCategory, getWorkCategoryLabel } from "@shared/boqWorkCategories";
+import { canonicalizeUnit } from "@shared/boqNormalise";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,7 +210,7 @@ export function BoqImportWizard({ projectId, projectName, existingItemCount = 0,
     const get = (row: (string | number | null)[]) => ({
       item: iCol != null ? normCode(row[iCol]) : "",
       desc: cellStr(row[dCol]),
-      unit: cellStr(row[uCol]),
+      unit: canonicalizeUnit(cellStr(row[uCol])) || cellStr(row[uCol]),
       spec: sCol != null ? normCode(row[sCol]) : "",
       qc: qCol != null ? row[qCol] : null,
       rc: rCol != null ? row[rCol] : null,

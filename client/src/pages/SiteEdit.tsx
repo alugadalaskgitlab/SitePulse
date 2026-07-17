@@ -3,6 +3,7 @@ import { useLocation, useRoute, Link } from "wouter";
 import { useOrigin } from "@/hooks/use-origin";
 import { useAuth } from "@/lib/auth-context";
 import { ChevronLeft, Plus, Trash2, Save, Loader2, UserPlus, X, Shield, Check, Send } from "lucide-react";
+import { EditPermissionButton } from "@/components/EditPermissionButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -270,14 +271,30 @@ export default function SiteEdit() {
   const effectivePin = pin || (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : "");
   const effectiveRole = (pin ? role : (canEditLive ? (authUser?.isAdmin ? "admin" : "manager") : role)) as "manager" | "admin" | "engineer";
 
-  // Auto-issue token into sessionStorage when derived from live permission,
-  // so subsequent reads (e.g. after a sub-navigation) find consistent values.
+  // editGranted: gates the edit form for submitted DPRs.
+  // True if: came through EditPermissionButton flow (token already in sessionStorage),
+  // in complete mode, or user is admin (admins never need a request).
+  const [editGranted, setEditGranted] = useState(() => {
+    if (isCompleteMode) return true;
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(`edit_pin_${id}`)) return true;
+    if (authUser?.isAdmin) return true;
+    return false;
+  });
+  // Auto-grant for draft DPRs and admins when DPR data arrives.
   useEffect(() => {
-    if (!pin && effectivePin) {
+    if (editGranted || !dpr) return;
+    const isDraft = (dpr as any).dprStatus === "draft";
+    if (isDraft || authUser?.isAdmin) setEditGranted(true);
+  }, [dpr, editGranted, authUser?.isAdmin]);
+
+  // Auto-issue sessionStorage token when derived from live permission — but only
+  // once edit has been granted (prevents bypassing the EditPermissionButton flow).
+  useEffect(() => {
+    if (!pin && effectivePin && editGranted) {
       sessionStorage.setItem(`edit_pin_${id}`, effectivePin);
       sessionStorage.setItem(`auth_role_${id}`, effectiveRole);
     }
-  }, [id, pin, effectivePin, effectiveRole]);
+  }, [id, pin, effectivePin, effectiveRole, editGranted]);
 
   // Clear credentials and draft after successful save
   const clearCredentials = () => {
@@ -684,13 +701,38 @@ export default function SiteEdit() {
     return <div className="p-20 text-center text-red-500">Report not found.</div>;
   }
 
-  if (!effectivePin && !isDraftMode) {
+  if (!editGranted && !isDraftMode) {
     return (
-      <div className="p-20 text-center">
-        <p className="text-muted-foreground mb-4">Authorization required to edit this report.</p>
-        <Button onClick={() => setLocation(backToReport)} data-testid="button-back-to-report">
-          Back to Report
-        </Button>
+      <div className="max-w-4xl mx-auto space-y-6 pb-20">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => setLocation(backToReport)} data-testid="button-back-to-report">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold font-display">Edit Report</h1>
+            <p className="text-muted-foreground text-sm">{(dpr as any)?.date} — {(dpr as any)?.site}</p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="pt-6 flex flex-col items-center gap-4 text-center">
+            <Shield className="w-8 h-8 text-muted-foreground" />
+            <div>
+              <p className="font-semibold">This report has been submitted</p>
+              <p className="text-sm text-muted-foreground mt-1">Request edit access to make changes to this DPR</p>
+            </div>
+            <EditPermissionButton
+              recordType="dpr"
+              recordId={id}
+              onEditGranted={() => {
+                const r = authUser?.isAdmin ? "admin" : "manager";
+                sessionStorage.setItem(`edit_pin_${id}`, r);
+                sessionStorage.setItem(`auth_role_${id}`, r);
+                setEditGranted(true);
+              }}
+              label="Request Edit"
+            />
+          </CardContent>
+        </Card>
       </div>
     );
   }

@@ -21,6 +21,7 @@ type SiteBoqItem = { id: number; description: string; itemCode: string | null; i
 
 const TOMORROW = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
+const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"] as const;
 const URGENCY_OPTIONS = ["normal", "urgent", "immediate"] as const;
 const SOURCE_OPTIONS = ["store", "purchase", "plant", "local_purchase"] as const;
 const SKILLED_OPTIONS = ["skilled", "unskilled", "mason", "helper", "operator", "driver", "other"] as const;
@@ -132,6 +133,7 @@ export default function SiteRequirementNew() {
 
   // Section A — Planned work
   const [activity, setActivity] = useState("");
+  const [side, setSide] = useState("");
   const [boqItemId, setBoqItemId] = useState<number | null>(null);
   const [chainageFrom, setChainageFrom] = useState("");
   const [chainageTo, setChainageTo] = useState("");
@@ -188,6 +190,7 @@ export default function SiteRequirementNew() {
       setPwRemarks(existingReq.plannedWork.remarks ?? "");
       setPwWidth(existingReq.plannedWork.pwWidth != null ? String(existingReq.plannedWork.pwWidth) : "");
       setPwThickness(existingReq.plannedWork.pwThickness != null ? String(existingReq.plannedWork.pwThickness) : "");
+      setSide(existingReq.plannedWork.side ?? "");
     }
     if (existingReq.materials?.length) setMaterials(existingReq.materials);
     if (existingReq.equipment?.length) setEquipment(existingReq.equipment);
@@ -231,6 +234,7 @@ export default function SiteRequirementNew() {
       if (activity || boqItemId != null || chFrom != null || chTo != null || plannedQty || pwRemarks) {
         body.plannedWork = {
           activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo,
+          side: side || undefined,
           pwWidth: pwWidth !== "" ? parseFloat(pwWidth) : null,
           pwThickness: pwThickness !== "" ? parseFloat(pwThickness) : null,
           plannedQty, plannedUom, remarks: pwRemarks,
@@ -386,6 +390,17 @@ export default function SiteRequirementNew() {
                   <Input value={plannedUom} onChange={e => setPlannedUom(e.target.value)} placeholder="Cum" className="text-sm w-20" data-testid="input-planned-uom" />
                 </div>
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Side</label>
+              <Select value={side} onValueChange={setSide}>
+                <SelectTrigger className="text-sm" data-testid="select-side">
+                  <SelectValue placeholder="Select side (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             {/* Conditional dimension inputs — shown only when the BOQ item's unit requires them */}
             {(showWidth || showThickness) && (
