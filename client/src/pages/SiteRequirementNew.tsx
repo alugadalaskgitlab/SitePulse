@@ -22,6 +22,7 @@ type SiteBoqItem = { id: number; description: string; itemCode: string | null; i
 const TOMORROW = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
 const SIDE_OPTIONS = ["LHS", "RHS", "Full Width"] as const;
+const PLANNED_UOM_OPTIONS = ["Cum", "Sqm", "Rmt", "MT", "Nos", "LS"];
 const URGENCY_OPTIONS = ["normal", "urgent", "immediate"] as const;
 const SOURCE_OPTIONS = ["store", "purchase", "plant", "local_purchase"] as const;
 const SKILLED_OPTIONS = ["skilled", "unskilled", "mason", "helper", "operator", "driver", "other"] as const;
@@ -134,6 +135,7 @@ export default function SiteRequirementNew() {
   // Section A — Planned work
   const [activity, setActivity] = useState("");
   const [side, setSide] = useState("");
+  const [pwLength, setPwLength] = useState(""); // L (m) — auto-set from chainage, manually editable
   const [boqItemId, setBoqItemId] = useState<number | null>(null);
   const [chainageFrom, setChainageFrom] = useState("");
   const [chainageTo, setChainageTo] = useState("");
@@ -149,28 +151,35 @@ export default function SiteRequirementNew() {
   const showWidth = itemUnit === "Cum" || itemUnit === "Sqm";
   const showThickness = itemUnit === "Cum";
 
-  // Auto-calculate planned qty from chainage length × dimensions
+  // Auto-set L (m) when both chainage values are present
   useEffect(() => {
     const cf = parseFloat(chainageFrom);
     const ct = parseFloat(chainageTo);
-    if (isNaN(cf) || isNaN(ct) || cf === ct) return;
-    const lengthM = Math.abs(ct - cf) * 1000; // km → metres
+    if (!isNaN(cf) && !isNaN(ct) && cf !== ct) {
+      setPwLength(String(Math.round(Math.abs(ct - cf) * 1000)));
+    }
+  }, [chainageFrom, chainageTo]);
+
+  // Auto-calculate planned qty from L × W × T (or L × W, or L) depending on unit
+  useEffect(() => {
+    const l = parseFloat(pwLength);
+    if (isNaN(l) || l <= 0) return;
     const w = parseFloat(pwWidth);
     const t = parseFloat(pwThickness);
     let qty: number | null = null;
     if (itemUnit === "Cum" && !isNaN(w) && w > 0 && !isNaN(t) && t > 0) {
-      qty = lengthM * w * t;
+      qty = l * w * t;
     } else if (itemUnit === "Sqm" && !isNaN(w) && w > 0) {
-      qty = lengthM * w;
+      qty = l * w;
     } else if (itemUnit === "Rmt") {
-      qty = lengthM;
+      qty = l;
     }
     if (qty !== null) {
       const qtyStr = String(Math.round(qty * 1000) / 1000);
       setPlannedQty(qtyStr);
       setMaterials(prev => prev.map(m => m.qty === "" ? { ...m, qty: qtyStr } : m));
     }
-  }, [chainageFrom, chainageTo, pwWidth, pwThickness, itemUnit]);
+  }, [pwLength, pwWidth, pwThickness, itemUnit]);
 
   // Prefill from existing requirement when editing
   const prefillDone = useRef(false);
@@ -190,6 +199,7 @@ export default function SiteRequirementNew() {
       setPwRemarks(existingReq.plannedWork.remarks ?? "");
       setPwWidth(existingReq.plannedWork.pwWidth != null ? String(existingReq.plannedWork.pwWidth) : "");
       setPwThickness(existingReq.plannedWork.pwThickness != null ? String(existingReq.plannedWork.pwThickness) : "");
+      setPwLength(existingReq.plannedWork.pwLength != null ? String(existingReq.plannedWork.pwLength) : "");
       setSide(existingReq.plannedWork.side ?? "");
     }
     if (existingReq.materials?.length) setMaterials(existingReq.materials);
@@ -235,6 +245,7 @@ export default function SiteRequirementNew() {
         body.plannedWork = {
           activity, boqItemId, chainageFrom: chFrom, chainageTo: chTo,
           side: side || undefined,
+          pwLength: pwLength ? parseFloat(pwLength) : null,
           pwWidth: pwWidth !== "" ? parseFloat(pwWidth) : null,
           pwThickness: pwThickness !== "" ? parseFloat(pwThickness) : null,
           plannedQty, plannedUom, remarks: pwRemarks,
@@ -372,53 +383,67 @@ export default function SiteRequirementNew() {
                 <Input value={activity} onChange={e => setActivity(e.target.value)} placeholder="e.g. Earthwork excavation, WMM layer..." className="text-sm" data-testid="input-activity" />
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Chainage From (km)</label>
-                  <Input value={chainageFrom} onChange={e => setChainageFrom(e.target.value)} placeholder="e.g. 5.000" type="number" step="0.001" className="text-sm" data-testid="input-chainage-from" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Chainage To (km)</label>
-                  <Input value={chainageTo} onChange={e => setChainageTo(e.target.value)} placeholder="e.g. 5.500" type="number" step="0.001" className="text-sm" data-testid="input-chainage-to" />
-                </div>
+            {/* Field grid: Side → Ch.From → Ch.To → L(m) → W(m) → T(m) → UOM → Qty — same order as DPR */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Side</label>
+                <Select value={side} onValueChange={setSide}>
+                  <SelectTrigger className="text-sm" data-testid="select-side">
+                    <SelectValue placeholder="Side" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Planned Qty</label>
-                <div className="flex gap-2">
-                  <Input value={plannedQty} onChange={e => setPlannedQty(e.target.value)} placeholder="0" type="number" className="text-sm flex-1" data-testid="input-planned-qty" />
-                  <Input value={plannedUom} onChange={e => setPlannedUom(e.target.value)} placeholder="Cum" className="text-sm w-20" data-testid="input-planned-uom" />
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">From (Ch.)</label>
+                <Input value={chainageFrom} onChange={e => setChainageFrom(e.target.value)} placeholder="5.000" type="number" step="0.001" className="text-sm" data-testid="input-chainage-from" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">To (Ch.)</label>
+                <Input value={chainageTo} onChange={e => setChainageTo(e.target.value)} placeholder="5.500" type="number" step="0.001" className="text-sm" data-testid="input-chainage-to" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">L (m)</label>
+                <Input value={pwLength} onChange={e => setPwLength(e.target.value)} type="number" step="0.01" placeholder="0" className="text-sm" data-testid="input-pw-length" />
+              </div>
+              {showWidth && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">W (m)</label>
+                  <Input value={pwWidth} onChange={e => setPwWidth(e.target.value)} type="number" step="0.01" min="0" placeholder="0" className="text-sm" data-testid="input-pw-width" />
                 </div>
+              )}
+              {showThickness && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">T (m)</label>
+                  <Input value={pwThickness} onChange={e => setPwThickness(e.target.value)} type="number" step="0.001" min="0" placeholder="0" className="text-sm" data-testid="input-pw-thickness" />
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  UOM
+                  {boqItemId != null && !!plannedUom && (
+                    <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>
+                  )}
+                </label>
+                <Select value={plannedUom} disabled={boqItemId != null && !!plannedUom} onValueChange={setPlannedUom}>
+                  <SelectTrigger className="text-sm" data-testid="select-planned-uom">
+                    <SelectValue placeholder="UOM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLANNED_UOM_OPTIONS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  Qty
+                  {!!plannedQty && <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-700">auto</span>}
+                </label>
+                <Input value={plannedQty} onChange={e => setPlannedQty(e.target.value)} type="number" placeholder="0" className="text-sm" data-testid="input-planned-qty" />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Side</label>
-              <Select value={side} onValueChange={setSide}>
-                <SelectTrigger className="text-sm" data-testid="select-side">
-                  <SelectValue placeholder="Select side (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SIDE_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {/* Conditional dimension inputs — shown only when the BOQ item's unit requires them */}
-            {(showWidth || showThickness) && (
-              <div className={`grid gap-2 ${showThickness ? "grid-cols-2" : "grid-cols-1 max-w-[50%]"}`}>
-                {showWidth && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Width (m)</label>
-                    <Input value={pwWidth} onChange={e => setPwWidth(e.target.value)} type="number" step="0.01" min="0" placeholder="e.g. 7.000" className="text-sm" data-testid="input-pw-width" />
-                  </div>
-                )}
-                {showThickness && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Thickness / Depth (m)</label>
-                    <Input value={pwThickness} onChange={e => setPwThickness(e.target.value)} type="number" step="0.001" min="0" placeholder="e.g. 0.075" className="text-sm" data-testid="input-pw-thickness" />
-                  </div>
-                )}
-              </div>
-            )}
             <div>
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Remarks</label>
               <Textarea value={pwRemarks} onChange={e => setPwRemarks(e.target.value)} placeholder="Any notes about tomorrow's plan..." className="text-sm resize-none" rows={2} data-testid="input-pw-remarks" />
