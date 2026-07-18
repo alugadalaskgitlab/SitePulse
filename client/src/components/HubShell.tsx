@@ -304,7 +304,7 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar — desktop */}
-      <aside className="w-56 bg-slate-900 flex-shrink-0 hidden md:flex flex-col border-r border-slate-800 fixed inset-y-0 left-0 z-30">
+      <aside className="w-56 bg-slate-900 flex-shrink-0 hidden md:flex flex-col border-r border-slate-800 fixed inset-y-0 left-0 z-[60]">
         <SidebarContent />
       </aside>
 
