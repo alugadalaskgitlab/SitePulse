@@ -272,33 +272,31 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       </nav>
 
       {/* User chip */}
-      <div className="border-t border-slate-800 p-3 flex-shrink-0">
-        <div className="flex items-center gap-2.5 px-2 py-2">
-          <Link href="/account">
-            <a
-              className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity"
-              data-testid="link-account"
-            >
-              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0">
-                {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate leading-snug">
-                  {user?.fullName || user?.email}
-                </p>
-                <p className="text-xs text-slate-400">{roleLabel}</p>
-              </div>
-            </a>
-          </Link>
-          <button
-            onClick={() => { void logout(); }}
-            title="Sign out"
-            className="p-1.5 hover:bg-slate-800 rounded-md transition-colors text-slate-500 hover:text-red-400 flex-shrink-0"
-            data-testid="button-logout"
+      <div className="border-t border-slate-800 p-3 flex-shrink-0 space-y-2">
+        <Link href="/account">
+          <a
+            className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-800 transition-colors"
+            data-testid="link-account"
           >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate leading-snug">
+                {user?.fullName || user?.email}
+              </p>
+              <p className="text-xs text-slate-400">{roleLabel}</p>
+            </div>
+          </a>
+        </Link>
+        <button
+          onClick={() => { void logout(); }}
+          data-testid="button-logout"
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 hover:text-red-300 transition-colors font-semibold text-sm"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
       </div>
     </>
   );
@@ -313,12 +311,12 @@ export function HubShell({ children, title, subtitle, backHref, backLabel }: Hub
       {/* Sidebar — mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-[59] bg-black/50 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-slate-900 flex flex-col border-r border-slate-800 transition-transform duration-200 md:hidden ${
+        className={`fixed inset-y-0 left-0 z-[60] w-56 bg-slate-900 flex flex-col border-r border-slate-800 transition-transform duration-200 md:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
