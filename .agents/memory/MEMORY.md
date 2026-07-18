@@ -12,3 +12,4 @@
 - [Sequencer road-way earthwork veto](sequencer-trench-road-veto.md) — "trench cutting" in MoRTH 301 road-earthwork descriptions false-fires excavation_structure; 3-layer fix in workTypeRecipes.ts + programmeSequencer.ts.
 - [Stock Ledger Locking](stock-ledger-locking.md) — _adjustStockBalance helper + numeric(20,6) columns; drizzle-kit push is interactive (--force not sufficient), use direct ALTER TABLE for unblocked schema migrations.
 - [Roads Pilot Role Templates](roads-pilot-role-templates.md) — ROLE_TEMPLATES + applyRoleTemplate() in shared/permissions.ts; Site Engineer has irn_raise but NOT purchase_indents_raise; PM has both.
+- [Dev/Prod Database Split](dev-prod-db-split.md) — Dev server uses sitelog_dev (DEV_DATABASE_URL, development-scoped env var); prod uses heliumdb (DATABASE_URL); server/db.ts reads DEV_DATABASE_URL||DATABASE_URL.

@@ -83,6 +83,7 @@ VAPID_SUBJECT = "mailto:admin@hlc-sitelog.com"
 [userenv.development]
 ENABLE_RMC = "true"
 VITE_ENABLE_WORK_PROGRAM = "true"
+DEV_DATABASE_URL = "postgresql://postgres:password@helium/sitelog_dev?sslmode=disable"
 
 [postMerge]
 path = "scripts/post-merge.sh"
