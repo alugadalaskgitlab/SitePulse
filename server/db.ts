@@ -4,7 +4,11 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-const connectionString = process.env.DEV_DATABASE_URL || process.env.DATABASE_URL;
+const isDev = process.env.NODE_ENV === "development";
+const connectionString =
+  (isDev && process.env.DEV_DATABASE_URL)
+    ? process.env.DEV_DATABASE_URL
+    : process.env.DATABASE_URL;
 
 if (!connectionString) {
   throw new Error(
@@ -12,7 +16,7 @@ if (!connectionString) {
   );
 }
 
-if (process.env.DEV_DATABASE_URL) {
+if (isDev && process.env.DEV_DATABASE_URL) {
   console.log("[db] Using DEV_DATABASE_URL (development database)");
 }
 
