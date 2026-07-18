@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { ChevronLeft, RotateCcw, Loader2, ShieldAlert, AlertTriangle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -36,7 +36,9 @@ export default function PlantLedgerRebuild() {
       time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
     };
   };
-  const [templateId, setTemplateId] = useState<string>("");
+  const search = useSearch();
+  const preselectedTemplate = new URLSearchParams(search).get("template") ?? "";
+  const [templateId, setTemplateId] = useState<string>(preselectedTemplate);
   const { date: initDate, time: initTime } = nowLocal();
   const [fromDate, setFromDate] = useState(initDate);
   const [fromTime, setFromTime] = useState(initTime);

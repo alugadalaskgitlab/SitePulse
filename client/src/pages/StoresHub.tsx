@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList,
-  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart,
+  Package, Layers, BarChart3, ArrowLeftRight, Settings, CalendarCheck, ShoppingCart, AlertTriangle,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { HubShell } from "@/components/HubShell";
 import { HubActionTile } from "@/components/HubActionTile";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth-context";
 
 const HUB = "/stores/hub";
@@ -25,6 +28,8 @@ function KpiCard({ label, value, sub, warn }: {
 
 export default function StoresHub() {
   const { sectionVisible, isAdmin } = useAuth();
+  const [, navigate] = useLocation();
+  const [confirmTool, setConfirmTool] = useState<null | "reassign" | "rebuild">(null);
   const canStores = sectionVisible("stores_inventory");
   const canBulk = sectionVisible("plant_materials");
   const canIrn = sectionVisible("irn_view") || sectionVisible("irn_raise");
@@ -256,34 +261,97 @@ export default function StoresHub() {
           </div>
         </div>
 
-        {/* Admin Tools */}
+        {/* Advanced / Troubleshooting — admin only */}
         {isAdmin && (
           <div>
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-              Admin Tools
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <HubActionTile
-                href={`/plant/stock-reassign?returnTo=${HUB}`}
-                icon={Settings}
-                title="Stock Reassignment"
-                description="Reassign ledger entries between parties"
-                accent="slate"
-                iconBg="bg-slate-100"
-              />
-              <HubActionTile
-                href={`/plant/ledger-rebuild?returnTo=${HUB}`}
-                icon={Settings}
-                title="Dispatch Ledger Rebuild"
-                description="Rewrite component ledger from a chosen date cutoff"
-                accent="slate"
-                iconBg="bg-slate-100"
-              />
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wider">
+                Advanced / Troubleshooting
+              </h2>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-4">
+              <p className="text-sm text-amber-700">
+                These tools modify historical ledger records. A confirmation is required before each action runs.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setConfirmTool("reassign")}
+                  className="group flex items-start gap-4 bg-white border border-slate-200 rounded-xl p-5 hover:border-amber-300 hover:shadow-md transition-all text-left cursor-pointer"
+                  data-testid="tile-stock-reassignment"
+                >
+                  <div className="p-3 bg-amber-100 rounded-lg group-hover:scale-110 transition-transform flex-shrink-0">
+                    <ArrowLeftRight className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Stock Reassignment</h3>
+                    <p className="text-sm text-slate-500 mt-0.5">Move ledger entries between parties — permanently changes party-wise balance totals</p>
+                  </div>
+                  <Settings className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmTool("rebuild")}
+                  className="group flex items-start gap-4 bg-white border border-slate-200 rounded-xl p-5 hover:border-amber-300 hover:shadow-md transition-all text-left cursor-pointer"
+                  data-testid="tile-dispatch-ledger-rebuild"
+                >
+                  <div className="p-3 bg-amber-100 rounded-lg group-hover:scale-110 transition-transform flex-shrink-0">
+                    <Settings className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-slate-800 group-hover:text-amber-600 transition-colors">Dispatch Ledger Rebuild</h3>
+                    <p className="text-sm text-slate-500 mt-0.5">Rewrite component ledger entries from a chosen date cutoff using current mix proportions</p>
+                  </div>
+                  <Settings className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5" />
+                </button>
+              </div>
             </div>
           </div>
         )}
 
       </div>
+
+      <AlertDialog open={confirmTool !== null} onOpenChange={(open) => { if (!open) setConfirmTool(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              {confirmTool === "reassign" ? "Stock Reassignment" : "Dispatch Ledger Rebuild"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {confirmTool === "reassign" ? (
+                  <>
+                    <p>Opens the <strong>Ledger Reassignment</strong> tool where you can move stock ledger entries between contractor parties.</p>
+                    <p className="text-amber-700">This permanently changes party-wise balance totals. Use only to correct a misposted entry.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Opens the <strong>Rebuild Dispatch Ledger</strong> tool where you choose a mix template and cutoff date.</p>
+                    <p className="text-amber-700">Rebuilding rewrites aggregate component ledger rows from the cutoff onward using current mix proportions. This cannot be undone.</p>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-adv-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                if (confirmTool === "reassign") navigate(`/plant/stock-reassign?returnTo=${HUB}&context=stores`);
+                else if (confirmTool === "rebuild") navigate(`/plant/ledger-rebuild?returnTo=${HUB}&context=stores`);
+                setConfirmTool(null);
+              }}
+              data-testid="button-adv-proceed"
+            >
+              Proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </HubShell>
   );
 }

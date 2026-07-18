@@ -3233,20 +3233,6 @@ export function MixTemplateMaster() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newMixTypeDialogOpen, setNewMixTypeDialogOpen] = useState(false);
   const [newMixTypeName, setNewMixTypeName] = useState("");
-  const nowLocal = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return {
-      date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-      time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-    };
-  };
-  const [rebuildDialogOpen, setRebuildDialogOpen] = useState(false);
-  const [rebuildTemplateId, setRebuildTemplateId] = useState<number | null>(null);
-  const [rebuildTemplateName, setRebuildTemplateName] = useState("");
-  const [rebuildFromDate, setRebuildFromDate] = useState("");
-  const [rebuildFromTime, setRebuildFromTime] = useState("00:00");
-  const [rebuildResult, setRebuildResult] = useState<{ fromDateTime: string; dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] } | null>(null);
   const [postSaveAlertTemplate, setPostSaveAlertTemplate] = useState<{ id: number; name: string } | null>(null);
 
   const { data: templates, isLoading } = useQuery<MixTemplate[]>({
@@ -3365,32 +3351,6 @@ export function MixTemplateMaster() {
     },
   });
 
-  const rebuildLedgerMutation = useMutation({
-    mutationFn: ({ templateId, fromDateTime }: { templateId: number; fromDateTime: string }) =>
-      apiRequest("POST", `/api/plant-module/mix-templates/${templateId}/rebuild-ledger`, { fromDateTime }).then(r => r.json()),
-    onSuccess: (data: { fromDateTime: string; dispatches: number; ledgerRowsDeleted: number; ledgerRowsCreated: number; errors: string[] }) => {
-      setRebuildResult(data);
-    },
-    onError: (error: any) => {
-      toast({ title: "Rebuild failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const openRebuildDialog = (template: MixTemplate) => {
-    const { date, time } = nowLocal();
-    setRebuildTemplateId(template.id);
-    setRebuildTemplateName(template.name);
-    setRebuildFromDate(date);
-    setRebuildFromTime(time);
-    setRebuildResult(null);
-    setRebuildDialogOpen(true);
-  };
-
-  const handleRebuild = () => {
-    if (!rebuildTemplateId || !rebuildFromDate) return;
-    const fromDateTime = `${rebuildFromDate}T${rebuildFromTime || "00:00"}`;
-    rebuildLedgerMutation.mutate({ templateId: rebuildTemplateId, fromDateTime });
-  };
 
   const resetForm = () => {
     setEditingTemplate(null);
@@ -3751,87 +3711,6 @@ export function MixTemplateMaster() {
         </DialogContent>
       </Dialog>
 
-      {/* Rebuild Ledger Dialog */}
-      <Dialog open={rebuildDialogOpen} onOpenChange={(open) => { if (!open) { setRebuildDialogOpen(false); setRebuildResult(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="w-5 h-5 text-amber-600" />
-              Rebuild Stock Ledger
-            </DialogTitle>
-          </DialogHeader>
-          {rebuildResult ? (
-            <div className="space-y-4">
-              <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4 space-y-2">
-                <p className="font-semibold text-green-800 dark:text-green-300">Rebuild complete for <span className="font-bold">{rebuildTemplateName}</span></p>
-                <p className="text-sm text-green-600 dark:text-green-500">Cutoff: {rebuildResult.fromDateTime.replace("T", " at ")}</p>
-                <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
-                  <p>Dispatches processed: <strong>{rebuildResult.dispatches}</strong></p>
-                  <p>Ledger rows deleted: <strong>{rebuildResult.ledgerRowsDeleted}</strong></p>
-                  <p>Ledger rows created: <strong>{rebuildResult.ledgerRowsCreated}</strong></p>
-                </div>
-                {rebuildResult.errors.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Warnings ({rebuildResult.errors.length}):</p>
-                    <ul className="text-sm text-amber-600 dark:text-amber-500 list-disc list-inside mt-1 space-y-0.5">
-                      {rebuildResult.errors.map((e, i) => <li key={i}>{e}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </div>
-              <Button className="w-full" onClick={() => { setRebuildDialogOpen(false); setRebuildResult(null); }} data-testid="button-rebuild-done">
-                Done
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">
-                Rebuilds aggregate stock ledger entries for <strong>{rebuildTemplateName}</strong> from the chosen date and time onward using the current component proportions. Bitumen and LDO entries are not affected.
-              </p>
-              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 flex gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>This permanently modifies stock ledger data. Use only after confirming the cutoff date and time.</span>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="rebuild-from-date">Cutoff Date</Label>
-                  <Input
-                    id="rebuild-from-date"
-                    type="date"
-                    value={rebuildFromDate}
-                    onChange={(e) => setRebuildFromDate(e.target.value)}
-                    data-testid="input-rebuild-from-date"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="rebuild-from-time">Cutoff Time</Label>
-                  <Input
-                    id="rebuild-from-time"
-                    type="time"
-                    value={rebuildFromTime}
-                    onChange={(e) => setRebuildFromTime(e.target.value)}
-                    data-testid="input-rebuild-from-time"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setRebuildDialogOpen(false)} data-testid="button-rebuild-cancel">Cancel</Button>
-                <Button
-                  variant="default"
-                  className="gap-1 bg-amber-600 hover:bg-amber-700 text-white"
-                  onClick={handleRebuild}
-                  disabled={!rebuildFromDate || rebuildLedgerMutation.isPending}
-                  data-testid="button-rebuild-confirm"
-                >
-                  {rebuildLedgerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                  Rebuild Ledger
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Add New Mix Type Dialog */}
       <Dialog open={newMixTypeDialogOpen} onOpenChange={setNewMixTypeDialogOpen}>
         <DialogContent className="max-w-sm">
@@ -3880,20 +3759,17 @@ export function MixTemplateMaster() {
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-sm h-7 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/40"
-                onClick={() => {
-                  const tpl = templates?.find(t => t.id === postSaveAlertTemplate.id);
-                  if (tpl) openRebuildDialog(tpl);
-                  setPostSaveAlertTemplate(null);
-                }}
-                data-testid="button-post-save-rebuild"
-              >
-                <RotateCcw className="w-3 h-3" />
-                Rebuild Ledger
-              </Button>
+              <Link href={`/plant/ledger-rebuild?template=${postSaveAlertTemplate.id}`} onClick={() => setPostSaveAlertTemplate(null)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 text-sm h-7 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700 dark:hover:bg-amber-900/40"
+                  data-testid="button-post-save-rebuild"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Rebuild Ledger
+                </Button>
+              </Link>
               <Button
                 size="icon"
                 variant="ghost"
@@ -3968,16 +3844,17 @@ export function MixTemplateMaster() {
                     {canEdit && (
                       <div className="flex gap-1 items-center">
                         {isAdmin && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1 text-sm text-amber-700 dark:text-amber-400 hover:text-amber-900"
-                            onClick={() => openRebuildDialog(template)}
-                            data-testid={`button-rebuild-ledger-${template.id}`}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Rebuild Ledger
-                          </Button>
+                          <Link href={`/plant/ledger-rebuild?template=${template.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1 text-sm text-amber-700 dark:text-amber-400 hover:text-amber-900"
+                              data-testid={`button-rebuild-ledger-${template.id}`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Rebuild Ledger
+                            </Button>
+                          </Link>
                         )}
                         <Button variant="ghost" size="icon" onClick={() => openEdit(template)} data-testid={`button-edit-template-${template.id}`}>
                           <Pencil className="w-4 h-4" />
